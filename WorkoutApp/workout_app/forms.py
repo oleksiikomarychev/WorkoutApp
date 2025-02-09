@@ -1,5 +1,5 @@
 from django import forms
-from WorkoutApp.Workout.models import Workout, Exercise
+from WorkoutApp.workout_app.models import Workout, Exercise
 
 class WorkoutForm(forms.ModelForm):
     class Meta:

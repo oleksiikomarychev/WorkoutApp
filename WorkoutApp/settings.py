@@ -38,7 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'workout_app',
+    'WorkoutApp.workout_app',
 ]
 
 MIDDLEWARE = [
@@ -78,10 +78,15 @@ WSGI_APPLICATION = 'WorkoutApp.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'workout_app',
+        'USER': 'oleksii',
+        'PASSWORD': '12345678',
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
+
 
 
 # Password validation
