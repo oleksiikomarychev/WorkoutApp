@@ -1,10 +1,10 @@
-from .models import Progression, ProgressionTemplate
-from .serializers import ProgressionSerializer, ProgressionTemplateSerializer
+from .models import Progression, ProgressionTemplate, UserMax
+from .serializers import ProgressionSerializer, ProgressionTemplateSerializer, UserMaxSerializer
 from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from WorkoutApp.workout_app.models import Workout, Exercise
-from WorkoutApp.workout_app.serializers import WorkoutSerializer, ExerciseSerializer
+from WorkoutApp.workout_app.models import Workout, Exercise, ExerciseList
+from WorkoutApp.workout_app.serializers import WorkoutSerializer, ExerciseSerializer, ExerciseListSerializer
 from rest_framework import status
 
 class WorkoutViewSet(viewsets.ModelViewSet):
@@ -20,13 +20,12 @@ class WorkoutViewSet(viewsets.ModelViewSet):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
 class ExerciseViewSet(viewsets.ModelViewSet):
     queryset = Exercise.objects.all()
     serializer_class = ExerciseSerializer
 
     def create(self, request, *args, **kwargs):
-        workout_id = request.data.get("workout_id")  # ✅ Проверяем, передан ли workout_id
+        workout_id = request.data.get("workout_id")
         if not workout_id:
             return Response({"error": "workout_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -37,12 +36,10 @@ class ExerciseViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
-            serializer.save(workout=workout)  # ✅ Указываем workout перед сохранением
+            serializer.save(workout=workout)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
 
 class ProgressionViewSet(viewsets.ModelViewSet):
     queryset = Progression.objects.all()
@@ -52,5 +49,11 @@ class ProgressionTemplateViewSet(viewsets.ModelViewSet):
     queryset = ProgressionTemplate.objects.all()
     serializer_class = ProgressionTemplateSerializer
 
+class UserMaxViewSet(viewsets.ModelViewSet):
+    queryset = UserMax.objects.all()
+    serializer_class = UserMaxSerializer
 
+class ExerciseListViewSet(viewsets.ModelViewSet):
+    queryset = ExerciseList.objects.all()
+    serializer_class = ExerciseListSerializer
 
