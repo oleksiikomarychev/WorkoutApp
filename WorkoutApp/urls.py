@@ -3,7 +3,8 @@ from drf_yasg.views import get_schema_view
 from rest_framework import permissions
 from rest_framework.routers import DefaultRouter
 from django.urls import path, include
-from WorkoutApp.workout_app.views import UserMaxViewSet, WorkoutViewSet, ExerciseViewSet, ProgressionViewSet, ProgressionTemplateViewSet, ExerciseListViewSet
+from WorkoutApp.workout_app.views import UserMaxViewSet, WorkoutViewSet, ExerciseViewSet, \
+   ProgressionTemplateViewSet, ExerciseListViewSet, ProgressionsViewSet
 
 schema_view = get_schema_view(
    openapi.Info(
@@ -21,8 +22,8 @@ schema_view = get_schema_view(
 router = DefaultRouter()
 router.register(r'workouts', WorkoutViewSet)
 router.register(r'exercises', ExerciseViewSet)
-router.register(r'progressions', ProgressionViewSet)
-router.register(r'progression_templates', ProgressionTemplateViewSet)
+router.register(r'progression_template', ProgressionTemplateViewSet)
+router.register(r'progressions', ProgressionsViewSet)
 router.register(r'user_max', UserMaxViewSet)
 router.register(r'exercise-list', ExerciseListViewSet)
 
