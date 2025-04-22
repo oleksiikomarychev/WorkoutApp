@@ -1,5 +1,5 @@
-from .models import Progression, ProgressionTemplate, UserMax
-from .serializers import ProgressionSerializer, ProgressionTemplateSerializer, UserMaxSerializer
+from .models import Progressions, UserMax, ProgressionTemplate
+from .serializers import ProgressionsSerializer, ProgressionTemplateSerializer, UserMaxSerializer
 from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -41,13 +41,13 @@ class ExerciseViewSet(viewsets.ModelViewSet):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class ProgressionViewSet(viewsets.ModelViewSet):
-    queryset = Progression.objects.all()
-    serializer_class = ProgressionSerializer
-
 class ProgressionTemplateViewSet(viewsets.ModelViewSet):
     queryset = ProgressionTemplate.objects.all()
     serializer_class = ProgressionTemplateSerializer
+
+class ProgressionsViewSet(viewsets.ModelViewSet):
+    queryset = Progressions.objects.all()
+    serializer_class = ProgressionsSerializer
 
 class UserMaxViewSet(viewsets.ModelViewSet):
     queryset = UserMax.objects.all()
