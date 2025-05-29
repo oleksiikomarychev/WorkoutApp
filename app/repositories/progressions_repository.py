@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from app import workout_models as models
 
 class ProgressionsRepository:
@@ -61,3 +61,35 @@ class ProgressionsRepository:
     def get_progression_template_by_id(self, template_id: int) -> Optional[models.ProgressionTemplate]:
     
         return self.db.query(models.ProgressionTemplate).filter(models.ProgressionTemplate.id == template_id).first()
+    
+
+    def create_llm_progression(self, progression_data: dict) -> models.LLMProgression:
+    
+        db_progression = models.LLMProgression(**progression_data)
+        db_progression.update_volume()
+        self.db.add(db_progression)
+        self.db.commit()
+        self.db.refresh(db_progression)
+        return db_progression
+    
+    def get_llm_progressions(self, skip: int = 0, limit: int = 100) -> List[models.LLMProgression]:
+    
+        return self.db.query(models.LLMProgression).offset(skip).limit(limit).all()
+    
+    def get_llm_progression_by_id(self, progression_id: int) -> Optional[models.LLMProgression]:
+    
+        return self.db.query(models.LLMProgression).filter(models.LLMProgression.id == progression_id).first()
+    
+    def update_llm_progression(self, db_progression: models.LLMProgression, progression_data: dict) -> models.LLMProgression:
+    
+        for key, value in progression_data.items():
+            setattr(db_progression, key, value)
+        
+        db_progression.update_volume()
+        self.db.commit()
+        self.db.refresh(db_progression)
+        return db_progression
+    
+    def delete_llm_progression(self, progression: models.LLMProgression) -> None:
+        self.db.delete(progression)
+        self.db.commit()
