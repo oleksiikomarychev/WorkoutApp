@@ -1,18 +1,13 @@
 import datetime
-import os
 import random
 import google.generativeai as genai
-from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.database import Base
 from app.workout_models import (Workout, Exercise, UserMax, ExerciseList, EffortType, Progressions, ProgressionTemplate)
+from app.config.config import settings
 
-load_dotenv()
-DATABASE_URL = os.getenv("DATABASE_URL")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-genai.configure(api_key=GEMINI_API_KEY)
+genai.configure(api_key=settings.GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-2.0-flash')
 
 def generate_mock_exercises():
@@ -86,11 +81,11 @@ def generate_mock_progressions(user_maxes):
         Progressions(
             user_max=user_max,
             sets=random.randint(3, 5),
-            intensity=random.uniform(1, 10),
-            effort=random.uniform(1, 10),
+            intensity=random.randint(60, 100),
+            effort=random.randint(6, 10),
             volume=random.randint(10, 30)        
-            )
-            for user_max in user_maxes
+        )
+        for user_max in user_maxes
     ]
 
 def generate_mock_progression_templates(progressions):
@@ -122,43 +117,69 @@ def generate_mock_exercises_for_workouts(workouts, exercise_list):
     return exercises
 
 def reset_database():
-    engine = create_engine(DATABASE_URL)
+    engine = create_engine(settings.DATABASE_URL)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     session = SessionLocal()
 
-    Base.metadata.drop_all(bind=engine)
+    try:
+        print("Dropping tables...")
+        Base.metadata.drop_all(bind=engine)
+        print("Creating tables...")
+        Base.metadata.create_all(bind=engine)
 
-    Base.metadata.create_all(bind=engine)
+        print("Generating exercises...")
+        exercise_list = generate_mock_exercises()
+        session.add_all(exercise_list)
+        session.commit()
+        print(f"Added {len(exercise_list)} exercises")
 
-    exercise_list = generate_mock_exercises()
-    session.add_all(exercise_list)
+        print("Adding workouts...")
+        workouts = [
+            Workout(
+                name='Upper Body Day', 
+                description='Focusing on chest and arms with RPE tracking'
+            ),
+            Workout(
+                name='Lower Body Day', 
+                description='Leg day with heavy squats using RIR method'
+            )
+        ]
+        session.add_all(workouts)
+        session.commit()
+        print(f"Added {len(workouts)} workouts")
 
-    workouts = [
-        Workout(
-            name='Upper Body Day', 
-            description='Focusing on chest and arms with RPE tracking'
-        ),
-        Workout(
-            name='Lower Body Day', 
-            description='Leg day with heavy squats using RIR method'
-        )
-    ]
-    session.add_all(workouts)
+        print("Adding user maxes...")
+        user_maxes = generate_mock_user_maxes(exercise_list)
+        session.add_all(user_maxes)
+        session.commit()
+        print(f"Added {len(user_maxes)} user maxes")
 
-    user_maxes = generate_mock_user_maxes(exercise_list)
-    session.add_all(user_maxes)
+        print("Adding progressions...")
+        progressions = generate_mock_progressions(user_maxes)
+        session.add_all(progressions)
+        session.commit()
+        print(f"Added {len(progressions)} progressions")
 
-    progressions = generate_mock_progressions(user_maxes)
-    session.add_all(progressions)
+        print("Adding progression templates...")
+        progression_templates = generate_mock_progression_templates(progressions)
+        session.add_all(progression_templates)
+        session.commit()
+        print(f"Added {len(progression_templates)} progression templates")
 
-    progression_templates = generate_mock_progression_templates(progressions)
-    session.add_all(progression_templates)
+        print("Adding exercises for workouts...")
+        exercises = generate_mock_exercises_for_workouts(workouts, exercise_list)
+        session.add_all(exercises)
+        session.commit()
+        print(f"Added {len(exercises)} exercises")
 
-    exercises = generate_mock_exercises_for_workouts(workouts, exercise_list)
-    session.add_all(exercises)
+        print("Database reset completed successfully!")
 
-    session.commit()
-    session.close()
+    except Exception as e:
+        print(f"Error during database reset: {str(e)}")
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 if __name__ == "__main__":
     reset_database()
