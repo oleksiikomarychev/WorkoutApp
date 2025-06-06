@@ -19,8 +19,22 @@ class Workout(Base):
     description = Column(Text, nullable=True)
     progression_template_id = Column(Integer, ForeignKey("progressions.id"), nullable=True)
     
-    progression_template = relationship("Progressions", back_populates="workouts")
-    exercises = relationship("Exercise", back_populates="workout")
+    # Relationship with Progressions (one workout can have one progression template)
+    progression_template = relationship(
+        "Progressions",
+        foreign_keys=[progression_template_id],
+        post_update=True,
+        # Don't cascade deletes to avoid circular dependencies
+        # The progression template should be managed separately
+    )
+    
+    # Relationship with Exercises (one-to-many, one workout has many exercises)
+    exercises = relationship(
+        "Exercise", 
+        back_populates="workout", 
+        cascade="all, delete-orphan",
+        passive_deletes=True
+    )
 
 
 class ExerciseList(Base):
@@ -41,12 +55,25 @@ class Exercise(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
-    sets = Column(Integer, nullable=False)
-    volume = Column(Integer, nullable=False)
-    weight = Column(Integer, nullable=True)
+    sets = Column(Integer, nullable=False)  # Количество подходов
+    volume = Column(Integer, nullable=False)  # Количество повторений в подходе
+    weight = Column(Integer, nullable=True)   # Вес в кг
     workout_id = Column(Integer, ForeignKey("workouts.id"), nullable=False)
+    exercise_definition_id = Column(Integer, ForeignKey("exercise_list.id"), nullable=True)
     
     workout = relationship("Workout", back_populates="exercises")
+    exercise_definition = relationship("ExerciseList")
+    
+    @property
+    def total_volume(self) -> int:
+        """Вычисляет общий объем (сеты * повторения * вес).
+        
+        Returns:
+            int: Общий объем упражнения. Если вес не указан, возвращает 0.
+        """
+        if self.weight is None:
+            return 0
+        return self.sets * self.volume * self.weight
 
 
 class UserMax(Base):
@@ -59,7 +86,6 @@ class UserMax(Base):
     
     exercise = relationship("ExerciseList", back_populates="user_maxes")
     progressions = relationship("Progressions", back_populates="user_max")
-    llm_progressions = relationship("LLMProgression", back_populates="user_max")
     progression_templates = relationship("ProgressionTemplate", back_populates="user_max")
     
     def __str__(self):
@@ -76,8 +102,18 @@ class Progressions(Base):
     effort = Column(Integer, nullable=False)
     volume = Column(Integer, nullable=False)
     
+    # Relationship with UserMax (many-to-one, many progressions can belong to one user max)
     user_max = relationship("UserMax", back_populates="progressions")
-    workouts = relationship("Workout", back_populates="progression_template")
+    
+    # Relationship with Workout (one-to-many, one progression can be used by many workouts)
+    # Note: Using viewonly=True to avoid circular dependency issues
+    # The actual relationship is managed by Workout.progression_template
+    workouts = relationship(
+        "Workout",
+        foreign_keys="Workout.progression_template_id",
+        back_populates="progression_template",
+        viewonly=True
+    )
     
     RPE_TABLE = {
         100: {10: 1},
@@ -101,67 +137,47 @@ class Progressions(Base):
             return None
         return round(self.user_max.max_weight * (self.intensity / 100.0))
     
-    def update_volume(self):
-        """"""
-        if hasattr(self, 'volume') and self.volume is not None:
-            return
+    def calculate_volume(self) -> Union[int, str]:
+        """
+        Calculate the volume (number of repetitions) based on intensity and RPE effort.
+        Returns either an integer or a string range (e.g., '3-4').
+        """
+        if not hasattr(self, 'intensity') or not hasattr(self, 'effort'):
+            return 0
             
-        self.volume = self.get_volume()
-        if isinstance(self.volume, str):
-            self.volume = 0
-
-
-class LLMProgression(Base):
-    """"""
-    __tablename__ = "llm_progressions"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_max_id = Column(Integer, ForeignKey("user_maxes.id"), nullable=False)
-    sets = Column(Integer, nullable=True, default=0)
-    intensity = Column(Integer, nullable=True, default=0)
-    effort = Column(Integer, nullable=True, default=0)
-    volume = Column(Integer, nullable=True, default=0)
-    user_data = Column(JSON, nullable=True, default=dict)
-    
-    user_max = relationship("UserMax", back_populates="llm_progressions")
-    
-    def get_volume(self) -> Union[int, str]:
-        """"""
-        if self.intensity is None or self.effort is None:
-            return "N/A"
+        # Round intensity to the nearest 5% to match our RPE table
+        rounded_intensity = round(self.intensity / 5) * 5
+        # Ensure intensity is within our table bounds (60-100%)
+        rounded_intensity = max(60, min(100, rounded_intensity))
         
-        try:
-            intensity_rounded = min(
-                Progressions.RPE_TABLE.keys(), 
-                key=lambda x: abs(x - self.intensity)
-            )
-            closest_effort = min(
-                Progressions.RPE_TABLE[intensity_rounded].keys(), 
-                key=lambda x: abs(x - self.effort)
-            )
-            return Progressions.RPE_TABLE[intensity_rounded].get(closest_effort, "N/A")
-        except (TypeError, ValueError):
-            return "N/A"
-
-    def get_calculated_weight(self) -> Optional[int]:
-        """"""
-        if not self.user_max or not self.user_max.max_weight or self.intensity is None:
-            return None
-        try:
-            return round(self.user_max.max_weight * (self.intensity / 100.0))
-        except (TypeError, ValueError):
-            return None
+        # Round effort to nearest 0.5 for RPE
+        rounded_effort = round(self.effort * 2) / 2
+        # Ensure effort is within our table bounds (6-10)
+        rounded_effort = max(6, min(10, rounded_effort))
+        
+        # Find the closest intensity in our table
+        intensity_key = min(self.RPE_TABLE.keys(), key=lambda x: abs(x - rounded_intensity))
+        
+        # Find the closest effort in our table
+        effort_key = min(self.RPE_TABLE[intensity_key].keys(), 
+                        key=lambda x: abs(x - rounded_effort))
+        
+        return self.RPE_TABLE[intensity_key][effort_key]
     
     def update_volume(self):
-        if hasattr(self, 'volume') and self.volume is not None:
+        """Update the volume based on current intensity and effort."""
+        if not hasattr(self, 'intensity') or not hasattr(self, 'effort'):
             return
             
-        self.volume = self.get_volume()
+        self.volume = self.calculate_volume()
+        # If we got a string range (e.g., '3-4'), we'll store the lower bound as an integer
         if isinstance(self.volume, str):
-            self.volume = 0
-    
-    def store_user_data(self, data: Dict[str, Any]):
-        self.user_data = data
+            try:
+                # Extract the first number from ranges like '3-4' or '12+'
+                self.volume = int(''.join(filter(str.isdigit, self.volume)) or '0')
+            except (ValueError, TypeError):
+                self.volume = 0
+
 
 
 class ProgressionTemplate(Base):

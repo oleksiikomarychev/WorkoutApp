@@ -17,7 +17,7 @@ class _ProgressionScreenState extends State<ProgressionScreen> {
   UserMax? _selectedUserMax;
   final TextEditingController _setsController = TextEditingController();
   final TextEditingController _intensityController = TextEditingController();
-  final TextEditingController _effortController = TextEditingController();
+  final TextEditingController _effortController = TextEditingController(text: '8'); // Default effort of 8
   @override
   void initState() {
     super.initState();
@@ -100,18 +100,13 @@ class _ProgressionScreenState extends State<ProgressionScreen> {
                   ),
                   TextFormField(
                     controller: _effortController,
-                    decoration: const InputDecoration(labelText: 'RPE (1-10)'),
+                    decoration: const InputDecoration(labelText: 'Усилие (1-10)'),
                     keyboardType: TextInputType.number,
                     validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Введите значение RPE';
-                      }
-                      final effort = double.tryParse(value);
-                      if (effort == null) {
-                        return 'Введите корректное число';
-                      }
-                      if (effort < 1 || effort > 10) {
-                        return 'RPE должно быть от 1 до 10';
+                      if (value == null || value.isEmpty) return 'Введите значение';
+                      final effort = int.tryParse(value);
+                      if (effort == null || effort < 1 || effort > 10) {
+                        return 'Введите целое число от 1 до 10';
                       }
                       return null;
                     },
@@ -147,9 +142,9 @@ class _ProgressionScreenState extends State<ProgressionScreen> {
       final progression = Progression(
         userMaxId: _selectedUserMax!.id!,
         sets: int.parse(_setsController.text),
-        intensity: double.parse(_intensityController.text),
-        effort: double.parse(_effortController.text),
-        volume: 0, 
+        intensity: int.tryParse(_intensityController.text) ?? 75, // Default to 75% intensity if not provided
+        effort: int.tryParse(_effortController.text) ?? 8, // Default to 8 if parsing fails
+        volume: 1, // Set default volume to 1 to satisfy the schema validation
       );
       await progressionService.createProgression(progression);
       Navigator.pop(context);
@@ -200,6 +195,11 @@ class _ProgressionScreenState extends State<ProgressionScreen> {
                     itemCount: progressions.length,
                     itemBuilder: (context, index) {
                       final progression = progressions[index];
+                      // Calculate total volume (sets * reps * weight)
+                      final totalVolume = progression.calculatedWeight != null && progression.volume != null
+                          ? (progression.sets * progression.volume! * progression.calculatedWeight!).toInt()
+                          : 0;
+                      
                       return Card(
                         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         child: Padding(
@@ -207,32 +207,73 @@ class _ProgressionScreenState extends State<ProgressionScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                progression.userMaxDisplay ?? 'Прогрессия #${progression.id}',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
+                              // Exercise name and max info
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      progression.userMaxDisplay ?? 'Прогрессия #${progression.id}',
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  // RPE indicator
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: _getRpeColor(progression.effort?.toDouble() ?? 0),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      'RPE ${progression.effort?.toStringAsFixed(1) ?? 'N/A'}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              
+                              // Main workout metrics
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  _buildInfoItem('Подходы', '${progression.sets} x'),
+                                  _buildInfoItem('Повторения', '${progression.volume ?? "-"}'),
+                                  _buildInfoItem('Вес', '${progression.calculatedWeight?.toStringAsFixed(1) ?? "-"} кг'),
+                                  _buildInfoItem('Инт.', '${progression.intensity}%'),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              
+                              // Intensity indicator
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 8, top: 4),
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[200],
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                                child: FractionallySizedBox(
+                                  alignment: Alignment.centerLeft,
+                                  widthFactor: (progression.intensity ?? 0) / 100.0,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: _getIntensityColor(progression.intensity ?? 0),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  _buildInfoItem('Подходы', '${progression.sets}'),
-                                  _buildInfoItem('Интенсивность', '${progression.intensity}%'),
-                                  _buildInfoItem('RPE', '${progression.effort}'),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  _buildInfoItem('Повторения', '${progression.reps ?? "N/A"}'),
-                                  _buildInfoItem('Рабочий вес', '${progression.calculatedWeight ?? "N/A"} кг'),
-                                  _buildInfoItem('Объем', '${progression.volume} КПШ'),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 4),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
@@ -295,23 +336,39 @@ class _ProgressionScreenState extends State<ProgressionScreen> {
   }
   Widget _buildInfoItem(String label, String value) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12,
-            color: Colors.grey,
+            color: Colors.grey[600],
           ),
         ),
+        const SizedBox(height: 2),
         Text(
           value,
           style: const TextStyle(
             fontSize: 16,
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ],
     );
+  }
+  
+  Color _getRpeColor(double rpe) {
+    if (rpe <= 7) return Colors.green;
+    if (rpe <= 8.5) return Colors.orange;
+    return Colors.red;
+  }
+  
+  Color _getIntensityColor(int intensity) {
+    if (intensity < 60) return Colors.blue;
+    if (intensity < 70) return Colors.green;
+    if (intensity < 80) return Colors.lightGreen;
+    if (intensity < 85) return Colors.yellow[700]!;
+    if (intensity < 90) return Colors.orange;
+    return Colors.red;
   }
 }
