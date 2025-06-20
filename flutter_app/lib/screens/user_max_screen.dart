@@ -120,7 +120,7 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
       final userMaxService = Provider.of<UserMaxService>(context, listen: false);
       final userMax = UserMax(
         exerciseId: _selectedExercise!.id!,
-        maxWeight: double.parse(_maxWeightController.text),
+        maxWeight: int.tryParse(_maxWeightController.text) ?? 0,
         repMax: _repMax,
       );
       await userMaxService.createUserMax(userMax);

@@ -157,6 +157,7 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
                           Text('Группа мышц: ${exercise.muscleGroup}'),
                         if (exercise.equipment != null && exercise.equipment!.isNotEmpty)
                           Text('Оборудование: ${exercise.equipment}'),
+                        // Removed weight display as it's not part of ExerciseList model
                       ],
                     ),
                     trailing: exercise.videoUrl != null && exercise.videoUrl!.isNotEmpty

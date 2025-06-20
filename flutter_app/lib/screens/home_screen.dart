@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:heroicons/heroicons.dart';
 import 'package:animations/animations.dart';
+import 'package:provider/provider.dart';
+import 'dart:ui';
 
+import '../services/progression_service.dart';
 import 'workout_list_screen.dart';
 import 'exercise_list_screen.dart';
 import 'user_max_screen.dart';
-import 'progression_screen.dart';
+import 'progressions_list_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,252 +20,237 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+
+  int _currentIndex = 0;
+
   @override
   Widget build(BuildContext context) {
-
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final isLightMode = Theme.of(context).brightness == Brightness.light;
-    
 
-    final menuItems = [
-      MenuItemData(
-        title: 'Тренировки',
-        iconData: HeroIcons.bolt,
-        primaryColor: colorScheme.primary,
-        destinationScreen: const WorkoutListScreen(),
-        subtitle: 'Управление тренировками',
-      ),
-      MenuItemData(
-        title: 'Упражнения',
-        iconData: HeroIcons.fire,
-        primaryColor: colorScheme.tertiary,
-        destinationScreen: const ExerciseListScreen(),
-        subtitle: 'Список упражнений',
-      ),
-      MenuItemData(
-        title: 'Мои максимумы',
-        iconData: HeroIcons.chartBar,
-        primaryColor: colorScheme.secondary,
-        destinationScreen: const UserMaxScreen(),
-        subtitle: 'Персональные рекорды',
-      ),
-      MenuItemData(
-        title: 'Прогрессии',
-        iconData: HeroIcons.arrowTrendingUp,
-        primaryColor: colorScheme.error,
-        destinationScreen: const ProgressionScreen(),
-        subtitle: 'Схемы прогрессий',
-      ),
+    final List<Widget> screens = [
+      WorkoutListScreen(progressionId: 1),
+      const ExerciseListScreen(),
+      const UserMaxScreen(),
+      const ProgressionsListScreen(),
     ];
-
-    return Scaffold(
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-
-          SliverAppBar.large(
-            expandedHeight: 200.0,
-            pinned: true,
-            stretch: true,
-            title: const Text('Workout App'),
-            centerTitle: true,
-            backgroundColor: isLightMode 
-                ? colorScheme.surface 
-                : colorScheme.surfaceVariant,
-            actions: [
-              IconButton(
-                icon: Icon(isLightMode 
-                    ? Icons.dark_mode_outlined 
-                    : Icons.light_mode_outlined),
-                tooltip: 'Сменить тему',
-                onPressed: () {
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Смена темы будет доступна в следующих версиях')),
-                  );
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.settings_outlined),
-                tooltip: 'Настройки',
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Настройки будут доступны в следующих версиях')),
-                  );
-                },
-              ),
-            ],
-            flexibleSpace: FlexibleSpaceBar(
-              centerTitle: true,
-              background: Stack(
-                children: [
-                  Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: isLightMode
-                              ? [colorScheme.primaryContainer, colorScheme.surface]
-                              : [colorScheme.surface, colorScheme.surfaceVariant],
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    left: 24,
-                    child: Text(
-                      'Добро пожаловать!',
-                      style: textTheme.headlineMedium?.copyWith(
-                        color: isLightMode 
-                            ? colorScheme.onPrimaryContainer
-                            : colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ).animate(delay: 300.ms).fadeIn(duration: 500.ms).slideY(begin: 0.3, end: 0),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          
-
-          SliverPadding(
-            padding: const EdgeInsets.all(16.0),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: 1.0,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final item = menuItems[index];
-                  return _buildMenuItem(
-                    context: context,
-                    item: item,
-                    index: index,
-                  );
-                },
-                childCount: menuItems.length,
-              ),
-            ),
-          ),
-          
-
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 16.0),
-                    child: Text(
-                      'Последняя активность',
-                      style: textTheme.titleLarge,
-                    ),
-                  ),
-                  _buildRecentActivityCard(
-                    title: 'Тренировка: Грудь и трицепс',
-                    subtitle: 'Вчера, 18:30',
-                    icon: HeroIcons.bolt,
-                    context: context,
-                  ),
-                  const SizedBox(height: 12),
-                  _buildRecentActivityCard(
-                    title: 'Новый максимум: Жим лежа',
-                    subtitle: '3 дня назад',
-                    icon: HeroIcons.trophy,
-                    context: context,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          
-
-          const SliverToBoxAdapter(
-            child: SizedBox(height: 24),
-          ),
+    final Map<int, Widget> tabs = {
+      0: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          HeroIcon(HeroIcons.bolt, size: 20, color: colorScheme.primary),
+          const SizedBox(width: 6),
+          const Text('Тренировки'),
         ],
       ),
+      1: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          HeroIcon(HeroIcons.fire, size: 20, color: colorScheme.tertiary),
+          const SizedBox(width: 6),
+          const Text('Упражнения'),
+        ],
+      ),
+      2: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          HeroIcon(HeroIcons.chartBar, size: 20, color: colorScheme.secondary),
+          const SizedBox(width: 6),
+          const Text('Максимумы'),
+        ],
+      ),
+      3: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          HeroIcon(HeroIcons.arrowTrendingUp, size: 20, color: Colors.purple),
+          const SizedBox(width: 6),
+          const Text('Прогрессии'),
+        ],
+      ),
+    };
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Workout App'),
+        centerTitle: true,
+        backgroundColor: isLightMode ? colorScheme.surface : colorScheme.surfaceVariant,
+        actions: [
+          IconButton(
+            icon: Icon(isLightMode ? Icons.dark_mode_outlined : Icons.light_mode_outlined),
+            tooltip: 'Сменить тему',
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Смена темы будет доступна в следующих версиях')),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Настройки',
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Настройки будут доступны в следующих версиях')),
+              );
+            },
+          ),
+        ],
+        elevation: 0,
+      ),
+      body: screens[_currentIndex],
+      bottomNavigationBar: _FancyNavBar(
+        currentIndex: _currentIndex,
+        onTap: (int idx) {
+          setState(() {
+            _currentIndex = idx;
+          });
+        },
+        colorScheme: colorScheme,
+      ),
     );
   }
+}
 
-  Widget _buildMenuItem({
-    required BuildContext context,
-    required MenuItemData item,
-    required int index,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+class _FancyNavBar extends StatelessWidget {
+  final int currentIndex;
+  final Function(int) onTap;
+  final ColorScheme colorScheme;
 
-    return OpenContainer(
-      transitionType: ContainerTransitionType.fadeThrough,
-      openBuilder: (context, _) => item.destinationScreen,
-      closedElevation: 0,
-      closedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      closedColor: Theme.of(context).cardTheme.color ?? colorScheme.surface,
-      closedBuilder: (context, openContainer) {
-        return Card(
-          color: colorScheme.surfaceContainerHigh,
-          elevation: 0,
-          child: InkWell(
-            onTap: openContainer,
-            borderRadius: BorderRadius.circular(20),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: item.primaryColor.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: HeroIcon(
-                      item.iconData,
-                      color: item.primaryColor,
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    item.title,
-                    style: textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Expanded(
-                    child: Text(
-                      item.subtitle,
-                      style: textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
+  const _FancyNavBar({
+    Key? key,
+    required this.currentIndex,
+    required this.onTap,
+    required this.colorScheme,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      _NavBarItem(
+        icon: HeroIcons.bolt,
+        label: 'Тренировки',
+        color: colorScheme.primary,
+      ),
+      _NavBarItem(
+        icon: HeroIcons.fire,
+        label: 'Упражнения',
+        color: colorScheme.tertiary,
+      ),
+      _NavBarItem(
+        icon: HeroIcons.chartBar,
+        label: 'Максимумы',
+        color: colorScheme.secondary,
+      ),
+      _NavBarItem(
+        icon: HeroIcons.arrowTrendingUp,
+        label: 'Прогрессии',
+        color: Colors.purple,
+      ),
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18, left: 16, right: 16, top: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            decoration: BoxDecoration(
+              color: colorScheme.surface.withOpacity(0.70),
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: colorScheme.primary.withOpacity(0.10),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+              border: Border.all(color: colorScheme.primary.withOpacity(0.08)),
+            ),
+            height: 70,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: List.generate(items.length, (idx) {
+                final selected = idx == currentIndex;
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () => onTap(idx),
+                    behavior: HitTestBehavior.opaque,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 350),
+                      curve: Curves.easeOutQuint,
+                      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? colorScheme.primary.withOpacity(0.15)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: selected
+                            ? [
+                                BoxShadow(
+                                  color: colorScheme.primary.withOpacity(0.25),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ]
+                            : [],
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          AnimatedScale(
+                            scale: selected ? 1.22 : 1.0,
+                            duration: const Duration(milliseconds: 350),
+                            curve: Curves.easeOutBack,
+                            child: HeroIcon(
+                              items[idx].icon,
+                              color: selected
+                                  ? items[idx].color
+                                  : colorScheme.onSurfaceVariant,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          AnimatedDefaultTextStyle(
+                            style: TextStyle(
+                              color: selected
+                                  ? items[idx].color
+                                  : colorScheme.onSurfaceVariant,
+                              fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                              fontSize: selected ? 14 : 12,
+                              shadows: selected
+                                  ? [
+                                      Shadow(
+                                        color: items[idx].color.withOpacity(0.18),
+                                        blurRadius: 8,
+                                      ),
+                                    ]
+                                  : [],
+                            ),
+                            duration: const Duration(milliseconds: 350),
+                            child: Text(items[idx].label),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ],
-              ),
+                );
+              }),
             ),
           ),
-        )
-        .animate(delay: (100 * index).ms)
-        .fadeIn(duration: 300.ms)
-        .slideY(begin: 0.2, end: 0);
-      },
+        ),
+      ),
     );
   }
+}
+
+class _NavBarItem {
+  final HeroIcons icon;
+  final String label;
+  final Color color;
+  const _NavBarItem({required this.icon, required this.label, required this.color});
+}
+
+// --- Остальной код ---
 
   Widget _buildRecentActivityCard({
     required String title,
@@ -320,20 +309,3 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     ).animate(delay: 500.ms).fadeIn(duration: 300.ms).slideX(begin: 0.2, end: 0);
   }
-}
-
-class MenuItemData {
-  final String title;
-  final String subtitle;
-  final HeroIcons iconData;
-  final Color primaryColor;
-  final Widget destinationScreen;
-
-  MenuItemData({
-    required this.title,
-    required this.iconData,
-    required this.primaryColor,
-    required this.destinationScreen,
-    required this.subtitle,
-  });
-}

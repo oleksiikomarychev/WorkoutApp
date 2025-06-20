@@ -1,8 +1,9 @@
 import '../models/user_max.dart';
 import 'api_client.dart';
+import '../config/api_config.dart';
 class UserMaxService {
   final ApiClient _apiClient;
-  final String _endpoint = '/user-max';
+  static const String _endpoint = ApiConfig.userMaxEndpoint;
   UserMaxService(this._apiClient);
   Future<List<UserMax>> getUserMaxes() async {
     final response = await _apiClient.get(_endpoint);

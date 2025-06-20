@@ -1,146 +1,173 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 
 from app.database import get_db
+from app.workout_schemas import (
+    ProgressionTemplateCreate,
+    ProgressionTemplateUpdate,
+    ProgressionTemplateResponse
+)
 from app.services.progressions_service import ProgressionsService
-from app import workout_models, workout_schemas
 
-router = APIRouter(prefix="/progressions", tags=["progressions"], redirect_slashes=False)
+router = APIRouter()
 
 def get_progressions_service(db: Session = Depends(get_db)) -> ProgressionsService:
-    """Dependency to get an instance of ProgressionsService."""
+    """Dependency that provides a ProgressionsService instance."""
     return ProgressionsService(db)
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=workout_schemas.Progressions)
-def create_progression(
-    progression: workout_schemas.ProgressionsCreate, 
+@router.post(
+    "/templates/", 
+    response_model=ProgressionTemplateResponse, 
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new progression template",
+    response_description="The created progression template"
+)
+async def create_progression_template(
+    template: ProgressionTemplateCreate,
     service: ProgressionsService = Depends(get_progressions_service)
-) -> Dict[str, Any]:
-    return service.create_progression(progression)
-
-@router.get("", response_model=List[workout_schemas.Progressions])
-def list_progressions(
-    user_id: Optional[int] = Query(None, description="Filter by user ID"),
-    exercise_id: Optional[int] = Query(None, description="Filter by exercise ID"),
-    skip: int = 0, 
-    limit: int = 100, 
-    service: ProgressionsService = Depends(get_progressions_service)
-) -> List[Dict[str, Any]]:
-    return service.get_progressions(user_id, exercise_id, skip, limit)
-
-@router.get("/{progression_id}", response_model=workout_schemas.Progressions)
-def get_progression(
-    progression_id: int, 
-    service: ProgressionsService = Depends(get_progressions_service)
-) -> Dict[str, Any]:
-    progression = service.get_progression(progression_id)
-    if not progression:
-        raise HTTPException(status_code=404, detail="Progression not found")
-    return progression
-
-@router.put("/{progression_id}", response_model=workout_schemas.Progressions)
-def update_progression(
-    progression_id: int, 
-    progression: workout_schemas.ProgressionsCreate, 
-    service: ProgressionsService = Depends(get_progressions_service)
-) -> Dict[str, Any]:
-    updated = service.update_progression(progression_id, progression)
-    if not updated:
-        raise HTTPException(status_code=404, detail="Progression not found")
-    return updated
-
-@router.delete("/{progression_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_progression(
-    progression_id: int, 
-    service: ProgressionsService = Depends(get_progressions_service)
-) -> None:
-    success = service.delete_progression(progression_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Progression not found")
-
-@router.post("/templates", status_code=status.HTTP_201_CREATED, response_model=workout_schemas.ProgressionTemplate)
-def create_progression_template(
-    template: workout_schemas.ProgressionTemplateCreate, 
-    service: ProgressionsService = Depends(get_progressions_service)
-) -> Dict[str, Any]:
-    return service.create_progression_template(template)
-
-@router.get("/templates", response_model=List[workout_schemas.ProgressionTemplate])
-def list_progression_templates(
-    skip: int = 0, 
-    limit: int = 100, 
-    service: ProgressionsService = Depends(get_progressions_service)
-) -> List[Dict[str, Any]]:
-    return service.get_progression_templates(skip, limit)
-
-@router.get("/templates/{template_id}", response_model=workout_schemas.ProgressionTemplate)
-def get_progression_template(
-    template_id: int, 
-    service: ProgressionsService = Depends(get_progressions_service)
-) -> Dict[str, Any]:
-    template = service.get_progression_template(template_id)
-    if not template:
-        raise HTTPException(status_code=404, detail="Progression template not found")
-    return template
-
-
-@router.post("/llm/generate", status_code=status.HTTP_201_CREATED, response_model=workout_schemas.LLMProgressionResponse)
-def generate_llm_progression(
-    progression: workout_schemas.LLMProgressionCreate,
-    service: ProgressionsService = Depends(get_progressions_service)
-) -> Dict[str, Any]:
+):
     """
-    Generate a new workout progression using AI.
+    Create a new progression template.
+    
+    A progression template defines a reusable progression pattern that can be applied to workouts.
+    It includes the intensity, effort, sets, and volume calculations.
+    
+    - **name**: Name of the template (e.g., "5/3/1 BBB")
+    - **user_max_id**: ID of the user max this template is based on
+    - **intensity**: Intensity as percentage of 1RM (1-100)
+    - **effort**: Target RPE (1.0-10.0)
+    - **volume**: Optional target reps (will be calculated if not provided)
     """
-    return service.create_llm_progression(progression)
+    try:
+        return service.create_progression_template(template)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=f"Error creating progression template: {str(e)}"
+        )
 
-@router.get("/llm/generations", response_model=List[workout_schemas.LLMProgressionResponse])
-def list_llm_progressions(
-    skip: int = 0,
-    limit: int = 100,
+@router.get(
+    "/templates/", 
+    response_model=List[ProgressionTemplateResponse],
+    summary="List progression templates",
+    response_description="List of progression templates"
+)
+async def list_progression_templates(
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(100, le=1000, description="Maximum number of records to return"),
+    user_max_id: Optional[int] = Query(None, description="Filter by user max ID"),
     service: ProgressionsService = Depends(get_progressions_service)
-) -> List[Dict[str, Any]]:
+):
     """
-    List all AI-generated progressions with pagination.
+    Get a list of progression templates.
+    
+    Returns a paginated list of progression templates. You can filter by user max ID.
     """
-    return service.get_llm_progressions(skip=skip, limit=limit)
+    try:
+        return service.list_progression_templates(
+            user_max_id=user_max_id,
+            skip=skip,
+            limit=limit
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=f"Error fetching progression templates: {str(e)}"
+        )
 
-@router.get("/llm/generations/{generation_id}", response_model=workout_schemas.LLMProgressionResponse)
-def get_llm_progression(
-    generation_id: int,
+@router.get(
+    "/templates/{template_id}", 
+    response_model=ProgressionTemplateResponse,
+    summary="Get a progression template by ID",
+    response_description="The requested progression template"
+)
+async def get_progression_template(
+    template_id: int,
     service: ProgressionsService = Depends(get_progressions_service)
-) -> Dict[str, Any]:
+):
     """
-    Get a specific AI-generated progression by ID.
+    Get a specific progression template by ID.
+    
+    Returns the details of a single progression template including related user max 
+    and exercise information.
     """
-    progression = service.get_llm_progression(generation_id)
-    if not progression:
-        raise HTTPException(status_code=404, detail="AI progression not found")
-    return progression
+    try:
+        return service.get_progression_template(template_id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching progression template: {str(e)}"
+        )
 
-@router.put("/llm/generations/{generation_id}", response_model=workout_schemas.LLMProgressionResponse)
-def update_llm_progression(
-    generation_id: int,
-    progression: workout_schemas.LLMProgressionCreate,
+@router.put(
+    "/templates/{template_id}", 
+    response_model=ProgressionTemplateResponse,
+    summary="Update a progression template",
+    response_description="The updated progression template"
+)
+async def update_progression_template(
+    template_id: int,
+    template: ProgressionTemplateUpdate,
     service: ProgressionsService = Depends(get_progressions_service)
-) -> Dict[str, Any]:
+):
     """
-    Update an AI-generated progression.
+    Update a progression template.
+    
+    Updates the specified fields of a progression template. If intensity or effort is updated,
+    the volume will be automatically recalculated.
+    
+    - **name**: Optional new name for the template
+    - **sets**: Optional new number of sets
+    - **intensity**: Optional new intensity percentage (1-100)
+    - **effort**: Optional new target RPE (1.0-10.0)
+    - **volume**: Optional new target reps (will be recalculated if not provided)
+    - **notes**: Optional new notes
     """
-    updated = service.update_llm_progression(generation_id, progression)
-    if not updated:
-        raise HTTPException(status_code=404, detail="AI progression not found")
-    return updated
+    try:
+        return service.update_progression_template(template_id, template)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating progression template: {str(e)}"
+        )
 
-@router.delete("/llm/generations/{generation_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_llm_progression(
-    generation_id: int,
+@router.delete(
+    "/templates/{template_id}", 
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a progression template",
+    response_description="Template successfully deleted"
+)
+async def delete_progression_template(
+    template_id: int,
     service: ProgressionsService = Depends(get_progressions_service)
-) -> None:
+):
     """
-    Delete an AI-generated progression.
+    Delete a progression template.
+    
+    Deletes the specified progression template. Any workouts using this template will have their
+    progression_template_id set to NULL.
     """
-    success = service.delete_llm_progression(generation_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="AI progression not found")
+    try:
+        success = service.delete_progression_template(template_id)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Progression template not found"
+            )
+        return None
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting progression template: {str(e)}"
+        )

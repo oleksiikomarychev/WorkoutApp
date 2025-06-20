@@ -1,45 +1,84 @@
-class Progression {
+class ProgressionTemplate {
   final int? id;
+  final String name;
   final int userMaxId;
   final int sets;
-  final double intensity;
+  final int intensity;
   final double effort;
-  final int volume;
-  final dynamic reps; 
-  final dynamic calculatedWeight; 
-  final String? userMaxDisplay;
-  Progression({
+  final int? volume;
+  final double? calculatedWeight;
+  final String? notes;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  ProgressionTemplate({
     this.id,
+    required this.name,
     required this.userMaxId,
     required this.sets,
     required this.intensity,
     required this.effort,
-    required this.volume,
-    this.reps,
+    this.volume,
     this.calculatedWeight,
-    this.userMaxDisplay,
+    this.notes,
+    this.createdAt,
+    this.updatedAt,
   });
-  factory Progression.fromJson(Map<String, dynamic> json) {
-    return Progression(
+
+  factory ProgressionTemplate.fromJson(Map<String, dynamic> json) {
+    return ProgressionTemplate(
       id: json['id'],
+      name: json['name'],
       userMaxId: json['user_max_id'],
-      sets: json['sets'],
-      intensity: json['intensity']?.toDouble(),
-      effort: json['effort']?.toDouble(),
+      sets: json['sets'] ?? 0,
+      intensity: json['intensity'] is int ? json['intensity'] : 70, // Default to 70% intensity
+      effort: json['effort'] is num ? (json['effort'] as num).toDouble() : 8.0, // Default to RPE 8
       volume: json['volume'],
-      reps: json['reps'],
-      calculatedWeight: json['calculated_weight'],
-      userMaxDisplay: json['user_max_display'],
+      calculatedWeight: json['calculated_weight'] is num ? (json['calculated_weight'] as num).toDouble() : null,
+      notes: json['notes'],
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : null,
+      updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at']) : null,
     );
   }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'name': name,
       'user_max_id': userMaxId,
       'sets': sets,
       'intensity': intensity,
       'effort': effort,
-      'volume': volume,
+      if (volume != null) 'volume': volume,
+      if (notes != null) 'notes': notes,
     };
+  }
+
+  ProgressionTemplate copyWith({
+    int? id,
+    String? name,
+    int? userMaxId,
+    int? sets,
+    int? intensity,
+    double? effort,
+    int? volume,
+    double? calculatedWeight,
+    String? notes,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return ProgressionTemplate(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      userMaxId: userMaxId ?? this.userMaxId,
+      sets: sets ?? this.sets,
+      intensity: intensity ?? this.intensity,
+      effort: effort ?? this.effort,
+      volume: volume ?? this.volume,
+      calculatedWeight: calculatedWeight ?? this.calculatedWeight,
+      notes: notes ?? this.notes,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
   }
 }

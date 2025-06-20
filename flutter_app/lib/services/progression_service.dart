@@ -1,38 +1,56 @@
 import '../models/progression.dart';
 import 'api_client.dart';
+
 class ProgressionService {
   final ApiClient _apiClient;
-  final String _endpoint = '/progressions';
+  static const String _endpoint = '/api/v1/progressions/templates';
+  
   ProgressionService(this._apiClient);
-  Future<List<Progression>> getProgressions() async {
-    final response = await _apiClient.get(_endpoint);
-    return (response as List).map((json) => Progression.fromJson(json)).toList();
+
+  // Get all progression templates
+  Future<List<ProgressionTemplate>> getTemplates({
+    int? userMaxId,
+    int skip = 0,
+    int limit = 100,
+  }) async {
+    final params = {
+      'skip': skip.toString(),
+      'limit': limit.toString(),
+      if (userMaxId != null) 'user_max_id': userMaxId.toString(),
+    };
+    
+    final response = await _apiClient.get(_endpoint, queryParams: params);
+    return (response as List)
+        .map((json) => ProgressionTemplate.fromJson(json))
+        .toList();
   }
-  Future<Progression> getProgression(int id) async {
+
+  // Get a specific template by ID
+  Future<ProgressionTemplate> getTemplate(int id) async {
     final response = await _apiClient.get('$_endpoint/$id');
-    return Progression.fromJson(response);
+    return ProgressionTemplate.fromJson(response);
   }
-  Future<Progression> createProgression(Progression progression) async {
-    final response = await _apiClient.post(_endpoint, progression.toJson());
-    return Progression.fromJson(response);
+
+  // Create a new progression template
+  Future<ProgressionTemplate> createTemplate(ProgressionTemplate template) async {
+    final response = await _apiClient.post(
+      _endpoint,
+      template.toJson(),
+    );
+    return ProgressionTemplate.fromJson(response);
   }
-  Future<Progression> updateProgression(Progression progression) async {
-    final response = await _apiClient.put('$_endpoint/${progression.id}', progression.toJson());
-    return Progression.fromJson(response);
+
+  // Update an existing template
+  Future<ProgressionTemplate> updateTemplate(ProgressionTemplate template) async {
+    final response = await _apiClient.put(
+      '$_endpoint/${template.id}',
+      template.toJson(),
+    );
+    return ProgressionTemplate.fromJson(response);
   }
-  Future<void> deleteProgression(int id) async {
+
+  // Delete a template
+  Future<void> deleteTemplate(int id) async {
     await _apiClient.delete('$_endpoint/$id');
-  }
-  Future<List<dynamic>> getProgressionTemplates() async {
-    final response = await _apiClient.get('$_endpoint/template');
-    return response as List;
-  }
-  Future<dynamic> getProgressionTemplate(int id) async {
-    final response = await _apiClient.get('$_endpoint/template/$id');
-    return response;
-  }
-  Future<dynamic> createProgressionTemplate(Map<String, dynamic> template) async {
-    final response = await _apiClient.post('$_endpoint/template', template);
-    return response;
   }
 }

@@ -1,95 +1,85 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional, Dict, Any
-from app import workout_models as models
+from app.workout_models import ProgressionTemplate, UserMax, Workout
+from app.workout_schemas import ProgressionTemplateCreate
+
 
 class ProgressionsRepository:
-    
     def __init__(self, db: Session):
         self.db = db
     
-    def create_progression(self, progression_data: dict) -> models.Progressions:
-    
-        db_progression = models.Progressions(**progression_data)
-        db_progression.update_volume()
-        self.db.add(db_progression)
-        self.db.commit()
-        self.db.refresh(db_progression)
-        return db_progression
-    
-    def get_progressions(self, skip: int = 0, limit: int = 100) -> List[models.Progressions]:
-    
-        return self.db.query(models.Progressions).offset(skip).limit(limit).all()
-    
-    def get_progression_by_id(self, progression_id: int) -> Optional[models.Progressions]:
-    
-        return self.db.query(models.Progressions).filter(models.Progressions.id == progression_id).first()
-    
-    def update_progression(self, db_progression: models.Progressions, progression_data: dict) -> models.Progressions:
-    
-        for key, value in progression_data.items():
-            setattr(db_progression, key, value)
+    def get_progression_templates(
+        self, 
+        skip: int = 0, 
+        limit: int = 100,
+        user_max_id: Optional[int] = None
+    ) -> List[ProgressionTemplate]:
+        query = (
+            self.db.query(ProgressionTemplate)
+            .options(
+                joinedload(ProgressionTemplate.user_max)
+                .joinedload(UserMax.exercise)
+            )
+        )
         
-        db_progression.update_volume()
-        self.db.commit()
-        self.db.refresh(db_progression)
-        return db_progression
+        if user_max_id is not None:
+            query = query.filter(ProgressionTemplate.user_max_id == user_max_id)
+            
+        return query.offset(skip).limit(limit).all()
     
-    def delete_progression(self, db_progression: models.Progressions) -> None:
+    def get_progression_template_by_id(self, template_id: int) -> Optional[ProgressionTemplate]:
+        return (
+            self.db.query(ProgressionTemplate)
+            .options(
+                joinedload(ProgressionTemplate.user_max)
+                .joinedload(UserMax.exercise)
+            )
+            .filter(ProgressionTemplate.id == template_id)
+            .first()
+        )
     
-        self.db.delete(db_progression)
-        self.db.commit()
+    def get_progression_templates_by_user_max(self, user_max_id: int) -> List[ProgressionTemplate]:
+        return self.get_progression_templates(user_max_id=user_max_id)
     
-    def get_user_max(self, user_max_id: int) -> Optional[models.UserMax]:
-    
-        return self.db.query(models.UserMax).filter(models.UserMax.id == user_max_id).first()
-    
-
-    
-    def create_progression_template(self, template_data: dict) -> models.ProgressionTemplate:
-    
-        db_template = models.ProgressionTemplate(**template_data)
+    def create_progression_template(self, template_data: Dict[str, Any]) -> ProgressionTemplate:
+        db_template = ProgressionTemplate(**template_data)
         db_template.update_volume()
         self.db.add(db_template)
         self.db.commit()
         self.db.refresh(db_template)
         return db_template
     
-    def get_progression_templates(self, skip: int = 0, limit: int = 100) -> List[models.ProgressionTemplate]:
-    
-        return self.db.query(models.ProgressionTemplate).offset(skip).limit(limit).all()
-    
-    def get_progression_template_by_id(self, template_id: int) -> Optional[models.ProgressionTemplate]:
-    
-        return self.db.query(models.ProgressionTemplate).filter(models.ProgressionTemplate.id == template_id).first()
-    
-
-    def create_llm_progression(self, progression_data: dict) -> models.LLMProgression:
-    
-        db_progression = models.LLMProgression(**progression_data)
-        db_progression.update_volume()
-        self.db.add(db_progression)
+    def update_progression_template(
+        self, 
+        db_template: ProgressionTemplate,
+        template_data: Dict[str, Any]
+    ) -> ProgressionTemplate:
+        for key, value in template_data.items():
+            setattr(db_template, key, value)
+            
+        if 'intensity' in template_data or 'effort' in template_data:
+            db_template.update_volume()
+            
         self.db.commit()
-        self.db.refresh(db_progression)
-        return db_progression
+        self.db.refresh(db_template)
+        return db_template
     
-    def get_llm_progressions(self, skip: int = 0, limit: int = 100) -> List[models.LLMProgression]:
+    def delete_progression_template(self, template: ProgressionTemplate) -> bool:
+        try:
+            self.db.query(Workout).filter(
+                Workout.progression_template_id == template.id
+            ).update({
+                Workout.progression_template_id: None
+            })
+            
+            self.db.delete(template)
+            self.db.commit()
+            return True
+        except Exception as e:
+            self.db.rollback()
+            raise e
     
-        return self.db.query(models.LLMProgression).offset(skip).limit(limit).all()
-    
-    def get_llm_progression_by_id(self, progression_id: int) -> Optional[models.LLMProgression]:
-    
-        return self.db.query(models.LLMProgression).filter(models.LLMProgression.id == progression_id).first()
-    
-    def update_llm_progression(self, db_progression: models.LLMProgression, progression_data: dict) -> models.LLMProgression:
-    
-        for key, value in progression_data.items():
-            setattr(db_progression, key, value)
-        
-        db_progression.update_volume()
-        self.db.commit()
-        self.db.refresh(db_progression)
-        return db_progression
-    
-    def delete_llm_progression(self, progression: models.LLMProgression) -> None:
-        self.db.delete(progression)
-        self.db.commit()
+    def get_template_usage_count(self, template_id: int) -> int:
+        return self.db.query(Workout).filter(
+            Workout.progression_template_id == template_id
+        ).count()
