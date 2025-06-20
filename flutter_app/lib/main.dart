@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -62,10 +63,14 @@ class MyApp extends StatelessWidget {
           );
         }
 
+        // Use 10.0.2.2 for Android emulator, localhost for other platforms
+        final baseUrl = Platform.isAndroid ? 'http://10.0.2.2:8000' : 'http://localhost:8000';
+        print('Using API base URL: $baseUrl');
+        
         return MultiProvider(
           providers: [
             Provider<ApiClient>(
-              create: (_) => ApiClient(baseUrl: 'http://localhost:8000'),
+              create: (_) => ApiClient(baseUrl: baseUrl),
             ),
             ProxyProvider<ApiClient, WorkoutService>(
               update: (_, apiClient, __) => WorkoutService(apiClient),

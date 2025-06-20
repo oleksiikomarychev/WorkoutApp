@@ -27,13 +27,19 @@ class ApiClient {
     final uri = _buildUri(endpoint, queryParams);
     _logRequest('GET', uri, context: context);
     try {
+      print('Making GET request to: ${uri.toString()}');
       final response = await _httpClient.get(
         uri,
         headers: _defaultHeaders,
-      );
+      ).timeout(const Duration(seconds: 10));
+      
+      print('Response status: ${response.statusCode}');
+      print('Response body: ${response.body}');
+      
       _logResponse(response, context: context);
       return _handleResponse(response);
     } catch (e) {
+      print('Error in GET request to $uri: $e');
       _logError('GET', uri, e, context: context);
       rethrow;
     }
@@ -105,7 +111,7 @@ class ApiClient {
   void _logResponse(http.Response response, {String? context}) {
     if (kDebugMode) {
       developer.log(
-        '← ${response.statusCode} | Body: ${response.body}',
+        '← ${response.statusCode} ${response.reasonPhrase} | URL: ${response.request?.url} | Body: ${response.body}',
         name: 'ApiClient${context != null ? '/$context' : ''}',
       );
     }

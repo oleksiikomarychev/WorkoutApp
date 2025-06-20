@@ -10,7 +10,12 @@ import '../services/workout_service.dart';
 import 'workout_detail_screen.dart';
 
 class WorkoutListScreen extends StatefulWidget {
-  const WorkoutListScreen({super.key});
+  final int progressionId;
+  
+  const WorkoutListScreen({
+    Key? key,
+    required this.progressionId,
+  }) : super(key: key);
   
   @override
   State<WorkoutListScreen> createState() => _WorkoutListScreenState();
@@ -27,7 +32,8 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
   }
   
   Future<void> _loadWorkouts() async {
-    _workoutsFuture = Provider.of<WorkoutService>(context, listen: false).getWorkouts();
+    final workoutService = Provider.of<WorkoutService>(context, listen: false);
+    _workoutsFuture = workoutService.getWorkoutsByProgressionId(widget.progressionId);
   }
   
   Future<void> _refreshWorkouts() async {
@@ -37,9 +43,15 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
     
     await _loadWorkouts();
     
-    setState(() {
-      _isRefreshing = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isRefreshing = false;
+      });
+    }
+  }
+
+  void _showAddWorkoutDialog() {
+    // TODO: Implement add workout dialog
   }
   
   @override
@@ -48,419 +60,127 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
     final textTheme = Theme.of(context).textTheme;
     
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Тренировки'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: _isRefreshing ? null : _showAddWorkoutDialog,
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _refreshWorkouts,
-        color: colorScheme.primary,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
+        child: FutureBuilder<List<Workout>>(
+          future: _workoutsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-            SliverAppBar.medium(
-              title: const Text('Тренировки'),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.search),
-                  tooltip: 'Поиск',
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Поиск будет доступен в следующих версиях')),
-                    );
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.filter_list),
-                  tooltip: 'Фильтр',
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Фильтрация будет доступна в следующих версиях')),
-                    );
-                  },
-                ),
-              ],
-            ),
-            
-
-            FutureBuilder<List<Workout>>(
-              future: _workoutsFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting && !_isRefreshing) {
-
-                  return SliverPadding(
-                    padding: const EdgeInsets.all(16.0),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) => _buildShimmerEffect(context),
-                        childCount: 5,
-                      ),
+            if (snapshot.hasError) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      size: 48,
+                      color: Colors.red,
                     ),
-                  );
-                } else if (snapshot.hasError) {
-
-                  return SliverFillRemaining(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.error_outline,
-                            size: 60,
-                            color: colorScheme.error,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Произошла ошибка',
-                            style: textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Не удалось загрузить тренировки: ${snapshot.error}',
-                            style: textTheme.bodyMedium?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 24),
-                          FilledButton.icon(
-                            onPressed: _refreshWorkouts,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Повторить'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-
-                  return SliverFillRemaining(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          HeroIcon(
-                            HeroIcons.bolt,
-                            style: HeroIconStyle.outline,
-                            size: 80,
-                            color: colorScheme.primary.withOpacity(0.6),
-                          ),
-                          const SizedBox(height: 24),
-                          Text(
-                            'Нет тренировок',
-                            style: textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Создайте свою первую тренировку, чтобы начать',
-                            style: textTheme.bodyMedium?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 32),
-                          FilledButton.icon(
-                            onPressed: _navigateToCreateWorkout,
-                            icon: const Icon(Icons.add),
-                            label: const Text('Создать тренировку'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                } else {
-
-                  final workouts = snapshot.data!;
-                  return SliverPadding(
-                    padding: const EdgeInsets.all(16.0),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final workout = workouts[index];
-                          return _buildWorkoutCard(
-                            context: context, 
-                            workout: workout,
-                            index: index,
-                          );
-                        },
-                        childCount: workouts.length,
-                      ),
-                    ),
-                  );
-                }
-              },
-            ),
-            
-
-            const SliverPadding(padding: EdgeInsets.only(bottom: 80)),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _navigateToCreateWorkout,
-        icon: const Icon(Icons.add),
-        label: const Text('Тренировка'),
-        elevation: 4,
-      ),
-    );
-  }
-  
-  Future<void> _navigateToCreateWorkout() async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const WorkoutDetailScreen(),
-      ),
-    );
-    
-    if (result == true || result == null) {
-      await _refreshWorkouts();
-    }
-  }
-  
-  Widget _buildWorkoutCard({
-    required BuildContext context,
-    required Workout workout,
-    required int index,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    
-
-    final categoryColors = [
-      colorScheme.primary,
-      colorScheme.secondary,
-      colorScheme.tertiary,
-      colorScheme.error,
-    ];
-    
-    final categoryColor = categoryColors[index % categoryColors.length];
-    final String categoryText = _getCategoryText(workout.name);
-    
-    return OpenContainer(
-      transitionType: ContainerTransitionType.fadeThrough,
-      openBuilder: (context, _) => WorkoutDetailScreen(workout: workout),
-      closedElevation: 0,
-      closedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      closedColor: Theme.of(context).cardTheme.color ?? colorScheme.surface,
-      onClosed: (result) {
-        if (result == true) {
-          _refreshWorkouts();
-        }
-      },
-      closedBuilder: (context, openContainer) {
-        return Card(
-          elevation: 0,
-          margin: const EdgeInsets.only(bottom: 16),
-          child: InkWell(
-            onTap: openContainer,
-            borderRadius: BorderRadius.circular(16),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: categoryColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          categoryText,
-                          style: textTheme.labelSmall?.copyWith(
-                            color: categoryColor,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        'Упражнений: ${workout.exercises?.length ?? 0}',
-                        style: textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    workout.name,
-                    style: textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  if (workout.description != null && workout.description!.isNotEmpty) ...[  
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 16),
                     Text(
-                      workout.description!,
-                      style: textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      'Ошибка загрузки тренировок: ${snapshot.error}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: _loadWorkouts,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Повторить'),
                     ),
                   ],
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      _buildInfoChip(
-                        icon: Icons.calendar_today, 
-                        label: 'Пн, Чт', 
-                        context: context
+                ),
+              );
+            }
+
+            final workouts = snapshot.data ?? [];
+
+            if (workouts.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.fitness_center,
+                      size: 64,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Нет тренировок в этой прогрессии',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                    const SizedBox(height: 8),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        // TODO: Implement add workout functionality
+                      },
+                      icon: const Icon(Icons.add),
+                      label: const Text('Добавить тренировку'),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return ListView.builder(
+              itemCount: workouts.length,
+              itemBuilder: (context, index) {
+                final workout = workouts[index];
+                return ListTile(
+                  title: Text(workout.name),
+                  subtitle: Text(
+                    '${workout.exerciseInstances.length} ${_getExerciseCountText(workout.exerciseInstances.length)}',
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    final result = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => WorkoutDetailScreen(workout: workout),
                       ),
-                      const SizedBox(width: 16),
-                      _buildInfoChip(
-                        icon: Icons.access_time, 
-                        label: '45-60 мин', 
-                        context: context
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        )
-        .animate(delay: (100 * index).ms)
-        .fadeIn(duration: 200.ms)
-        .slideY(begin: 0.1, end: 0, duration: 200.ms);
-      },
-    );
-  }
-  
-  Widget _buildInfoChip({
-    required IconData icon,
-    required String label,
-    required BuildContext context,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          icon,
-          size: 16,
-          color: colorScheme.onSurfaceVariant,
-        ),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildShimmerEffect(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Shimmer.fromColors(
-      baseColor: colorScheme.surfaceVariant,
-      highlightColor: colorScheme.surface,
-      child: Card(
-        elevation: 0,
-        margin: const EdgeInsets.only(bottom: 16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 80,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    width: 100,
-                    height: 14,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Container(
-                width: 200,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                height: 14,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                width: 250,
-                height: 14,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Container(
-                    width: 80,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Container(
-                    width: 80,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+                    );
+                    
+                    // Refresh the workout list if we got back a true result
+                    if (result == true && mounted) {
+                      await _refreshWorkouts();
+                    }
+                  },
+                );
+              },
+            );
+          },
         ),
       ),
     );
   }
   
-
-  String _getCategoryText(String workoutName) {
-    final nameLower = workoutName.toLowerCase();
-    
-    if (nameLower.contains('грудь') || nameLower.contains('push')) {
-      return 'ГРУДЬ';
-    } else if (nameLower.contains('спин') || nameLower.contains('pull')) {
-      return 'СПИНА';
-    } else if (nameLower.contains('ног') || nameLower.contains('leg')) {
-      return 'НОГИ';
-    } else if (nameLower.contains('плеч') || nameLower.contains('shoulder')) {
-      return 'ПЛЕЧИ';
-    } else if (nameLower.contains('рук') || nameLower.contains('arm')) {
-      return 'РУКИ';
-    } else if (nameLower.contains('кардио') || nameLower.contains('cardio')) {
-      return 'КАРДИО';
+  String _getExerciseCountText(int count) {
+    if (count % 10 == 1 && count % 100 != 11) {
+      return 'упражнение';
+    } else if ([2, 3, 4].contains(count % 10) && 
+        ![12, 13, 14].contains(count % 100)) {
+      return 'упражнения';
     } else {
-      return 'ОБЩАЯ';
+      return 'упражнений';
     }
   }
 }

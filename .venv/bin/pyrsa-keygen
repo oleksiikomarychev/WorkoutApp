@@ -1,4 +1,4 @@
-#!/Users/oleksii/PycharmProjects/WorkoutApp/.venv/bin/python
+#!/Users/oleksii/PycharmProjects/WorkoutApp/.venv/bin/python3.12
 # -*- coding: utf-8 -*-
 import re
 import sys

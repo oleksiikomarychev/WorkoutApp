@@ -48,17 +48,18 @@ origins = [
      "*"
  ]
 app.add_middleware(
-     CORSMiddleware,
-     allow_origins=origins,
-     allow_credentials=True,
-     allow_methods=["*"],
-     allow_headers=["*"],
- )
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
 
-app.include_router(workouts.router, prefix="/api/v1", tags=["Workouts"])
-app.include_router(exercises.router, prefix="/api/v1", tags=["Exercises"])
-app.include_router(progressions.router, prefix="/api", tags=["Progressions"])
-app.include_router(user_max.router, prefix="/api", tags=["User Maxes"])
+app.include_router(workouts.router, prefix="/api/v1/workouts", tags=["Workouts"])
+app.include_router(exercises.router, prefix="/api/v1/exercises", tags=["Exercises"])
+app.include_router(progressions.router, prefix="/api/v1/progressions", tags=["Progressions"])
+app.include_router(user_max.router, prefix="/api/v1/user-maxes", tags=["User Maxes"])
 
 
 
