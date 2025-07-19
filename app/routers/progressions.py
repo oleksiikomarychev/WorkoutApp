@@ -1,44 +1,25 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
 from typing import List, Optional
-
-from app.database import get_db
+from app.services.progressions_service import ProgressionsService
+from app.dependencies import get_progressions_service
 from app.workout_schemas import (
     ProgressionTemplateCreate,
     ProgressionTemplateUpdate,
     ProgressionTemplateResponse
 )
-from app.services.progressions_service import ProgressionsService
 
 router = APIRouter()
-
-def get_progressions_service(db: Session = Depends(get_db)) -> ProgressionsService:
-    """Dependency that provides a ProgressionsService instance."""
-    return ProgressionsService(db)
 
 @router.post(
     "/templates/", 
     response_model=ProgressionTemplateResponse, 
     status_code=status.HTTP_201_CREATED,
     summary="Create a new progression template",
-    response_description="The created progression template"
-)
+    response_description="The created progression template")
 async def create_progression_template(
     template: ProgressionTemplateCreate,
     service: ProgressionsService = Depends(get_progressions_service)
 ):
-    """
-    Create a new progression template.
-    
-    A progression template defines a reusable progression pattern that can be applied to workouts.
-    It includes the intensity, effort, sets, and volume calculations.
-    
-    - **name**: Name of the template (e.g., "5/3/1 BBB")
-    - **user_max_id**: ID of the user max this template is based on
-    - **intensity**: Intensity as percentage of 1RM (1-100)
-    - **effort**: Target RPE (1.0-10.0)
-    - **volume**: Optional target reps (will be calculated if not provided)
-    """
     try:
         return service.create_progression_template(template)
     except HTTPException:
@@ -150,12 +131,6 @@ async def delete_progression_template(
     template_id: int,
     service: ProgressionsService = Depends(get_progressions_service)
 ):
-    """
-    Delete a progression template.
-    
-    Deletes the specified progression template. Any workouts using this template will have their
-    progression_template_id set to NULL.
-    """
     try:
         success = service.delete_progression_template(template_id)
         if not success:
@@ -163,7 +138,7 @@ async def delete_progression_template(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Progression template not found"
             )
-        return None
+        return {"detail": "Progression template deleted"}
     except HTTPException:
         raise
     except Exception as e:

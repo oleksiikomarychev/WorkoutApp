@@ -6,7 +6,9 @@ import 'package:shimmer/shimmer.dart';
 import 'package:animations/animations.dart';
 
 import '../models/workout.dart';
+import '../models/progression_template.dart';
 import '../services/workout_service.dart';
+import '../services/progression_service.dart';
 import 'workout_detail_screen.dart';
 
 class WorkoutListScreen extends StatefulWidget {
@@ -25,6 +27,8 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
   late Future<List<Workout>> _workoutsFuture;
   bool _isRefreshing = false;
   
+  final TextEditingController _nameController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -33,7 +37,7 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
   
   Future<void> _loadWorkouts() async {
     final workoutService = Provider.of<WorkoutService>(context, listen: false);
-    _workoutsFuture = workoutService.getWorkoutsByProgressionId(widget.progressionId);
+    _workoutsFuture = workoutService.getWorkouts();
   }
   
   Future<void> _refreshWorkouts() async {
@@ -50,8 +54,83 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
     }
   }
 
+
+
   void _showAddWorkoutDialog() {
-    // TODO: Implement add workout dialog
+    _nameController.clear();
+    
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Добавить тренировку'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Название тренировки',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Отмена'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  if (_nameController.text.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Введите название тренировки')),
+                    );
+                    return;
+                  }
+                  
+                  try {
+                    final workoutService = Provider.of<WorkoutService>(context, listen: false);
+                    final workout = Workout(
+                      name: _nameController.text,
+                      progressionTemplateId: null,
+                      exerciseInstances: [],
+                      id: null,
+                    );
+                    
+                    await workoutService.createWorkout(workout);
+                    if (mounted) {
+                      Navigator.pop(context);
+                      _loadWorkouts();
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Ошибка при создании тренировки: $e')),
+                      );
+                    }
+                  }
+                },
+                child: const Text('Добавить'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
   }
   
   @override
@@ -62,15 +141,7 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Тренировки'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: _isRefreshing ? null : _showAddWorkoutDialog,
-          ),
           const SizedBox(width: 8),
         ],
       ),
@@ -128,13 +199,7 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
                       style: TextStyle(fontSize: 16),
                     ),
                     const SizedBox(height: 8),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        // TODO: Implement add workout functionality
-                      },
-                      icon: const Icon(Icons.add),
-                      label: const Text('Добавить тренировку'),
-                    ),
+
                   ],
                 ),
               );
@@ -169,6 +234,10 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
             );
           },
         ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAddWorkoutDialog,
+        child: const Icon(Icons.add),
       ),
     );
   }

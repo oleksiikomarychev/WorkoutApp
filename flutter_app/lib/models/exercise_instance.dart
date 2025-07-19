@@ -1,80 +1,106 @@
 import 'package:flutter/foundation.dart';
+import 'package:workout_app/models/progression_template.dart';
+import 'package:workout_app/models/exercise_list.dart';
 
 @immutable
 class ExerciseInstance {
   final int? id;
-  final int exerciseId;
+  final int exerciseListId;
   final int workoutId;
-  final int volume;
-  final int intensity;
-  final int effort;
+  final int? progressionTemplateId;
+  final int? volume;
+  final int? intensity;
+  final int? effort;
   final int? weight;
-  final String? notes;
-  final DateTime? createdAt;
-  final DateTime? updatedAt;
+  final ExerciseList? exerciseDefinition;
+  final ProgressionTemplate? progressionTemplate;
 
   const ExerciseInstance({
     this.id,
-    required this.exerciseId,
+    required this.exerciseListId,
     required this.workoutId,
-    this.volume = 0,
-    this.intensity = 0,
-    this.effort = 0,
+    this.progressionTemplateId,
+    this.volume,
+    this.intensity,
+    this.effort,
     this.weight,
-    this.notes,
-    this.createdAt,
-    this.updatedAt,
+    this.exerciseDefinition,
+    this.progressionTemplate,
   });
+
+  ExerciseInstance copyWith({
+    int? id,
+    int? exerciseListId,
+    int? workoutId,
+    int? progressionTemplateId,
+    int? volume,
+    int? intensity,
+    int? effort,
+    int? weight,
+    ExerciseList? exerciseDefinition,
+    ProgressionTemplate? progressionTemplate,
+  }) {
+    return ExerciseInstance(
+      id: id ?? this.id,
+      exerciseListId: exerciseListId ?? this.exerciseListId,
+      workoutId: workoutId ?? this.workoutId,
+      progressionTemplateId: progressionTemplateId ?? this.progressionTemplateId,
+      volume: volume ?? this.volume,
+      intensity: intensity ?? this.intensity,
+      effort: effort ?? this.effort,
+      weight: weight ?? this.weight,
+      exerciseDefinition: exerciseDefinition ?? this.exerciseDefinition,
+      progressionTemplate: progressionTemplate ?? this.progressionTemplate,
+    );
+  }
 
   factory ExerciseInstance.fromJson(Map<String, dynamic>? json) {
     if (json == null) {
       throw const FormatException('ExerciseInstance JSON cannot be null');
     }
-    
+
     try {
-      // Safely parse required fields with fallbacks
-      final exerciseId = _parseInt(json['exercise_id']);
+      final exerciseListId = _parseInt(json['exercise_id']);
       final workoutId = _parseInt(json['workout_id']);
-      
-      if (exerciseId == null || workoutId == null) {
+
+      if (exerciseListId == null || workoutId == null) {
         throw const FormatException('exercise_id and workout_id are required');
       }
-      
-      // Parse optional fields with fallbacks
-      final volume = _parseInt(json['volume']) ?? 0;
-      final intensity = _parseInt(json['intensity']) ?? 0;
-      final effort = _parseInt(json['effort']) ?? 0;
-      final weight = _parseInt(json['weight']);
-      
-      // Parse dates safely
-      DateTime? parseDateTime(dynamic value) {
-        if (value == null) return null;
-        try {
-          return DateTime.tryParse(value.toString());
-        } catch (e) {
-          debugPrint('Error parsing date: $e');
-          return null;
-        }
-      }
-      
+
+      final progressionTemplateId = _parseInt(json['progression_template_id']);
+      final volume = (json['volume'] as num?)?.toInt();
+      final intensity = (json['intensity'] as num?)?.toInt();
+      final effort = (json['effort'] as num?)?.toInt();
+      final weight = (json['weight'] as num?)?.toInt();
+
+      final exerciseDefJson = json['exercise_definition'];
+      final ExerciseList? exerciseDefinition = exerciseDefJson != null
+          ? ExerciseList.fromJson(exerciseDefJson is Map<String, dynamic> ? exerciseDefJson : {})
+          : null;
+
+      final progressionJson = json['progression_template'];
+      final ProgressionTemplate? progressionTemplate = progressionJson != null
+          ? ProgressionTemplate.fromJson(progressionJson is Map<String, dynamic> ? progressionJson : {})
+          : null;
+
       return ExerciseInstance(
         id: _parseInt(json['id']),
-        exerciseId: exerciseId,
+        exerciseListId: exerciseListId,
         workoutId: workoutId,
+        progressionTemplateId: progressionTemplateId,
         volume: volume,
         intensity: intensity,
         effort: effort,
         weight: weight,
-        notes: json['notes']?.toString(),
-        createdAt: parseDateTime(json['created_at']),
-        updatedAt: parseDateTime(json['updated_at']),
+        exerciseDefinition: exerciseDefinition,
+        progressionTemplate: progressionTemplate,
       );
     } catch (e, stackTrace) {
       debugPrint('Error parsing ExerciseInstance: $e\n$stackTrace');
       rethrow;
     }
   }
-  
+
   static int? _parseInt(dynamic value) {
     if (value == null) return null;
     if (value is int) return value;
@@ -85,44 +111,16 @@ class ExerciseInstance {
 
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
-      'exercise_id': exerciseId,
+      if (id != null) 'id': id,
+      'exercise_id': exerciseListId,
       'workout_id': workoutId,
-      'volume': volume,
-      'intensity': intensity,
-      'effort': effort,
+      if (progressionTemplateId != null) 'progression_template_id': progressionTemplateId,
+      if (volume != null) 'volume': volume,
+      if (intensity != null) 'intensity': intensity,
+      if (effort != null) 'effort': effort,
       if (weight != null) 'weight': weight,
-      if (notes != null) 'notes': notes,
+      if (exerciseDefinition != null) 'exercise_definition': exerciseDefinition!.toJson(),
+      if (progressionTemplate != null) 'progression_template': progressionTemplate!.toJson(),
     };
-  }
-
-  ExerciseInstance copyWith({
-    int? id,
-    int? exerciseId,
-    int? workoutId,
-    int? volume,
-    int? intensity,
-    int? effort,
-    int? weight,
-    String? notes,
-    DateTime? createdAt,
-    DateTime? updatedAt,
-  }) {
-    return ExerciseInstance(
-      id: id ?? this.id,
-      exerciseId: exerciseId ?? this.exerciseId,
-      workoutId: workoutId ?? this.workoutId,
-      volume: volume ?? this.volume,
-      intensity: intensity ?? this.intensity,
-      effort: effort ?? this.effort,
-      weight: weight ?? this.weight,
-      notes: notes ?? this.notes,
-      createdAt: createdAt ?? (this.createdAt != null 
-          ? DateTime.fromMillisecondsSinceEpoch(this.createdAt!.millisecondsSinceEpoch)
-          : null),
-      updatedAt: updatedAt ?? (this.updatedAt != null
-          ? DateTime.fromMillisecondsSinceEpoch(this.updatedAt!.millisecondsSinceEpoch)
-          : null),
-    );
   }
 }

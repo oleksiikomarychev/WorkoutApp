@@ -1,16 +1,38 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from typing import List
+from sqlalchemy.orm import Session, joinedload
+from typing import List, Optional
+from pydantic import BaseModel
 from app import workout_schemas, workout_models as models
-from app.database import get_db
+from app.dependencies import get_db
+from sqlalchemy.orm.attributes import flag_modified
 
 router = APIRouter()
+
 
 @router.get("/list", response_model=List[workout_schemas.ExerciseList])
 def list_exercise_definitions(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return db.query(models.ExerciseList).offset(skip).limit(limit).all()
 
-@router.post("/list/create", response_model=workout_schemas.ExerciseList)
+@router.get("/instances/{instance_id}", response_model=workout_schemas.ExerciseInstanceResponse)
+def get_exercise_instance(instance_id: int, db: Session = Depends(get_db)):
+    db_instance = db.query(models.ExerciseInstance).options(
+        joinedload(models.ExerciseInstance.exercise_definition),
+        joinedload(models.ExerciseInstance.progression_template)
+    ).filter(models.ExerciseInstance.id == instance_id).first()
+    
+    if db_instance is None:
+        raise HTTPException(status_code=404, detail="Exercise instance not found")
+        
+    return db_instance
+
+@router.get("/list/{exercise_list_id}", response_model=workout_schemas.ExerciseList)
+def get_exercise_definition(exercise_list_id: int, db: Session = Depends(get_db)):
+    db_exercise = db.get(models.ExerciseList, exercise_list_id)
+    if db_exercise is None:
+        raise HTTPException(status_code=404, detail="Exercise definition not found")
+    return db_exercise
+
+@router.post("/list", response_model=workout_schemas.ExerciseList)
 def create_exercise_definition(exercise: workout_schemas.ExerciseListCreate, db: Session = Depends(get_db)):
     db_exercise = models.ExerciseList(**exercise.model_dump())
     db.add(db_exercise)
@@ -18,79 +40,87 @@ def create_exercise_definition(exercise: workout_schemas.ExerciseListCreate, db:
     db.refresh(db_exercise)
     return db_exercise
 
-@router.post("/workouts/{workout_id}", response_model=workout_schemas.Exercise, status_code=status.HTTP_201_CREATED)
-def create_workout_exercise(
-    workout_id: int, 
-    exercise: workout_schemas.ExerciseCreate, 
-    db: Session = Depends(get_db)
-):
+@router.post("/workouts/{workout_id}/instances", response_model=workout_schemas.ExerciseInstance, status_code=status.HTTP_201_CREATED)
+def create_exercise_instance(workout_id: int, instance_data: workout_schemas.ExerciseInstanceCreate, db: Session = Depends(get_db)):
     workout = db.get(models.Workout, workout_id)
     if not workout:
         raise HTTPException(status_code=404, detail="Workout not found")
+
+    exercise_def = db.get(models.ExerciseList, instance_data.exercise_list_id)
+    if not exercise_def:
+        raise HTTPException(status_code=404, detail="Exercise definition not found")
+
+    if instance_data.progression_template_id:
+        progression_template = db.get(models.ProgressionTemplate, instance_data.progression_template_id)
+        if not progression_template:
+            raise HTTPException(status_code=404, detail="Progression template not found")
+
+    data = instance_data.model_dump()
+    data['workout_id'] = workout_id
+    data['exercise_id'] = instance_data.exercise_list_id
     
-    if exercise.exercise_definition_id is not None:
-        exercise_def = db.get(models.ExerciseList, exercise.exercise_definition_id)
-        if not exercise_def:
-            raise HTTPException(status_code=404, detail="Exercise definition not found")
+    if 'exercise_id' in data:
+        del data['exercise_id']
     
-    db_exercise = models.Exercise(
-        name=exercise.name,
-        volume=exercise.volume,
-        weight=exercise.weight if exercise.weight is not None else 0,
-        workout_id=workout_id,
-        exercise_definition_id=exercise.exercise_definition_id,
-        intensity=exercise.intensity if hasattr(exercise, 'intensity') else None,
-        effort=exercise.effort if hasattr(exercise, 'effort') else None,
-    )
-    db.add(db_exercise)
+    db_instance = models.ExerciseInstance(**data)
+    db.add(db_instance)
+    db.commit()
+    db.refresh(db_instance)
+    return workout_schemas.ExerciseInstance.from_orm(db_instance)
+
+@router.put("/instances/{instance_id}", response_model=workout_schemas.ExerciseInstanceResponse)
+def update_exercise_instance(instance_id: int, instance_update: workout_schemas.ExerciseInstanceBase, db: Session = Depends(get_db)):
+    db_instance = db.query(models.ExerciseInstance).options(
+        joinedload(models.ExerciseInstance.exercise_definition),
+        joinedload(models.ExerciseInstance.progression_template)
+    ).filter(models.ExerciseInstance.id == instance_id).first()
+        
+    if db_instance is None:
+        raise HTTPException(status_code=404, detail="Exercise instance not found")
+
+    if instance_update.progression_template_id is not None:
+        progression_template = db.get(models.ProgressionTemplate, instance_update.progression_template_id)
+        if not progression_template:
+            raise HTTPException(status_code=404, detail="Progression template not found")
+
+    update_data = instance_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_instance, key, value)
+
+    db.commit()
+    db.refresh(db_instance)
+
+    return db_instance
+
+@router.put("/list/{exercise_list_id}", response_model=workout_schemas.ExerciseList)
+def update_exercise_definition(exercise_list_id: int, exercise_update: workout_schemas.ExerciseListCreate, db: Session = Depends(get_db)):
+    db_exercise = db.get(models.ExerciseList, exercise_list_id)
+    if db_exercise is None:
+        raise HTTPException(status_code=404, detail="Exercise definition not found")
+
+    update_data = exercise_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_exercise, key, value)
+
     db.commit()
     db.refresh(db_exercise)
     return db_exercise
 
-@router.get("/workouts/{workout_id}", response_model=List[workout_schemas.Exercise])
-def list_workout_exercises(workout_id: int, db: Session = Depends(get_db)):
-    return db.query(models.Exercise).filter(models.Exercise.workout_id == workout_id).all()
+@router.delete("/instances/{instance_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_exercise_instance(instance_id: int, db: Session = Depends(get_db)):
+    db_instance = db.get(models.ExerciseInstance, instance_id)
+    if not db_instance:
+        raise HTTPException(status_code=404, detail="Exercise instance not found")
 
-@router.get("/{exercise_id}", response_model=workout_schemas.Exercise)
-def get_exercise(exercise_id: int, db: Session = Depends(get_db)):
-    exercise = db.query(models.Exercise).filter(models.Exercise.id == exercise_id).first()
-    if exercise is None:
-        raise HTTPException(status_code=404, detail="Exercise not found")
-    return exercise
-
-@router.put("/{exercise_id}", response_model=workout_schemas.Exercise)
-def update_exercise(
-    exercise_id: int, 
-    exercise: workout_schemas.ExerciseCreate, 
-    db: Session = Depends(get_db)
-):
-    db_exercise = db.query(models.Exercise).filter(models.Exercise.id == exercise_id).first()
-    if db_exercise is None:
-        raise HTTPException(status_code=404, detail="Exercise not found")
-    
-    if exercise.name is not None:
-        db_exercise.name = exercise.name
-    if exercise.volume is not None:
-        db_exercise.volume = exercise.volume
-    if exercise.weight is not None:
-        db_exercise.weight = exercise.weight
-    if hasattr(exercise, 'intensity') and exercise.intensity is not None:
-        db_exercise.intensity = exercise.intensity
-    if hasattr(exercise, 'effort') and exercise.effort is not None:
-        db_exercise.effort = exercise.effort
-    if exercise.exercise_definition_id is not None:
-        db_exercise.exercise_definition_id = exercise.exercise_definition_id
-    
+    db.delete(db_instance)
     db.commit()
-    db.refresh(db_exercise)
-    return db_exercise
+    return
 
-@router.delete("/{exercise_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_exercise(exercise_id: int, db: Session = Depends(get_db)):
-    db_exercise = db.query(models.Exercise).filter(models.Exercise.id == exercise_id).first()
+@router.delete("/list/{exercise_list_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_exercise_definition(exercise_list_id: int, db: Session = Depends(get_db)):
+    db_exercise = db.get(models.ExerciseList, exercise_list_id)
     if db_exercise is None:
-        raise HTTPException(status_code=404, detail="Exercise not found")
-    
+        raise HTTPException(status_code=404, detail="Exercise definition not found")
     db.delete(db_exercise)
     db.commit()
-    return None
+    return

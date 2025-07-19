@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/exercise.dart';
+
 import '../models/exercise_list.dart';
 import '../screens/exercise_form_screen.dart';
 import '../services/exercise_service.dart';
@@ -38,7 +38,7 @@ class _ExerciseSelectionScreenState extends State<ExerciseSelectionScreen> {
   Future<void> _loadExercises() async {
     try {
       final exerciseService = Provider.of<ExerciseService>(context, listen: false);
-      final exercises = await exerciseService.getExerciseList();
+      final exercises = await exerciseService.getExerciseDefinitions();
       setState(() {
         _exercises = exercises;
         _filteredExercises = exercises;
@@ -70,6 +70,10 @@ class _ExerciseSelectionScreenState extends State<ExerciseSelectionScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Выберите упражнение'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(false),
+        ),
       ),
       body: Column(
         children: [
@@ -108,24 +112,24 @@ class _ExerciseSelectionScreenState extends State<ExerciseSelectionScreen> {
                                     Text('Оборудование: ${exercise.equipment}'),
                                 ].whereType<Widget>().toList(),
                               ),
-                              onTap: () {
+                              onTap: () async {
                                 // Navigate to exercise form with the selected exercise
-                                Navigator.push(
+                                final result = await Navigator.push<bool>(
                                   context,
                                   MaterialPageRoute(
                                     builder: (context) => ExerciseFormScreen(
                                       workoutId: widget.workoutId,
-                                      exercise: Exercise(
-                                        id: exercise.id,
-                                        name: exercise.name,
-                                        description: exercise.description ?? '',
-                                      ),
+                                      exercise: exercise,
                                     ),
                                   ),
-                                ).then((_) {
-                                  // Refresh the exercise list when returning from the form
-                                  _loadExercises();
-                                });
+                                );
+                                
+                                // Refresh if an item was added/changed
+                                if (result != null && result) {
+                                  if (mounted) {
+                                    Navigator.of(context).pop(true);
+                                  }
+                                }
                               },
                             ),
                           );

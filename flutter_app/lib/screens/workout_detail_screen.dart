@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/workout.dart';
-import '../models/exercise.dart';
+import '../models/exercise_instance.dart';
+
 import '../models/exercise_list.dart';
 import '../services/workout_service.dart';
 import '../services/exercise_service.dart';
@@ -20,7 +21,7 @@ class WorkoutDetailScreen extends StatefulWidget {
 class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
   bool _isLoading = false;
   bool _isLoadingExercises = false;
-  List<Exercise> _exercises = [];
+  List<ExerciseList> _uniqueExercises = [];
   Workout? _workout;
 
   @override
@@ -47,25 +48,14 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
       if (mounted) {
         setState(() {
           _workout = updatedWorkout;
-          // Get unique exercise IDs
-          final exerciseIds = updatedWorkout.exerciseInstances
-              .map((e) => e.exerciseId)
-              .toSet()
-              .toList();
-              
-          // Create a list of exercises from the instances
-          _exercises = exerciseIds.map((id) {
-            final instances = updatedWorkout.getInstancesForExercise(id);
-            if (instances.isEmpty) return null;
-            
-            // Get the first instance to get exercise details
-            final instance = instances.first;
-            return Exercise(
-              id: id,
-              name: 'Exercise $id', // This should be replaced with actual exercise name
-              instances: instances,
-            );
-          }).whereType<Exercise>().toList();
+          final instances = updatedWorkout.exerciseInstances;
+          final uniqueExerciseDefs = <int, ExerciseList>{};
+          for (var instance in instances) {
+            if (instance.exerciseDefinition != null) {
+              uniqueExerciseDefs[instance.exerciseListId] = instance.exerciseDefinition!;
+            }
+          }
+          _uniqueExercises = uniqueExerciseDefs.values.toList();
         });
       }
     } catch (e) {
@@ -83,61 +73,55 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
     }
   }
 
-  Widget _buildExerciseCard(Exercise exercise) {
-    if (exercise.instances.isEmpty) return const SizedBox.shrink();
-    
-    // Get the first instance for display
-    final instance = exercise.instances.first;
-    
+  Widget _buildExerciseCard(ExerciseList exercise) {
+    final instances = exercise.id != null ? _workout!.getInstancesForExercise(exercise.id!) : <ExerciseInstance>[];
+    if (instances.isEmpty) return const SizedBox.shrink();
+
+    final firstInstance = instances.first;
+
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              exercise.name,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            if (exercise.description?.isNotEmpty ?? false) ...[
-              const SizedBox(height: 8),
+      margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: InkWell(
+        onTap: () => _navigateToExerciseForm(exercise, firstInstance),
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Text(
-                exercise.description!,
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 14,
-                ),
+                exercise.name,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
               ),
-            ],
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildInfoColumn('Объем', '${instance.volume}'),
-                _buildInfoColumn('Интенсивность', '${instance.intensity}%'),
-                _buildInfoColumn('Усилие', '${instance.effort}'),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildInfoChip('Вес', '${firstInstance.weight} кг'),
+                  _buildInfoChip('Объем', '${firstInstance.volume} повт.'),
+                  _buildInfoChip('RPE', '${firstInstance.effort}'),
+                ],
+              ),
+              if (instances.length > 1) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '+${instances.length - 1} ${_getPluralForm(instances.length - 1, ['подход', 'подхода', 'подходов'])}',
+                  style: TextStyle(
+                    color: Theme.of(context).primaryColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
-            ),
-            if (exercise.instances.length > 1) ...[
-              const SizedBox(height: 8),
-              Text(
-                '+${exercise.instances.length - 1} еще ${_getPluralForm(exercise.instances.length - 1, ['подход', 'подхода', 'подходов'])}',
-                style: const TextStyle(
-                  color: Colors.blue,
-                  fontSize: 14,
-                ),
-              ),
             ],
-          ],
+          ),
         ),
       ),
     );
   }
-  
+
   String _getPluralForm(int n, List<String> forms) {
     n = n.abs() % 100;
     int n1 = n % 10;
@@ -147,26 +131,34 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
     return forms[2];
   }
 
-  Widget _buildInfoColumn(String label, String value) {
-    return Column(
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Colors.grey,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
+  Widget _buildInfoChip(String label, String value) {
+    return Chip(
+      label: Text(
+        '$label: $value',
+        style: const TextStyle(fontSize: 14),
+      ),
+      backgroundColor: Theme.of(context).primaryColor.withOpacity(0.2),
     );
+  }
+
+  void _navigateToExerciseForm(ExerciseList exercise, ExerciseInstance? instance) async {
+    final workoutId = _workout?.id;
+    if (workoutId == null) return;
+
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ExerciseFormScreen(
+          workoutId: workoutId,
+          exercise: exercise,
+          instance: instance,
+        ),
+      ),
+    );
+
+    if (result == true) {
+      _loadExercises();
+    }
   }
 
   Widget _buildEmptyState() {
@@ -189,7 +181,7 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
           ElevatedButton.icon(
             onPressed: () async {
               // Navigate to exercise selection screen
-              final exercise = await Navigator.push<ExerciseList>(
+              final selectedExercise = await Navigator.push<ExerciseList>(
                 context,
                 MaterialPageRoute(
                   builder: (context) => ExerciseSelectionScreen(
@@ -197,25 +189,21 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
                   ),
                 ),
               );
-              
-              if (exercise != null) {
+
+              if (selectedExercise != null) {
                 // Navigate to exercise form with the selected exercise
                 await Navigator.push<bool>(
                   context,
                   MaterialPageRoute(
                     builder: (context) => ExerciseFormScreen(
                       workoutId: widget.workout!.id!,
-                      exercise: Exercise(
-                        id: exercise.id,
-                        name: exercise.name,
-                        description: exercise.description ?? '',
-                      ),
+                      exercise: selectedExercise,
                     ),
                   ),
                 );
-                
+
                 await _loadExercises();
-                
+
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Упражнение добавлено')),
@@ -236,24 +224,14 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_exercises.isEmpty) {
+    if (_uniqueExercises.isEmpty) {
       return _buildEmptyState();
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (widget.workout?.description?.isNotEmpty ?? false)
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              widget.workout!.description!,
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
-              ),
-            ),
-          ),
+
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Text(
@@ -269,9 +247,9 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
             onRefresh: _loadExercises,
             child: ListView.builder(
               padding: const EdgeInsets.only(bottom: 80), // Space for FAB
-              itemCount: _exercises.length,
+              itemCount: _uniqueExercises.length,
               itemBuilder: (context, index) {
-                return _buildExerciseCard(_exercises[index]);
+                return _buildExerciseCard(_uniqueExercises[index]);
               },
             ),
           ),
@@ -325,7 +303,7 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
       floatingActionButton: _workout != null ? FloatingActionButton(
         onPressed: () async {
           // Navigate to exercise selection screen
-          final exercise = await Navigator.push<ExerciseList>(
+          final selectedExercise = await Navigator.push<ExerciseList>(
             context,
             MaterialPageRoute(
               builder: (context) => ExerciseSelectionScreen(
@@ -333,23 +311,19 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
               ),
             ),
           );
-          
-          if (exercise != null && mounted) {
+
+          if (selectedExercise != null && mounted) {
             // Navigate to exercise form with the selected exercise
             await Navigator.push<bool>(
               context,
               MaterialPageRoute(
                 builder: (context) => ExerciseFormScreen(
                   workoutId: _workout!.id!,
-                  exercise: Exercise(
-                    id: exercise.id,
-                    name: exercise.name,
-                    description: exercise.description ?? '',
-                  ),
+                  exercise: selectedExercise,
                 ),
               ),
             );
-            
+
             await _loadExercises();
             // Notify the user
             if (mounted) {

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from app import workout_schemas, workout_models as models
-from app.database import get_db
+from app.dependencies import get_db
 
 router = APIRouter()
 
@@ -43,6 +43,13 @@ def list_user_maxes(
         query = query.filter(models.UserMax.exercise_id == exercise_id)
         
     return query.offset(skip).limit(limit).all()
+
+@router.get("/by_exercise/{exercise_id}", response_model=List[workout_schemas.UserMax])
+def get_user_maxes_for_exercise(exercise_id: int, db: Session = Depends(get_db)):
+    user_maxes = db.query(models.UserMax).filter(models.UserMax.exercise_id == exercise_id).all()
+    if not user_maxes:
+        raise HTTPException(status_code=404, detail="No user maxes found for this exercise")
+    return user_maxes
 
 @router.get("/{user_max_id}", response_model=workout_schemas.UserMax)
 def get_user_max(user_max_id: int, db: Session = Depends(get_db)):

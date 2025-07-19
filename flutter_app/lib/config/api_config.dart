@@ -34,9 +34,25 @@ class ApiConfig {
   
   // API Endpoints - these should match your FastAPI router prefixes
   static const String healthEndpoint = '/api/health';
-  static const String workoutsEndpoint = '/api/v1/workouts';
+  static const String workoutsEndpoint = '/api/v1/workouts/';
+  static const String workoutByIdEndpoint = '/api/v1/workouts/{workout_id}';
+
   static const String exercisesEndpoint = '/api/v1/exercises';
+  static const String exerciseByIdEndpoint = '/api/v1/exercises/{exercise_id}';
   static const String exerciseListEndpoint = '/api/v1/exercises/list';
-  static const String progressionsEndpoint = '/api/v1/progressions';
-  static const String userMaxEndpoint = '/api/v1/user-maxes';
+  static const String exerciseListByIdEndpoint = '/api/v1/exercises/list/{exercise_id}';
+  static const String exerciseListCreateEndpoint = '/api/v1/exercises/list';
+  static const String exercisesForWorkoutEndpoint = '/api/v1/exercises/workouts/{workout_id}';
+
+  static const String exerciseInstancesEndpoint = '/api/v1/exercises/workouts/{workout_id}/instances';
+
+  static const String userMaxesByExerciseEndpoint = '/api/v1/user-maxes/by_exercise/{exercise_id}';
+
+  static const String progressionsEndpoint = '/api/v1/progressions/';
+  static const String progressionTemplatesEndpoint = '/api/v1/progressions/templates/';
+  static const String progressionTemplateByIdEndpoint = '/api/v1/progressions/templates/{template_id}';
+
+  static const String userMaxEndpoint = '/api/v1/user-maxes/';
+  static const String userMaxByIdEndpoint = '/api/v1/user-maxes/{user_max_id}';
+
 }

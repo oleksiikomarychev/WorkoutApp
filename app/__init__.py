@@ -1,17 +1,17 @@
 from .workout_models import (
     Workout, 
-    Exercise, 
     ExerciseList, 
     UserMax, 
     ProgressionTemplate,
-    EffortType
+    EffortType,
+    ExerciseInstance
 )
 
 from . import workout_schemas
 
 __all__ = [
-    'Workout', 'Exercise', 'ExerciseList', 'UserMax', 
-    'Progressions', 'ProgressionTemplate',
-    'ExerciseTemplate', 'WorkoutTemplate', 'EffortType',
+    'Workout', 'ExerciseList', 'UserMax', 
+    'ProgressionTemplate', 'EffortType',
+    'ExerciseInstance',
     'workout_schemas'
 ]
