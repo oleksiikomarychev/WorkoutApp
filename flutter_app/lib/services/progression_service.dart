@@ -1,9 +1,11 @@
-import '../models/progression.dart';
+import '../models/progression_template.dart';
 import 'api_client.dart';
+
+import '../config/api_config.dart';
 
 class ProgressionService {
   final ApiClient _apiClient;
-  static const String _endpoint = '/api/v1/progressions/templates';
+  
   
   ProgressionService(this._apiClient);
 
@@ -19,7 +21,7 @@ class ProgressionService {
       if (userMaxId != null) 'user_max_id': userMaxId.toString(),
     };
     
-    final response = await _apiClient.get(_endpoint, queryParams: params);
+    final response = await _apiClient.get(ApiConfig.progressionTemplatesEndpoint, queryParams: params);
     return (response as List)
         .map((json) => ProgressionTemplate.fromJson(json))
         .toList();
@@ -27,14 +29,14 @@ class ProgressionService {
 
   // Get a specific template by ID
   Future<ProgressionTemplate> getTemplate(int id) async {
-    final response = await _apiClient.get('$_endpoint/$id');
+    final response = await _apiClient.get(ApiConfig.progressionTemplateByIdEndpoint.replaceAll('{template_id}', id.toString()));
     return ProgressionTemplate.fromJson(response);
   }
 
   // Create a new progression template
   Future<ProgressionTemplate> createTemplate(ProgressionTemplate template) async {
     final response = await _apiClient.post(
-      _endpoint,
+      ApiConfig.progressionTemplatesEndpoint,
       template.toJson(),
     );
     return ProgressionTemplate.fromJson(response);
@@ -43,7 +45,7 @@ class ProgressionService {
   // Update an existing template
   Future<ProgressionTemplate> updateTemplate(ProgressionTemplate template) async {
     final response = await _apiClient.put(
-      '$_endpoint/${template.id}',
+      ApiConfig.progressionTemplateByIdEndpoint.replaceAll('{template_id}', template.id.toString()),
       template.toJson(),
     );
     return ProgressionTemplate.fromJson(response);
@@ -51,6 +53,6 @@ class ProgressionService {
 
   // Delete a template
   Future<void> deleteTemplate(int id) async {
-    await _apiClient.delete('$_endpoint/$id');
+    await _apiClient.delete(ApiConfig.progressionTemplateByIdEndpoint.replaceAll('{template_id}', id.toString()));
   }
 }

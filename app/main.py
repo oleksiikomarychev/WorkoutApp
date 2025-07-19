@@ -45,7 +45,6 @@ origins = [
      "http://localhost:8000",
      "http://localhost:3000",
      "http://10.0.2.2:8000",
-     "*"
  ]
 app.add_middleware(
     CORSMiddleware,
@@ -74,3 +73,7 @@ async def add_process_time_header(request: Request, call_next):
 @app.get("/")
 async def root():
     return {"message": "Welcome to Workout Tracking App"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

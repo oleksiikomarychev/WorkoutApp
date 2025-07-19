@@ -15,12 +15,7 @@ from app.workout_schemas import (
 
 
 class ProgressionsService:
-    """Service layer for handling progression template business logic.
-    
-    This service handles all business logic related to progression templates,
-    including validation, calculations, and orchestration of repository calls.
-    """
-    
+
     def __init__(self, db: Session):
         """Initialize the service with a database session."""
         self.db = db
@@ -146,17 +141,6 @@ class ProgressionsService:
         self, 
         template_id: int
     ) -> bool:
-        """Delete a progression template.
-        
-        Args:
-            template_id: ID of the template to delete
-            
-        Returns:
-            True if the template was deleted, False otherwise
-            
-        Raises:
-            HTTPException: If template not found
-        """
         db_template = self.progressions_repo.get_progression_template_by_id(template_id)
         if not db_template:
             raise HTTPException(
@@ -286,6 +270,8 @@ class ProgressionsService:
         return self._prepare_progression_response(updated_template, updated_template.user_max)
     
     def delete_progression_template(self, template_id: int) -> Dict[str, str]:
-        template = self._get_progression_template(template_id)
-        self.repository.delete_progression_template(template)
+        db_template = self.progressions_repo.get_progression_template_by_id(template_id)
+        if not db_template:
+            raise HTTPException(status_code=404, detail="Progression template not found")
+        self.progressions_repo.delete_progression_template(db_template)
         return {"detail": "Progression template deleted"}

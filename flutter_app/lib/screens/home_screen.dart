@@ -144,7 +144,7 @@ class _FancyNavBar extends StatelessWidget {
       _NavBarItem(
         icon: HeroIcons.arrowTrendingUp,
         label: 'Прогрессии',
-        color: Colors.purple,
+        color: colorScheme.primaryFixedDim,
       ),
     ];
     return Padding(

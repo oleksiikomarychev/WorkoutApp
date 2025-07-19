@@ -1,20 +1,25 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/exercise.dart';
-import '../models/exercise_instance.dart';
-import '../services/exercise_service.dart';
-import '../services/workout_service.dart';
+import 'package:workout_app/models/exercise_list.dart';
+import 'package:workout_app/models/exercise_instance.dart';
+import 'package:workout_app/models/progression_template.dart';
+import 'package:workout_app/models/user_max.dart';
+import 'package:workout_app/services/progression_service.dart';
+import 'package:workout_app/services/user_max_service.dart';
+import 'package:workout_app/services/workout_service.dart';
 
 class ExerciseFormScreen extends StatefulWidget {
   final int workoutId;
-  final Exercise? exercise;
-  final ExerciseInstance? exerciseInstance;
+  final ExerciseList? exercise;
+  final ExerciseInstance? instance;
 
   const ExerciseFormScreen({
     Key? key,
     required this.workoutId,
     this.exercise,
-    this.exerciseInstance,
+    this.instance,
   }) : super(key: key);
 
   @override
@@ -23,71 +28,57 @@ class ExerciseFormScreen extends StatefulWidget {
 
 class _ExerciseFormScreenState extends State<ExerciseFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  bool _isLoading = false;
-  
-  // Controllers
-  final _nameController = TextEditingController();
-  final _descriptionController = TextEditingController();
-  final _volumeController = TextEditingController();
-  final _weightController = TextEditingController();
-  final _intensityController = TextEditingController();
-  final _effortController = TextEditingController();
+  late TextEditingController _nameController;
+  late TextEditingController _volumeController;
+  late TextEditingController _weightController;
+  late TextEditingController _intensityController;
+  late TextEditingController _effortController;
 
-  @override
+  List<ProgressionTemplate> _templates = [];
+  ProgressionTemplate? _selectedTemplate;
+  List<UserMax> _userMaxes = [];
+  UserMax? _selectedUserMax;
+  bool _isLoading = false;
+  bool _isLoadingMaxes = false;
+
   @override
   void initState() {
     super.initState();
-    
-    // If we're editing an existing exercise instance, use its values
-    if (widget.exerciseInstance != null) {
-      _volumeController.text = '${widget.exerciseInstance!.volume}';
-      _weightController.text = '${widget.exerciseInstance!.weight ?? 0}';
-      _intensityController.text = '${widget.exerciseInstance!.intensity}';
-      _effortController.text = '${widget.exerciseInstance!.effort}';
-      
-      // If we don't have exercise data but have an instance, use its exercise ID
-      if (widget.exercise == null && widget.exerciseInstance!.exerciseId != null) {
-        _loadExerciseDetails(widget.exerciseInstance!.exerciseId!);
-      }
+
+    _nameController = TextEditingController();
+    _volumeController = TextEditingController();
+    _weightController = TextEditingController();
+    _intensityController = TextEditingController();
+    _effortController = TextEditingController();
+
+    if (widget.exercise != null) {
+      _nameController.text = widget.exercise!.name;
+    } else if (widget.instance?.exerciseDefinition != null) {
+      _nameController.text = widget.instance!.exerciseDefinition!.name;
+    }
+
+    if (widget.instance != null) {
+      _volumeController.text = widget.instance!.volume.toString();
+      _weightController.text = widget.instance!.weight?.toString() ?? '0';
+      _intensityController.text = widget.instance!.intensity.toString();
+      _effortController.text = widget.instance!.effort.toString();
     } else {
-      // Default values for new exercise instances
       _volumeController.text = '5';
       _weightController.text = '0';
       _intensityController.text = '70';
       _effortController.text = '7';
     }
-    
-    // Set exercise name and description if available
-    if (widget.exercise != null) {
-      _nameController.text = widget.exercise!.name;
-      _descriptionController.text = widget.exercise?.description ?? '';
-    }
-  }
 
-  Future<void> _loadExerciseDetails(int exerciseId) async {
-    try {
-      final exerciseService = Provider.of<ExerciseService>(context, listen: false);
-      final exercise = await exerciseService.getExercise(exerciseId);
-      
-      if (mounted) {
-        setState(() {
-          _nameController.text = exercise.name;
-          _descriptionController.text = exercise.description ?? '';
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Не удалось загрузить данные упражнения: $e')),
-        );
-      }
+    _loadData();
+    final exerciseId = widget.exercise?.id ?? widget.instance?.exerciseListId;
+    if (exerciseId != null) {
+      _fetchUserMaxes(exerciseId);
     }
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _descriptionController.dispose();
     _volumeController.dispose();
     _weightController.dispose();
     _intensityController.dispose();
@@ -95,61 +86,22 @@ class _ExerciseFormScreenState extends State<ExerciseFormScreen> {
     super.dispose();
   }
 
-  Future<void> _saveExercise() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (widget.exercise == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Пожалуйста, выберите упражнение')),
-        );
-      }
-      return;
-    }
-
+  Future<void> _loadData() async {
     setState(() {
       _isLoading = true;
     });
-
     try {
-      final exerciseService = Provider.of<ExerciseService>(context, listen: false);
-      
-      // Create or update the exercise instance
-      final exerciseInstance = ExerciseInstance(
-        id: widget.exerciseInstance?.id,
-        exerciseId: widget.exercise!.id!,
-        workoutId: widget.workoutId,
-        volume: int.tryParse(_volumeController.text) ?? 5,
-        weight: int.tryParse(_weightController.text) ?? 0,
-        intensity: int.tryParse(_intensityController.text) ?? 70,
-        effort: int.tryParse(_effortController.text) ?? 7,
-        notes: _descriptionController.text.isNotEmpty ? _descriptionController.text : null,
-      );
-
-      if (widget.exerciseInstance == null) {
-        // Create new exercise instance
-        await exerciseService.createExerciseInstance(exerciseInstance);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Упражнение добавлено')),
-          );
-        }
-      } else {
-        // Update existing exercise instance
-        await exerciseService.updateExerciseInstance(exerciseInstance);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Изменения сохранены')),
-          );
-        }
-      }
-
+      final progressionService = Provider.of<ProgressionService>(context, listen: false);
+      final templates = await progressionService.getTemplates();
       if (mounted) {
-        Navigator.of(context).pop(true);
+        setState(() {
+          _templates = templates;
+        });
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка: $e')),
+          SnackBar(content: Text('Не удалось загрузить данные: $e')),
         );
       }
     } finally {
@@ -161,15 +113,151 @@ class _ExerciseFormScreenState extends State<ExerciseFormScreen> {
     }
   }
 
+  Future<void> _fetchUserMaxes(int exerciseId) async {
+    setState(() {
+      _isLoadingMaxes = true;
+    });
+    final workoutService = Provider.of<WorkoutService>(context, listen: false);
+    try {
+      final maxes = await workoutService.getUserMaxesForExercise(exerciseId);
+      if (mounted) {
+        setState(() {
+          _userMaxes = maxes;
+          _isLoadingMaxes = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingMaxes = false;
+        });
+        // Handle error appropriately
+        debugPrint('Failed to load user maxes: $e');
+      }
+    }
+  }
+
+  Future<bool> _saveExercise() async {
+    if (!_formKey.currentState!.validate()) {
+      return false;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    final workoutService = Provider.of<WorkoutService>(context, listen: false);
+    final isUpdating = widget.instance != null;
+
+    try {
+      final volume = double.tryParse(_volumeController.text) ?? 0.0;
+      final weight = double.tryParse(_weightController.text) ?? 0.0;
+      final intensity = double.tryParse(_intensityController.text) ?? 0.0;
+      final effort = double.tryParse(_effortController.text) ?? 0.0;
+
+      if (isUpdating) {
+        final updatedInstance = widget.instance!.copyWith(
+          volume: volume.toInt(),
+          weight: weight.toInt(),
+          intensity: intensity.toInt(),
+          effort: effort.toInt(),
+        );
+        await workoutService.updateExerciseInstance(updatedInstance);
+      } else {
+        await workoutService.createExerciseInstance(
+          workoutId: widget.workoutId,
+          exerciseListId: widget.exercise!.id!,
+          volume: volume.toInt(),
+          weight: weight.toInt(),
+          intensity: intensity.toInt(),
+          effort: effort.toInt(),
+        );
+      }
+
+      if (mounted) {
+        Navigator.of(context).pop(true);
+      }
+      return true;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка сохранения: $e')),
+        );
+      }
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _calculateAndUpdateWeight() {
+    if (_selectedTemplate != null && _selectedUserMax != null) {
+      final intensity = _selectedTemplate!.intensity;
+      final userMaxWeight = _selectedUserMax!.maxWeight;
+      final currentIntensity = intensity ?? 0.0;
+      final calculatedWeight = userMaxWeight * (currentIntensity / 100.0);
+      _weightController.text = calculatedWeight.toStringAsFixed(2);
+    }
+  }
+
+  Widget _buildTemplateDropdown() {
+    return DropdownButtonFormField<ProgressionTemplate>(
+      value: _selectedTemplate,
+      decoration: const InputDecoration(
+        labelText: 'Шаблон прогрессии (опционально)',
+        border: OutlineInputBorder(),
+      ),
+      hint: const Text('Выберите шаблон'),
+      isExpanded: true,
+      items: [
+        const DropdownMenuItem<ProgressionTemplate>(
+          value: null,
+          child: Text('Без шаблона'),
+        ),
+        ..._templates.map((template) {
+          return DropdownMenuItem<ProgressionTemplate>(
+            value: template,
+            child: Text(template.name),
+          );
+        }).toList(),
+      ],
+      onChanged: (template) {
+        setState(() {
+          _selectedTemplate = template;
+          if (template != null) {
+            _volumeController.text = template.volume.toString();
+            _intensityController.text = template.intensity.toString();
+            _effortController.text = template.effort.toString();
+            _calculateAndUpdateWeight();
+          } else {
+            _volumeController.text = '5';
+            _intensityController.text = '70';
+            _effortController.text = '7';
+            _weightController.text = '0';
+          }
+        });
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.exerciseInstance == null ? 'Добавить упражнение' : 'Редактировать упражнение'),
+        title: Text(widget.instance == null ? 'Добавить упражнение' : 'Редактировать упражнение'),
         actions: [
           IconButton(
             icon: const Icon(Icons.save),
-            onPressed: _isLoading ? null : _saveExercise,
+            onPressed: _isLoading ? null : () async {
+              final result = await _saveExercise();
+              if (result) {
+                Navigator.of(context).pop(true);
+              }
+            },
           ),
         ],
       ),
@@ -181,170 +269,125 @@ class _ExerciseFormScreenState extends State<ExerciseFormScreen> {
                 key: _formKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Exercise name field (read-only)
+                  children: <Widget>[
                     TextFormField(
                       controller: _nameController,
-                      decoration: InputDecoration(
-                        labelText: 'Упражнение',
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.search),
-                          onPressed: () {
-                            // Navigate back to exercise selection
-                            Navigator.pop(context);
-                          },
-                        ),
-                        border: const OutlineInputBorder(),
-                      ),
-                      readOnly: true,
-                      style: TextStyle(
-                        color: Theme.of(context).primaryColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 16),
-                    
-                    // Exercise description
-                    TextFormField(
-                      controller: _descriptionController,
                       decoration: const InputDecoration(
-                        labelText: 'Примечания',
-                        hintText: 'Введите заметки по выполнению',
+                        labelText: 'Название упражнения',
                         border: OutlineInputBorder(),
                       ),
-                      maxLines: 3,
+                      readOnly: true,
                     ),
-                    
+                    const SizedBox(height: 16),
+                    _buildTemplateDropdown(),
+                    const SizedBox(height: 16),
+                    if (_isLoadingMaxes)
+                      const CircularProgressIndicator()
+                    else if (_userMaxes.isNotEmpty)
+                      DropdownButtonFormField<UserMax>(
+                        value: _selectedUserMax,
+                        hint: const Text('Select a User Max'),
+                        items: _userMaxes.map((UserMax max) {
+                          return DropdownMenuItem<UserMax>(
+                            value: max,
+                            child: Text('${widget.exercise?.name ?? widget.instance?.exerciseDefinition?.name ?? "Exercise"} - ${max.maxWeight} kg x ${max.repMax} reps'),
+                          );
+                        }).toList(),
+                        onChanged: (UserMax? newValue) {
+                          setState(() {
+                            _selectedUserMax = newValue;
+                          });
+                        },
+                        decoration: const InputDecoration(labelText: 'User Max'),
+                      )
+                    else
+                      const Text('No user maxes found for this exercise.'),
                     const SizedBox(height: 24),
-                    const Text(
-                      'Параметры подхода',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                    TextFormField(
+                      controller: _volumeController,
+                      decoration: const InputDecoration(
+                        labelText: 'Объем (повторения)',
+                        border: OutlineInputBorder(),
                       ),
+                      keyboardType: TextInputType.number,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Пожалуйста, введите объем';
+                        }
+                        if (int.tryParse(value) == null) {
+                          return 'Пожалуйста, введите корректное число';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 16),
-                    
-                    // Volume and weight row
-                    Row(
-                      children: [
-                        // Volume field
-                        Expanded(
-                          child: TextFormField(
-                            controller: _volumeController,
-                            decoration: const InputDecoration(
-                              labelText: 'Повторения',
-                              border: OutlineInputBorder(),
-                            ),
-                            keyboardType: TextInputType.number,
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Укажите';
-                              }
-                              return null;
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        // Weight field
-                        Expanded(
-                          child: TextFormField(
-                            controller: _weightController,
-                            decoration: const InputDecoration(
-                              labelText: 'Вес (кг)',
-                              border: OutlineInputBorder(),
-                            ),
-                            keyboardType: TextInputType.number,
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Укажите';
-                              }
-                              return null;
-                            },
-                          ),
-                        ),
-                      ],
+                    TextFormField(
+                      controller: _weightController,
+                      decoration: const InputDecoration(
+                        labelText: 'Вес (кг)',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Пожалуйста, введите вес';
+                        }
+                        if (double.tryParse(value) == null) {
+                          return 'Пожалуйста, введите корректное число';
+                        }
+                        return null;
+                      },
                     ),
-                    
                     const SizedBox(height: 16),
-                    
-                    // Intensity and effort row
-                    Row(
-                      children: [
-                        // Intensity field
-                        Expanded(
-                          child: TextFormField(
-                            controller: _intensityController,
-                            decoration: const InputDecoration(
-                              labelText: 'Интенсивность %',
-                              border: OutlineInputBorder(),
-                              suffixText: '%',
-                            ),
-                            keyboardType: TextInputType.number,
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Укажите';
-                              }
-                              final intensity = int.tryParse(value);
-                              if (intensity == null || intensity < 0 || intensity > 100) {
-                                return '0-100%';
-                              }
-                              return null;
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        // Effort field
-                        Expanded(
-                          child: TextFormField(
-                            controller: _effortController,
-                            decoration: const InputDecoration(
-                              labelText: 'Усилие (RPE)',
-                              border: OutlineInputBorder(),
-                              suffixText: '/10',
-                            ),
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Укажите';
-                              }
-                              final effort = double.tryParse(value);
-                              if (effort == null || effort < 1 || effort > 10) {
-                                return '1-10';
-                              }
-                              return null;
-                            },
-                          ),
-                        ),
-                      ],
+                    TextFormField(
+                      controller: _intensityController,
+                      decoration: const InputDecoration(
+                        labelText: 'Интенсивность (%)',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Пожалуйста, введите интенсивность';
+                        }
+                        if (double.tryParse(value) == null) {
+                          return 'Пожалуйста, введите корректное число';
+                        }
+                        return null;
+                      },
                     ),
-                    
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _effortController,
+                      decoration: const InputDecoration(
+                        labelText: 'Усилие (RPE)',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Пожалуйста, введите усилие';
+                        }
+                        if (double.tryParse(value) == null) {
+                          return 'Пожалуйста, введите корректное число';
+                        }
+                        return null;
+                      },
+                    ),
                     const SizedBox(height: 24),
-                    
-                    // Save button
                     SizedBox(
                       height: 50,
                       child: ElevatedButton(
-                        onPressed: _isLoading ? null : _saveExercise,
-                        style: ElevatedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
+                        onPressed: _isLoading ? null : () async {
+                          final result = await _saveExercise();
+                          if (result) {
+                            Navigator.of(context).pop(true);
+                          }
+                        },
+                        child: Text(
+                          widget.instance == null ? 'ДОБАВИТЬ' : 'СОХРАНИТЬ',
+                          style: const TextStyle(fontSize: 18),
                         ),
-                        child: _isLoading
-                            ? const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text(
-                                widget.exercise == null ? 'ДОБАВИТЬ' : 'СОХРАНИТЬ',
-                                style: const TextStyle(fontSize: 16),
-                              ),
                       ),
                     ),
                   ],

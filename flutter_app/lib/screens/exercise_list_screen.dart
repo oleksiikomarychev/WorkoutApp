@@ -2,26 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/exercise_list.dart';
 import '../services/exercise_service.dart';
+
 class ExerciseListScreen extends StatefulWidget {
   const ExerciseListScreen({Key? key}) : super(key: key);
+
   @override
   _ExerciseListScreenState createState() => _ExerciseListScreenState();
 }
+
 class _ExerciseListScreenState extends State<ExerciseListScreen> {
   late Future<List<ExerciseList>> _exercisesFuture;
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _muscleGroupController = TextEditingController();
   final TextEditingController _equipmentController = TextEditingController();
-  final TextEditingController _videoUrlController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
     _loadExercises();
   }
+
   void _loadExercises() {
-    _exercisesFuture = Provider.of<ExerciseService>(context, listen: false).getExerciseList();
+    _exercisesFuture = Provider.of<ExerciseService>(context, listen: false).getExerciseDefinitions();
   }
+
   void _showAddExerciseDialog() {
     _clearForm();
     showDialog(
@@ -37,21 +41,12 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
                 decoration: const InputDecoration(labelText: 'Название'),
               ),
               TextField(
-                controller: _descriptionController,
-                decoration: const InputDecoration(labelText: 'Описание'),
-                maxLines: 3,
-              ),
-              TextField(
                 controller: _muscleGroupController,
                 decoration: const InputDecoration(labelText: 'Группа мышц'),
               ),
               TextField(
                 controller: _equipmentController,
                 decoration: const InputDecoration(labelText: 'Оборудование'),
-              ),
-              TextField(
-                controller: _videoUrlController,
-                decoration: const InputDecoration(labelText: 'Ссылка на видео'),
               ),
             ],
           ),
@@ -69,13 +64,13 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
       ),
     );
   }
+
   void _clearForm() {
     _nameController.clear();
-    _descriptionController.clear();
     _muscleGroupController.clear();
     _equipmentController.clear();
-    _videoUrlController.clear();
   }
+
   Future<void> _addExercise() async {
     if (_nameController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -87,12 +82,10 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
       final exerciseService = Provider.of<ExerciseService>(context, listen: false);
       final exercise = ExerciseList(
         name: _nameController.text,
-        description: _descriptionController.text.isEmpty ? null : _descriptionController.text,
         muscleGroup: _muscleGroupController.text.isEmpty ? null : _muscleGroupController.text,
         equipment: _equipmentController.text.isEmpty ? null : _equipmentController.text,
-        videoUrl: _videoUrlController.text.isEmpty ? null : _videoUrlController.text,
       );
-      await exerciseService.createExerciseList(exercise);
+      await exerciseService.createExerciseDefinition(exercise);
       Navigator.pop(context);
       setState(() {
         _loadExercises();
@@ -104,15 +97,29 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
       );
     }
   }
+
+  Future<void> _deleteExercise(int id) async {
+    try {
+      final exerciseService = Provider.of<ExerciseService>(context, listen: false);
+      await exerciseService.deleteExerciseDefinition(id);
+      setState(() {
+        _loadExercises();
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка удаления: $e')),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
-    _descriptionController.dispose();
     _muscleGroupController.dispose();
     _equipmentController.dispose();
-    _videoUrlController.dispose();
     super.dispose();
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -151,8 +158,6 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (exercise.description != null && exercise.description!.isNotEmpty)
-                          Text(exercise.description!),
                         if (exercise.muscleGroup != null && exercise.muscleGroup!.isNotEmpty)
                           Text('Группа мышц: ${exercise.muscleGroup}'),
                         if (exercise.equipment != null && exercise.equipment!.isNotEmpty)
@@ -160,9 +165,31 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
                         // Removed weight display as it's not part of ExerciseList model
                       ],
                     ),
-                    trailing: exercise.videoUrl != null && exercise.videoUrl!.isNotEmpty
-                        ? const Icon(Icons.video_library, color: Colors.blue)
-                        : null,
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete),
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Удалить упражнение?'),
+                            content: const Text('Это действие нельзя отменить.'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: const Text('Отмена'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: const Text('Удалить'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirm == true && exercise.id != null) {
+                          await _deleteExercise(exercise.id!);
+                        }
+                      },
+                    ),
                     onTap: () {
                     },
                   ),

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import '../config/api_config.dart';
 import '../models/workout.dart';
 import '../models/exercise_instance.dart';
+import '../models/user_max.dart';
 import 'api_client.dart';
 
 class WorkoutService {
@@ -32,41 +33,20 @@ class WorkoutService {
 
   Future<List<Workout>> getWorkoutsByProgressionId(int progressionId) async {
     try {
-      // First, try to get the progression template directly
-      dynamic template;
-      try {
-        template = await _apiClient.get(
-          '${ApiConfig.progressionsEndpoint}/templates/$progressionId',
-        );
-      } catch (e) {
-        // If we can't get the template, log it and return empty list
-        debugPrint('Could not fetch progression template $progressionId: $e');
-        return [];
-      }
-      
-      if (template == null || template['id'] == null) {
-        debugPrint('Progression template not found');
-        return [];
-      }
-      
-      // Get all workouts and filter by template ID
       final allWorkouts = await getWorkouts();
-      final filteredWorkouts = allWorkouts.where((workout) => workout.progressionTemplateId == template['id']).toList();
-      
-      // Ensure exerciseInstances is not null
+      final filteredWorkouts = allWorkouts.where((workout) => workout.progressionTemplateId == progressionId).toList();
       return filteredWorkouts.map((workout) => workout.copyWith(
         exerciseInstances: workout.exerciseInstances ?? [],
       )).toList();
     } catch (e) {
       debugPrint('Error in getWorkoutsByProgressionId: $e');
-      // Instead of rethrowing, return an empty list to prevent UI from breaking
       return [];
     }
   }
 
   Future<Workout> getWorkout(int id) async {
     try {
-      final response = await _apiClient.get('${ApiConfig.workoutsEndpoint}/$id');
+      final response = await _apiClient.get(ApiConfig.workoutByIdEndpoint.replaceAll('{workout_id}', id.toString()));
       // Ensure exercise_instances is always a list in the response
       if (response != null && response is Map<String, dynamic>) {
         response['exercise_instances'] = response['exercise_instances'] ?? [];
@@ -80,7 +60,7 @@ class WorkoutService {
   
   Future<Workout> getWorkoutWithDetails(int id) async {
     try {
-      final response = await _apiClient.get('${ApiConfig.workoutsEndpoint}/$id?include=exercise_instances');
+      final response = await _apiClient.get('${ApiConfig.workoutByIdEndpoint.replaceAll('{workout_id}', id.toString())}?include=exercise_instances');
       // Ensure exercise_instances is always a list in the response
       if (response != null && response is Map<String, dynamic>) {
         response['exercise_instances'] = response['exercise_instances'] ?? [];
@@ -123,7 +103,7 @@ class WorkoutService {
         throw Exception('Cannot update workout without an ID');
       }
       final response = await _apiClient.put(
-        '${ApiConfig.workoutsEndpoint}/${workout.id}', 
+        ApiConfig.workoutByIdEndpoint.replaceAll('{workout_id}', workout.id.toString()), 
         workout.toJson(),
       );
       return Workout.fromJson(response);
@@ -135,10 +115,77 @@ class WorkoutService {
 
   Future<void> deleteWorkout(int id) async {
     try {
-      await _apiClient.delete('${ApiConfig.workoutsEndpoint}/$id');
+      await _apiClient.delete(ApiConfig.workoutByIdEndpoint.replaceAll('{workout_id}', id.toString()));
     } catch (e) {
       debugPrint('Error in deleteWorkout: $e');
       rethrow;
+    }
+  }
+
+  // Methods for ExerciseInstance
+
+  Future<ExerciseInstance> createExerciseInstance({
+    required int workoutId,
+    required int exerciseListId,
+    required int volume,
+    required int weight,
+    required int intensity,
+    required int effort,
+  }) async {
+    try {
+      final url = ApiConfig.exerciseInstancesEndpoint.replaceAll('{workout_id}', workoutId.toString());
+      final response = await _apiClient.post(
+        url,
+        {
+          'workout_id': workoutId,
+          'exercise_list_id': exerciseListId,
+          'volume': volume,
+          'weight': weight,
+          'intensity': intensity,
+          'effort': effort,
+        },
+      );
+      return ExerciseInstance.fromJson(response);
+    } catch (e) {
+      debugPrint('Error in createExerciseInstance: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateExerciseInstance(ExerciseInstance instance) async {
+    try {
+      final endpoint = ApiConfig.exerciseInstancesEndpoint
+          .replaceAll('{workout_id}', instance.workoutId.toString());
+      
+      await _apiClient.put(
+        endpoint,
+        instance.toJson(),
+      );
+    } catch (e) {
+      debugPrint('Error in updateExerciseInstance: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteExerciseInstance(int instanceId) async {
+    try {
+      await _apiClient.delete('${ApiConfig.exerciseInstancesEndpoint}${instanceId}/');
+    } catch (e) {
+      debugPrint('Error deleting exercise instance: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<UserMax>> getUserMaxesForExercise(int exerciseId) async {
+    try {
+      final endpoint = ApiConfig.userMaxesByExerciseEndpoint
+          .replaceAll('{exercise_id}', exerciseId.toString());
+      final response = await _apiClient.get(endpoint);
+      return (response as List).map((data) => UserMax.fromJson(data)).toList();
+    } catch (e) {
+      debugPrint('Error fetching user maxes: $e');
+      // Return an empty list or rethrow, depending on how you want to handle errors
+      return [];
     }
   }
 }
