@@ -72,7 +72,7 @@ class _ExerciseSelectionScreenState extends State<ExerciseSelectionScreen> {
         title: const Text('Выберите упражнение'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(false),
+          onPressed: () => Navigator.of(context).pop(null),
         ),
       ),
       body: Column(
@@ -99,39 +99,18 @@ class _ExerciseSelectionScreenState extends State<ExerciseSelectionScreen> {
                         itemCount: _filteredExercises.length,
                         itemBuilder: (context, index) {
                           final exercise = _filteredExercises[index];
-                          return Card(
-                            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            child: ListTile(
-                              title: Text(exercise.name),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (exercise.muscleGroup != null)
-                                    Text('Группа мышц: ${exercise.muscleGroup}'),
-                                  if (exercise.equipment != null)
-                                    Text('Оборудование: ${exercise.equipment}'),
-                                ].whereType<Widget>().toList(),
-                              ),
-                              onTap: () async {
-                                // Navigate to exercise form with the selected exercise
-                                final result = await Navigator.push<bool>(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => ExerciseFormScreen(
-                                      workoutId: widget.workoutId,
-                                      exercise: exercise,
-                                    ),
-                                  ),
-                                );
-                                
-                                // Refresh if an item was added/changed
-                                if (result != null && result) {
-                                  if (mounted) {
-                                    Navigator.of(context).pop(true);
-                                  }
-                                }
-                              },
+                          return ListTile(
+                            title: Text(exercise.name),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (exercise.muscleGroup != null)
+                                  Text('Группа мышц: ${exercise.muscleGroup}'),
+                                if (exercise.equipment != null)
+                                  Text('Оборудование: ${exercise.equipment}'),
+                              ],
                             ),
+                            onTap: () => Navigator.of(context).pop(exercise),
                           );
                         },
                       ),

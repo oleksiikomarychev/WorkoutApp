@@ -1,62 +1,38 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session, joinedload
 from typing import List
-from app import workout_schemas, workout_models as models
+from app import workout_schemas
+from app.repositories.workouts_repository import WorkoutsRepository
 from app.dependencies import get_db
-from app.services.workouts_service import WorkoutsService
+from sqlalchemy.orm import Session
+from app.workout_models import Workout
 
 router = APIRouter()
 
+def get_workouts_repository(db: Session = Depends(get_db)) -> WorkoutsRepository:
+    return WorkoutsRepository(db)
+
 @router.post("/", response_model=workout_schemas.WorkoutResponse, status_code=status.HTTP_201_CREATED)
-def create_workout(workout: workout_schemas.WorkoutCreate, db: Session = Depends(get_db)):
-    # Create the workout without progression template
-    db_workout = models.Workout(name=workout.name)
-    db.add(db_workout)
-    db.commit()
-    db.refresh(db_workout)
-    return db_workout
+def create_workout(workout: workout_schemas.WorkoutCreate, repo: WorkoutsRepository = Depends(get_workouts_repository)):
+    return repo.create_workout(workout)
 
 @router.get("/", response_model=List[workout_schemas.WorkoutResponse])
-def list_workouts(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    workouts = db.query(models.Workout)\
-        .options(joinedload(models.Workout.exercise_instances))\
-        .offset(skip)\
-        .limit(limit)\
-        .all()
-    return workouts
+def list_workouts(skip: int = 0, limit: int = 100, repo: WorkoutsRepository = Depends(get_workouts_repository)):
+    return repo.list_workouts(skip, limit)
 
 @router.get("/{workout_id}", response_model=workout_schemas.WorkoutResponse)
-def get_workout(workout_id: int, db: Session = Depends(get_db)):
-    db_workout = db.query(models.Workout)\
-        .options(joinedload(models.Workout.exercise_instances))\
-        .filter(models.Workout.id == workout_id)\
-        .first()
-        
-    if db_workout is None:
+def get_workout(workout_id: int, repo: WorkoutsRepository = Depends(get_workouts_repository)):
+    workout = repo.get_workout(workout_id)
+    if workout is None:
         raise HTTPException(status_code=404, detail="Workout not found")
-        
-    return db_workout
+    return workout
 
 @router.put("/{workout_id}", response_model=workout_schemas.WorkoutResponse)
-def update_workout(workout_id: int, workout: workout_schemas.WorkoutCreate, db: Session = Depends(get_db)):
-    db_workout = db.query(models.Workout).filter(models.Workout.id == workout_id).first()
-    if db_workout is None:
-        raise HTTPException(status_code=404, detail="Workout not found")
-    
-    # Update workout name only
-    if hasattr(workout, 'name'):
-        db_workout.name = workout.name
-    
-    db.commit()
-    db.refresh(db_workout)
-    
-    return db_workout
+def update_workout(workout_id: int, workout: workout_schemas.WorkoutResponse, repo: WorkoutsRepository = Depends(get_workouts_repository)):
+    try:
+        return repo.update_workout(workout_id, workout)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 @router.delete("/{workout_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_workout(workout_id: int, db: Session = Depends(get_db)):
-    db_workout = db.get(models.Workout, workout_id)
-    if not db_workout:
-        raise HTTPException(status_code=404, detail="Workout not found")  
-    db.delete(db_workout)
-    db.commit()
-    return None
+def delete_workout(workout_id: int, repo: WorkoutsRepository = Depends(get_workouts_repository)):
+    repo.delete_workout(workout_id)

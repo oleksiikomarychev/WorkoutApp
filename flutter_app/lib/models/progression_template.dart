@@ -21,9 +21,9 @@ class ProgressionTemplate {
     return ProgressionTemplate(
       id: json['id'] ?? 0,
       name: json['name'] ?? '',
-      user_max_id: json['user_max_id'],
-      intensity: json['intensity'],
-      effort: json['effort'],
+      user_max_id: json['user_max_id'] ?? 0,
+      intensity: json['intensity'] ?? 0,
+      effort: json['effort'] ?? 0,
       volume: json['volume'] != null ? json['volume'] as int : null,
       description: json['description'],
     );

@@ -17,7 +17,7 @@ def list_exercise_definitions(skip: int = 0, limit: int = 100, db: Session = Dep
 def get_exercise_instance(instance_id: int, db: Session = Depends(get_db)):
     db_instance = db.query(models.ExerciseInstance).options(
         joinedload(models.ExerciseInstance.exercise_definition),
-        joinedload(models.ExerciseInstance.progression_template)
+        joinedload(models.ExerciseInstance.progression_association)
     ).filter(models.ExerciseInstance.id == instance_id).first()
     
     if db_instance is None:
@@ -40,7 +40,7 @@ def create_exercise_definition(exercise: workout_schemas.ExerciseListCreate, db:
     db.refresh(db_exercise)
     return db_exercise
 
-@router.post("/workouts/{workout_id}/instances", response_model=workout_schemas.ExerciseInstance, status_code=status.HTTP_201_CREATED)
+@router.post("/workouts/{workout_id}/instances", response_model=workout_schemas.ExerciseInstanceResponse, status_code=status.HTTP_201_CREATED)
 def create_exercise_instance(workout_id: int, instance_data: workout_schemas.ExerciseInstanceCreate, db: Session = Depends(get_db)):
     workout = db.get(models.Workout, workout_id)
     if not workout:
@@ -50,40 +50,44 @@ def create_exercise_instance(workout_id: int, instance_data: workout_schemas.Exe
     if not exercise_def:
         raise HTTPException(status_code=404, detail="Exercise definition not found")
 
-    if instance_data.progression_template_id:
-        progression_template = db.get(models.ProgressionTemplate, instance_data.progression_template_id)
-        if not progression_template:
-            raise HTTPException(status_code=404, detail="Progression template not found")
+    if instance_data.user_max_id:
+        user_max = db.get(models.UserMax, instance_data.user_max_id)
+        if not user_max:
+            raise HTTPException(status_code=404, detail="User max not found")
 
-    data = instance_data.model_dump()
-    data['workout_id'] = workout_id
-    data['exercise_id'] = instance_data.exercise_list_id
-    
-    if 'exercise_id' in data:
-        del data['exercise_id']
-    
-    db_instance = models.ExerciseInstance(**data)
+    # Create the base exercise instance
+    instance_data_dict = instance_data.model_dump()
+    instance_data_dict['workout_id'] = workout_id
+    instance_data_dict['exercise_list_id'] = instance_data.exercise_list_id
+    instance_data_dict['user_max_id'] = instance_data.user_max_id
+    instance_data_dict['weight'] = instance_data.weight
+    # Remove progression_template since it's handled through the association table
+    instance_data_dict.pop('progression_template', None)
+    # Ensure sets_and_reps is present and is a list
+    instance_data_dict['sets_and_reps'] = [item for item in instance_data_dict.get('sets_and_reps', [])]
+    db_instance = models.ExerciseInstance(**instance_data_dict)
     db.add(db_instance)
     db.commit()
     db.refresh(db_instance)
-    return workout_schemas.ExerciseInstance.from_orm(db_instance)
+
+
+
+    return workout_schemas.ExerciseInstanceResponse.from_orm(db_instance)
 
 @router.put("/instances/{instance_id}", response_model=workout_schemas.ExerciseInstanceResponse)
 def update_exercise_instance(instance_id: int, instance_update: workout_schemas.ExerciseInstanceBase, db: Session = Depends(get_db)):
     db_instance = db.query(models.ExerciseInstance).options(
         joinedload(models.ExerciseInstance.exercise_definition),
-        joinedload(models.ExerciseInstance.progression_template)
+        joinedload(models.ExerciseInstance.progression_association)
     ).filter(models.ExerciseInstance.id == instance_id).first()
         
     if db_instance is None:
         raise HTTPException(status_code=404, detail="Exercise instance not found")
 
-    if instance_update.progression_template_id is not None:
-        progression_template = db.get(models.ProgressionTemplate, instance_update.progression_template_id)
-        if not progression_template:
-            raise HTTPException(status_code=404, detail="Progression template not found")
-
+    # Remove progression_template_id logic, as it is not present in the schema
     update_data = instance_update.model_dump(exclude_unset=True)
+    if 'sets_and_reps' in update_data:
+        update_data['sets_and_reps'] = [item for item in update_data['sets_and_reps']]
     for key, value in update_data.items():
         setattr(db_instance, key, value)
 

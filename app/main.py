@@ -38,6 +38,7 @@ app = FastAPI(
     openapi_tags=tags_metadata,
     docs_url="/docs",
     redoc_url="/redoc",
+    restart=True
 )
 
 origins = [

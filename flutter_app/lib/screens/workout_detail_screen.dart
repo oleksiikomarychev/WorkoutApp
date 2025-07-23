@@ -60,9 +60,11 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка загрузки упражнений: $e')),
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Ошибка загрузки упражнений: $e')),
+          );
+        });
       }
     } finally {
       if (mounted) {
@@ -190,7 +192,7 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
                 ),
               );
 
-              if (selectedExercise != null) {
+              if (selectedExercise != null && mounted) {
                 // Navigate to exercise form with the selected exercise
                 await Navigator.push<bool>(
                   context,
