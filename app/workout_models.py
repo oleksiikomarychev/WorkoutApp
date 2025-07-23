@@ -1,11 +1,12 @@
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum as SQLEnum, Boolean, Text, JSON, DateTime
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from app.database import Base
 import enum
 import json
 from typing import Optional, Dict, Any, Union, List
 from datetime import datetime
 from app.config.prompts import RPE_TABLE
+from app.workout_calculation import WorkoutCalculator
 
 class EffortType(str, enum.Enum):
     RPE = "RPE"
@@ -39,6 +40,7 @@ class ExerciseList(Base):
 
     instances = relationship("ExerciseInstance", back_populates="exercise_definition", cascade="all, delete-orphan")
     user_maxes = relationship("UserMax", back_populates="exercise")
+    progression_associations = relationship("ExerciseInstanceWithProgressionTemplate", back_populates="exercise_list", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<ExerciseList(id={self.id}, name='{self.name}')>"
@@ -50,15 +52,38 @@ class ExerciseInstance(Base):
     id = Column(Integer, primary_key=True, index=True)
     workout_id = Column(Integer, ForeignKey("workouts.id", ondelete="CASCADE"), nullable=False)
     exercise_list_id = Column(Integer, ForeignKey("exercise_list.id", ondelete="CASCADE"), nullable=False)
-    progression_template_id = Column(Integer, ForeignKey("progression_templates.id", ondelete="SET NULL"), nullable=True)
-    volume = Column(Integer, nullable=True)
-    intensity = Column(Integer, nullable=True)
-    effort = Column(Integer, nullable=True)
+    user_max_id = Column(Integer, ForeignKey("user_maxes.id", ondelete="SET NULL"), nullable=True)
     weight = Column(Integer, nullable=True)
+    sets_and_reps = Column(JSON, nullable=False, default=list)  # New field for sets and reps
     
     exercise_definition = relationship("ExerciseList", back_populates="instances")
     workout = relationship("Workout", back_populates="exercise_instances")
-    progression_template = relationship("ProgressionTemplate", back_populates="exercise_instances",lazy="selectin")
+    progression_association = relationship(
+        "ExerciseInstanceWithProgressionTemplate",
+        foreign_keys=[exercise_list_id],
+        primaryjoin="ExerciseInstance.exercise_list_id == ExerciseInstanceWithProgressionTemplate.exercise_list_id",
+        uselist=False,
+        lazy="selectin",
+        overlaps="exercise_definition,instances,progression_association"
+    )
+    user_max = relationship("UserMax", back_populates="exercise_instances", lazy="selectin")
+    
+    @property
+    def progression_template(self):
+        """Get the associated progression template."""
+        if not self.progression_association:
+            return None
+        return self.progression_association.progression_template
+    
+    @property
+    def current_progression(self):
+        if self.progression_template:
+            return {
+                'intensity': self.progression_template.intensity,
+                'effort': self.progression_template.effort,
+                'volume': self.progression_template.volume
+            }
+        return None
     
     def __repr__(self):
         return (
@@ -68,17 +93,34 @@ class ExerciseInstance(Base):
             f"progression_template_id={self.progression_template_id})>"
         )
     
-    def apply_progression_template(self, template: 'ProgressionTemplate') -> None:
+    def apply_progression_template(self, template: 'ProgressionTemplate', db) -> None:
         if not template:
             return
             
-        self.progression_template = template
-        self.intensity = template.intensity
-        self.effort = template.effort
-        self.volume = template.volume if template.volume else None
+        # Create or update the ExerciseInstanceWithProgressionTemplate
+        progression_instance = db.query(ExerciseInstanceWithProgressionTemplate).filter(
+            ExerciseInstanceWithProgressionTemplate.exercise_instance_id == self.id,
+            ExerciseInstanceWithProgressionTemplate.progression_template_id == template.id
+        ).first()
         
-        if template.user_max and template.user_max.max_weight:
-            self.weight = round(template.user_max.max_weight * (template.intensity / 100.0), 2)
+        if not progression_instance:
+            progression_instance = ExerciseInstanceWithProgressionTemplate(
+                exercise_instance_id=self.id,
+                progression_template_id=template.id,
+                intensity=template.intensity,
+                effort=template.effort,
+                volume=WorkoutCalculator.get_volume(template.intensity, template.effort),
+                sets_and_reps=[]  # Default empty list, should be set appropriately
+            )
+            db.add(progression_instance)
+            db.commit()
+            db.refresh(progression_instance)
+            
+        # Calculate weight based on user_max
+        if self.user_max and self.user_max.max_weight:
+            self.weight = WorkoutCalculator.calculate_weight(self.user_max.max_weight, template.intensity)
+        else:
+            self.weight = None
     
     def to_dict(self) -> Dict[str, Any]:
         result = {
@@ -86,15 +128,22 @@ class ExerciseInstance(Base):
             'exercise_id': self.exercise_id,
             'workout_id': self.workout_id,
             'progression_template_id': self.progression_template_id,
-            'volume': self.volume,
-            'intensity': self.intensity,
-            'effort': self.effort,
+            'user_max_id': self.user_max_id,
+            'volume': self.volume if hasattr(self, 'volume') else None,
+            'intensity': self.intensity if hasattr(self, 'intensity') else None,
+            'effort': self.effort if hasattr(self, 'effort') else None,
             'weight': self.weight,
+            'sets_and_reps': self.sets_and_reps,
             'exercise': {
                 'id': self.exercise.id,
                 'name': self.exercise.name,
                 'exercise_definition_id': self.exercise.exercise_definition_id
             } if self.exercise else None,
+            'user_max': {
+                'id': self.user_max.id,
+                'max_weight': self.user_max.max_weight,
+                'rep_max': self.user_max.rep_max
+            } if self.user_max else None
         }
         
         if self.progression_template:
@@ -103,8 +152,7 @@ class ExerciseInstance(Base):
                 'name': self.progression_template.name,
                 'intensity': self.progression_template.intensity,
                 'effort': self.progression_template.effort,
-                'volume': self.progression_template.volume,
-                'calculated_weight': self.progression_template.get_calculated_weight(),
+                'volume': self.progression_template.volume
             }
             
         return result
@@ -120,115 +168,64 @@ class UserMax(Base):
     rep_max = Column(Integer, nullable=False)
     
     exercise = relationship("ExerciseList", back_populates="user_maxes")
-    progression_templates = relationship("ProgressionTemplate", back_populates="user_max")
+    exercise_instances = relationship("ExerciseInstance", back_populates="user_max", cascade="all, delete-orphan")
     
     def __str__(self):
         return f"{self.exercise.name}: {self.max_weight}kg x {self.rep_max}"
 
 
 
-class ProgressionTemplate(Base):
-    __tablename__ = "progression_templates"
+class ExerciseInstanceWithProgressionTemplate(Base):
+    __tablename__ = "exercise_instances_with_progression_template"
     
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
-    user_max_id = Column(Integer, ForeignKey("user_maxes.id", ondelete="CASCADE"), nullable=False)
+    exercise_list_id = Column(Integer, ForeignKey("exercise_list.id", ondelete="CASCADE"), nullable=False)
+    progression_template_id = Column(Integer, ForeignKey("progression_templates.id", ondelete="SET NULL"), nullable=True)
     intensity = Column(Integer, nullable=False)
-    volume = Column(Integer, nullable=True)
     effort = Column(Integer, nullable=False)
-    created_at = Column(DateTime, default=datetime.now(), nullable=False)
-    updated_at = Column(DateTime, default=datetime.now(), onupdate=datetime.now(), nullable=False)
-
-    # Relationships
-    user_max = relationship("UserMax", back_populates="progression_templates")
-    exercise_instances = relationship(
-        "ExerciseInstance", 
-        back_populates="progression_template",
-        cascade="all, delete-orphan",
-        passive_deletes=True
-    )
+    volume = Column(Integer, nullable=False)
+    sets_and_reps = Column(JSON, nullable=False, default=list)  # New field for sets and reps
     
+    exercise_list = relationship("ExerciseList", back_populates="progression_associations")
+    progression_template = relationship("ProgressionTemplate", back_populates="exercise_instances")
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Optionally, calculate volume from sets_and_reps if needed
+        if hasattr(self, 'sets_and_reps') and self.sets_and_reps:
+            self.volume = sum(item.get('sets', 0) * item.get('reps', 0) for item in self.sets_and_reps)
+        else:
+            self.volume = 0
+
+    __table_args__ = (
+        {'sqlite_autoincrement': True},
+    )
+
+class ProgressionTemplate(Base):
+    __tablename__ = "progression_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    exercise_instances = relationship(
+        "ExerciseInstanceWithProgressionTemplate", 
+        back_populates="progression_template",
+        cascade="all, delete-orphan"
+    )
     __table_args__ = (
         {'sqlite_autoincrement': True},
     )
     
-    def __init__(self, **kwargs):
-        if 'effort' in kwargs and kwargs['effort'] is not None:
-            kwargs['effort'] = round(kwargs['effort'] * 2) / 2
-        super().__init__(**kwargs)
-    
-    RPE_TABLE = RPE_TABLE
-    
-    def get_volume(self) -> Union[int, str, None]:
-        if not hasattr(self, 'intensity') or not hasattr(self, 'effort'):
-            return None
-            
-        rounded_intensity = round(self.intensity / 5) * 5
-        rounded_intensity = max(60, min(100, rounded_intensity))
-        
-        rounded_effort = round(self.effort * 2) / 2
-        rounded_effort = max(6, min(10, rounded_effort))
-        
-        try:
-            intensity_key = min(
-                self.RPE_TABLE.keys(), 
-                key=lambda x: abs(x - rounded_intensity)
-            )
-            
-            effort_key = min(
-                self.RPE_TABLE[intensity_key].keys(), 
-                key=lambda x: abs(x - rounded_effort)
-            )
-            
-            return self.RPE_TABLE[intensity_key].get(effort_key, None)
-        except (KeyError, ValueError):
-            return None
-    
-    def get_calculated_weight(self) -> Optional[float]:
-        if not self.user_max or not self.user_max.max_weight:
-            return None
-        return round(self.user_max.max_weight * (self.intensity / 100.0), 2)
-    
+    @property
+    def exercise_list_instances(self):
+        return [assoc.exercise_list for assoc in self.exercise_list_associations]
+
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             'id': self.id,
             'name': self.name,
-            'user_max_id': self.user_max_id,
-            'intensity': self.intensity,
-            'volume': self.volume,
-            'effort': self.effort,
-            'calculated_weight': self.get_calculated_weight(),
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-            'user_max': {
-                'id': self.user_max.id,
-                'exercise_id': self.user_max.exercise_id,
-                'max_weight': self.user_max.max_weight,
-                'rep_max': self.user_max.rep_max,
-                'exercise_name': self.user_max.exercise.name if self.user_max.exercise else None
-            } if self.user_max else None
         }
-    
+        return result
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ProgressionTemplate':
-        return cls(
-            name=data.get('name'),
-            user_max_id=data.get('user_max_id'),
-            intensity=data.get('intensity'),
-            volume=data.get('volume'),
-            effort=data.get('effort')
-        )
-    
-    def update_volume(self):
-        """Calculates and sets the volume (reps) based on intensity and effort using the RPE table."""
-        if self.intensity is None or self.effort is None:
-            self.volume = None
-            return
-
-        calculated_volume = self.get_volume()
-
-        if isinstance(calculated_volume, int):
-            self.volume = calculated_volume
-        else:
-            # If get_volume returns a string (e.g., "1-3") or None, keep volume as None
-            self.volume = None
+        return cls(**data)

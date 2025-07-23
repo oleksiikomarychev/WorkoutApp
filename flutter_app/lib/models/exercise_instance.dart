@@ -60,7 +60,7 @@ class ExerciseInstance {
     }
 
     try {
-      final exerciseListId = _parseInt(json['exercise_id']);
+      final exerciseListId = _parseInt(json['exercise_list_id']);
       final workoutId = _parseInt(json['workout_id']);
 
       if (exerciseListId == null || workoutId == null) {
