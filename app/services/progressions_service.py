@@ -114,30 +114,51 @@ class ProgressionsService:
     def create_progression_instance(self, template_id: int, exercise_list_id: int, instance_data: ExerciseInstanceWithProgressionTemplate) -> models_ExerciseInstanceWithProgressionTemplate:
         db_template = self.progressions_repo.get_progression_template_by_id(template_id)
         db_exercise_list = self.db.get(ExerciseList, exercise_list_id)
-        
         if not db_template:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Progression template with id {template_id} not found"
             )
-        
         if not db_exercise_list:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Exercise list with id {exercise_list_id} not found"
             )
-
-        instance_dict = instance_data.model_dump()
-        instance_dict['progression_template_id'] = db_template.id
-        instance_dict['exercise_list_id'] = exercise_list_id
-        # Ensure sets_and_reps is present and is a list
-        instance_dict['sets_and_reps'] = [item for item in instance_dict.get('sets_and_reps', [])]
-        db_instance = models_ExerciseInstanceWithProgressionTemplate(**instance_dict)
+            
+        # Process each set in the request
+        processed_sets = []
+        for set_data in instance_data.sets:
+            intensity = set_data.intensity
+            volume = set_data.volume
+            effort = set_data.effort
+            
+            # Calculate missing parameters if we have two out of three
+            if intensity is None and effort is not None and volume is not None:
+                intensity = WorkoutCalculator.get_intensity(volume, effort)
+            elif effort is None and intensity is not None and volume is not None:
+                effort = WorkoutCalculator.get_effort(volume, intensity)
+            elif volume is None and intensity is not None and effort is not None:
+                volume = WorkoutCalculator.get_volume(intensity, effort)
+            
+            # Add the set to the list
+            processed_sets.append({
+                'intensity': intensity,
+                'volume': volume,
+                'effort': effort
+            })
         
+        # Create the instance data
+        instance_data = {
+            'progression_template_id': db_template.id,
+            'exercise_list_id': exercise_list_id,
+            'sets': processed_sets
+        }
+        
+        # Create the instance
+        db_instance = models_ExerciseInstanceWithProgressionTemplate(**instance_data)
         self.db.add(db_instance)
         self.db.commit()
         self.db.refresh(db_instance)
-        
         return db_instance
 
     def get_progression_instance(self, template_id: int, instance_id: int) -> models_ExerciseInstanceWithProgressionTemplate:
@@ -177,31 +198,51 @@ class ProgressionsService:
             models_ExerciseInstanceWithProgressionTemplate.id == instance_id,
             models_ExerciseInstanceWithProgressionTemplate.progression_template_id == template_id
         ).first()
-        
         if not db_instance:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Progression instance with id {instance_id} not found for template {template_id}"
             )
-
+        
         db_exercise_list = self.db.get(ExerciseList, exercise_list_id)
         if not db_exercise_list:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Exercise list with id {exercise_list_id} not found"
             )
-
-        update_data = instance_data.model_dump(exclude_unset=True)
-        if 'sets_and_reps' in update_data:
-            update_data['sets_and_reps'] = [item for item in update_data['sets_and_reps']]
-        for key, value in update_data.items():
-            setattr(db_instance, key, value)
+        
+        # If sets are being updated
+        if instance_data.sets is not None:
+            processed_sets = []
+            for set_data in instance_data.sets:
+                intensity = set_data.intensity
+                volume = set_data.volume
+                effort = set_data.effort
+                
+                # Calculate missing parameters if we have two out of three
+                if intensity is None and effort is not None and volume is not None:
+                    intensity = WorkoutCalculator.get_intensity(volume, effort)
+                elif effort is None and intensity is not None and volume is not None:
+                    effort = WorkoutCalculator.get_effort(volume, intensity)
+                elif volume is None and intensity is not None and effort is not None:
+                    volume = WorkoutCalculator.get_volume(intensity, effort)
+                
+                # Add the set to the list
+                processed_sets.append({
+                    'intensity': intensity,
+                    'volume': volume,
+                    'effort': effort
+                })
             
-        db_instance.exercise_list = db_exercise_list
+            # Update the instance with the new sets
+            db_instance.sets = processed_sets
+        
+        # Update exercise list if needed
+        if exercise_list_id != db_instance.exercise_list_id:
+            db_instance.exercise_list_id = exercise_list_id
         
         self.db.commit()
         self.db.refresh(db_instance)
-        
         return db_instance
 
     def delete_progression_instance(self, template_id: int, instance_id: int) -> None:
@@ -221,20 +262,12 @@ class ProgressionsService:
 
     def _format_template_response(self, template: ProgressionTemplate) -> ProgressionTemplateResponse:
         """Format a ProgressionTemplate for response."""
-        calculated_weight = None
         
         # Get the first exercise instance with this template
         if template.exercise_instances:
             instance_with_template = template.exercise_instances[0]
             exercise_list = instance_with_template.exercise_list
             
-            if exercise_list and exercise_list.user_maxes:
-                user_max = exercise_list.user_maxes[0]
-                if user_max.max_weight:
-                    calculated_weight = WorkoutCalculator.calculate_weight(
-                        user_max.max_weight,
-                        instance_with_template.intensity
-                    )
             
         return ProgressionTemplateResponse(
             id=template.id,
@@ -242,5 +275,4 @@ class ProgressionsService:
             intensity=None if not template.exercise_instances else template.exercise_instances[0].intensity,
             effort=None if not template.exercise_instances else template.exercise_instances[0].effort,
             volume=None if not template.exercise_instances else template.exercise_instances[0].volume,
-            calculated_weight=calculated_weight
         )

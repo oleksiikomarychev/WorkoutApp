@@ -1,51 +1,35 @@
 from typing import Dict, Optional, Union
 from app.config.prompts import RPE_TABLE
+import math
 
-class WorkoutCalculator:
-    """Класс для расчета параметров тренировок"""
-    
+class WorkoutCalculator:    
     RPE_TABLE = RPE_TABLE
-    
-    @staticmethod
-    def round_effort(effort: float) -> float:
-        """Округляет усилие до ближайшего 0.5"""
-        return round(effort * 2) / 2
-    
-    @staticmethod
-    def round_intensity(intensity: int) -> int:
-        """Округляет интенсивность до ближайшего 5%"""
-        return round(intensity / 5) * 5
     
     @classmethod
     def get_volume(cls, intensity: int, effort: float) -> Union[int, str, None]:
-        """Рассчитывает объем тренировки на основе интенсивности и усилия"""
         if intensity is None or effort is None:
             return None
-            
-        rounded_intensity = cls.round_intensity(intensity)
-        rounded_intensity = max(60, min(100, rounded_intensity))
-        
-        rounded_effort = cls.round_effort(effort)
-        rounded_effort = max(6, min(10, rounded_effort))
-        
-        try:
-            intensity_key = min(
-                cls.RPE_TABLE.keys(), 
-                key=lambda x: abs(x - rounded_intensity)
-            )
-            
-            effort_key = min(
-                cls.RPE_TABLE[intensity_key].keys(), 
-                key=lambda x: abs(x - rounded_effort)
-            )
-            
-            return cls.RPE_TABLE[intensity_key].get(effort_key, None)
-        except (KeyError, ValueError):
+        # Округление усилия вниз
+        effort_key = math.floor(effort)
+        return cls.RPE_TABLE.get(intensity, {}).get(effort_key, None)
+
+    @classmethod
+    def get_intensity(cls, volume: int, effort: float) -> Union[int, str, None]:
+        if volume is None or effort is None:
             return None
-    
-    @staticmethod
-    def calculate_weight(max_weight: float, intensity: int) -> Optional[float]:
-        """Рассчитывает вес на основе максимума и интенсивности"""
-        if max_weight is None or intensity is None:
+        effort_key = math.floor(effort)
+        for intensity, efforts in cls.RPE_TABLE.items():
+            if effort_key in efforts and efforts[effort_key] == volume:
+                return intensity
+        return None
+
+    @classmethod
+    def get_effort(cls, volume: int, intensity: int) -> Union[float, str, None]:
+        if volume is None or intensity is None:
             return None
-        return round(max_weight * (intensity / 100.0), 2)
+        # Поиск effort по volume и intensity
+        efforts = cls.RPE_TABLE.get(intensity, {})
+        for effort, vol in efforts.items():
+            if vol == volume:
+                return effort
+        return None

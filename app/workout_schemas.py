@@ -160,28 +160,20 @@ class ProgressionTemplateResponse(ProgressionTemplateBase):
         }
 
 
-class TemplateSetsAndReps(BaseModel):
-    sets: int = Field(..., ge=1)
-    reps: int = Field(..., ge=1)
-
-class TemplateSetsAndRepsUpdate(BaseModel):
-    sets: Optional[int] = Field(None, ge=1)
-    reps: Optional[int] = Field(None, ge=1)
+class ProgressionSet(BaseModel):
+    """Schema for a single set in a progression instance"""
+    intensity: Optional[int] = Field(None, ge=1, le=100, description="Intensity as a percentage of 1RM")
+    volume: Optional[int] = Field(None, ge=1, description="Number of reps for this set")
+    effort: Optional[int] = Field(None, ge=1, le=10, description="RPE/RIR value for this set")
 
 class ExerciseInstanceWithProgressionTemplateBase(BaseModel):
-    intensity: int = Field(..., ge=1, le=100, description="Intensity as percentage of 1RM (1-100%)")
-    effort: int = Field(..., ge=1, le=10, description="RPE (Rate of Perceived Exertion) scale from 1-10")
-    volume: int = Field(..., ge=0, description="Volume in kg")
-    sets_and_reps: List[TemplateSetsAndReps] = Field(..., description="Sets and reps for the exercise")
+    """Base schema for progression instances with the new format"""
+    sets: List[ProgressionSet] = Field(..., description="List of sets with their parameters")
 
-class ExerciseInstanceWithProgressionTemplate(BaseModel):
-    intensity: int = Field(..., ge=1, le=100)
-    effort: int = Field(..., ge=1, le=10)
-    volume: int = Field(..., ge=0)
-    sets_and_reps: List[TemplateSetsAndReps] = Field(..., description="Sets and reps for the exercise")
+class ExerciseInstanceWithProgressionTemplate(ExerciseInstanceWithProgressionTemplateBase):
+    """Schema for creating a new progression instance"""
+    pass
 
 class ExerciseInstanceWithProgressionTemplateUpdate(BaseModel):
-    intensity: Optional[int] = Field(None, ge=1, le=100)
-    effort: Optional[int] = Field(None, ge=1, le=10)
-    volume: Optional[int] = Field(None, ge=0)
-    sets_and_reps: Optional[List[TemplateSetsAndReps]] = Field(None, description="Sets and reps for the exercise")
+    """Schema for updating an existing progression instance"""
+    sets: Optional[List[ProgressionSet]] = Field(None, description="List of sets with their parameters")
