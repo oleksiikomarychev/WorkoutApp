@@ -115,12 +115,6 @@ class ExerciseInstance(Base):
             db.add(progression_instance)
             db.commit()
             db.refresh(progression_instance)
-            
-        # Calculate weight based on user_max
-        if self.user_max and self.user_max.max_weight:
-            self.weight = WorkoutCalculator.calculate_weight(self.user_max.max_weight, template.intensity)
-        else:
-            self.weight = None
     
     def to_dict(self) -> Dict[str, Any]:
         result = {
@@ -181,21 +175,13 @@ class ExerciseInstanceWithProgressionTemplate(Base):
     id = Column(Integer, primary_key=True, index=True)
     exercise_list_id = Column(Integer, ForeignKey("exercise_list.id", ondelete="CASCADE"), nullable=False)
     progression_template_id = Column(Integer, ForeignKey("progression_templates.id", ondelete="SET NULL"), nullable=True)
-    intensity = Column(Integer, nullable=False)
-    effort = Column(Integer, nullable=False)
-    volume = Column(Integer, nullable=False)
-    sets_and_reps = Column(JSON, nullable=False, default=list)  # New field for sets and reps
+    sets = Column(JSON, nullable=False, default=list)  # List of sets with intensity, volume, effort
     
     exercise_list = relationship("ExerciseList", back_populates="progression_associations")
     progression_template = relationship("ProgressionTemplate", back_populates="exercise_instances")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # Optionally, calculate volume from sets_and_reps if needed
-        if hasattr(self, 'sets_and_reps') and self.sets_and_reps:
-            self.volume = sum(item.get('sets', 0) * item.get('reps', 0) for item in self.sets_and_reps)
-        else:
-            self.volume = 0
 
     __table_args__ = (
         {'sqlite_autoincrement': True},
@@ -222,7 +208,7 @@ class ProgressionTemplate(Base):
     def to_dict(self) -> Dict[str, Any]:
         result = {
             'id': self.id,
-            'name': self.name,
+            'name': self.name
         }
         return result
 
