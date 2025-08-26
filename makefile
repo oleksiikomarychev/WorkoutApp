@@ -12,7 +12,8 @@ makemigrations:
 superuser:
 	python manage.py createsuperuser
 
+activate:
+	bash -c "source .venv/bin/activate"
+
 alembic:
-	python -m alembic 
 	alembic revision --autogenerate -m "update_models"
-	alembic upgrade head

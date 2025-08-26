@@ -3,28 +3,31 @@ import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import '../config/api_config.dart';
+import 'logger_service.dart';
+import 'base_api_service.dart';
+
 class ApiClient {
-  final String baseUrl;
   final http.Client _httpClient;
   final Map<String, String> _defaultHeaders;
+  final LoggerService _logger = LoggerService('ApiClient');
+  
   ApiClient({
-    String? baseUrl,
     http.Client? httpClient,
     Map<String, String>? defaultHeaders,
   }) : 
-    baseUrl = baseUrl ?? ApiConfig.getBaseUrl(),
     _httpClient = httpClient ?? http.Client(),
-    _defaultHeaders = defaultHeaders ?? {
+    _defaultHeaders = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      ...?defaultHeaders,
     };
   factory ApiClient.create() {
-    return ApiClient(
-      baseUrl: ApiConfig.getBaseUrl(),
-    );
+    return ApiClient();
   }
   Future<dynamic> get(String endpoint, {Map<String, dynamic>? queryParams, String? context}) async {
-    final uri = _buildUri(endpoint, queryParams);
+    final url = ApiConfig.buildFullUrl(endpoint);
+    final uri = Uri.parse(url).replace(queryParameters: queryParams);
+    
     _logRequest('GET', uri, context: context);
     try {
       print('Making GET request to: ${uri.toString()}');
@@ -45,30 +48,44 @@ class ApiClient {
     }
   }
   Future<dynamic> post(String endpoint, Map<String, dynamic> data, {Map<String, dynamic>? queryParams, String? context}) async {
-    final uri = _buildUri(endpoint, queryParams);
+    final url = ApiConfig.buildFullUrl(endpoint);
+    final uri = Uri.parse(url).replace(queryParameters: queryParams);
+    
     _logRequest('POST', uri, body: data, context: context);
     try {
+      print('POST request to: ${uri.toString()}');
+      print('Request body: ${json.encode(data)}');
+      print('Headers: $_defaultHeaders');
+      
       final response = await _httpClient.post(
         uri,
         headers: _defaultHeaders,
         body: json.encode(data),
-      );
+      ).timeout(const Duration(seconds: 10));
+      
+      print('Response status: ${response.statusCode}');
+      print('Response body: ${response.body}');
+      
       _logResponse(response, context: context);
       return _handleResponse(response);
     } catch (e) {
+      print('Error in POST request to $uri: $e');
       _logError('POST', uri, e, context: context);
       rethrow;
     }
   }
   Future<dynamic> put(String endpoint, Map<String, dynamic> data, {Map<String, dynamic>? queryParams, String? context}) async {
-    final uri = _buildUri(endpoint, queryParams);
+    final url = ApiConfig.buildFullUrl(endpoint);
+    final uri = Uri.parse(url).replace(queryParameters: queryParams);
+    
     _logRequest('PUT', uri, body: data, context: context);
     try {
       final response = await _httpClient.put(
         uri,
         headers: _defaultHeaders,
         body: json.encode(data),
-      );
+      ).timeout(const Duration(seconds: 10));
+      
       _logResponse(response, context: context);
       return _handleResponse(response);
     } catch (e) {
@@ -77,29 +94,65 @@ class ApiClient {
     }
   }
   Future<dynamic> delete(String endpoint, {Map<String, dynamic>? queryParams, String? context}) async {
-    final uri = _buildUri(endpoint, queryParams);
+    final url = ApiConfig.buildFullUrl(endpoint);
+    final uri = Uri.parse(url).replace(queryParameters: queryParams);
+    
     _logRequest('DELETE', uri, context: context);
     try {
+      print('Sending DELETE request to: ${uri.toString()}');
+      print('Headers: $_defaultHeaders');
+      
       final response = await _httpClient.delete(
         uri,
         headers: _defaultHeaders,
-      );
+      ).timeout(const Duration(seconds: 10));
+      
+      print('DELETE response status: ${response.statusCode}');
+      print('Response body: ${response.body}');
+      
       _logResponse(response, context: context);
       return _handleResponse(response);
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('Error in DELETE request to $uri: $e');
+      print('Stack trace: $stackTrace');
       _logError('DELETE', uri, e, context: context);
       rethrow;
     }
   }
-  Uri _buildUri(String endpoint, Map<String, dynamic>? queryParams) {
-    final uri = Uri.parse('$baseUrl$endpoint');
-    if (queryParams != null && queryParams.isNotEmpty) {
-      return uri.replace(
-        queryParameters: queryParams.map((key, value) => MapEntry(key, value.toString())),
+  // Helper method to handle the API response
+  dynamic _handleResponse(http.Response response) {
+    final statusCode = response.statusCode;
+    final responseBody = response.body;
+    
+    _logger.d('Response status: $statusCode');
+    _logger.d('Response body: $responseBody');
+    
+    if (statusCode >= 200 && statusCode < 300) {
+      if (responseBody.isEmpty) {
+        return null;
+      }
+      try {
+        return json.decode(responseBody);
+      } catch (e) {
+        _logger.e('Failed to parse response body: $e');
+        return responseBody;
+      }
+    } else {
+      String errorMessage;
+      try {
+        final errorJson = json.decode(responseBody) as Map<String, dynamic>;
+        errorMessage = errorJson['detail'] ?? errorJson['message'] ?? 'Unknown error';
+      } catch (e) {
+        errorMessage = 'Request failed with status: $statusCode';
+      }
+      throw ApiException(
+        errorMessage,
+        statusCode: statusCode,
+        rawResponse: responseBody,
       );
     }
-    return uri;
   }
+
   void _logRequest(String method, Uri uri, {dynamic body, String? context}) {
     if (kDebugMode) {
       developer.log(
@@ -125,47 +178,9 @@ class ApiClient {
       );
     }
   }
-  dynamic _handleResponse(http.Response response) {
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      if (response.body.isEmpty) {
-        return null;
-      }
-      try {
-        return json.decode(response.body);
-      } catch (e) {
-        return response.body;
-      }
-    } else {
-      try {
-        final error = json.decode(response.body);
-        throw ApiException(
-          statusCode: response.statusCode,
-          message: error['detail'] ?? 'An error occurred',
-          rawError: error,
-        );
-      } catch (e) {
-        throw ApiException(
-          statusCode: response.statusCode,
-          message: 'An error occurred',
-          rawResponse: response.body,
-        );
-      }
-    }
-  }
-}
-class ApiException implements Exception {
-  final int statusCode;
-  final String message;
-  final dynamic rawError;
-  final String? rawResponse;
-  ApiException({
-    required this.statusCode, 
-    required this.message, 
-    this.rawError, 
-    this.rawResponse,
-  });
-  @override
-  String toString() {
-    return 'ApiException: $statusCode - $message';
+
+  // Dispose method to close the HTTP client
+  void dispose() {
+    _httpClient.close();
   }
 }

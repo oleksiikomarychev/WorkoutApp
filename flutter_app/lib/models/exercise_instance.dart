@@ -1,126 +1,85 @@
 import 'package:flutter/foundation.dart';
-import 'package:workout_app/models/progression_template.dart';
-import 'package:workout_app/models/exercise_list.dart';
+import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:collection/collection.dart';
+import 'exercise_set_dto.dart';
+import 'exercise_definition.dart';
 
-@immutable
-class ExerciseInstance {
-  final int? id;
-  final int exerciseListId;
-  final int workoutId;
-  final int? progressionTemplateId;
-  final int? volume;
-  final int? intensity;
-  final int? effort;
-  final int? weight;
-  final ExerciseList? exerciseDefinition;
-  final ProgressionTemplate? progressionTemplate;
+part 'exercise_instance.freezed.dart';
+part 'exercise_instance.g.dart';
 
-  const ExerciseInstance({
-    this.id,
-    required this.exerciseListId,
-    required this.workoutId,
-    this.progressionTemplateId,
-    this.volume,
-    this.intensity,
-    this.effort,
-    this.weight,
-    this.exerciseDefinition,
-    this.progressionTemplate,
-  });
-
-  ExerciseInstance copyWith({
+@freezed
+class ExerciseInstance with _$ExerciseInstance {
+  const ExerciseInstance._();
+  
+  @JsonSerializable(explicitToJson: true)
+  const factory ExerciseInstance({
     int? id,
-    int? exerciseListId,
-    int? workoutId,
-    int? progressionTemplateId,
-    int? volume,
-    int? intensity,
-    int? effort,
-    int? weight,
-    ExerciseList? exerciseDefinition,
-    ProgressionTemplate? progressionTemplate,
-  }) {
-    return ExerciseInstance(
-      id: id ?? this.id,
-      exerciseListId: exerciseListId ?? this.exerciseListId,
-      workoutId: workoutId ?? this.workoutId,
-      progressionTemplateId: progressionTemplateId ?? this.progressionTemplateId,
-      volume: volume ?? this.volume,
-      intensity: intensity ?? this.intensity,
-      effort: effort ?? this.effort,
-      weight: weight ?? this.weight,
-      exerciseDefinition: exerciseDefinition ?? this.exerciseDefinition,
-      progressionTemplate: progressionTemplate ?? this.progressionTemplate,
-    );
+    @JsonKey(name: 'exercise_list_id') required int exerciseListId,
+    @JsonKey(name: 'exercise_definition') ExerciseDefinition? exerciseDefinition,
+    @JsonKey(name: 'workout_id') int? workoutId,
+    @JsonKey(name: 'user_max_id') int? userMaxId,
+    @Default([]) List<ExerciseSetDto> sets,
+    String? notes,
+    @JsonKey(name: 'order') int? order,
+    @JsonKey(includeFromJson: false, includeToJson: false) int? localId,
+  }) = _ExerciseInstance;
+
+  factory ExerciseInstance.fromJson(Map<String, dynamic> json) =>
+      _$ExerciseInstanceFromJson(json);
+
+  // Getters for backward compatibility
+  int? get exerciseDefinitionId => exerciseDefinition?.id;
+  
+  // Calculate total volume for all sets (prefer legacy provided volume if present)
+  int get calculatedVolume {
+    return sets.fold(0, (sum, set) => sum + set.computedVolume);
+  }
+  
+  // Calculate average weight across all sets
+  double? get calculatedWeight {
+    if (sets.isEmpty) return null;
+    final total = sets.fold(0.0, (sum, set) => sum + set.weight);
+    return total / sets.length;
   }
 
-  factory ExerciseInstance.fromJson(Map<String, dynamic>? json) {
-    if (json == null) {
-      throw const FormatException('ExerciseInstance JSON cannot be null');
-    }
-
-    try {
-      final exerciseListId = _parseInt(json['exercise_list_id']);
-      final workoutId = _parseInt(json['workout_id']);
-
-      if (exerciseListId == null || workoutId == null) {
-        throw const FormatException('exercise_id and workout_id are required');
-      }
-
-      final progressionTemplateId = _parseInt(json['progression_template_id']);
-      final volume = (json['volume'] as num?)?.toInt();
-      final intensity = (json['intensity'] as num?)?.toInt();
-      final effort = (json['effort'] as num?)?.toInt();
-      final weight = (json['weight'] as num?)?.toInt();
-
-      final exerciseDefJson = json['exercise_definition'];
-      final ExerciseList? exerciseDefinition = exerciseDefJson != null
-          ? ExerciseList.fromJson(exerciseDefJson is Map<String, dynamic> ? exerciseDefJson : {})
-          : null;
-
-      final progressionJson = json['progression_template'];
-      final ProgressionTemplate? progressionTemplate = progressionJson != null
-          ? ProgressionTemplate.fromJson(progressionJson is Map<String, dynamic> ? progressionJson : {})
-          : null;
-
-      return ExerciseInstance(
-        id: _parseInt(json['id']),
-        exerciseListId: exerciseListId,
-        workoutId: workoutId,
-        progressionTemplateId: progressionTemplateId,
-        volume: volume,
-        intensity: intensity,
-        effort: effort,
-        weight: weight,
-        exerciseDefinition: exerciseDefinition,
-        progressionTemplate: progressionTemplate,
-      );
-    } catch (e, stackTrace) {
-      debugPrint('Error parsing ExerciseInstance: $e\n$stackTrace');
-      rethrow;
-    }
+  // Legacy UI getters
+  int get volume => calculatedVolume;
+  double? get weight => calculatedWeight;
+  
+  // Add a new set to this exercise instance
+  ExerciseInstance addSet(ExerciseSetDto set) {
+    final newSets = List<ExerciseSetDto>.from(sets)..add(set);
+    return copyWith(sets: newSets);
   }
-
-  static int? _parseInt(dynamic value) {
-    if (value == null) return null;
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    if (value is String) return int.tryParse(value);
-    return null;
+  
+  // Update an existing set
+  ExerciseInstance updateSet(String setId, ExerciseSetDto updatedSet) {
+    final index = sets.indexWhere((s) => s.id.toString() == setId || s.localId.toString() == setId);
+    if (index == -1) return this;
+    
+    final newSets = List<ExerciseSetDto>.from(sets);
+    newSets[index] = updatedSet;
+    return copyWith(sets: newSets);
   }
-
-  Map<String, dynamic> toJson() {
+  
+  // Remove a set by ID
+  ExerciseInstance removeSet(String setId) {
+    final newSets = sets.where((s) => 
+      s.id.toString() != setId && s.localId.toString() != setId
+    ).toList();
+    return copyWith(sets: newSets);
+  }
+  
+  // Convert to form data for API submission
+  Map<String, dynamic> toFormData() {
     return {
       if (id != null) 'id': id,
-      'exercise_id': exerciseListId,
-      'workout_id': workoutId,
-      if (progressionTemplateId != null) 'progression_template_id': progressionTemplateId,
-      if (volume != null) 'volume': volume,
-      if (intensity != null) 'intensity': intensity,
-      if (effort != null) 'effort': effort,
-      if (weight != null) 'weight': weight,
-      if (exerciseDefinition != null) 'exercise_definition': exerciseDefinition!.toJson(),
-      if (progressionTemplate != null) 'progression_template': progressionTemplate!.toJson(),
+      'exercise_list_id': exerciseListId,
+      if (workoutId != null) 'workout_id': workoutId,
+      if (userMaxId != null) 'user_max_id': userMaxId,
+      'sets': sets.map((set) => set.toFormData()).toList(),
+      if (notes != null) 'notes': notes,
+      if (order != null) 'order': order,
     };
   }
 }

@@ -1,15 +1,16 @@
 import 'exercise_instance.dart';
+import 'exercise_definition.dart';
 
 class Exercise {
   final int? id;
   final String name;
-  final int? exerciseDefinitionId;
+  final ExerciseDefinition? exerciseDefinition;
   final List<ExerciseInstance> instances;
 
   Exercise({
     this.id,
     required this.name,
-    this.exerciseDefinitionId,
+    this.exerciseDefinition,
     List<ExerciseInstance>? instances,
   }) : instances = instances ?? [];
 
@@ -17,7 +18,11 @@ class Exercise {
     return Exercise(
       id: json['id'],
       name: json['name'] ?? '',
-      exerciseDefinitionId: json['exercise_definition_id'],
+      exerciseDefinition: json['exercise_definition'] != null 
+          ? ExerciseDefinition.fromJson(json['exercise_definition'] is Map<String, dynamic> 
+              ? json['exercise_definition'] 
+              : {})
+          : null,
       instances: json['instances'] != null
           ? (json['instances'] as List)
               .map((e) => ExerciseInstance.fromJson(e))
@@ -30,7 +35,7 @@ class Exercise {
     return {
       'id': id,
       'name': name,
-      if (exerciseDefinitionId != null) 'exercise_definition_id': exerciseDefinitionId,
+      if (exerciseDefinition != null) 'exercise_definition': exerciseDefinition!.toJson(),
       'instances': instances.map((e) => e.toJson()).toList(),
     };
   }
@@ -38,13 +43,13 @@ class Exercise {
   Exercise copyWith({
     int? id,
     String? name,
-    int? exerciseDefinitionId,
+    ExerciseDefinition? exerciseDefinition,
     List<ExerciseInstance>? instances,
   }) {
     return Exercise(
       id: id ?? this.id,
       name: name ?? this.name,
-      exerciseDefinitionId: exerciseDefinitionId ?? this.exerciseDefinitionId,
+      exerciseDefinition: exerciseDefinition ?? this.exerciseDefinition,
       instances: instances ?? this.instances,
     );
   }

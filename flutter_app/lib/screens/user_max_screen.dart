@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/user_max.dart';
-import '../models/exercise_list.dart';
+import '../models/exercise_definition.dart';
 import '../services/user_max_service.dart';
 import '../services/exercise_service.dart';
 
@@ -14,10 +14,10 @@ class UserMaxScreen extends StatefulWidget {
 
 class _UserMaxScreenState extends State<UserMaxScreen> {
   late Future<List<UserMax>> _userMaxesFuture;
-  late Future<List<ExerciseList>> _exercisesFuture;
+  late Future<List<ExerciseDefinition>> _exercisesFuture;
   bool _isLoading = false;
   final _formKey = GlobalKey<FormState>();
-  ExerciseList? _selectedExercise;
+  ExerciseDefinition? _selectedExercise;
   final TextEditingController _maxWeightController = TextEditingController();
   final TextEditingController _repMaxController = TextEditingController();
 
@@ -53,10 +53,10 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                DropdownButtonFormField<ExerciseList>(
+                DropdownButtonFormField<ExerciseDefinition>(
                   value: _selectedExercise,
                   decoration: const InputDecoration(labelText: 'Упражнение'),
-                  items: exercises.map((e) => DropdownMenuItem<ExerciseList>(
+                  items: exercises.map((e) => DropdownMenuItem<ExerciseDefinition>(
                     value: e,
                     child: Text(e.name),
                   )).toList(),
@@ -156,88 +156,95 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : FutureBuilder<List<UserMax>>(
-              future: _userMaxesFuture,
+          : FutureBuilder<List<dynamic>>(
+              future: Future.wait([
+                _userMaxesFuture,
+                _exercisesFuture,
+              ]),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
-                } else if (snapshot.hasError) {
+                }
+                if (snapshot.hasError) {
                   return Center(
                     child: Text(
                       'Ошибка: ${snapshot.error}',
                       style: const TextStyle(color: Colors.red),
                     ),
                   );
-                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final data = snapshot.data!;
+                final List<UserMax> userMaxes = (data[0] as List).cast<UserMax>();
+                final List<ExerciseDefinition> exercises = (data[1] as List).cast<ExerciseDefinition>();
+
+                if (userMaxes.isEmpty) {
                   return const Center(
                     child: Text('Нет максимумов. Добавьте новый!'),
                   );
-                } else {
-                  final userMaxes = snapshot.data!;
-                  return FutureBuilder<List<ExerciseList>>(
-                    future: _exercisesFuture,
-                    builder: (context, exerciseSnapshot) {
-                      final exercises = exerciseSnapshot.data ?? [];
-                      final exercisesMap = {
-                        for (var exercise in exercises) exercise.id: exercise
-                      };
-                      return ListView.builder(
-                        itemCount: userMaxes.length,
-                        itemBuilder: (context, index) {
-                          final userMax = userMaxes[index];
-                          final exercise = exercisesMap[userMax.exerciseId];
-                          return ListTile(
-                            title: Text(
-                              exercise?.name ?? 'Упражнение #${userMax.exerciseId}',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            subtitle: Text('Max: ${userMax.maxWeight}kg x ${userMax.repMax} reps'),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.delete),
-                                  onPressed: () async {
-                                    final confirm = await showDialog<bool>(
-                                      context: context,
-                                      builder: (context) => AlertDialog(
-                                        title: const Text('Удалить максимум?'),
-                                        content: const Text('Это действие нельзя отменить.'),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () => Navigator.pop(context, false),
-                                            child: const Text('Отмена'),
-                                          ),
-                                          TextButton(
-                                            onPressed: () => Navigator.pop(context, true),
-                                            child: const Text('Удалить'),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                    if (confirm == true && userMax.id != null) {
-                                      try {
-                                        final userMaxService = Provider.of<UserMaxService>(context, listen: false);
-                                        await userMaxService.deleteUserMax(userMax.id!);
-                                        setState(() {
-                                          _loadData();
-                                        });
-                                      } catch (e) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Ошибка удаления: $e')),
-                                        );
-                                      }
-                                    }
-                                  },
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  );
                 }
+
+                final Map<int?, ExerciseDefinition> exercisesMap = {
+                  for (var e in exercises) e.id: e,
+                };
+
+                return ListView.builder(
+                  itemCount: userMaxes.length,
+                  itemBuilder: (context, index) {
+                    final userMax = userMaxes[index];
+                    final exercise = exercisesMap[userMax.exerciseId];
+                    return ListTile(
+                      title: Text(
+                        exercise?.name ?? 'Упражнение #${userMax.exerciseId}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text('Max: ${userMax.maxWeight}kg x ${userMax.repMax} reps'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.delete),
+                            onPressed: () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('Удалить максимум?'),
+                                  content: const Text('Это действие нельзя отменить.'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context, false),
+                                      child: const Text('Отмена'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context, true),
+                                      child: const Text('Удалить'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true && userMax.id != null) {
+                                try {
+                                  final userMaxService = Provider.of<UserMaxService>(context, listen: false);
+                                  await userMaxService.deleteUserMax(userMax.id!.toString());
+                                  setState(() {
+                                    _loadData();
+                                  });
+                                } catch (e) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Ошибка удаления: $e')),
+                                  );
+                                }
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
               },
             ),
       floatingActionButton: FloatingActionButton(

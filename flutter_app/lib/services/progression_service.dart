@@ -29,7 +29,7 @@ class ProgressionService {
 
   // Get a specific template by ID
   Future<ProgressionTemplate> getTemplate(int id) async {
-    final response = await _apiClient.get(ApiConfig.progressionTemplateByIdEndpoint.replaceAll('{template_id}', id.toString()));
+    final response = await _apiClient.get(ApiConfig.progressionTemplateByIdEndpoint(id.toString()));
     return ProgressionTemplate.fromJson(response);
   }
 
@@ -45,7 +45,7 @@ class ProgressionService {
   // Update an existing template
   Future<ProgressionTemplate> updateTemplate(ProgressionTemplate template) async {
     final response = await _apiClient.put(
-      ApiConfig.progressionTemplateByIdEndpoint.replaceAll('{template_id}', template.id.toString()),
+      ApiConfig.progressionTemplateByIdEndpoint(template.id.toString()),
       template.toJson(),
     );
     return ProgressionTemplate.fromJson(response);
@@ -53,6 +53,6 @@ class ProgressionService {
 
   // Delete a template
   Future<void> deleteTemplate(int id) async {
-    await _apiClient.delete(ApiConfig.progressionTemplateByIdEndpoint.replaceAll('{template_id}', id.toString()));
+    await _apiClient.delete(ApiConfig.progressionTemplateByIdEndpoint(id.toString()));
   }
 }

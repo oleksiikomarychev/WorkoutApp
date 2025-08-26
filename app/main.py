@@ -1,14 +1,12 @@
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
-import os
 import time
-from fastapi.openapi.utils import get_openapi
+from app.routers import calendar_plans, applied_calendar_plans
+from app.routers import workouts, exercises, user_max, calendar_plan_instances, rpe, workout_sessions
+from app.routers import mesocycles
+from app.database import engine
+from app.database import Base
 
-from app.routers import workouts, exercises, progressions, user_max
-from app.database import engine, Base
 
 Base.metadata.create_all(bind=engine)
 
@@ -22,12 +20,20 @@ tags_metadata = [
         "description": "Manage exercises. Exercise definitions that can be added to workouts.",
     },
     {
-        "name": "Progressions",
-        "description": "Workout progression management. Track and manage exercise progressions over time.",
-    },
-    {
         "name": "User Maxes",
         "description": "User personal records and maximum weights for exercises.",
+    },
+    {
+        "name": "Applied Plans",
+        "description": "Operations with applied workout plans. Manage user's applied workout plans and their progress.",
+    },
+    {
+        "name": "Calendar Plan Instances",
+        "description": "Operations with calendar plan instances.",
+    },
+    {
+        "name": "Workout Sessions",
+        "description": "Start, update, finish, and list workout sessions.",
     }
 ]
 
@@ -38,7 +44,6 @@ app = FastAPI(
     openapi_tags=tags_metadata,
     docs_url="/docs",
     redoc_url="/redoc",
-    restart=True
 )
 
 origins = [
@@ -56,12 +61,16 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+app.include_router(applied_calendar_plans.router, prefix="/api/v1/applied-plans", tags=["Applied Plans"])
+app.include_router(calendar_plans.router, prefix="/api/v1/calendar-plans", tags=["Calendar Plans"])
+app.include_router(calendar_plan_instances.router, prefix="/api/v1/calendar-plan-instances", tags=["Calendar Plan Instances"])
 app.include_router(workouts.router, prefix="/api/v1/workouts", tags=["Workouts"])
 app.include_router(exercises.router, prefix="/api/v1/exercises", tags=["Exercises"])
-app.include_router(progressions.router, prefix="/api/v1/progressions", tags=["Progressions"])
 app.include_router(user_max.router, prefix="/api/v1/user-maxes", tags=["User Maxes"])
-
-
+app.include_router(rpe.router, prefix="/api/v1", tags=["Utils"])
+app.include_router(applied_calendar_plans.router, prefix="/api/v1/applied-calendar-plans", tags=["Applied Plans"])
+app.include_router(workout_sessions.router, prefix="/api/v1", tags=["Workout Sessions"])
+app.include_router(mesocycles.router, prefix="/api/v1", tags=["Mesocycles"])
 
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):

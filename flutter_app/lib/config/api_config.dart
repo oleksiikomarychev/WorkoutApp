@@ -1,5 +1,5 @@
 class ApiConfig {
-  // Base URLs
+  // Base URLs (ensure no trailing slashes)
   static const String androidEmulatorBaseUrl = 'http://10.0.2.2:8000';
   static const String localBaseUrl = 'http://127.0.0.1:8000';
   static const String productionBaseUrl = 'https://yourproductionapi.com';
@@ -8,51 +8,136 @@ class ApiConfig {
   static const int connectionTimeout = 30;
   static const int receiveTimeout = 30;
   
-  // API Prefix - should match the FastAPI app's prefix
-  static const String apiPrefix = '';
+  // API Version
+  static const String apiVersion = 'v1';
+  
+  // API Base Path
+  static const String apiBasePath = 'api';
   
   /// Returns the base URL for API requests
-  /// 
-  /// By default, uses local development server.
-  /// For Android emulator, use [androidEmulatorBaseUrl]
-  /// For production, use [productionBaseUrl]
-  static String getBaseUrl() {
-    // Check if running on Android emulator
-    // if (Platform.isAndroid) {
-    //   return androidEmulatorBaseUrl;
-    // }
-    return localBaseUrl;
-  }
+  static String getBaseUrl() => localBaseUrl;
   
-  /// Builds a full API endpoint URL
+  /// Builds a full API URL by combining base URL, API path, and endpoint
   static String buildEndpoint(String path) {
-    if (path.startsWith('/')) {
-      return '${getBaseUrl()}$path';
-    }
-    return '${getBaseUrl()}/$path';
+    // Remove any leading slashes from the path to avoid double slashes
+    final cleanPath = path.startsWith('/') ? path.substring(1) : path;
+    return '$apiBasePath/$apiVersion/$cleanPath';
   }
   
-  // API Endpoints - these should match your FastAPI router prefixes
-  static const String healthEndpoint = '/api/health';
-  static const String workoutsEndpoint = '/api/v1/workouts/';
-  static const String workoutByIdEndpoint = '/api/v1/workouts/{workout_id}';
+  /// Builds a full URL by combining base URL with the given path
+  static String buildFullUrl(String path) {
+    final baseUrl = getBaseUrl().endsWith('/')
+        ? getBaseUrl().substring(0, getBaseUrl().length - 1)
+        : getBaseUrl();
+    final cleanPath = path.startsWith('/') ? path.substring(1) : path;
+    return '$baseUrl/$cleanPath';
+  }
 
-  static const String exercisesEndpoint = '/api/v1/exercises';
-  static const String exerciseByIdEndpoint = '/api/v1/exercises/{exercise_id}';
-  static const String exerciseListEndpoint = '/api/v1/exercises/list';
-  static const String exerciseListByIdEndpoint = '/api/v1/exercises/list/{exercise_id}';
-  static const String exerciseListCreateEndpoint = '/api/v1/exercises/list';
-  static const String exercisesForWorkoutEndpoint = '/api/v1/exercises/workouts/{workout_id}';
+  // Health Check
+  static String get healthEndpoint => buildEndpoint('/health');
 
-  static const String exerciseInstancesEndpoint = '/api/v1/exercises/workouts/{workout_id}/instances';
+  // Workout Endpoints
+  static String get workoutsEndpoint => buildEndpoint('/workouts');
+  static String createWorkoutEndpoint() => buildEndpoint('/workouts/');
+  static String workoutByIdEndpoint(String workoutId) => 
+      buildEndpoint('/workouts/$workoutId');
+  static String workoutCalendarEndpoint(String workoutId) => 
+      buildEndpoint('/workouts/$workoutId/calendar');
+  static String exerciseInstancesByWorkoutEndpoint(String workoutId) =>
+      buildEndpoint('/exercises/workouts/$workoutId/instances');
+  static String exerciseInstanceByIdEndpoint(String instanceId) =>
+      buildEndpoint('/exercises/instances/$instanceId');
+  static String deleteExerciseInstanceEndpoint(String instanceId) =>
+      buildEndpoint('/exercises/instances/$instanceId');
 
-  static const String userMaxesByExerciseEndpoint = '/api/v1/user-maxes/by_exercise/{exercise_id}';
+  // Exercise Definition Endpoints
+  static String get exerciseDefinitionsEndpoint => buildEndpoint('/exercises/list');
+  static String exerciseDefinitionByIdEndpoint(String id) => 
+      buildEndpoint('/exercises/list/$id');
 
-  static const String progressionsEndpoint = '/api/v1/progressions/';
-  static const String progressionTemplatesEndpoint = '/api/v1/progressions/templates/';
-  static const String progressionTemplateByIdEndpoint = '/api/v1/progressions/templates/{template_id}';
+  // Exercise Instance Endpoints
+  static String get exerciseInstancesEndpoint => buildEndpoint('/exercise-instances');
+  static String exerciseInstanceByWorkoutEndpoint(String workoutId) => 
+      buildEndpoint('/exercises/workouts/$workoutId/instances');
+  static String updateExerciseInstanceEndpoint(String instanceId) => 
+      buildEndpoint('/exercises/instances/$instanceId');
+  // Helper for deleting a specific set within an instance
+  static String exerciseSetByIdEndpoint(String instanceId, String setId) => 
+      buildEndpoint('/exercises/instances/$instanceId/sets/$setId');
 
-  static const String userMaxEndpoint = '/api/v1/user-maxes/';
-  static const String userMaxByIdEndpoint = '/api/v1/user-maxes/{user_max_id}';
+  // User Max Endpoints
+  static String get userMaxesEndpoint => buildEndpoint('/user-maxes/');
+  static String userMaxByIdEndpoint(String maxId) => 
+      buildEndpoint('/user-maxes/$maxId');
+  static String userMaxesByExerciseEndpoint(String exerciseId) => 
+      buildEndpoint('/user-maxes/by_exercise/$exerciseId');
 
+  // Progression Template Endpoints
+  static String get progressionTemplatesEndpoint => 
+      buildEndpoint('/progression-templates');
+  static String progressionTemplateByIdEndpoint(String templateId) => 
+      buildEndpoint('/progression-templates/$templateId');
+  static String progressionTemplateExercisesEndpoint(String templateId) => 
+      buildEndpoint('/progression-templates/$templateId/exercises');
+
+  // Calendar Plan Endpoints
+  static String get calendarPlansEndpoint => buildEndpoint('/calendar-plans');
+  static String calendarPlanByIdEndpoint(String planId) => 
+      buildEndpoint('/calendar-plans/$planId');
+  static String calendarPlanWorkoutsEndpoint(String planId) => 
+      buildEndpoint('/calendar-plans/$planId/workouts');
+  // Calendar Plan Favorites
+  static String get calendarPlanFavoritesEndpoint => buildEndpoint('/calendar-plans/favorites');
+  static String calendarPlanFavoriteByIdEndpoint(String planId) =>
+      buildEndpoint('/calendar-plans/$planId/favorite');
+
+  // Calendar Plan Instances
+  static String get calendarPlanInstancesEndpoint => buildEndpoint('/calendar-plan-instances');
+  static String calendarPlanInstanceByIdEndpoint(String id) => buildEndpoint('/calendar-plan-instances/$id');
+  static String createInstanceFromPlanEndpoint(String planId) => buildEndpoint('/calendar-plan-instances/from-plan/$planId');
+  static String applyFromInstanceEndpoint(String instanceId) =>
+      buildEndpoint('/calendar-plan-instances/$instanceId/apply');
+      
+  // Applied Calendar Plan Endpoints
+  static String get appliedCalendarPlansEndpoint => buildEndpoint('/applied-calendar-plans');
+  static String applyCalendarPlanEndpoint(String planId) => 
+      buildEndpoint('/applied-calendar-plans/apply/$planId');
+  static String get activeAppliedCalendarPlanEndpoint => 
+      buildEndpoint('/applied-calendar-plans/active');
+  static String get userAppliedCalendarPlansEndpoint =>
+      buildEndpoint('/applied-calendar-plans/user');
+  static String appliedCalendarPlanByIdEndpoint(String planId) => 
+      buildEndpoint('/applied-calendar-plans/$planId');
+
+  // Mesocycle & Microcycle Endpoints
+  // Mesocycles under a calendar plan
+  static String calendarPlanMesocyclesEndpoint(String planId) =>
+      buildEndpoint('/calendar-plans/$planId/mesocycles');
+  // Single mesocycle by ID
+  static String mesocycleByIdEndpoint(String mesocycleId) =>
+      buildEndpoint('/mesocycles/$mesocycleId');
+  // Microcycles under a mesocycle
+  static String mesocycleMicrocyclesEndpoint(String mesocycleId) =>
+      buildEndpoint('/mesocycles/$mesocycleId/microcycles');
+  // Single microcycle by ID
+  static String microcycleByIdEndpoint(String microcycleId) =>
+      buildEndpoint('/microcycles/$microcycleId');
+
+  // Workout Session Endpoints
+  static String startWorkoutSessionEndpoint(String workoutId) =>
+      buildEndpoint('/workouts/$workoutId/start');
+  static String activeWorkoutSessionEndpoint(String workoutId) =>
+      buildEndpoint('/workouts/$workoutId/active');
+  static String workoutSessionHistoryEndpoint(String workoutId) =>
+      buildEndpoint('/workouts/$workoutId/history');
+  static String sessionSetCompletionEndpoint(
+    String sessionId,
+    String instanceId,
+    String setId,
+  ) => buildEndpoint('/sessions/$sessionId/instances/$instanceId/sets/$setId');
+  static String finishSessionEndpoint(String sessionId) =>
+      buildEndpoint('/sessions/$sessionId/finish');
+
+  // Utils
+  static String get rpeEndpoint => buildEndpoint('/rpe');
 }

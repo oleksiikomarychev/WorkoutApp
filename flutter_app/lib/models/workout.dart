@@ -1,99 +1,105 @@
 import 'package:flutter/foundation.dart';
+import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:collection/collection.dart';
 import 'exercise_instance.dart';
+import 'exercise_definition.dart';
 
+part 'workout.freezed.dart';
+part 'workout.g.dart';
 
-class Workout {
-  final int? id;
-  final String name;
-  final int? progressionTemplateId;
-  final List<ExerciseInstance> exerciseInstances;
-
-  Workout({
-    this.id,
-    required this.name,
-    this.progressionTemplateId,
-    List<ExerciseInstance>? exerciseInstances,
-  }) : exerciseInstances = exerciseInstances ?? [];
-
-  factory Workout.fromJson(Map<String, dynamic>? json) {
-    if (json == null) {
-      return Workout(
-        name: '',
-        exerciseInstances: [],
-      );
-    }
-    
-    // Safely parse exercise instances
-    List<ExerciseInstance> exerciseInstances = [];
-    try {
-      if (json['exercise_instances'] is List) {
-        exerciseInstances = (json['exercise_instances'] as List)
-            .where((e) => e is Map<String, dynamic>)
-            .map<ExerciseInstance>((e) {
-              final instanceMap = e as Map<String, dynamic>;
-              // Create a new map with corrected types to ensure doubles are used
-              final correctedMap = Map<String, dynamic>.from(instanceMap);
-              correctedMap['weight'] = (instanceMap['weight'] as num?)?.toInt();
-              correctedMap['volume'] = (instanceMap['volume'] as num?)?.toInt();
-              correctedMap['intensity'] = (instanceMap['intensity'] as num?)?.toInt();
-              correctedMap['effort'] = (instanceMap['effort'] as num?)?.toInt();
-
-              return ExerciseInstance.fromJson(correctedMap);
-            })
-            .toList();
-      }
-    } catch (e) {
-      debugPrint('Error parsing exercise instances: $e');
-      exerciseInstances = [];
-    }
-    
-    return Workout(
-      id: json['id'],
-      name: json['name']?.toString() ?? '',
-      progressionTemplateId: json['progression_template_id'] is int 
-          ? json['progression_template_id'] 
-          : (json['progression_template_id'] is String 
-              ? int.tryParse(json['progression_template_id'])
-              : null),
-      exerciseInstances: exerciseInstances,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-
-      'progression_template_id': progressionTemplateId,
-      'exercise_instances': exerciseInstances.map((e) => e.toJson()).toList(),
-    };
-  }
-
-  Workout copyWith({
+@freezed
+class Workout with _$Workout {
+  const Workout._();
+  
+  @JsonSerializable(explicitToJson: true)
+  const factory Workout({
     int? id,
-    String? name,
-    int? progressionTemplateId,
-    List<ExerciseInstance>? exerciseInstances,
-  }) {
-    return Workout(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      progressionTemplateId: progressionTemplateId ?? this.progressionTemplateId,
-      exerciseInstances: exerciseInstances ?? this.exerciseInstances,
-    );
-  }
-  
-  // Helper method to get a list of unique exercise definition IDs in this workout
-  Set<int> getExerciseIds() {
+    required String name,
+    String? notes,
+    @JsonKey(name: 'status') String? status,
+    @JsonKey(name: 'started_at') DateTime? startedAt,
+    @JsonKey(name: 'duration_seconds') int? durationSeconds,
+    @JsonKey(name: 'rpe_session') double? rpeSession,
+    String? location,
+    @JsonKey(name: 'readiness_score') int? readinessScore,
+    // Linkage to applied calendar plans (nullable for regular workouts)
+    @JsonKey(name: 'applied_plan_id') int? appliedPlanId,
+    @JsonKey(name: 'plan_order_index') int? planOrderIndex,
+    // Scheduling/Completion timestamps
+    @JsonKey(name: 'scheduled_for') DateTime? scheduledFor,
+    @JsonKey(name: 'completed_at') DateTime? completedAt,
+    @JsonKey(name: 'exercise_instances') @Default([]) List<ExerciseInstance> exerciseInstances,
+    @JsonKey(includeFromJson: false, includeToJson: false) int? localId,
+  }) = _Workout;
+
+  factory Workout.fromJson(Map<String, dynamic> json) =>
+      _$WorkoutFromJson(json);
+
+  // Get list of exercise definition IDs in this workout
+  List<int> get exerciseDefinitionIds {
     return exerciseInstances
-        .map((instance) => instance.exerciseListId)
-        .toSet();
-  }
-  
-  // Helper method to get instances of a specific exercise
-  List<ExerciseInstance> getInstancesForExercise(int exerciseListId) {
-    return exerciseInstances
-        .where((instance) => instance.exerciseListId == exerciseListId)
+        .map((e) => e.exerciseDefinitionId)
+        .whereType<int>()
         .toList();
+  }
+  
+  // Get exercise instances for a specific exercise definition
+  List<ExerciseInstance> getExerciseInstancesForDefinition(int exerciseDefinitionId) {
+    return exerciseInstances
+        .where((ei) => ei.exerciseDefinitionId == exerciseDefinitionId)
+        .toList();
+  }
+  
+  // Add a new exercise instance to this workout
+  Workout addExerciseInstance(ExerciseInstance instance) {
+    final newInstances = List<ExerciseInstance>.from(exerciseInstances)..add(instance);
+    return copyWith(exerciseInstances: newInstances);
+  }
+  
+  // Update an existing exercise instance (match by non-null id only)
+  Workout updateExerciseInstance(String instanceId, ExerciseInstance updatedInstance) {
+    final index = exerciseInstances.indexWhere((ei) => 
+      ei.id != null && ei.id.toString() == instanceId
+    );
+    if (index == -1) return this;
+    
+    final newInstances = List<ExerciseInstance>.from(exerciseInstances);
+    newInstances[index] = updatedInstance;
+    return copyWith(exerciseInstances: newInstances);
+  }
+  
+  // Remove an exercise instance by ID (match by non-null id only)
+  Workout removeExerciseInstance(String instanceId) {
+    final newInstances = exerciseInstances.where((ei) => 
+      !(ei.id != null && ei.id.toString() == instanceId)
+    ).toList();
+    return copyWith(exerciseInstances: newInstances);
+  }
+  
+  // Get total volume for the entire workout
+  double get totalVolume {
+    return exerciseInstances.fold(0.0, (sum, instance) => sum + instance.calculatedVolume);
+  }
+  
+  // Convert to form data for API submission
+  Map<String, dynamic> toFormData() {
+    return {
+      if (id != null) 'id': id,
+      'name': name,
+      if (notes != null) 'notes': notes,
+      if (status != null) 'status': status,
+      if (startedAt != null) 'started_at': startedAt?.toIso8601String(),
+      if (durationSeconds != null) 'duration_seconds': durationSeconds,
+      if (rpeSession != null) 'rpe_session': rpeSession,
+      if (location != null) 'location': location,
+      if (readinessScore != null) 'readiness_score': readinessScore,
+      if (appliedPlanId != null) 'applied_plan_id': appliedPlanId,
+      if (planOrderIndex != null) 'plan_order_index': planOrderIndex,
+      if (scheduledFor != null) 'scheduled_for': scheduledFor?.toIso8601String(),
+      if (completedAt != null) 'completed_at': completedAt?.toIso8601String(),
+      'exercise_instances': exerciseInstances
+          .map((ei) => ei.toFormData())
+          .toList(),
+    };
   }
 }

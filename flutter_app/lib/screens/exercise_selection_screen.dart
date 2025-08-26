@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/exercise_list.dart';
+import '../models/exercise_definition.dart';
 import '../screens/exercise_form_screen.dart';
 import '../services/exercise_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ExerciseSelectionScreen extends StatefulWidget {
-  final int workoutId;
   
-  const ExerciseSelectionScreen({Key? key, required this.workoutId}) : super(key: key);
+  const ExerciseSelectionScreen({Key? key}) : super(key: key);
 
   @override
   _ExerciseSelectionScreenState createState() => _ExerciseSelectionScreenState();
@@ -17,8 +16,8 @@ class ExerciseSelectionScreen extends StatefulWidget {
 
 class _ExerciseSelectionScreenState extends State<ExerciseSelectionScreen> {
   final _storage = const FlutterSecureStorage();
-  List<ExerciseList> _exercises = [];
-  List<ExerciseList> _filteredExercises = [];
+  List<ExerciseDefinition> _exercises = [];
+  List<ExerciseDefinition> _filteredExercises = [];
   bool _isLoading = true;
   final TextEditingController _searchController = TextEditingController();
 
