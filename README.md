@@ -1,6 +1,6 @@
-# WorkoutApp Backend
+# WorkoutApp — Train Smarter. Progress Faster.
 
-This project contains the FastAPI backend for the WorkoutApp.
+Modern strength training tracker that turns your plan into actionable daily workouts. Built with FastAPI + Flutter, designed for lifters and coaches who want data‑driven progress.
 
 ## Features
 
@@ -10,6 +10,32 @@ This project contains the FastAPI backend for the WorkoutApp.
 - Workout Creation and Logging
 - Strength Testing
 - Performance Analytics
+
+## Highlights
+
+- Bold, fast mobile UI focused on set execution and clarity
+- RPE engine with true 1RM derivation for accurate intensity prescriptions
+- Readiness slider: scale weights (and optionally reps) with smart rounding
+- Calendar plan wizard with meso/micro cycles and per-week day layout
+- Clean architecture backend: routers → services → repositories
+
+## Screenshots
+
+Note: images are stored in `app/config/images/`.
+
+![Home](app/config/images/Screenshot 2025-08-26 at 20.18.46.png)
+![Workout Detail](app/config/images/Screenshot 2025-08-26 at 20.14.25.png)
+![Plan Wizard](app/config/images/Screenshot 2025-08-26 at 20.20.26.png)
+![Exercises](app/config/images/Screenshot 2025-08-26 at 20.20.32.png)
+![Active Plan](app/config/images/Screenshot 2025-08-26 at 20.19.32.png)
+![Lists](app/config/images/Screenshot 2025-08-25 at 18.58.42.png)
+
+## Architecture
+
+- Backend: FastAPI, SQLAlchemy ORM, Pydantic v2, Alembic (migrations)
+- Frontend: Flutter (Material 3), strongly-typed models (freezed/json)
+- Layers: `routers/` (HTTP), `services/` (business logic), `repositories/` (data)
+- RPE/1RM logic: proper intensity tables and true 1RM calculation from real sets
 
 ## Project Structure
 
