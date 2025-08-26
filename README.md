@@ -23,12 +23,19 @@ Modern strength training tracker that turns your plan into actionable daily work
 
 Note: images are stored in `app/config/images/`.
 
-![Home](app/config/images/Screenshot 2025-08-26 at 20.18.46.png)
-![Workout Detail](app/config/images/Screenshot 2025-08-26 at 20.14.25.png)
-![Plan Wizard](app/config/images/Screenshot 2025-08-26 at 20.20.26.png)
-![Exercises](app/config/images/Screenshot 2025-08-26 at 20.20.32.png)
-![Active Plan](app/config/images/Screenshot 2025-08-26 at 20.19.32.png)
-![Lists](app/config/images/Screenshot 2025-08-25 at 18.58.42.png)
+<table>
+  <tr>
+    <td><img src="app/config/images/Screenshot%202025-08-26%20at%2020.18.46.png" alt="Home" width="320"></td>
+    <td><img src="app/config/images/Screenshot%202025-08-26%20at%2020.14.25.png" alt="Workout Detail" width="320"></td>
+    <td><img src="app/config/images/Screenshot%202025-08-26%20at%2020.20.26.png" alt="Plan Wizard" width="320"></td>
+  </tr>
+  <tr>
+    <td><img src="app/config/images/Screenshot%202025-08-26%20at%2020.20.32.png" alt="Exercises" width="320"></td>
+    <td><img src="app/config/images/Screenshot%202025-08-26%20at%2020.19.32.png" alt="Active Plan" width="320"></td>
+    <td><img src="app/config/images/Screenshot%202025-08-25%20at%2018.58.42.png" alt="Lists" width="320"></td>
+  </tr>
+  
+</table>
 
 ## Architecture
 
