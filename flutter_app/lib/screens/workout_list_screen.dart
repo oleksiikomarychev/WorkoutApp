@@ -37,7 +37,11 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
   
   Future<void> _loadWorkouts() async {
     final workoutService = Provider.of<WorkoutService>(context, listen: false);
-    _workoutsFuture = workoutService.getWorkouts();
+    if (widget.progressionId > 0) {
+      _workoutsFuture = workoutService.getWorkoutsByProgressionId(widget.progressionId);
+    } else {
+      _workoutsFuture = workoutService.getWorkouts();
+    }
   }
   
   Future<void> _refreshWorkouts() async {
@@ -99,7 +103,7 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
                     final workoutService = Provider.of<WorkoutService>(context, listen: false);
                     final workout = Workout(
                       name: _nameController.text,
-                      progressionTemplateId: null,
+                      progressionTemplateId: widget.progressionId > 0 ? widget.progressionId : null,
                       exerciseInstances: [],
                       id: null,
                     );

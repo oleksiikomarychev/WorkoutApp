@@ -1,8 +1,9 @@
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional, Dict, Any
-from app.workout_models import UserMax, ExerciseList
+from app.models.user_max import UserMax
+from app.models.exercises import ExerciseList
 from app.repositories.base_repository import BaseRepository
-from app.workout_schemas import UserMaxCreate
+from app.schemas.user_max import UserMaxCreate, UserMaxUpdate, UserMaxResponse
 
 class UserMaxRepository:
     

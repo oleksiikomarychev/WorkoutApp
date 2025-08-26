@@ -453,40 +453,6 @@ class _ProgressionScreenState extends State<ProgressionScreen> {
                                   ),
                                 ),
                               ],
-                              
-                              // Date and actions
-                              const SizedBox(height: 12),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Создано: ${dateFormat.format(template.createdAt)}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                  Row(
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.edit_outlined, size: 20),
-                                        onPressed: () => _editProgression(template),
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                        tooltip: 'Редактировать',
-                                      ),
-                                      const SizedBox(width: 8),
-                                      IconButton(
-                                        icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
-                                        onPressed: () => _confirmDeleteProgression(template),
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                        tooltip: 'Удалить',
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
                             ],
                           ),
                         ),

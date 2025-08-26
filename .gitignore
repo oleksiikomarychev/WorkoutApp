@@ -22,3 +22,4 @@ venv/
 uv.lock
 alembic.ini
 .venv
+.windsurf

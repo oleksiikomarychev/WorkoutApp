@@ -1,39 +1,44 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
-import 'package:dynamic_color/dynamic_color.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:workout_app/config/constants/app_constants.dart';
+import 'package:workout_app/screens/splash_screen_new.dart';
+import 'package:workout_app/services/service_locator.dart';
+import 'package:workout_app/services/logger_service.dart';
 
-import 'screens/home_screen.dart';
-import 'services/api_client.dart';
-import 'services/workout_service.dart';
-import 'services/exercise_service.dart';
-import 'services/user_max_service.dart';
-import 'services/progression_service.dart';
-
-
-const _primaryColor = Color(0xFF0063B0);
-
-void main() async {
+Future<void> main() async {
+  // Ensure Flutter binding is initialized
   WidgetsFlutterBinding.ensureInitialized();
-  
 
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
-  
+  // Initialize environment variables
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    print('Warning: Could not load .env file: $e');
+  }
 
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      systemNavigationBarColor: Colors.transparent,
-      systemNavigationBarDividerColor: Colors.transparent,
+  // Initialize dependency injection
+  // No dependency injection initialization needed
+
+  // Set preferred orientations
+  // No orientation restrictions needed for macOS
+
+  // Configure system UI overlay style
+  // No system UI overlay style needed for macOS
+
+  // Initialize app with providers
+  runApp(
+    ProviderScope(
+      child: ServiceProvider(
+        child: const MyApp(),
+      ),
     ),
   );
   
-  runApp(const MyApp());
+  // Log app start
+  final logger = LoggerService('main');
+  logger.i('Application started');
 }
 
 class MyApp extends StatelessWidget {
@@ -41,126 +46,114 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DynamicColorBuilder(
-      builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
-
-        ColorScheme lightColorScheme;
-        ColorScheme darkColorScheme;
-
-        if (lightDynamic != null && darkDynamic != null) {
-
-          lightColorScheme = lightDynamic;
-          darkColorScheme = darkDynamic;
-        } else {
-
-          lightColorScheme = ColorScheme.fromSeed(
-            seedColor: _primaryColor,
-            brightness: Brightness.light,
-          );
-          darkColorScheme = ColorScheme.fromSeed(
-            seedColor: _primaryColor,
-            brightness: Brightness.dark,
-          );
-        }
-
-        // Use 10.0.2.2 for Android emulator, localhost for other platforms
-        final baseUrl = Platform.isAndroid ? 'http://10.0.2.2:8000' : 'http://localhost:8000';
-        print('Using API base URL: $baseUrl');
-        
-        return MultiProvider(
-          providers: [
-            Provider<ApiClient>(
-              create: (_) => ApiClient(baseUrl: baseUrl),
+    // Initialize logger for widget build
+    final logger = context.logger;
+    logger.d('Building MyApp');
+    
+    return MaterialApp(
+      title: AppConstants.appName,
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.light().copyWith(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          centerTitle: true,
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        cardTheme: CardTheme(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
             ),
-            ProxyProvider<ApiClient, WorkoutService>(
-              update: (_, apiClient, __) => WorkoutService(apiClient),
+          ),
+        ),
+        navigationBarTheme: const NavigationBarThemeData(
+          indicatorColor: Colors.blue,
+          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+        ),
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      ),
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('en', ''),
+      ],
+      home: const SplashScreenNew(),
+      darkTheme: ThemeData.dark().copyWith(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          centerTitle: true,
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        cardTheme: CardTheme(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
             ),
-            ProxyProvider<ApiClient, ExerciseService>(
-              update: (_, apiClient, __) => ExerciseService(apiClient),
-            ),
-            ProxyProvider<ApiClient, UserMaxService>(
-              update: (_, apiClient, __) => UserMaxService(apiClient),
-            ),
-            ProxyProvider<ApiClient, ProgressionService>(
-              update: (_, apiClient, __) => ProgressionService(apiClient),
+          ),
+        ),
+        navigationBarTheme: const NavigationBarThemeData(
+          indicatorColor: Colors.blue,
+          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+        ),
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      ),
+
+    );
+  }
+}
+
+class SplashScreen extends StatelessWidget {
+  const SplashScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text(
+              AppConstants.appName,
+              style: TextStyle(fontSize: 24),
             ),
           ],
-          child: MaterialApp(
-            title: 'Workout App',
-            theme: ThemeData(
-              colorScheme: lightColorScheme,
-              useMaterial3: true,
-              fontFamily: 'Montserrat',
-              textTheme: GoogleFonts.montserratTextTheme(
-                Theme.of(context).textTheme,
-              ),
-              appBarTheme: AppBarTheme(
-                centerTitle: true,
-                backgroundColor: lightColorScheme.primaryContainer,
-                foregroundColor: lightColorScheme.onPrimaryContainer,
-                elevation: 0,
-                systemOverlayStyle: SystemUiOverlayStyle.light,
-              ),
-              cardTheme: CardTheme(
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                clipBehavior: Clip.antiAlias,
-              ),
-              elevatedButtonTheme: ElevatedButtonThemeData(
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              navigationBarTheme: NavigationBarThemeData(
-                indicatorColor: lightColorScheme.primaryContainer,
-                labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-              ),
-              snackBarTheme: SnackBarThemeData(
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-            darkTheme: ThemeData(
-              colorScheme: darkColorScheme,
-              useMaterial3: true,
-              fontFamily: 'Montserrat',
-              textTheme: GoogleFonts.montserratTextTheme(
-                ThemeData.dark().textTheme,
-              ),
-              appBarTheme: AppBarTheme(
-                centerTitle: true,
-                backgroundColor: darkColorScheme.surfaceVariant,
-                foregroundColor: darkColorScheme.onSurfaceVariant,
-                elevation: 0,
-                systemOverlayStyle: SystemUiOverlayStyle.dark,
-              ),
-              cardTheme: CardTheme(
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                clipBehavior: Clip.antiAlias,
-              ),
-              elevatedButtonTheme: ElevatedButtonThemeData(
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              navigationBarTheme: NavigationBarThemeData(
-                indicatorColor: darkColorScheme.primaryContainer,
-                labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-              ),
-              snackBarTheme: SnackBarThemeData(
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-            themeMode: ThemeMode.system,
-            debugShowCheckedModeBanner: false,
-            home: const HomeScreen(),
-          ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
