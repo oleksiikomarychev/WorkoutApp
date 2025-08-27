@@ -15,11 +15,13 @@ app/config/prompts.py
 *.sln
 *.sw?
 .DS_Store
-alembic/
+/alembic/
 workoutapp.egg-info/
 __pycache__
 venv/
 uv.lock
-alembic.ini
+/alembic.ini
 .venv
 .windsurf
+.pytest_cache
+.gitignore

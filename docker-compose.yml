@@ -1,0 +1,125 @@
+services:
+  rpe-service:
+    build: ./services/rpe-service
+    container_name: rpe-service
+    env_file:
+      - .env
+    environment:
+      - RPE_TABLE_PATH=/app/rpe_table.json
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/v1/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  plans-service:
+    build: ./services/plans-service
+    container_name: plans-service
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=${PLANS_DATABASE_URL}
+      - ENABLE_EXERCISES_ROUTER=true
+    volumes:
+      - plans_data:/app/data
+    ports:
+      - "8005:8005"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/api/v1/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  exercises-service:
+    build: ./services/exercises-service
+    container_name: exercises-service
+    env_file:
+      - .env
+    environment:
+      # Force SQLite fallback inside the container (per-service DB strategy)
+      - DATABASE_URL=${EXERCISES_DATABASE_URL}
+    # DATABASE_URL is optional; defaults to sqlite:////app/data/exercises.db
+    volumes:
+      - exercises_data:/app/data
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/api/v1/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  gateway:
+    build: ./gateway
+    container_name: api-gateway
+    env_file:
+      - .env
+    environment:
+      - RPE_SERVICE_URL=http://rpe-service:8001
+      - EXERCISES_SERVICE_URL=http://exercises-service:8002
+      - USER_MAX_SERVICE_URL=http://user-max-service:8003
+      - WORKOUTS_SERVICE_URL=http://workouts-service:8004
+      - PLANS_SERVICE_URL=http://plans-service:8005
+      - MONO_WORKOUTS=true
+    ports:
+      - "8010:8000"
+    depends_on:
+      - rpe-service
+      - exercises-service
+      - user-max-service
+      - workouts-service
+      - plans-service
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  user-max-service:
+    build: ./services/user-max-service
+    container_name: user-max-service
+    env_file:
+      - .env
+    environment:
+      # Force SQLite fallback inside the container (per-service DB strategy)
+      - DATABASE_URL=${USER_MAX_DATABASE_URL}
+    volumes:
+      - user_max_data:/app/data
+    ports:
+      - "8003:8003"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/api/v1/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  workouts-service:
+    build: ./services/workouts-service
+    container_name: workouts-service
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=${WORKOUTS_DATABASE_URL}
+    volumes:
+      - workouts_data:/app/data
+    ports:
+      - "8004:8004"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/api/v1/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  exercises_data:
+  user_max_data:
+  workouts_data:
+  plans_data:

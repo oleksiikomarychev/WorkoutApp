@@ -303,7 +303,9 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
     if (_workout?.id == null) return;
     
     try {
-      final url = 'http://localhost:8000/api/v1/workouts/${_workout!.id}';
+      final url = ApiConfig.buildFullUrl(
+        ApiConfig.workoutByIdEndpoint(_workout!.id!.toString()),
+      );
       print('Fetching raw workout data from: $url');
       
       final response = await http

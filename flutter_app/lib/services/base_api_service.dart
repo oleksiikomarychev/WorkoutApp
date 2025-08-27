@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart';
+import 'package:flutter/foundation.dart';
 import 'package:workout_app/services/api_client.dart';
 import 'package:workout_app/services/logger_service.dart';
 
@@ -9,6 +10,11 @@ abstract class BaseApiService {
   final LoggerService _logger = LoggerService('BaseApiService');
 
   BaseApiService(this._apiClient);
+
+  /// Expose the underlying ApiClient to subclasses when they need
+  /// lower-level control (e.g., to handle null/empty responses manually).
+  @protected
+  ApiClient get apiClient => _apiClient;
 
   /// Handles API errors and throws appropriate exceptions
   Never handleError(String message, dynamic error, [StackTrace? stackTrace]) {

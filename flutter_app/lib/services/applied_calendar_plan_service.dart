@@ -39,10 +39,28 @@ class AppliedCalendarPlanService extends BaseApiService {
 
   Future<AppliedCalendarPlan?> getActiveAppliedCalendarPlan() async {
     try {
-      return await getOptional<AppliedCalendarPlan>(
+      // Call API directly to handle null or empty-map gracefully
+      final response = await apiClient.get(
         ApiConfig.activeAppliedCalendarPlanEndpoint,
-        (json) => AppliedCalendarPlan.fromJson(json as Map<String, dynamic>),
+        context: 'AppliedCalendarPlanService.getActiveAppliedCalendarPlan',
       );
+
+      // Upstream may return:
+      // - null (no active plan)
+      // - {} (empty object) — treat as no active plan
+      // - a populated map with plan fields
+      if (response == null) {
+        return null;
+      }
+      if (response is Map<String, dynamic>) {
+        if (response.isEmpty) {
+          return null;
+        }
+        return AppliedCalendarPlan.fromJson(response);
+      }
+
+      // Any other unexpected format
+      throw Exception('Unexpected response format for active applied plan');
     } catch (e, stackTrace) {
       handleError('Error in getActiveAppliedCalendarPlan', e, stackTrace);
     }
