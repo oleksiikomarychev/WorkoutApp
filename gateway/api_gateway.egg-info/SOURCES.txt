@@ -1,0 +1,8 @@
+pyproject.toml
+./gateway_app/__init__.py
+./gateway_app/main.py
+api_gateway.egg-info/PKG-INFO
+api_gateway.egg-info/SOURCES.txt
+api_gateway.egg-info/dependency_links.txt
+api_gateway.egg-info/requires.txt
+api_gateway.egg-info/top_level.txt

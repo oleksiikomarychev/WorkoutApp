@@ -1,0 +1,12 @@
+pyproject.toml
+./user_max_service/__init__.py
+./user_max_service/database.py
+./user_max_service/main.py
+./user_max_service/models.py
+./user_max_service/schemas.py
+tests/test_user_max.py
+user_max_service.egg-info/PKG-INFO
+user_max_service.egg-info/SOURCES.txt
+user_max_service.egg-info/dependency_links.txt
+user_max_service.egg-info/requires.txt
+user_max_service.egg-info/top_level.txt

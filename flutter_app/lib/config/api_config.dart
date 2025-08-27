@@ -1,7 +1,7 @@
 class ApiConfig {
   // Base URLs (ensure no trailing slashes)
-  static const String androidEmulatorBaseUrl = 'http://10.0.2.2:8000';
-  static const String localBaseUrl = 'http://127.0.0.1:8000';
+  static const String androidEmulatorBaseUrl = 'http://10.0.2.2:8010';
+  static const String localBaseUrl = 'http://127.0.0.1:8010';
   static const String productionBaseUrl = 'https://yourproductionapi.com';
   
   // Timeouts
@@ -66,11 +66,11 @@ class ApiConfig {
       buildEndpoint('/exercises/instances/$instanceId/sets/$setId');
 
   // User Max Endpoints
-  static String get userMaxesEndpoint => buildEndpoint('/user-maxes/');
+  static String get userMaxesEndpoint => buildEndpoint('/user-max');
   static String userMaxByIdEndpoint(String maxId) => 
-      buildEndpoint('/user-maxes/$maxId');
+      buildEndpoint('/user-max/$maxId');
   static String userMaxesByExerciseEndpoint(String exerciseId) => 
-      buildEndpoint('/user-maxes/by_exercise/$exerciseId');
+      buildEndpoint('/user-max/by_exercise/$exerciseId');
 
   // Progression Template Endpoints
   static String get progressionTemplatesEndpoint => 

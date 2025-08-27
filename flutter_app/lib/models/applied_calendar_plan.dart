@@ -65,13 +65,32 @@ class AppliedCalendarPlan {
           ? DateTime.parse(json['start_date'] as String)
           : null,
       endDate: DateTime.parse(json['end_date'] as String),
-      calendarPlan: CalendarPlan.fromJson(
-        Map<String, dynamic>.from(json['calendar_plan'] as Map),
-      ),
-      userMaxes: (json['user_maxes'] as List<dynamic>? ?? [])
-          .whereType<Map<String, dynamic>>()
-          .map(UserMax.fromJson)
-          .toList(),
+      calendarPlan: json['calendar_plan'] != null
+          ? CalendarPlan.fromJson(
+              Map<String, dynamic>.from(json['calendar_plan'] as Map),
+            )
+          : CalendarPlan(
+              id: json['calendar_plan_id'] as int,
+              name: 'Unknown Plan',
+              schedule: {},
+              durationWeeks: 0,
+              isActive: false,
+            ),
+      userMaxes: json['user_maxes'] != null
+          ? (json['user_maxes'] as List<dynamic>)
+              .whereType<Map<String, dynamic>>()
+              .map(UserMax.fromJson)
+              .toList()
+          : json['user_max_ids'] != null
+              ? (json['user_max_ids'] as List<dynamic>)
+                  .map((id) => UserMax(
+                        id: id as int,
+                        exerciseId: 0,
+                        maxWeight: 0,
+                        repMax: 0,
+                      ))
+                  .toList()
+              : [],
       nextWorkout: json['next_workout'] != null
           ? NextWorkoutSummary.fromJson(
               Map<String, dynamic>.from(json['next_workout'] as Map),

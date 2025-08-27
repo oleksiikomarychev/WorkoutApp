@@ -1,0 +1,13 @@
+pyproject.toml
+./exercises_service/__init__.py
+./exercises_service/database.py
+./exercises_service/main.py
+./exercises_service/models.py
+./exercises_service/schemas.py
+exercises_service.egg-info/PKG-INFO
+exercises_service.egg-info/SOURCES.txt
+exercises_service.egg-info/dependency_links.txt
+exercises_service.egg-info/requires.txt
+exercises_service.egg-info/top_level.txt
+tests/test_exercise_instances_crud.py
+tests/test_health_and_seed.py
