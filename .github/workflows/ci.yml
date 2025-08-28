@@ -35,3 +35,68 @@ jobs:
       - name: Run tests
         working-directory: ${{ matrix.service }}
         run: pytest -q
+
+  seed:
+    name: Build seed SQLite DBs
+    runs-on: ubuntu-latest
+    needs: tests
+    strategy:
+      matrix:
+        include:
+          - service: services/exercises-service
+            env_var: EXERCISES_DATABASE_URL
+            db_file: seed/exercises.db
+          - service: services/user-max-service
+            env_var: USER_MAX_DATABASE_URL
+            db_file: seed/user_max.db
+          - service: services/workouts-service
+            env_var: WORKOUTS_DATABASE_URL
+            db_file: seed/workouts.db
+          - service: services/plans-service
+            env_var: PLANS_DATABASE_URL
+            db_file: seed/plans.db
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create seed directory
+        run: mkdir -p seed
+
+      - name: Install service deps
+        working-directory: ${{ matrix.service }}
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e .
+          # Ensure alembic is present even if not directly required
+          python -m pip install alembic
+
+      - name: Run Alembic migrations to seed DB
+        working-directory: ${{ matrix.service }}
+        env:
+          # Use absolute workspace path for SQLite file
+          DATABASE_URL: sqlite:///${{ github.workspace }}/${{ matrix.db_file }}
+        run: |
+          # If service uses env.py to read DATABASE_URL, the above will be picked up
+          alembic upgrade head
+
+      - name: Run plans-service seed scripts
+        if: ${{ matrix.service == 'services/plans-service' }}
+        working-directory: ${{ matrix.service }}
+        env:
+          DATABASE_URL: sqlite:///${{ github.workspace }}/${{ matrix.db_file }}
+        run: |
+          python -m plans_service.scripts.seed_exercises
+          python -m plans_service.scripts.seed_user_maxes
+          python -m plans_service.scripts.seed_powerbuilding_program --name "Программа 'ПРОГРЕСС ЖИМ/НОГИ'" --no-drop
+
+      - name: Upload seed DB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.env_var }}-sqlite
+          path: ${{ matrix.db_file }}
+          if-no-files-found: error
