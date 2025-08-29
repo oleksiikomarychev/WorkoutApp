@@ -3,15 +3,14 @@ import sys
 from pathlib import Path
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from fastapi.testclient import TestClient
 
 # Ensure the service package is importable regardless of repo root cwd
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
-
-from alembic import command
-from alembic.config import Config
 
 
 @pytest.fixture(scope="session")

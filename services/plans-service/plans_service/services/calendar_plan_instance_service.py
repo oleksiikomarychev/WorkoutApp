@@ -1,4 +1,5 @@
 from typing import List, Optional, Dict, Any
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 import math
 from ..models.calendar import CalendarPlan, CalendarPlanInstance
@@ -8,26 +9,57 @@ from ..schemas.calendar_plan import (
     CalendarPlanInstanceResponse,
 )
 
+
 class CalendarPlanInstanceService:
     def __init__(self, db: Session):
         self.db = db
 
-    def list_instances(self) -> List[CalendarPlanInstanceResponse]:
-        inst = self.db.query(CalendarPlanInstance).all()
-        return [self._to_response(i) for i in inst]
+    def list_instances(self, user_id: str) -> List[CalendarPlanInstanceResponse]:
+        instances = (
+            self.db.query(CalendarPlanInstance)
+            .filter(CalendarPlanInstance.user_id == user_id)
+            .all()
+        )
+        return [self._to_response(i) for i in instances]
 
-    def get_instance(self, instance_id: int) -> Optional[CalendarPlanInstanceResponse]:
-        inst = self.db.get(CalendarPlanInstance, instance_id)
+    def get_instance(
+        self, instance_id: int, user_id: str
+    ) -> Optional[CalendarPlanInstanceResponse]:
+        inst = (
+            self.db.query(CalendarPlanInstance)
+            .filter(
+                CalendarPlanInstance.id == instance_id,
+                CalendarPlanInstance.user_id == user_id,
+            )
+            .first()
+        )
         return self._to_response(inst) if inst else None
 
-    def delete_instance(self, instance_id: int) -> None:
-        inst = self.db.get(CalendarPlanInstance, instance_id)
+    def delete_instance(self, instance_id: int, user_id: str) -> None:
+        inst = (
+            self.db.query(CalendarPlanInstance)
+            .filter(
+                CalendarPlanInstance.id == instance_id,
+                CalendarPlanInstance.user_id == user_id,
+            )
+            .first()
+        )
         if inst:
             self.db.delete(inst)
             self.db.commit()
 
-    def create_from_plan(self, plan_id: int) -> CalendarPlanInstanceResponse:
-        plan = self.db.get(CalendarPlan, plan_id)
+    def create_from_plan(
+        self, plan_id: int, user_id: str
+    ) -> CalendarPlanInstanceResponse:
+        # User can only create an instance from their own plan or a global one
+        plan = (
+            self.db.query(CalendarPlan)
+            .filter(
+                CalendarPlan.id == plan_id,
+                or_(CalendarPlan.user_id == user_id, CalendarPlan.user_id.is_(None)),
+            )
+            .first()
+        )
         if not plan:
             raise ValueError("Plan not found")
 
@@ -41,20 +73,29 @@ class CalendarPlanInstanceService:
             day_counter = 0
             total_days = 0
             try:
-                mesocycles = sorted(list(plan.mesocycles or []), key=lambda m: (m.order_index, m.id))
+                mesocycles = sorted(
+                    list(plan.mesocycles or []), key=lambda m: (m.order_index, m.id)
+                )
                 for m in mesocycles:
-                    microcycles = sorted(list(m.microcycles or []), key=lambda mc: (mc.order_index, mc.id))
+                    microcycles = sorted(
+                        list(m.microcycles or []),
+                        key=lambda mc: (mc.order_index, mc.id),
+                    )
                     for mc in microcycles:
                         mc_sched = mc.schedule or {}
+
                         # Order microcycle days by numeric suffix of keys like 'day1', 'day2', ...
                         def _day_key(dk: str) -> int:
                             try:
-                                return int(str(dk).lower().replace('day', ''))
+                                return int(str(dk).lower().replace("day", ""))
                             except Exception:
                                 return 0
-                        for _, items in sorted(mc_sched.items(), key=lambda kv: _day_key(kv[0])):
+
+                        for _, items in sorted(
+                            mc_sched.items(), key=lambda kv: _day_key(kv[0])
+                        ):
                             day_counter += 1
-                            flat_schedule[f'day{day_counter}'] = items or []
+                            flat_schedule[f"day{day_counter}"] = items or []
                 total_days = day_counter
             except Exception:
                 # If anything goes wrong, keep empty schedule; client can still edit later
@@ -71,6 +112,7 @@ class CalendarPlanInstanceService:
 
         inst = CalendarPlanInstance(
             source_plan_id=plan.id,
+            user_id=user_id,
             name=plan.name,
             schedule=schedule_with_ids,
             duration_weeks=duration_weeks,
@@ -80,7 +122,9 @@ class CalendarPlanInstanceService:
         self.db.refresh(inst)
         return self._to_response(inst)
 
-    def create(self, data: CalendarPlanInstanceCreate) -> CalendarPlanInstanceResponse:
+    def create(
+        self, data: CalendarPlanInstanceCreate, user_id: str
+    ) -> CalendarPlanInstanceResponse:
         schedule = data.schedule
         # trust incoming ids; otherwise index if empty
         if not schedule:
@@ -90,6 +134,7 @@ class CalendarPlanInstanceService:
             schedule = self._dump_schedule(schedule)
         inst = CalendarPlanInstance(
             source_plan_id=data.source_plan_id,
+            user_id=user_id,
             name=data.name,
             schedule=schedule,
             duration_weeks=data.duration_weeks,
@@ -99,8 +144,17 @@ class CalendarPlanInstanceService:
         self.db.refresh(inst)
         return self._to_response(inst)
 
-    def update(self, instance_id: int, data: CalendarPlanInstanceUpdate) -> CalendarPlanInstanceResponse:
-        inst = self.db.get(CalendarPlanInstance, instance_id)
+    def update(
+        self, instance_id: int, data: CalendarPlanInstanceUpdate, user_id: str
+    ) -> CalendarPlanInstanceResponse:
+        inst = (
+            self.db.query(CalendarPlanInstance)
+            .filter(
+                CalendarPlanInstance.id == instance_id,
+                CalendarPlanInstance.user_id == user_id,
+            )
+            .first()
+        )
         if not inst:
             raise ValueError("Instance not found")
         if data.name is not None:
@@ -114,7 +168,9 @@ class CalendarPlanInstanceService:
         self.db.refresh(inst)
         return self._to_response(inst)
 
-    def _index_schedule(self, schedule: Dict[str, List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:
+    def _index_schedule(
+        self, schedule: Dict[str, List[Dict[str, Any]]]
+    ) -> Dict[str, List[Dict[str, Any]]]:
         """Add stable incremental ids for items and sets within each day.
         Also normalize set structure to dicts with keys: intensity, effort, volume.
         Some stored plans might keep sets as positional arrays like [intensity, effort, volume].
@@ -123,7 +179,7 @@ class CalendarPlanInstanceService:
         for day, items in (schedule or {}).items():
             new_items = []
             for i, item in enumerate(items or [], start=1):
-                sets = item.get('sets', []) or []
+                sets = item.get("sets", []) or []
                 new_sets = []
                 for j, s in enumerate(sets, start=1):
                     intensity = None
@@ -131,35 +187,39 @@ class CalendarPlanInstanceService:
                     volume = None
                     # Normalize various possible shapes
                     if isinstance(s, dict):
-                        intensity = s.get('intensity')
-                        effort = s.get('effort')
-                        volume = s.get('volume')
-                    elif isinstance(s, (list, tuple)):
-                        # Positional: [intensity, effort, volume]
-                        if len(s) > 0: intensity = s[0]
-                        if len(s) > 1: effort = s[1]
-                        if len(s) > 2: volume = s[2]
+                        intensity = s.get("intensity")
+                        effort = s.get("effort")
+                        volume = s.get("volume")
+                    elif isinstance(s, list):
+                        if len(s) > 0:
+                            intensity = s[0]
+                        if len(s) > 1:
+                            effort = s[1]
+                        if len(s) > 2:
+                            volume = s[2]
                     else:
                         # Unknown shape; keep as None
                         pass
 
                     ns = {
-                        'id': j,
-                        'intensity': intensity,
-                        'effort': effort,
-                        'volume': volume,
+                        "id": j,
+                        "intensity": intensity,
+                        "effort": effort,
+                        "volume": volume,
                     }
                     new_sets.append(ns)
                 ni = {
-                    'id': i,
-                    'exercise_id': item.get('exercise_id'),
-                    'sets': new_sets,
+                    "id": i,
+                    "exercise_id": item.get("exercise_id"),
+                    "sets": new_sets,
                 }
                 new_items.append(ni)
             result[day] = new_items
         return result
 
-    def _dump_schedule(self, schedule: Dict[str, List[Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    def _dump_schedule(
+        self, schedule: Dict[str, List[Any]]
+    ) -> Dict[str, List[Dict[str, Any]]]:
         """Convert a schedule possibly containing Pydantic models into a plain JSON-serializable dict.
         Accepts Dict[str, List[ExerciseScheduleItemInstance]] and returns Dict[str, List[dict]].
         """
@@ -168,32 +228,34 @@ class CalendarPlanInstanceService:
             dumped_items: List[Dict[str, Any]] = []
             for item in items or []:
                 # Pydantic item may have .model_dump(); if it's already dict, keep it
-                if hasattr(item, 'model_dump'):
+                if hasattr(item, "model_dump"):
                     item_dict = item.model_dump()
                 elif isinstance(item, dict):
                     item_dict = item
                 else:
                     # Fallback: best-effort extraction
                     item_dict = {
-                        'id': getattr(item, 'id', None),
-                        'exercise_id': getattr(item, 'exercise_id', None),
-                        'sets': getattr(item, 'sets', []),
+                        "id": getattr(item, "id", None),
+                        "exercise_id": getattr(item, "exercise_id", None),
+                        "sets": getattr(item, "sets", []),
                     }
                 # Ensure sets are plain dicts
                 sets = []
-                for s in item_dict.get('sets', []) or []:
-                    if hasattr(s, 'model_dump'):
+                for s in item_dict.get("sets", []) or []:
+                    if hasattr(s, "model_dump"):
                         sets.append(s.model_dump())
                     elif isinstance(s, dict):
                         sets.append(s)
                     else:
-                        sets.append({
-                            'id': getattr(s, 'id', None),
-                            'intensity': getattr(s, 'intensity', None),
-                            'effort': getattr(s, 'effort', None),
-                            'volume': getattr(s, 'volume', None),
-                        })
-                item_dict['sets'] = sets
+                        sets.append(
+                            {
+                                "id": getattr(s, "id", None),
+                                "intensity": getattr(s, "intensity", None),
+                                "effort": getattr(s, "effort", None),
+                                "volume": getattr(s, "volume", None),
+                            }
+                        )
+                item_dict["sets"] = sets
                 dumped_items.append(item_dict)
             dumped[day] = dumped_items
         return dumped

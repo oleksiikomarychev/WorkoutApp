@@ -67,54 +67,65 @@ class _ExerciseSelectionScreenState extends State<ExerciseSelectionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Выберите упражнение'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(null),
-        ),
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                labelText: 'Поиск упражнений',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10.0),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Row(
+                children: [
+                  const BackButton(),
+                  Expanded(
+                    child: Text(
+                      'Выберите упражнение',
+                      style: Theme.of(context).textTheme.titleLarge,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(width: 48), // To balance the BackButton
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  labelText: 'Поиск упражнений',
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10.0),
+                  ),
                 ),
               ),
             ),
-          ),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _filteredExercises.isEmpty
-                    ? const Center(child: Text('Упражнения не найдены'))
-                    : ListView.builder(
-                        itemCount: _filteredExercises.length,
-                        itemBuilder: (context, index) {
-                          final exercise = _filteredExercises[index];
-                          return ListTile(
-                            title: Text(exercise.name),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (exercise.muscleGroup != null)
-                                  Text('Группа мышц: ${exercise.muscleGroup}'),
-                                if (exercise.equipment != null)
-                                  Text('Оборудование: ${exercise.equipment}'),
-                              ],
-                            ),
-                            onTap: () => Navigator.of(context).pop(exercise),
-                          );
-                        },
-                      ),
-          ),
-        ],
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filteredExercises.isEmpty
+                      ? const Center(child: Text('Упражнения не найдены'))
+                      : ListView.builder(
+                          itemCount: _filteredExercises.length,
+                          itemBuilder: (context, index) {
+                            final exercise = _filteredExercises[index];
+                            return ListTile(
+                              title: Text(exercise.name),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (exercise.muscleGroup != null)
+                                    Text('Группа мышц: ${exercise.muscleGroup}'),
+                                  if (exercise.equipment != null)
+                                    Text('Оборудование: ${exercise.equipment}'),
+                                ],
+                              ),
+                              onTap: () => Navigator.of(context).pop(exercise),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
       ),
     );
   }

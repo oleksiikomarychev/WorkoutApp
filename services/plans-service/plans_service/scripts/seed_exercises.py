@@ -14,24 +14,54 @@ DEFAULT_EXERCISES: List[Dict[str, str | None]] = [
     {"name": "Жим стоя (ОHP)", "muscle_group": "Плечи", "equipment": "Штанга"},
     {"name": "Тяга штанги в наклоне", "muscle_group": "Спина", "equipment": "Штанга"},
     {"name": "Подтягивания", "muscle_group": "Спина", "equipment": "Собственный вес"},
-    {"name": "Отжимания на брусьях", "muscle_group": "Грудь/Трицепс", "equipment": "Собственный вес"},
-    {"name": "Сгибание рук с гантелями", "muscle_group": "Бицепс", "equipment": "Гантели"},
-    {"name": "Разгибание на блоке", "muscle_group": "Трицепс", "equipment": "Кроссовер"},
+    {
+        "name": "Отжимания на брусьях",
+        "muscle_group": "Грудь/Трицепс",
+        "equipment": "Собственный вес",
+    },
+    {
+        "name": "Сгибание рук с гантелями",
+        "muscle_group": "Бицепс",
+        "equipment": "Гантели",
+    },
+    {
+        "name": "Разгибание на блоке",
+        "muscle_group": "Трицепс",
+        "equipment": "Кроссовер",
+    },
     {"name": "Жим ногами", "muscle_group": "Ноги", "equipment": "Тренажёр"},
     {"name": "Выпады с гантелями", "muscle_group": "Ноги", "equipment": "Гантели"},
     {"name": "Румынская тяга", "muscle_group": "Бёдра", "equipment": "Штанга"},
     {"name": "Ягодичный мост", "muscle_group": "Ягодицы", "equipment": "Штанга"},
-    {"name": "Тяга вертикального блока", "muscle_group": "Спина", "equipment": "Кроссовер"},
-    {"name": "Тяга горизонтального блока", "muscle_group": "Спина", "equipment": "Тренажёр"},
+    {
+        "name": "Тяга вертикального блока",
+        "muscle_group": "Спина",
+        "equipment": "Кроссовер",
+    },
+    {
+        "name": "Тяга горизонтального блока",
+        "muscle_group": "Спина",
+        "equipment": "Тренажёр",
+    },
     {"name": "Жим на наклонной скамье", "muscle_group": "Грудь", "equipment": "Штанга"},
-    {"name": "Сведения гантелей (флай)", "muscle_group": "Грудь", "equipment": "Гантели"},
+    {
+        "name": "Сведения гантелей (флай)",
+        "muscle_group": "Грудь",
+        "equipment": "Гантели",
+    },
     {"name": "Махи в стороны", "muscle_group": "Плечи", "equipment": "Гантели"},
     {"name": "Планка", "muscle_group": "Кор", "equipment": "Собственный вес"},
-    {"name": "Подъёмы ног в висе", "muscle_group": "Кор", "equipment": "Собственный вес"},
+    {
+        "name": "Подъёмы ног в висе",
+        "muscle_group": "Кор",
+        "equipment": "Собственный вес",
+    },
 ]
 
 
-def seed(exercises: List[Dict[str, str | None]] = DEFAULT_EXERCISES, upsert: bool = True) -> None:
+def seed(
+    exercises: List[Dict[str, str | None]] = DEFAULT_EXERCISES, upsert: bool = True
+) -> None:
     """Заполняет таблицу exercise_list начальными данными.
 
     - Если upsert=True: обновляет muscle_group/equipment по совпадению name
@@ -68,16 +98,20 @@ def seed(exercises: List[Dict[str, str | None]] = DEFAULT_EXERCISES, upsert: boo
                 else:
                     skipped += 1
             else:
-                db.add(ExerciseList(
-                    name=name,
-                    muscle_group=e.get("muscle_group"),
-                    equipment=e.get("equipment"),
-                ))
+                db.add(
+                    ExerciseList(
+                        name=name,
+                        muscle_group=e.get("muscle_group"),
+                        equipment=e.get("equipment"),
+                    )
+                )
                 created += 1
 
         db.commit()
-        print(f"Exercises seeding finished: created={created}, updated={updated}, skipped={skipped}")
-    except Exception as exc:
+        print(
+            f"Exercises seeding finished: created={created}, updated={updated}, skipped={skipped}"
+        )
+    except Exception:
         db.rollback()
         raise
     finally:
@@ -86,7 +120,11 @@ def seed(exercises: List[Dict[str, str | None]] = DEFAULT_EXERCISES, upsert: boo
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Seed exercises into the database")
-    parser.add_argument("--no-upsert", action="store_true", help="Do not update existing records, only insert missing ones")
+    parser.add_argument(
+        "--no-upsert",
+        action="store_true",
+        help="Do not update existing records, only insert missing ones",
+    )
     args = parser.parse_args()
 
     seed(upsert=not args.no_upsert)

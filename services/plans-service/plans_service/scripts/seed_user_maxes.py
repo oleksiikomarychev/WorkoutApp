@@ -8,7 +8,9 @@ from ..models.exercises import ExerciseList
 from ..models.user_max import UserMax
 
 
-def _desired_values_for(ex_name: str, default_weight: int, default_rep_max: int) -> Tuple[int, int]:
+def _desired_values_for(
+    ex_name: str, default_weight: int, default_rep_max: int
+) -> Tuple[int, int]:
     """Возвращает (max_weight, rep_max) для упражнения.
     Пока используем дефолтные значения; точные профили можно добавить позже.
     """
@@ -19,7 +21,7 @@ def _desired_values_for(ex_name: str, default_weight: int, default_rep_max: int)
         "Жим стоя (ОHP)": (60, 8),
         "Тяга штанги в наклоне": (80, 8),
         "Подтягивания": (15, 10),  # c доп. весом
-        "Отжимания на брусьях": (20, 10), # c доп. весом
+        "Отжимания на брусьях": (20, 10),  # c доп. весом
         "Разгибание на блоке": (40, 10),
         "Сгибание рук с гантелями": (16, 12),
     }
@@ -31,7 +33,9 @@ def _desired_values_for(ex_name: str, default_weight: int, default_rep_max: int)
     return default_weight, default_rep_max
 
 
-def seed_user_maxes(default_weight: int = 100, default_rep_max: int = 1, upsert: bool = True) -> None:
+def seed_user_maxes(
+    default_weight: int = 100, default_rep_max: int = 1, upsert: bool = True
+) -> None:
     """Создаёт (или обновляет) записи user_maxes для КАЖДОГО упражнения из exercise_list.
 
     - Если запись существует и upsert=True — обновляет значения.
@@ -49,7 +53,9 @@ def seed_user_maxes(default_weight: int = 100, default_rep_max: int = 1, upsert:
     try:
         exercises = db.query(ExerciseList).all()
         for ex in exercises:
-            want_weight, want_rep = _desired_values_for(ex.name, default_weight, default_rep_max)
+            want_weight, want_rep = _desired_values_for(
+                ex.name, default_weight, default_rep_max
+            )
 
             existing = db.query(UserMax).filter(UserMax.exercise_id == ex.id).first()
             if existing:
@@ -68,11 +74,15 @@ def seed_user_maxes(default_weight: int = 100, default_rep_max: int = 1, upsert:
                 else:
                     skipped += 1
             else:
-                db.add(UserMax(exercise_id=ex.id, max_weight=want_weight, rep_max=want_rep))
+                db.add(
+                    UserMax(exercise_id=ex.id, max_weight=want_weight, rep_max=want_rep)
+                )
                 created += 1
 
         db.commit()
-        print(f"UserMax seeding finished: created={created}, updated={updated}, skipped={skipped}")
+        print(
+            f"UserMax seeding finished: created={created}, updated={updated}, skipped={skipped}"
+        )
     except Exception:
         db.rollback()
         raise
@@ -82,12 +92,30 @@ def seed_user_maxes(default_weight: int = 100, default_rep_max: int = 1, upsert:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Seed user_maxes for all exercises")
-    parser.add_argument("--weight", type=int, default=100, help="Default 1RM weight to set for each exercise")
-    parser.add_argument("--rep-max", type=int, default=1, help="Rep max to associate with the weight (e.g., 1 for 1RM)")
-    parser.add_argument("--no-upsert", action="store_true", help="Do not update existing user_max records, only insert missing ones")
+    parser.add_argument(
+        "--weight",
+        type=int,
+        default=100,
+        help="Default 1RM weight to set for each exercise",
+    )
+    parser.add_argument(
+        "--rep-max",
+        type=int,
+        default=1,
+        help="Rep max to associate with the weight (e.g., 1 for 1RM)",
+    )
+    parser.add_argument(
+        "--no-upsert",
+        action="store_true",
+        help="Do not update existing user_max records, only insert missing ones",
+    )
     args = parser.parse_args()
 
-    seed_user_maxes(default_weight=args.weight, default_rep_max=args.rep_max, upsert=not args.no_upsert)
+    seed_user_maxes(
+        default_weight=args.weight,
+        default_rep_max=args.rep_max,
+        upsert=not args.no_upsert,
+    )
 
 
 if __name__ == "__main__":

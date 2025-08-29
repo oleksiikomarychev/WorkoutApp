@@ -293,175 +293,208 @@ class _ProgressionScreenState extends State<ProgressionScreen> {
     }
   }
   @override
-  void dispose() {
-    _setsController.dispose();
-    _intensityController.dispose();
-    _effortController.dispose();
-    super.dispose();
-  }
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Шаблоны прогрессий'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: _showAddProgressionDialog,
-          ),
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('О шаблонах прогрессий'),
-                  content: const Text(
-                    'Шаблоны прогрессий помогают создавать предустановки для ваших тренировок. '
-                    'Создавайте шаблоны с разными параметрами интенсивности и усилия для разных целей тренировки.',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Понятно'),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : FutureBuilder<List<ProgressionTemplate>>(
-              future: _templatesFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                } else if (snapshot.hasError) {
-                  return Center(
-                    child: Text(
-                      'Ошибка загрузки шаблонов: ${snapshot.error}',
-                      style: const TextStyle(color: Colors.red),
-                    ),
-                  );
-                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.template_outlined,
-                          size: 64,
-                          color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Нет шаблонов',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Создайте свой первый шаблон прогрессии',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                        const SizedBox(height: 24),
-                        ElevatedButton.icon(
-                          onPressed: _showAddProgressionDialog,
-                          icon: const Icon(Icons.add),
-                          label: const Text('Создать шаблон'),
-                        ),
-                      ],
-                    ),
-                  );
-                } else {
-                  final templates = snapshot.data!;
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: templates.length,
-                    itemBuilder: (context, index) {
-                      final template = templates[index];
-                      final dateFormat = DateFormat('dd.MM.yyyy');
-                      
-                      return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Template name and RPE indicator
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      template.name,
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  // RPE indicator
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: _getRpeColor(template.effort),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      'RPE ${template.effort.toStringAsFixed(1)}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 48, 8, 8), // Adjusted top padding
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(child: Text('Шаблоны прогрессий', style: Theme.of(context).textTheme.headlineSmall)),
+                      IconButton(
+                        icon: const Icon(Icons.info_outline),
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('О шаблонах прогрессий'),
+                              content: const Text(
+                                'Шаблоны прогрессий помогают создавать предустановки для ваших тренировок. '
+                                'Создавайте шаблоны с разными параметрами интенсивности и усилия для разных целей тренировки.',
                               ),
-                              const SizedBox(height: 12),
-                              
-                              // Main template metrics
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  _buildInfoItem('Подходы', '${template.sets} x'),
-                                  _buildInfoItem('Повторения', '${template.volume ?? "-"}'),
-                                  _buildInfoItem('Вес', '${template.calculatedWeight?.toStringAsFixed(1) ?? "-"} кг'),
-                                  _buildInfoItem('Инт.', '${template.intensity}%'),
-                                ],
-                              ),
-                              
-                              // Notes and date
-                              if (template.notes?.isNotEmpty ?? false) ...[
-                                const SizedBox(height: 8),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[100],
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    template.notes!,
-                                    style: const TextStyle(fontSize: 14, color: Colors.black87),
-                                  ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('Понятно'),
                                 ),
                               ],
-                            ],
-                          ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : FutureBuilder<List<ProgressionTemplate>>(
+                          future: _templatesFuture,
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return const Center(child: CircularProgressIndicator());
+                            } else if (snapshot.hasError) {
+                              return Center(
+                                child: Text(
+                                  'Ошибка загрузки шаблонов: ${snapshot.error}',
+                                  style: const TextStyle(color: Colors.red),
+                                ),
+                              );
+                            } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                              return Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.template_outlined,
+                                      size: 64,
+                                      color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'Нет шаблонов',
+                                      style: Theme.of(context).textTheme.titleLarge,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      'Создайте свой первый шаблон прогрессии',
+                                      style: TextStyle(color: Colors.grey),
+                                    ),
+                                    const SizedBox(height: 24),
+                                    ElevatedButton.icon(
+                                      onPressed: _showAddProgressionDialog,
+                                      icon: const Icon(Icons.add),
+                                      label: const Text('Создать шаблон'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            } else {
+                              final templates = snapshot.data!;
+                              return ListView.builder(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                itemCount: templates.length,
+                                itemBuilder: (context, index) {
+                                  final template = templates[index];
+                                  final dateFormat = DateFormat('dd.MM.yyyy');
+                                  return Card(
+                                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16.0),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  template.name,
+                                                  style: const TextStyle(
+                                                    fontSize: 18,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                  maxLines: 2,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              Row(
+                                                children: [
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                    decoration: BoxDecoration(
+                                                      color: _getRpeColor(template.effort),
+                                                      borderRadius: BorderRadius.circular(12),
+                                                    ),
+                                                    child: Text(
+                                                      'RPE ${template.effort.toStringAsFixed(1)}',
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight: FontWeight.bold,
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  PopupMenuButton<String>(
+                                                    onSelected: (value) {
+                                                      if (value == 'edit') {
+                                                        _editProgression(template);
+                                                      } else if (value == 'delete') {
+                                                        _confirmDeleteProgression(template);
+                                                      }
+                                                    },
+                                                    itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                                                      const PopupMenuItem<String>(
+                                                        value: 'edit',
+                                                        child: ListTile(
+                                                          leading: Icon(Icons.edit_outlined),
+                                                          title: Text('Редактировать'),
+                                                        ),
+                                                      ),
+                                                      const PopupMenuItem<String>(
+                                                        value: 'delete',
+                                                        child: ListTile(
+                                                          leading: Icon(Icons.delete_outline, color: Colors.redAccent),
+                                                          title: Text('Удалить', style: TextStyle(color: Colors.redAccent)),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Expanded(child: _buildInfoItem('Подходы', '${template.sets} x')),
+                                              Expanded(child: _buildInfoItem('Повторения', '${template.volume ?? "-"}')),
+                                              Expanded(child: _buildInfoItem('Вес', '${template.calculatedWeight?.toStringAsFixed(1) ?? "-"} кг')),
+                                              Expanded(child: _buildInfoItem('Инт.', '${template.intensity}%')),
+                                            ],
+                                          ),
+                                          if (template.notes?.isNotEmpty ?? false) ...[
+                                            const SizedBox(height: 8),
+                                            Container(
+                                              width: double.infinity,
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.grey[100],
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                template.notes!,
+                                                style: const TextStyle(fontSize: 14, color: Colors.black87),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              );
+                            }
+                          },
                         ),
-                      );
-                    },
-                  );
-                }
-              },
+                ),
+              ],
             ),
+            const Positioned(
+              top: 0,
+              left: 4,
+              child: BackButton(),
+            ),
+          ],
+        ),
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddProgressionDialog,
         icon: const Icon(Icons.add),
@@ -558,12 +591,12 @@ class _ProgressionScreenState extends State<ProgressionScreen> {
                     labelText: 'Максимум',
                     border: OutlineInputBorder(),
                   ),
-                  items: _userMaxesFuture.then((maxes) => maxes
+                  items: userMaxes
                       .map((max) => DropdownMenuItem(
                             value: max,
                             child: Text(max.exerciseName),
                           ))
-                      .toList()),
+                      .toList(),
                   onChanged: (max) {
                     setState(() {
                       _selectedUserMax = max;

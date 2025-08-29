@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional
 from sqlalchemy.orm import Session
 import math
 import os
@@ -7,6 +7,7 @@ import requests
 from ..repositories.user_max_repository import UserMaxRepository
 from ..workout_calculation import WorkoutCalculator
 from ..schemas.rpe import RpeComputeRequest, RpeComputeResponse
+
 
 class RpeService:
     def __init__(self, db: Session):
@@ -18,9 +19,9 @@ class RpeService:
         if step <= 0:
             return value
         ratio = value / step
-        if mode == 'floor':
+        if mode == "floor":
             return math.floor(ratio) * step
-        if mode == 'ceil':
+        if mode == "ceil":
             return math.ceil(ratio) * step
         return round(ratio) * step
 
@@ -33,11 +34,17 @@ class RpeService:
         provided = [p is not None for p in (intensity, effort, volume)]
         if sum(provided) >= 2:
             if intensity is not None and effort is not None and volume is None:
-                volume = WorkoutCalculator.get_volume(intensity=intensity, effort=effort)
+                volume = WorkoutCalculator.get_volume(
+                    intensity=intensity, effort=effort
+                )
             elif volume is not None and effort is not None and intensity is None:
-                intensity = WorkoutCalculator.get_intensity(volume=volume, effort=effort)
+                intensity = WorkoutCalculator.get_intensity(
+                    volume=volume, effort=effort
+                )
             elif volume is not None and intensity is not None and effort is None:
-                effort = WorkoutCalculator.get_effort(volume=volume, intensity=intensity)
+                effort = WorkoutCalculator.get_effort(
+                    volume=volume, intensity=intensity
+                )
 
         # Resolve max weight
         max_weight: Optional[float] = req.max_weight

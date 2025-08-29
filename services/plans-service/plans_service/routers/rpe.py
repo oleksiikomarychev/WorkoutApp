@@ -8,6 +8,7 @@ from ..schemas.rpe import RpeComputeRequest, RpeComputeResponse
 
 router = APIRouter()
 
+
 @router.get("/rpe", tags=["Utils"])
 def get_rpe_table() -> Dict[int, Dict[int, int]]:
     """Return the RPE table: {intensity: {effort: reps}}"""
@@ -15,7 +16,9 @@ def get_rpe_table() -> Dict[int, Dict[int, int]]:
 
 
 @router.post("/rpe/compute", tags=["Utils"], response_model=RpeComputeResponse)
-def compute_rpe_set(payload: RpeComputeRequest, db: Session = Depends(get_db)) -> RpeComputeResponse:
+def compute_rpe_set(
+    payload: RpeComputeRequest, db: Session = Depends(get_db)
+) -> RpeComputeResponse:
     """Compute missing set parameters and working weight from RPE table and user max.
 
     Provide any two of intensity (1-100), effort (1-10), volume (reps >=1).

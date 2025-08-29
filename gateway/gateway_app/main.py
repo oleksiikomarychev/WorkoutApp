@@ -5,31 +5,83 @@ import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
-RPE_SERVICE_URL = os.getenv("RPE_SERVICE_URL", "http://rpe-service:8001")
-EXERCISES_SERVICE_URL = os.getenv("EXERCISES_SERVICE_URL", "http://exercises-service:8002")
-USER_MAX_SERVICE_URL = os.getenv("USER_MAX_SERVICE_URL", "http://user-max-service:8003")
-WORKOUTS_SERVICE_URL = os.getenv("WORKOUTS_SERVICE_URL", "http://workouts-service:8004")
-PLANS_SERVICE_URL = os.getenv("PLANS_SERVICE_URL", "http://plans-service:8005")
+from .auth_service import AuthService
+
+RPE_SERVICE_URL = os.getenv("RPE_SERVICE_URL", "http://localhost:8001")
+EXERCISES_SERVICE_URL = os.getenv("EXERCISES_SERVICE_URL", "http://localhost:8002")
+USER_MAX_SERVICE_URL = os.getenv("USER_MAX_SERVICE_URL", "http://localhost:8003")
+WORKOUTS_SERVICE_URL = os.getenv("WORKOUTS_SERVICE_URL", "http://localhost:8004")
+PLANS_SERVICE_URL = os.getenv("PLANS_SERVICE_URL", "http://localhost:8005")
+ACCOUNTS_SERVICE_URL = os.getenv("ACCOUNTS_SERVICE_URL", "http://localhost:8006")
+COACH_SERVICE_URL = os.getenv("COACH_SERVICE_URL", "http://localhost:8007")
 # When true, proxy workouts endpoints to plans-service instead of workouts-service (useful in monolith/local where
 # workouts are generated and stored by plans-service).
 MONO_WORKOUTS = os.getenv("MONO_WORKOUTS", "false").lower() in ("1", "true", "yes", "on")
 
 app = FastAPI(title="api-gateway", version="0.1.0")
-
-# CORS for Flutter/Web clients
-_cors_origins = os.getenv("CORS_ORIGINS", "*")
-_allow_origins = [o.strip() for o in _cors_origins.split(",")] if _cors_origins != "*" else ["*"]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_allow_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 # Avoid automatic 307 redirects for missing/extra trailing slashes
 app.router.redirect_slashes = False
 
+
+def _forward_headers(request: Request) -> Dict[str, str]:
+    """Collect headers to forward to downstream services, adding X-User-Id if authenticated."""
+    allowed = {k: v for k, v in request.headers.items() if k.lower() in ("traceparent", "x-request-id", "content-type")}
+    user_id = getattr(request.state, "user_id", None)
+    if user_id:
+        allowed["X-User-Id"] = user_id
+    return allowed
+
+
+class FirebaseAuthMiddleware(BaseHTTPMiddleware):
+    """Verifies Firebase ID token from Authorization header and attaches user_id to request.state.
+
+    Behavior:
+    - If Authorization header is missing: continue without auth (public endpoints keep working).
+    - If Authorization: Bearer <token> provided: verify via Firebase; on success set request.state.user_id.
+      On failure: return 401.
+    """
+
+    def __init__(self, app):
+        super().__init__(app)
+        self.auth = AuthService()
+
+    async def dispatch(self, request: Request, call_next):
+        # Let CORS preflight pass through without auth checks
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+        if auth_header and auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+            try:
+                decoded = self.auth.verify_id_token(token)
+                request.state.user_id = decoded.get("uid") or decoded.get("user_id")
+            except Exception as e:
+                return JSONResponse(status_code=401, content={"detail": "Invalid or expired token", "error": str(e)})
+        return await call_next(request)
+
+
+"""Attach middleware in the correct order: CORS should be outermost."""
+# First attach auth middleware (inner)
+app.add_middleware(FirebaseAuthMiddleware)
+
+# Then attach CORS (outer)
+_cors_origins = os.getenv("CORS_ORIGINS", "*")
+_allow_origins = [o.strip() for o in _cors_origins.split(",")] if _cors_origins != "*" else ["*"]
+_env_allow_credentials = os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower() in ("1", "true", "yes", "on")
+
+# If wildcard origin is used, Starlette cannot send Access-Control-Allow-Origin with credentials enabled.
+# To ensure browsers get ACAO "*", disable credentials when origins is wildcard.
+_allow_credentials = False if _allow_origins == ["*"] else _env_allow_credentials
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allow_origins,
+    allow_credentials=_allow_credentials,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/api/v1/health")
 async def health() -> Dict[str, str]:
@@ -39,6 +91,7 @@ async def health() -> Dict[str, str]:
 async def proxy_get_rpe() -> Response:
     url = f"{RPE_SERVICE_URL}/api/v1/rpe"
     async with httpx.AsyncClient(timeout=5.0) as client:
+        # No body, but still forward user header if present
         r = await client.get(url)
         return JSONResponse(status_code=r.status_code, content=r.json())
 
@@ -46,11 +99,7 @@ async def proxy_get_rpe() -> Response:
 async def proxy_compute_rpe(request: Request) -> Response:
     body = await request.json()
     url = f"{RPE_SERVICE_URL}/api/v1/rpe/compute"
-    headers = {}
-    # propagate basic trace headers if present
-    for h in ("traceparent", "x-request-id"):
-        if h in request.headers:
-            headers[h] = request.headers[h]
+    headers = _forward_headers(request)
     async with httpx.AsyncClient(timeout=5.0) as client:
         r = await client.post(url, json=body, headers=headers)
         return JSONResponse(status_code=r.status_code, content=r.json())
@@ -62,12 +111,34 @@ async def proxy_exercises(request: Request, path: str = "") -> Response:
     in the same store as where workouts/instances are created. Otherwise, forward
     to dedicated exercises-service.
     """
+    # Always proxy muscles metadata to dedicated exercises-service even in MONO mode
+    # because plans-service doesn't expose /exercises/muscles.
+    if path.startswith("/muscles"):
+        target_url = f"{EXERCISES_SERVICE_URL}/api/v1/exercises{path}"
+        headers = _forward_headers(request)
+        method = request.method
+        params = dict(request.query_params)
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            if method in ("POST", "PUT"):
+                body = await request.body()
+                r = await client.request(method, target_url, params=params, headers=headers, content=body, follow_redirects=True)
+            else:
+                r = await client.request(method, target_url, params=params, headers=headers, follow_redirects=True)
+        ct = r.headers.get("content-type", "application/json")
+        if r.status_code == 204:
+            return Response(status_code=204)
+        if "application/json" in ct.lower():
+            try:
+                return JSONResponse(status_code=r.status_code, content=r.json())
+            except Exception:
+                return Response(content=r.content, status_code=r.status_code, media_type=ct)
+
     if MONO_WORKOUTS:
         return await proxy_plans(request, path=f"/exercises{path}")
 
     target_url = f"{EXERCISES_SERVICE_URL}/api/v1/exercises{path}"
     # propagate trace headers
-    headers = {k: v for k, v in request.headers.items() if k.lower() in ("traceparent", "x-request-id", "content-type")}
+    headers = _forward_headers(request)
     method = request.method
     params = dict(request.query_params)
     async with httpx.AsyncClient(timeout=5.0) as client:
@@ -86,6 +157,35 @@ async def proxy_exercises(request: Request, path: str = "") -> Response:
         except Exception:
             return Response(content=r.content, status_code=r.status_code, media_type=ct)
 
+@app.api_route("/api/v1/accounts{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
+async def proxy_accounts(request: Request, path: str = "") -> Response:
+    """Proxy for accounts endpoints.
+    Coach-related subpaths are routed to coach-service to preserve existing API contract.
+    """
+    coach_paths = ("/clients", "/tags", "/notes", "/invitations")
+    if any(path.startswith(p) for p in coach_paths):
+        target_url = f"{COACH_SERVICE_URL}/api/v1/accounts{path}"
+    else:
+        target_url = f"{ACCOUNTS_SERVICE_URL}/api/v1/accounts{path}"
+    headers = _forward_headers(request)
+    method = request.method
+    params = dict(request.query_params)
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        if method in ("POST", "PUT", "PATCH"):
+            body = await request.body()
+            r = await client.request(method, target_url, params=params, headers=headers, content=body, follow_redirects=True)
+        else:
+            r = await client.request(method, target_url, params=params, headers=headers, follow_redirects=True)
+    ct = r.headers.get("content-type", "application/json")
+    if r.status_code == 204:
+        return Response(status_code=204)
+    if "application/json" in ct.lower():
+        try:
+            return JSONResponse(status_code=r.status_code, content=r.json())
+        except Exception:
+            return Response(content=r.content, status_code=r.status_code, media_type=ct)
+    return Response(content=r.content, status_code=r.status_code, media_type=ct)
+
 @app.api_route("/api/v1/user-maxes{path:path}", methods=["GET", "POST", "PUT", "DELETE"], include_in_schema=False)
 async def proxy_user_maxes_alias(request: Request, path: str = "") -> Response:
     """Alias proxy to support clients hitting /api/v1/user-maxes directly."""
@@ -98,7 +198,7 @@ async def proxy_user_maxes_alias(request: Request, path: str = "") -> Response:
 async def proxy_plans(request: Request, path: str = "") -> Response:
     """Proxy for plans endpoints to plans-service."""
     target_url = f"{PLANS_SERVICE_URL}/api/v1{path}"
-    headers = {k: v for k, v in request.headers.items() if k.lower() in ("traceparent", "x-request-id", "content-type")}
+    headers = _forward_headers(request)
     method = request.method
     params = dict(request.query_params)
     async with httpx.AsyncClient(timeout=5.0) as client:
@@ -121,7 +221,7 @@ async def proxy_plans(request: Request, path: str = "") -> Response:
 async def proxy_user_max(request: Request, path: str = "") -> Response:
     """Proxy for user max endpoints to user-max-service."""
     target_url = f"{USER_MAX_SERVICE_URL}/api/v1/user-maxes{path}"
-    headers = {k: v for k, v in request.headers.items() if k.lower() in ("traceparent", "x-request-id", "content-type")}
+    headers = _forward_headers(request)
     method = request.method
     params = dict(request.query_params)
     async with httpx.AsyncClient(timeout=5.0) as client:
@@ -156,7 +256,7 @@ async def proxy_sessions(request: Request, path: str = "") -> Response:
         return await proxy_plans(request, path=f"/sessions{path}")
 
     target_url = f"{WORKOUTS_SERVICE_URL}/api/v1/sessions{path}"
-    headers = {k: v for k, v in request.headers.items() if k.lower() in ("traceparent", "x-request-id", "content-type")}
+    headers = _forward_headers(request)
     method = request.method
     params = dict(request.query_params)
     async with httpx.AsyncClient(timeout=5.0) as client:
@@ -259,7 +359,7 @@ async def proxy_applied_calendar_plans_active(request: Request) -> Response:
     that expect optional values can handle it correctly.
     """
     target_url = f"{PLANS_SERVICE_URL}/api/v1/applied-calendar-plans/active"
-    headers = {k: v for k, v in request.headers.items() if k.lower() in ("traceparent", "x-request-id", "content-type")}
+    headers = _forward_headers(request)
     params = dict(request.query_params)
     async with httpx.AsyncClient(timeout=5.0) as client:
         r = await client.get(target_url, params=params, headers=headers, follow_redirects=True)
@@ -314,7 +414,7 @@ async def proxy_workouts(request: Request, path: str = "") -> Response:
         return await proxy_plans(request, path=f"/workouts{path}")
 
     target_url = f"{WORKOUTS_SERVICE_URL}/api/v1/workouts{path}"
-    headers = {k: v for k, v in request.headers.items() if k.lower() in ("traceparent", "x-request-id", "content-type")}
+    headers = _forward_headers(request)
     method = request.method
     params = dict(request.query_params)
     async with httpx.AsyncClient(timeout=5.0) as client:

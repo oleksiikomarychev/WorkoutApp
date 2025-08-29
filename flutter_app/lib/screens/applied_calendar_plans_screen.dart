@@ -14,11 +14,13 @@ class AppliedCalendarPlansScreen extends ConsumerStatefulWidget {
   ConsumerState<AppliedCalendarPlansScreen> createState() => _AppliedCalendarPlansScreenState();
 }
 
+import 'package:workout_app/screens/applied_calendar_plan_detail_screen.dart';
+
 class _AppliedCalendarPlansScreenState extends ConsumerState<AppliedCalendarPlansScreen> {
   final LoggerService _logger = LoggerService('AppliedCalendarPlansScreen');
   bool _isLoading = true;
   String? _errorMessage;
-  AppliedCalendarPlan? _activePlan;
+  List<AppliedCalendarPlanSummary> _plans = [];
 
   @override
   void initState() {
@@ -28,27 +30,26 @@ class _AppliedCalendarPlansScreenState extends ConsumerState<AppliedCalendarPlan
 
   Future<void> _loadAppliedPlans() async {
     if (!mounted) return;
-    
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
-    
+
     try {
       final service = ref.read(appliedCalendarPlanServiceProvider);
-      final active = await service.getActiveAppliedCalendarPlan();
-      
+      final plans = await service.getUserAppliedCalendarPlanSummaries();
+
       if (!mounted) return;
-      
-      // Update state with loaded data
+
       setState(() {
-        _activePlan = active;
+        _plans = plans;
       });
     } catch (e, stackTrace) {
       _logger.e('Error loading applied plans: $e\n$stackTrace');
-      
+
       if (!mounted) return;
-      
+
       setState(() {
         _errorMessage = 'Не удалось загрузить данные. Пожалуйста, проверьте подключение к интернету.';
       });
@@ -59,121 +60,137 @@ class _AppliedCalendarPlansScreenState extends ConsumerState<AppliedCalendarPlan
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: LoadingIndicator());
-    }
-    
-    if (_errorMessage != null) {
-      return ErrorMessage(
-        message: _errorMessage!,
-        onRetry: _loadAppliedPlans,
-      );
-    }
-    
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Мои планы тренировок'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadAppliedPlans,
-            tooltip: 'Обновить',
-          )
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadAppliedPlans,
-        child: _activePlan == null
-            ? const SingleChildScrollView(
-                physics: AlwaysScrollableScrollPhysics(),
-                child: SizedBox(
-                  height: 400,
-                  child: Center(
-                    child: EmptyState(
-                      icon: Icons.event_busy,
-                      title: 'Нет активного плана',
-                      description: 'Примените план, чтобы видеть ближайшую тренировку.',
-                    ),
-                  ),
-                ),
-              )
-            : ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _ActivePlanCard(plan: _activePlan!),
-                ],
-              ),
+  void _navigateToDetail(int planId) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => AppliedCalendarPlanDetailScreen(planId: planId),
       ),
     );
   }
-}
-
-class _ActivePlanCard extends StatelessWidget {
-  final AppliedCalendarPlan plan;
-  const _ActivePlanCard({required this.plan});
 
   @override
   Widget build(BuildContext context) {
-    final next = plan.nextWorkout;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
+    return Scaffold(
+      body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              plan.calendarPlan.name,
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.date_range, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  _formatDateRange(plan.startDate, plan.endDate),
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ),
-            const Divider(height: 24),
-            Text(
-              'Ближайшая тренировка',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            if (next == null)
-              const Text('Нет запланированных тренировок')
-            else ...[
-              Row(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Icon(Icons.fitness_center, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(next.name)),
+                  Text('Мои планы тренировок', style: Theme.of(context).textTheme.headlineSmall),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: _loadAppliedPlans,
+                    tooltip: 'Обновить',
+                  ),
                 ],
               ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  const Icon(Icons.schedule, size: 18),
-                  const SizedBox(width: 8),
-                  Text(_formatDate(next.scheduledFor)),
-                ],
-              ),
-            ],
+            ),
+            Expanded(child: _buildBody()),
           ],
         ),
       ),
     );
   }
 
-  static String _formatDate(DateTime? date) {
-    if (date == null) return '—';
-    return '${date.year}-${_two(date.month)}-${_two(date.day)} ${_two(date.hour)}:${_two(date.minute)}';
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(child: LoadingIndicator());
+    }
+
+    if (_errorMessage != null) {
+      return ErrorMessage(
+        message: _errorMessage!,
+        onRetry: _loadAppliedPlans,
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadAppliedPlans,
+      child: _plans.isEmpty
+          ? const SingleChildScrollView(
+              physics: AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: 400,
+                child: Center(
+                  child: EmptyState(
+                    icon: Icons.event_busy,
+                    title: 'Нет примененных планов',
+                    description: 'Примените план, чтобы он появился в этом списке.',
+                  ),
+                ),
+              ),
+            )
+          : ListView.builder(
+              itemCount: _plans.length,
+              itemBuilder: (context, index) {
+                final plan = _plans[index];
+                return _PlanSummaryCard(
+                  plan: plan,
+                  onTap: () => _navigateToDetail(plan.id),
+                );
+              },
+            ),
+    );
   }
+}
+
+class _PlanSummaryCard extends StatelessWidget {
+  final AppliedCalendarPlanSummary plan;
+  final VoidCallback onTap;
+
+  const _PlanSummaryCard({required this.plan, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      plan.calendarPlan.name,
+                      style: Theme.of(context).textTheme.titleLarge,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (plan.isActive)
+                    Chip(
+                      label: const Text('Активен'),
+                      backgroundColor: Colors.green.withOpacity(0.2),
+                      padding: EdgeInsets.zero,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.date_range, size: 18, color: Colors.grey),
+                  const SizedBox(width: 8),
+                  Text(
+                    _formatDateRange(plan.startDate, plan.endDate),
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
 
   static String _formatDateRange(DateTime? start, DateTime end) {
     final s = start != null

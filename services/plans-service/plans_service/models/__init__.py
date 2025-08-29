@@ -5,9 +5,11 @@ from .calendar import CalendarPlan, AppliedCalendarPlan
 from .workout_session import WorkoutSession
 
 __all__ = [
-    'Workout',
-    'ExerciseList', 'ExerciseInstance',
-    'UserMax',
-    'CalendarPlan', 'AppliedCalendarPlan',
-    'WorkoutSession'
+    "Workout",
+    "ExerciseList",
+    "ExerciseInstance",
+    "UserMax",
+    "CalendarPlan",
+    "AppliedCalendarPlan",
+    "WorkoutSession",
 ]

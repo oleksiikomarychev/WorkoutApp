@@ -36,7 +36,10 @@ def test_instances_crud_and_from_plan(client: TestClient):
     assert r.json()["name"] == "Edited"
 
     # Apply stub (501)
-    r = client.post(f"/api/v1/calendar-plan-instances/{iid}/apply", json={"user_max_ids": [], "compute": {}})
+    r = client.post(
+        f"/api/v1/calendar-plan-instances/{iid}/apply",
+        json={"user_max_ids": [], "compute": {}},
+    )
     assert r.status_code == 501
 
     # Delete instance

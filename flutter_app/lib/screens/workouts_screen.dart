@@ -19,7 +19,7 @@ class WorkoutsScreen extends ConsumerStatefulWidget {
 }
 
 // State notifier for applied calendar plans
-class AppliedPlansNotifier extends StateNotifier<AsyncValue<List<AppliedCalendarPlan>>> {
+class AppliedPlansNotifier extends StateNotifier<AsyncValue<List<AppliedCalendarPlanSummary>>> {
   final AppliedCalendarPlanService _service;
 
   AppliedPlansNotifier(this._service) : super(const AsyncValue.loading()) {
@@ -29,31 +29,66 @@ class AppliedPlansNotifier extends StateNotifier<AsyncValue<List<AppliedCalendar
   Future<void> loadPlans() async {
     state = const AsyncValue.loading();
     try {
-      final plans = await _service.getUserAppliedCalendarPlans();
+      final plans = await _service.getUserAppliedCalendarPlanSummaries();
       state = AsyncValue.data(plans);
+    } catch (e, stackTrace) {
+      state = AsyncValue.error(e, stackTrace);
+    }
+  }
+}
+
+// State notifier for workouts with pagination
+class WorkoutsNotifier extends StateNotifier<AsyncValue<List<Workout>>> {
+  final WorkoutService _workoutService;
+  final int _limit = 20;
+  int _skip = 0;
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
+  List<Workout> _items = [];
+
+  WorkoutsNotifier(this._workoutService) : super(const AsyncValue.loading()) {
+    loadInitial();
+  }
+
+  bool get hasMore => _hasMore;
+  bool get isLoadingMore => _isLoadingMore;
+  List<Workout> get items => _items;
+
+  Future<void> loadInitial() async {
+    state = const AsyncValue.loading();
+    _skip = 0;
+    _hasMore = true;
+    _items = [];
+    try {
+      final page = await _workoutService.getWorkoutsPaged(skip: _skip, limit: _limit);
+      _items = page;
+      _hasMore = page.length == _limit;
+      _skip = _items.length;
+      state = AsyncValue.data(_items);
     } catch (e, stackTrace) {
       state = AsyncValue.error(e, stackTrace);
       rethrow;
     }
   }
-}
 
-// State notifier for workouts
-class WorkoutsNotifier extends StateNotifier<AsyncValue<List<Workout>>> {
-  final WorkoutService _workoutService;
-  
-  WorkoutsNotifier(this._workoutService) : super(const AsyncValue.loading()) {
-    loadWorkouts();
-  }
-
-  Future<void> loadWorkouts() async {
-    state = const AsyncValue.loading();
+  Future<void> loadMore() async {
+    if (!_hasMore || _isLoadingMore) return;
+    _isLoadingMore = true;
     try {
-      final workouts = await _workoutService.getWorkouts();
-      state = AsyncValue.data(workouts);
+      final page = await _workoutService.getWorkoutsPaged(skip: _skip, limit: _limit);
+      if (page.isEmpty) {
+        _hasMore = false;
+      } else {
+        _items = [..._items, ...page];
+        _skip = _items.length;
+        _hasMore = page.length == _limit;
+        state = AsyncValue.data(_items);
+      }
     } catch (e, stackTrace) {
+      // Keep existing items, but surface an error if needed
       state = AsyncValue.error(e, stackTrace);
-      rethrow;
+    } finally {
+      _isLoadingMore = false;
     }
   }
 }
@@ -64,7 +99,7 @@ final workoutsNotifierProvider = StateNotifierProvider<WorkoutsNotifier, AsyncVa
   return WorkoutsNotifier(workoutService);
 });
 
-final appliedPlansNotifierProvider = StateNotifierProvider<AppliedPlansNotifier, AsyncValue<List<AppliedCalendarPlan>>>((ref) {
+final appliedPlansNotifierProvider = StateNotifierProvider<AppliedPlansNotifier, AsyncValue<List<AppliedCalendarPlanSummary>>>((ref) {
   final service = ref.watch(appliedCalendarPlanServiceProvider);
   return AppliedPlansNotifier(service);
 });
@@ -72,15 +107,29 @@ final appliedPlansNotifierProvider = StateNotifierProvider<AppliedPlansNotifier,
 class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
   final LoggerService _logger = LoggerService('WorkoutsScreen');
   final TextEditingController _nameController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   
   @override
   void initState() {
     super.initState();
     // Trigger initial load
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(workoutsNotifierProvider.notifier).loadWorkouts();
+      ref.read(workoutsNotifierProvider.notifier).loadInitial();
       ref.read(appliedPlansNotifierProvider.notifier).loadPlans();
     });
+
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+        ref.read(workoutsNotifierProvider.notifier).loadMore();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _nameController.dispose();
+    super.dispose();
   }
 
   Future<void> _showCreateWorkoutDialog() async {
@@ -185,7 +234,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                     await workoutService.createWorkout(workout);
                     if (!mounted) return;
                     Navigator.of(ctx).pop();
-                    await ref.read(workoutsNotifierProvider.notifier).loadWorkouts();
+                    await ref.read(workoutsNotifierProvider.notifier).loadInitial();
                   } catch (e) {
                     if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -207,16 +256,8 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
     final theme = Theme.of(context);
     
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Workouts'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: _showCreateWorkoutDialog,
-          ),
-        ],
-      ),
-      body: Consumer(
+      body: SafeArea(
+        child: Consumer(
         builder: (context, ref, child) {
           final workoutsState = ref.watch(workoutsNotifierProvider);
           final plansState = ref.watch(appliedPlansNotifierProvider);
@@ -248,24 +289,24 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
               return workoutsState.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (werr, wst) => buildError('Error loading workouts', werr, wst, () {
-                  ref.read(workoutsNotifierProvider.notifier).loadWorkouts();
+                  ref.read(workoutsNotifierProvider.notifier).loadInitial();
                 }),
                 data: (workouts) {
-                  // Show only truly active plans that still have a next workout
-                  final activePlans = plans
-                      .where((p) => p.isActive && p.nextWorkout != null)
-                      .toList();
+                  // Show active plans (summary)
+                  final activePlans = plans.where((p) => p.isActive).toList();
                   final activePlanIds = activePlans.map((p) => p.id).toSet();
                   final regularWorkouts = workouts.where((w) => w.appliedPlanId == null || !activePlanIds.contains(w.appliedPlanId)).toList();
 
                   final dateFmt = DateFormat('EEE, MMM d, HH:mm');
 
+                  final notifier = ref.read(workoutsNotifierProvider.notifier);
                   return RefreshIndicator(
                     onRefresh: () async {
                       await ref.read(appliedPlansNotifierProvider.notifier).loadPlans();
-                      await ref.read(workoutsNotifierProvider.notifier).loadWorkouts();
+                      await ref.read(workoutsNotifierProvider.notifier).loadInitial();
                     },
                     child: ListView(
+                      controller: _scrollController,
                       padding: const EdgeInsets.all(16),
                       children: [
                         if (activePlans.isNotEmpty) ...[
@@ -279,18 +320,19 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                               subtitle: Builder(
                                 builder: (_) {
                                   final nw = plan.nextWorkout;
-                                  if (nw == null) {
-                                    return Text('All workouts completed', style: Theme.of(context).textTheme.bodySmall);
-                                  }
-                                  final when = nw.scheduledFor != null ? ' • ${dateFmt.format(nw.scheduledFor!)}' : '';
-                                  return Text('Next: ${nw.name}$when', style: Theme.of(context).textTheme.bodySmall);
+                                  if (nw == null) return const Text('No upcoming workout');
+                                  final when = nw.scheduledFor != null
+                                      ? ' • ${dateFmt.format(nw.scheduledFor!)}'
+                                      : '';
+                                  return Text('Next: ${nw.name}$when');
                                 },
                               ),
                               trailing: const Icon(Icons.chevron_right),
-                              enabled: plan.nextWorkout != null,
-                              onTap: plan.nextWorkout == null ? null : () async {
+                              onTap: () async {
+                                final nw = plan.nextWorkout;
+                                if (nw == null) return;
                                 try {
-                                  final workout = await ref.read(workoutServiceProvider).getWorkoutWithDetails(plan.nextWorkout!.id);
+                                  final workout = await ref.read(workoutServiceProvider).getWorkout(nw.id);
                                   if (!mounted) return;
                                   await Navigator.of(context).push(
                                     MaterialPageRoute(
@@ -298,8 +340,9 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                                     ),
                                   );
                                   if (!mounted) return;
+                                  // После возврата обновляем оба списка, чтобы сдвигаться вперёд.
                                   await ref.read(appliedPlansNotifierProvider.notifier).loadPlans();
-                                  await ref.read(workoutsNotifierProvider.notifier).loadWorkouts();
+                                  await ref.read(workoutsNotifierProvider.notifier).loadInitial();
                                 } catch (e) {
                                   if (!mounted) return;
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -324,7 +367,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                             description: 'Create a workout or pick one from a plan.',
                             action: ElevatedButton.icon(
                               onPressed: () async {
-                                await ref.read(workoutsNotifierProvider.notifier).loadWorkouts();
+                                await ref.read(workoutsNotifierProvider.notifier).loadInitial();
                               },
                               icon: const Icon(Icons.refresh),
                               label: const Text('Refresh'),
@@ -339,10 +382,18 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                               workout.name,
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
-                            subtitle: Text(
-                              'Exercises: ${workout.exerciseInstances.length}',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
+                            subtitle: Builder(builder: (_) {
+                              String info = '';
+                              if (workout.scheduledFor != null) {
+                                info = 'Scheduled: ${dateFmt.format(workout.scheduledFor!)}';
+                              } else if (workout.completedAt != null) {
+                                info = 'Completed: ${dateFmt.format(workout.completedAt!)}';
+                              }
+                              return Text(
+                                info,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              );
+                            }),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -370,7 +421,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                                     try {
                                       await ref.read(workoutServiceProvider).deleteWorkout(workout.id!);
                                       if (!mounted) return;
-                                      await ref.read(workoutsNotifierProvider.notifier).loadWorkouts();
+                                      await ref.read(workoutsNotifierProvider.notifier).loadInitial();
                                     } catch (e) {
                                       if (!mounted) return;
                                       ScaffoldMessenger.of(context).showSnackBar(
@@ -389,10 +440,21 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                                 ),
                               );
                               if (!mounted) return;
-                              await ref.read(workoutsNotifierProvider.notifier).loadWorkouts();
+                              await ref.read(workoutsNotifierProvider.notifier).loadInitial();
                             },
                           ),
                         ),
+
+                        // Pagination footer
+                        if (notifier.isLoadingMore) const Center(child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: CircularProgressIndicator(),
+                        )),
+                        if (!notifier.hasMore && regularWorkouts.isNotEmpty)
+                          const Center(child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                            child: Text('No more workouts'),
+                          )),
                       ],
                     ),
                   );
@@ -401,6 +463,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
             },
           );
         },
+      ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showCreateWorkoutDialog,

@@ -870,7 +870,19 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
       // If workout was marked completed and this workout belongs to an applied plan,
       // attempt to auto-advance to the next workout in the active plan.
       if (markWorkoutCompleted) {
-        await _advanceToNextWorkoutInPlan();
+        final int? poi = _workout?.planOrderIndex;
+        final bool isFirstInPlan = poi != null && poi == 0;
+        if (isFirstInPlan) {
+          // For the very first workout of the plan, go back to the main screen instead of auto-advancing
+          if (mounted) {
+            Navigator.of(context).popUntil((route) => route.isFirst);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('First workout completed. Returning to home.')),
+            );
+          }
+        } else {
+          await _advanceToNextWorkoutInPlan();
+        }
       }
     } catch (e) {
       if (mounted) {

@@ -1,5 +1,50 @@
-import 'calendar_plan.dart';
-import 'user_max.dart';
+import 'package:workout_app/models/calendar_plan.dart';
+import 'package:workout_app/models/user_max.dart';
+
+class CalendarPlanSummary {
+  final int id;
+  final String name;
+
+  CalendarPlanSummary({required this.id, required this.name});
+
+  factory CalendarPlanSummary.fromJson(Map<String, dynamic> json) {
+    return CalendarPlanSummary(
+      id: json['id'] as int,
+      name: json['name'] as String,
+    );
+  }
+}
+
+class AppliedCalendarPlanSummary {
+  final int id;
+  final bool isActive;
+  final DateTime? startDate;
+  final DateTime endDate;
+  final CalendarPlanSummary calendarPlan;
+  final NextWorkoutSummary? nextWorkout;
+
+  AppliedCalendarPlanSummary({
+    required this.id,
+    required this.isActive,
+    required this.startDate,
+    required this.endDate,
+    required this.calendarPlan,
+    this.nextWorkout,
+  });
+
+  factory AppliedCalendarPlanSummary.fromJson(Map<String, dynamic> json) {
+    return AppliedCalendarPlanSummary(
+      id: json['id'] as int,
+      isActive: json['is_active'] as bool,
+      startDate: json['start_date'] != null ? DateTime.parse(json['start_date'] as String) : null,
+      endDate: DateTime.parse(json['end_date'] as String),
+      calendarPlan: CalendarPlanSummary.fromJson(json['calendar_plan'] as Map<String, dynamic>),
+      nextWorkout: json['next_workout'] != null
+          ? NextWorkoutSummary.fromJson(Map<String, dynamic>.from(json['next_workout'] as Map))
+          : null,
+    );
+  }
+}
 
 class NextWorkoutSummary {
   final int id;

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>282810209663-psrtkj09pjudfn2ft0ifqfiugdm2oiel.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.282810209663-psrtkj09pjudfn2ft0ifqfiugdm2oiel</string>
+	<key>API_KEY</key>
+	<string>AIzaSyBJsEsZdjpKaR25lQl_72c6xDBzNgyYgD0</string>
+	<key>GCM_SENDER_ID</key>
+	<string>282810209663</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.example.workoutApp</string>
+	<key>PROJECT_ID</key>
+	<string>workout-app-auth-d49ae</string>
+	<key>STORAGE_BUCKET</key>
+	<string>workout-app-auth-d49ae.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:282810209663:ios:df1e8cb4b9867e3535364a</string>
+</dict>
+</plist>

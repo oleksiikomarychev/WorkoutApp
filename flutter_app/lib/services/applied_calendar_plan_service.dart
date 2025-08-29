@@ -66,15 +66,49 @@ class AppliedCalendarPlanService extends BaseApiService {
     }
   }
 
-  Future<List<AppliedCalendarPlan>> getUserAppliedCalendarPlans() async {
+  Future<AppliedCalendarPlan> getAppliedCalendarPlan(int planId) async {
     try {
-      return await getList<AppliedCalendarPlan>(
-        ApiConfig.userAppliedCalendarPlansEndpoint,
+      return await get<AppliedCalendarPlan>(
+        ApiConfig.appliedCalendarPlanEndpoint(planId.toString()),
         (json) => AppliedCalendarPlan.fromJson(json as Map<String, dynamic>),
       );
     } catch (e, stackTrace) {
-      handleError('Error in getUserAppliedCalendarPlans', e, stackTrace);
+      handleError('Error in getAppliedCalendarPlan', e, stackTrace);
       rethrow;
+    }
+  }
+
+  Future<List<AppliedCalendarPlanSummary>> getUserAppliedCalendarPlanSummaries() async {
+    try {
+      // Preferred: lightweight summary response
+      return await getList<AppliedCalendarPlanSummary>(
+        ApiConfig.userAppliedCalendarPlansEndpoint,
+        (json) => AppliedCalendarPlanSummary.fromJson(json as Map<String, dynamic>),
+      );
+    } catch (e, stackTrace) {
+      // Fallback: some backends may still return full AppliedCalendarPlan list or error out.
+      // Try to fetch full models and down-map to summaries to keep UI functional.
+      try {
+        final fullPlans = await getList<AppliedCalendarPlan>(
+          ApiConfig.userAppliedCalendarPlansEndpoint,
+          (json) => AppliedCalendarPlan.fromJson(json as Map<String, dynamic>),
+        );
+        return fullPlans
+            .map((p) => AppliedCalendarPlanSummary(
+                  id: p.id,
+                  isActive: p.isActive,
+                  startDate: p.startDate,
+                  endDate: p.endDate,
+                  calendarPlan: CalendarPlanSummary(
+                    id: p.calendarPlan.id,
+                    name: p.calendarPlan.name,
+                  ),
+                ))
+            .toList();
+      } catch (e2, stackTrace2) {
+        handleError('Error in getUserAppliedCalendarPlanSummaries (including fallback)', e2, stackTrace2);
+        rethrow;
+      }
     }
   }
 }

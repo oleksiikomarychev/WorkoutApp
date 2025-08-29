@@ -6,6 +6,10 @@ import 'package:workout_app/screens/calendar_plans_screen.dart';
 import 'package:workout_app/widgets/custom_bottom_nav_bar.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
 import 'package:workout_app/config/api_config.dart';
+import 'package:workout_app/services/firebase_auth_service.dart';
+import 'package:workout_app/screens/clients_screen.dart';
+import 'package:workout_app/screens/profile_screen.dart';
+import 'package:workout_app/screens/user_base_screen.dart';
 
 class HomeScreenNew extends StatefulWidget {
   const HomeScreenNew({super.key});
@@ -16,6 +20,7 @@ class HomeScreenNew extends StatefulWidget {
 
 class _HomeScreenNewState extends State<HomeScreenNew> {
   int _selectedIndex = 0;
+  final FirebaseAuthService _authService = FirebaseAuthService();
   
   final List<Widget> _widgetOptions = [
     const WorkoutsScreen(),  // Connected to workoutEndpoint
@@ -59,20 +64,53 @@ class _HomeScreenNewState extends State<HomeScreenNew> {
     final bottomPadding = mediaQuery.padding.bottom;
     
     return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight),
-        child: AppBar(
-          title: Text(
-            _appBarTitles[_selectedIndex],
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+      appBar: AppBar(
+        title: Text(_appBarTitles[_selectedIndex]),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) async {
+              if (value == 'userbase') {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const UserBaseScreen()),
+                );
+              } else if (value == 'clients') {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ClientsScreen()),
+                );
+              } else if (value == 'profile') {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                );
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'userbase',
+                child: Text('База пользователей'),
+              ),
+              PopupMenuItem(
+                value: 'clients',
+                child: Text('Клиенты'),
+              ),
+              PopupMenuItem(
+                value: 'profile',
+                child: Text('Профиль'),
+              ),
+            ],
           ),
-          centerTitle: true,
-          elevation: 0,
-          backgroundColor: theme.scaffoldBackgroundColor,
-          foregroundColor: theme.colorScheme.onBackground,
-        ),
+          IconButton(
+            tooltip: 'Выйти',
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await _authService.signOut();
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Вы вышли из аккаунта')),
+              );
+              // AuthGate слушает состояние и сам вернёт на LoginScreen
+            },
+          ),
+        ],
       ),
       body: Padding(
         padding: EdgeInsets.only(bottom: kBottomNavigationBarHeight + bottomPadding),

@@ -13,10 +13,88 @@ class Region(str, Enum):
     lower = "lower"
 
 
+class Muscle(str, Enum):
+    # Chest
+    PectoralisMajor = "PectoralisMajor"
+    PectoralisMinor = "PectoralisMinor"
+    SerratusAnterior = "SerratusAnterior"
+
+    # Back
+    LatissimusDorsi = "LatissimusDorsi"
+    TrapeziusUpper = "TrapeziusUpper"
+    TrapeziusMiddle = "TrapeziusMiddle"
+    TrapeziusLower = "TrapeziusLower"
+    RhomboidMajor = "RhomboidMajor"
+    RhomboidMinor = "RhomboidMinor"
+    ErectorSpinae = "ErectorSpinae"
+    TeresMajor = "TeresMajor"
+    TeresMinor = "TeresMinor"
+    Infraspinatus = "Infraspinatus"
+
+    # Shoulders
+    DeltoidAnterior = "DeltoidAnterior"
+    DeltoidLateral = "DeltoidLateral"
+    DeltoidPosterior = "DeltoidPosterior"
+    Supraspinatus = "Supraspinatus"
+    Subscapularis = "Subscapularis"
+
+    # Arms
+    BicepsBrachiiShortHead = "BicepsBrachiiShortHead"
+    BicepsBrachiiLongHead = "BicepsBrachiiLongHead"
+    Brachialis = "Brachialis"
+    Brachioradialis = "Brachioradialis"
+    TricepsLongHead = "TricepsLongHead"
+    TricepsLateralHead = "TricepsLateralHead"
+    TricepsMedialHead = "TricepsMedialHead"
+    ForearmFlexors = "ForearmFlexors"
+    ForearmExtensors = "ForearmExtensors"
+
+    # Legs
+    GluteusMaximus = "GluteusMaximus"
+    GluteusMedius = "GluteusMedius"
+    GluteusMinimus = "GluteusMinimus"
+    QuadricepsRectusFemoris = "QuadricepsRectusFemoris"
+    QuadricepsVastusLateralis = "QuadricepsVastusLateralis"
+    QuadricepsVastusMedialis = "QuadricepsVastusMedialis"
+    QuadricepsVastusIntermedius = "QuadricepsVastusIntermedius"
+    HamstringsBicepsFemoris = "HamstringsBicepsFemoris"
+    HamstringsSemitendinosus = "HamstringsSemitendinosus"
+    HamstringsSemimembranosus = "HamstringsSemimembranosus"
+    AdductorLongus = "AdductorLongus"
+    AdductorBrevis = "AdductorBrevis"
+    AdductorMagnus = "AdductorMagnus"
+    Gracilis = "Gracilis"
+    Sartorius = "Sartorius"
+    TensorFasciaeLatae = "TensorFasciaeLatae"
+    GastrocnemiusMedialHead = "GastrocnemiusMedialHead"
+    GastrocnemiusLateralHead = "GastrocnemiusLateralHead"
+    Soleus = "Soleus"
+    TibialisAnterior = "TibialisAnterior"
+
+    # Core
+    RectusAbdominis = "RectusAbdominis"
+    ExternalOblique = "ExternalOblique"
+    InternalOblique = "InternalOblique"
+    TransversusAbdominis = "TransversusAbdominis"
+    QuadratusLumborum = "QuadratusLumborum"
+
+    # Neck
+    Sternocleidomastoid = "Sternocleidomastoid"
+    SpleniusCapitis = "SpleniusCapitis"
+    LevatorScapulae = "LevatorScapulae"
+
+
+class MuscleInfo(BaseModel):
+    key: Muscle
+    label: str
+    group: str
+
+
 class ExerciseListBase(BaseModel):
     name: str = Field(..., max_length=255)
     muscle_group: Optional[str] = None
     equipment: Optional[str] = None
+    # Keep as strings for backward compatibility with DB; client may map to enum
     target_muscles: Optional[List[str]] = None
     synergist_muscles: Optional[List[str]] = None
     movement_type: Optional[MovementType] = None

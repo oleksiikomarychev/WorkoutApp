@@ -21,7 +21,9 @@ def get_session_service(db: Session = Depends(get_db)) -> WorkoutSessionService:
     response_model=WorkoutSessionResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def start_session(workout_id: int, service: WorkoutSessionService = Depends(get_session_service)):
+def start_session(
+    workout_id: int, service: WorkoutSessionService = Depends(get_session_service)
+):
     try:
         session = service.start_session(workout_id)
         # If an active session already existed, 200 would be more accurate, but we keep 201 for simplicity
@@ -34,7 +36,9 @@ def start_session(workout_id: int, service: WorkoutSessionService = Depends(get_
     "/workouts/{workout_id}/active",
     response_model=WorkoutSessionResponse,
 )
-def get_active_session(workout_id: int, service: WorkoutSessionService = Depends(get_session_service)):
+def get_active_session(
+    workout_id: int, service: WorkoutSessionService = Depends(get_session_service)
+):
     session = service.get_active_session(workout_id)
     if not session:
         raise HTTPException(status_code=404, detail="No active session")
@@ -45,7 +49,9 @@ def get_active_session(workout_id: int, service: WorkoutSessionService = Depends
     "/workouts/{workout_id}/history",
     response_model=list[WorkoutSessionResponse],
 )
-def list_sessions(workout_id: int, service: WorkoutSessionService = Depends(get_session_service)):
+def list_sessions(
+    workout_id: int, service: WorkoutSessionService = Depends(get_session_service)
+):
     return service.list_sessions(workout_id)
 
 

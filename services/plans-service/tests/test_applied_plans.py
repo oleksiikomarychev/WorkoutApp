@@ -17,7 +17,9 @@ def test_apply_and_list_active(client: TestClient):
         "user_max_ids": [1, 2, 3],
         "compute": {"generate_workouts": False},
     }
-    r = client.post(f"/api/v1/applied-calendar-plans/apply/{plan_id}", json=apply_payload)
+    r = client.post(
+        f"/api/v1/applied-calendar-plans/apply/{plan_id}", json=apply_payload
+    )
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["calendar_plan_id"] == plan_id

@@ -31,7 +31,9 @@ class WorkoutSessionService:
         # ensure workout exists (optional for list)
         return self.repo.list_for_workout(workout_id)
 
-    def update_progress(self, session_id: int, instance_id: int, set_id: int, completed: bool) -> WorkoutSession:
+    def update_progress(
+        self, session_id: int, instance_id: int, set_id: int, completed: bool
+    ) -> WorkoutSession:
         session = self.repo.get(session_id)
         if not session:
             raise ValueError("Session not found")

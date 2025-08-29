@@ -1,13 +1,16 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List
+from pydantic import BaseModel
+from typing import Optional
+
 
 class UserMaxBase(BaseModel):
     exercise_id: int
     max_weight: int
     rep_max: int
 
+
 class UserMaxCreate(UserMaxBase):
     pass
+
 
 class UserMax(UserMaxBase):
     id: int
@@ -15,11 +18,13 @@ class UserMax(UserMaxBase):
     class Config:
         orm_mode = True
 
+
 class UserMaxResponse(UserMaxBase):
     id: int
 
     class Config:
         orm_mode = True
+
 
 class UserMaxUpdate(BaseModel):
     id: int

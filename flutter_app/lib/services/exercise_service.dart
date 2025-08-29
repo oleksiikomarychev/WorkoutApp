@@ -7,6 +7,7 @@ import 'api_client.dart';
 import 'base_api_service.dart';
 import 'logger_service.dart';
 import 'package:workout_app/config/api_config.dart';
+import 'package:workout_app/models/muscle_info.dart';
 
 class ExerciseService extends BaseApiService {
   final ApiClient _apiClient;
@@ -23,19 +24,41 @@ class ExerciseService extends BaseApiService {
         ApiConfig.exerciseDefinitionsEndpoint,
         context: 'ExerciseService.getExerciseDefinitions',
       );
-      
       if (response is List) {
         return response
             .whereType<Map<String, dynamic>>()
             .map((json) => ExerciseDefinition.fromJson(json))
             .toList();
       } else {
-        handleError('Invalid response format for exercise definitions',
-            Exception('Expected a list of exercise definitions'));
+        handleError(
+          'Invalid response format for exercise definitions',
+          Exception('Expected a list of exercise definitions'),
+        );
         return [];
       }
     } catch (e, stackTrace) {
       handleError('Failed to get exercise definitions', e, stackTrace);
+      rethrow;
+    }
+  }
+
+  /// Fetches muscles enum with labels and groups
+  Future<List<MuscleInfo>> getMuscles() async {
+    try {
+      final response = await _apiClient.get(
+        ApiConfig.musclesEndpoint,
+        context: 'ExerciseService.getMuscles',
+      );
+      if (response is List) {
+        return response
+            .whereType<Map<String, dynamic>>()
+            .map((e) => MuscleInfo.fromJson(e))
+            .toList();
+      }
+      handleError('Invalid response format for muscles', Exception('Expected a list'));
+      return [];
+    } catch (e, stackTrace) {
+      handleError('Failed to get muscles', e, stackTrace);
       rethrow;
     }
   }

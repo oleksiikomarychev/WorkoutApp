@@ -160,265 +160,285 @@ class _CalendarPlansScreenState extends ConsumerState<CalendarPlansScreen> {
     }
   }
 
+  void _openAddPlanSheet() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.add_box_outlined),
+              title: const Text('Создать (классический)'),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _navigateToCreateScreen();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.auto_awesome),
+              title: const Text('Создать (мастер)'),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _navigateToWizardScreen();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Calendar Plans'),
-        actions: [
-          if (_tabIndex == 1) // Only allow creating in Saved tab
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.add),
-              onSelected: (value) {
-                switch (value) {
-                  case 'classic':
-                    _navigateToCreateScreen();
-                    break;
-                  case 'wizard':
-                    _navigateToWizardScreen();
-                    break;
-                }
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(value: 'classic', child: Text('Создать (классический)')),
-                PopupMenuItem(value: 'wizard', child: Text('Создать (мастер)')),
-              ],
-            ),
-        ],
-      ),
-      body: Column(
-        children: [
-          const SizedBox(height: 8),
-          // Top toggle
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: ToggleButtons(
-              isSelected: [_tabIndex == 0, _tabIndex == 1],
-              onPressed: (index) {
-                setState(() => _tabIndex = index);
-                if (index == 1) {
-                  // When switching to Saved, refresh instances from backend
-                  _loadInstances();
-                }
-              },
-              borderRadius: BorderRadius.circular(8),
-              constraints: const BoxConstraints(minHeight: 36, minWidth: 140),
-              children: const [
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12.0),
-                  child: Text('Планы сообщества'),
-                ),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12.0),
-                  child: Text('Сохраненные'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: Consumer(
-              builder: (context, ref, child) {
-                final calendarPlansState = ref.watch(calendarPlansNotifierProvider);
-                
-                return calendarPlansState.when(
-                  loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (error, stackTrace) {
-                    _logger.e('Error loading calendar plans: $error\n$stackTrace');
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.error_outline, color: Colors.red, size: 48),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Error loading calendar plans',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            error.toString(),
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                          const SizedBox(height: 16),
-                          ElevatedButton.icon(
-                            onPressed: () => ref.refresh(calendarPlansNotifierProvider),
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Retry'),
-                          ),
-                        ],
-                      ),
-                    );
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 40.0), // Add padding to avoid overlap with back button
+              child: Column(
+                children: [
+              // Top toggle
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: ToggleButtons(
+                  isSelected: [_tabIndex == 0, _tabIndex == 1],
+                  onPressed: (index) {
+                    setState(() => _tabIndex = index);
+                    if (index == 1) {
+                      // When switching to Saved, refresh instances from backend
+                      _loadInstances();
+                    }
                   },
-                  data: (plans) {
-                    final displayPlans = _tabIndex == 0
-                        ? plans
-                        : plans.where((p) => _favoritePlanIds.contains(p.id)).toList();
-
-                    return RefreshIndicator(
-                      onRefresh: () async {
-                        await ref.refresh(calendarPlansNotifierProvider);
-                        await ref.read(calendarPlansNotifierProvider.notifier).loadCalendarPlans();
-                        await _loadFavorites();
-                        await _loadInstances();
-                      },
-                      child: ListView(
-                        padding: const EdgeInsets.all(16),
-                        children: [
-                          // Plans section (community or saved)
-                          if (displayPlans.isNotEmpty) ...[
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8.0),
-                              child: Text(
-                                _tabIndex == 0 ? 'Планы сообщества' : 'Сохраненные планы',
+                  borderRadius: BorderRadius.circular(8),
+                  constraints: const BoxConstraints(minHeight: 36, minWidth: 140),
+                  children: const [
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12.0),
+                      child: Text('Планы сообщества'),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12.0),
+                      child: Text('Сохраненные'),
+                    ),
+                  ],
+                ),
+              ),),
+              const SizedBox(height: 8),
+              Expanded(
+                child: Consumer(
+                  builder: (context, ref, child) {
+                    final calendarPlansState = ref.watch(calendarPlansNotifierProvider);
+                    
+                    return calendarPlansState.when(
+                      loading: () => const Center(child: CircularProgressIndicator()),
+                      error: (error, stackTrace) {
+                        _logger.e('Error loading calendar plans: $error\n$stackTrace');
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Error loading calendar plans',
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
-                            ),
-                            ...displayPlans.map((plan) {
-                              final isFav = _favoritePlanIds.contains(plan.id);
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 16),
-                                child: ListTile(
-                                  leading: const Icon(Icons.calendar_today),
-                                  title: Text(
-                                    plan.name,
+                              const SizedBox(height: 8),
+                              Text(
+                                error.toString(),
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                onPressed: () => ref.refresh(calendarPlansNotifierProvider),
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      data: (plans) {
+                        final displayPlans = _tabIndex == 0
+                            ? plans
+                            : plans.where((p) => _favoritePlanIds.contains(p.id)).toList();
+
+                        return RefreshIndicator(
+                          onRefresh: () async {
+                            await ref.refresh(calendarPlansNotifierProvider);
+                            await ref.read(calendarPlansNotifierProvider.notifier).loadCalendarPlans();
+                            await _loadFavorites();
+                            await _loadInstances();
+                          },
+                          child: ListView(
+                            padding: const EdgeInsets.all(16),
+                            children: [
+                              // Plans section (community or saved)
+                              if (displayPlans.isNotEmpty) ...[
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8.0),
+                                  child: Text(
+                                    _tabIndex == 0 ? 'Планы сообщества' : 'Сохраненные планы',
                                     style: Theme.of(context).textTheme.titleMedium,
                                   ),
-                                  subtitle: Text(
-                                    'Duration: ${plan.durationWeeks} weeks',
-                                    style: Theme.of(context).textTheme.bodySmall,
-                                  ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        tooltip: isFav ? 'Убрать из сохраненных' : 'Сохранить',
-                                        icon: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? Colors.pinkAccent : null),
-                                        onPressed: () => _toggleFavorite(plan.id),
+                                ),
+                                ...displayPlans.map((plan) {
+                                  final isFav = _favoritePlanIds.contains(plan.id);
+                                  return Card(
+                                    margin: const EdgeInsets.only(bottom: 16),
+                                    child: ListTile(
+                                      leading: const Icon(Icons.calendar_today),
+                                      title: Text(
+                                        plan.name,
+                                        style: Theme.of(context).textTheme.titleMedium,
                                       ),
-                                      if (_tabIndex == 1)
-                                        IconButton(
-                                          icon: const Icon(Icons.delete, color: Colors.redAccent),
-                                          onPressed: () async {
-                                            final confirm = await showDialog<bool>(
-                                              context: context,
-                                              builder: (ctx) => AlertDialog(
-                                                title: const Text('Delete plan?'),
-                                                content: Text('Are you sure you want to delete "${plan.name}"?'),
-                                                actions: [
-                                                  TextButton(
-                                                    onPressed: () => Navigator.of(ctx).pop(false),
-                                                    child: const Text('Cancel'),
+                                      subtitle: Text(
+                                        'Duration: ${plan.durationWeeks} weeks',
+                                        style: Theme.of(context).textTheme.bodySmall,
+                                      ),
+                                      trailing: Flexible(
+                                        child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            tooltip: isFav ? 'Убрать из сохраненных' : 'Сохранить',
+                                            icon: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? Colors.pinkAccent : null),
+                                            onPressed: () => _toggleFavorite(plan.id),
+                                          ),
+                                          if (_tabIndex == 1)
+                                            IconButton(
+                                              icon: const Icon(Icons.delete, color: Colors.redAccent),
+                                              onPressed: () async {
+                                                final confirm = await showDialog<bool>(
+                                                  context: context,
+                                                  builder: (ctx) => AlertDialog(
+                                                    title: const Text('Delete plan?'),
+                                                    content: Text('Are you sure you want to delete "${plan.name}"?'),
+                                                    actions: [
+                                                      TextButton(
+                                                        onPressed: () => Navigator.of(ctx).pop(false),
+                                                        child: const Text('Cancel'),
+                                                      ),
+                                                      ElevatedButton(
+                                                        onPressed: () => Navigator.of(ctx).pop(true),
+                                                        child: const Text('Delete'),
+                                                      ),
+                                                    ],
                                                   ),
-                                                  ElevatedButton(
-                                                    onPressed: () => Navigator.of(ctx).pop(true),
-                                                    child: const Text('Delete'),
-                                                  ),
-                                                ],
-                                              ),
-                                            );
-                                            if (confirm != true) return;
-                                            try {
-                                              await ref.read(calendarPlanServiceProvider).deleteCalendarPlan(plan.id);
-                                              if (!mounted) return;
-                                              await ref.read(calendarPlansNotifierProvider.notifier).loadCalendarPlans();
-                                            } catch (e) {
-                                              if (!mounted) return;
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(content: Text('Failed to delete plan: $e')),
-                                              );
-                                            }
-                                          },
-                                        ),
-                                      const Icon(Icons.chevron_right),
+                                                );
+                                                if (confirm != true) return;
+                                                try {
+                                                  await ref.read(calendarPlanServiceProvider).deleteCalendarPlan(plan.id);
+                                                  if (!mounted) return;
+                                                  await ref.read(calendarPlansNotifierProvider.notifier).loadCalendarPlans();
+                                                } catch (e) {
+                                                  if (!mounted) return;
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(content: Text('Failed to delete plan: $e')),
+                                                  );
+                                                }
+                                              },
+                                            ),
+                                          const Icon(Icons.chevron_right),
+                                        ],
+                                      ),), 
+                                      onTap: () {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) => CalendarPlanScreen(planId: plan.id),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  );
+                                }).toList(),
+                              ]
+                              else ...[
+                                if (_tabIndex == 0)
+                                  EmptyState(
+                                    icon: Icons.calendar_today,
+                                    title: 'Нет планов сообщества',
+                                    description: 'Планы сообщества пока отсутствуют.',
+                                    action: ElevatedButton.icon(
+                                      onPressed: () => ref.refresh(calendarPlansNotifierProvider),
+                                      icon: const Icon(Icons.refresh),
+                                      label: const Text('Обновить'),
+                                    ),
+                                  ),
+                              ],
+
+                              // Instances section, only in Saved tab
+                              if (_tabIndex == 1) ...[
+                                const SizedBox(height: 8),
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8.0),
+                                  child: Row(
+                                    children: [
+                                      Text('Инстансы', style: Theme.of(context).textTheme.titleMedium),
+                                      const SizedBox(width: 8),
+                                      if (_isInstancesLoading)
+                                        const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                                     ],
                                   ),
-                                  onTap: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => CalendarPlanScreen(planId: plan.id),
+                                ),
+                                if (!_isInstancesLoading && _instances.isEmpty)
+                                  Card(
+                                    margin: const EdgeInsets.only(bottom: 16),
+                                    child: ListTile(
+                                      leading: const Icon(Icons.history_toggle_off),
+                                      title: const Text('Нет инстансов'),
+                                      subtitle: const Text('Создайте инстанс из плана, чтобы отслеживать прогресс'),
+                                      trailing: const Icon(Icons.chevron_right),
+                                      onTap: () {},
+                                    ),
+                                  )
+                                else ..._instances.map((inst) => Card(
+                                      margin: const EdgeInsets.only(bottom: 16),
+                                      child: ListTile(
+                                        leading: const Icon(Icons.playlist_add_check),
+                                        title: Text(inst.name),
+                                        subtitle: Text('Длительность: ${inst.durationWeeks} нед.'),
+                                        trailing: const Icon(Icons.chevron_right),
+                                        onTap: () {
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (_) => CalendarPlanInstanceScreen(instanceId: inst.id),
+                                            ),
+                                          );
+                                        },
                                       ),
-                                    );
-                                  },
-                                ),
-                              );
-                            }).toList(),
-                          ]
-                          else ...[
-                            if (_tabIndex == 0)
-                              EmptyState(
-                                icon: Icons.calendar_today,
-                                title: 'Нет планов сообщества',
-                                description: 'Планы сообщества пока отсутствуют.',
-                                action: ElevatedButton.icon(
-                                  onPressed: () => ref.refresh(calendarPlansNotifierProvider),
-                                  icon: const Icon(Icons.refresh),
-                                  label: const Text('Обновить'),
-                                ),
-                              ),
-                          ],
-
-                          // Instances section, only in Saved tab
-                          if (_tabIndex == 1) ...[
-                            const SizedBox(height: 8),
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8.0),
-                              child: Row(
-                                children: [
-                                  Text('Инстансы', style: Theme.of(context).textTheme.titleMedium),
-                                  const SizedBox(width: 8),
-                                  if (_isInstancesLoading)
-                                    const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                                ],
-                              ),
-                            ),
-                            if (!_isInstancesLoading && _instances.isEmpty)
-                              Card(
-                                margin: const EdgeInsets.only(bottom: 16),
-                                child: ListTile(
-                                  leading: const Icon(Icons.history_toggle_off),
-                                  title: const Text('Нет инстансов'),
-                                  subtitle: const Text('Создайте инстанс из плана, чтобы отслеживать прогресс'),
-                                  trailing: const Icon(Icons.chevron_right),
-                                  onTap: () {},
-                                ),
-                              )
-                            else ..._instances.map((inst) => Card(
-                                  margin: const EdgeInsets.only(bottom: 16),
-                                  child: ListTile(
-                                    leading: const Icon(Icons.playlist_add_check),
-                                    title: Text(inst.name),
-                                    subtitle: Text('Длительность: ${inst.durationWeeks} нед.'),
-                                    trailing: const Icon(Icons.chevron_right),
-                                    onTap: () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) => CalendarPlanInstanceScreen(instanceId: inst.id),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                )),
-                          ],
-                        ],
-                      ),
+                                    )),
+                              ],
+                            ],
+                          ),
+                        );
+                      },
                     );
                   },
-                );
-              },
-            ),
+                ),
+              ),
+            ], // Column children
           ),
-        ],
-      ),
-      floatingActionButton: _tabIndex == 1
-          ? FloatingActionButton(
-              onPressed: _navigateToCreateScreen,
-              child: const Icon(Icons.add),
-            )
-          : null,
-    );
-  }
+        ),
+        const Positioned(
+          top: 0,
+          left: 4,
+          child: BackButton(),
+        ),
+      ],
+    ),
+  ),
+  floatingActionButton: FloatingActionButton(
+    onPressed: _openAddPlanSheet,
+    tooltip: 'Добавить план',
+    child: const Icon(Icons.add),
+  ),
+);
+}
 }
 
 // ===== Create Plan Screen =====
@@ -1019,32 +1039,43 @@ class _CalendarPlanCreateScreenState extends ConsumerState<CalendarPlanCreateScr
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Создать план'),
-        actions: [
-          IconButton(onPressed: _submitting ? null : _submit, icon: const Icon(Icons.check)),
-        ],
+        leading: const BackButton(color: Colors.black),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        iconTheme: const IconThemeData(color: Colors.black),
+        foregroundColor: Colors.black,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Название плана')),
-            const SizedBox(height: 16),
-            _MesocycleEditor(
-              mesocycles: _mesocycles,
-              onAdd: _addMesocycle,
-              onRemove: _removeMesocycle,
-              onReorder: _onReorderMesocycles,
-              onUpdate: (fn) => setState(fn),
-              onAddWeekToMesocycle: _addWeekToMesocycle,
-              weeks: _weeks,
-              buildWeekTile: (idx, week, len) => _buildWeekTile(idx, week, len),
-            ),
-          ],
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Название плана')),
+              const SizedBox(height: 16),
+              _MesocycleEditor(
+                mesocycles: _mesocycles,
+                onAdd: _addMesocycle,
+                onRemove: _removeMesocycle,
+                onReorder: _onReorderMesocycles,
+                onUpdate: (fn) => setState(fn),
+                onAddWeekToMesocycle: _addWeekToMesocycle,
+                weeks: _weeks,
+                buildWeekTile: (idx, week, len) => _buildWeekTile(idx, week, len),
+              ),
+            ],
+          ),
         ),
       ),
-      floatingActionButton: _submitting ? null : null,
+      floatingActionButton: _submitting
+          ? null
+          : FloatingActionButton(
+              onPressed: _submit,
+              tooltip: 'Сохранить',
+              child: const Icon(Icons.check),
+            ),
     );
   }
 

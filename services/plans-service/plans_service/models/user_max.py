@@ -1,8 +1,7 @@
 from sqlalchemy import Column, Integer
 from sqlalchemy.orm import relationship
 from ..database import Base
-from typing import Optional, List
-from datetime import datetime
+
 
 class UserMax(Base):
     __tablename__ = "user_maxes"
@@ -12,9 +11,13 @@ class UserMax(Base):
     exercise_id = Column(Integer, nullable=False)
     max_weight = Column(Integer, nullable=False)
     rep_max = Column(Integer, nullable=False)
-    
+
     exercise_instances = relationship("ExerciseInstance", back_populates="user_max")
-    applied_plans = relationship("AppliedCalendarPlan", back_populates="user_maxes", secondary="applied_calendar_plan_user_maxes")
+    applied_plans = relationship(
+        "AppliedCalendarPlan",
+        back_populates="user_maxes",
+        secondary="applied_calendar_plan_user_maxes",
+    )
 
     def __str__(self):
         return f"UserMax(exercise_id={self.exercise_id}): {self.max_weight} kg ({self.rep_max} reps)"

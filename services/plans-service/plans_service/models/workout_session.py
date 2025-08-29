@@ -8,7 +8,12 @@ class WorkoutSession(Base):
     __tablename__ = "workout_sessions"
 
     id = Column(Integer, primary_key=True, index=True)
-    workout_id = Column(Integer, ForeignKey("workouts.id", ondelete="CASCADE"), nullable=False, index=True)
+    workout_id = Column(
+        Integer,
+        ForeignKey("workouts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
     started_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     ended_at = Column(DateTime, nullable=True)

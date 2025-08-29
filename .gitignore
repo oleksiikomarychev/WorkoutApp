@@ -25,3 +25,5 @@ uv.lock
 .windsurf
 .pytest_cache
 .gitignore
+# Ignore Firebase service account
+Workout App Auth Firebase Service Account.json
