@@ -175,50 +175,71 @@ class _MesocycleEditorScreenState extends ConsumerState<MesocycleEditorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Мезоциклы'),
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text(_error!))
-              : _mesocycles.isEmpty
-                  ? const Center(child: Text('Пока пусто'))
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(12),
-                      itemCount: _mesocycles.length,
-                      itemBuilder: (context, index) {
-                        final m = _mesocycles[index];
-                        final previewText = _getMesocyclePreview(m);
-                        return Card(
-                          child: ListTile(
-                            title: Text(m.name),
-                            subtitle: Text(previewText),
-                            leading: CircleAvatar(child: Text('${m.orderIndex}')),
-                            trailing: PopupMenuButton<String>(
-                              onSelected: (v) {
-                                switch (v) {
-                                  case 'edit':
-                                    _showEditMesocycleDialog(existing: m);
-                                    break;
-                                  case 'micro':
-                                    _openMicrocyclesSheet(m);
-                                    break;
-                                  case 'del':
-                                    _deleteMesocycle(m);
-                                    break;
-                                }
-                              },
-                              itemBuilder: (ctx) => const [
-                                PopupMenuItem(value: 'edit', child: Text('Редактировать')),
-                                PopupMenuItem(value: 'micro', child: Text('Микроциклы')),
-                                PopupMenuItem(value: 'del', child: Text('Удалить')),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+              child: Row(
+                children: [
+                  const BackButton(),
+                  Expanded(
+                    child: Text(
+                      'Мезоциклы',
+                      style: Theme.of(context).textTheme.titleLarge,
+                      textAlign: TextAlign.center,
                     ),
+                  ),
+                  const SizedBox(width: 48), // Balance BackButton
+                ],
+              ),
+            ),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                      ? Center(child: Text(_error!))
+                      : _mesocycles.isEmpty
+                          ? const Center(child: Text('Пока пусто'))
+                          : ListView.builder(
+                              padding: const EdgeInsets.all(12),
+                              itemCount: _mesocycles.length,
+                              itemBuilder: (context, index) {
+                                final m = _mesocycles[index];
+                                final previewText = _getMesocyclePreview(m);
+                                return Card(
+                                  child: ListTile(
+                                    title: Text(m.name),
+                                    subtitle: Text(previewText),
+                                    leading: CircleAvatar(child: Text('${m.orderIndex}')),
+                                    trailing: PopupMenuButton<String>(
+                                      onSelected: (v) {
+                                        switch (v) {
+                                          case 'edit':
+                                            _showEditMesocycleDialog(existing: m);
+                                            break;
+                                          case 'micro':
+                                            _openMicrocyclesSheet(m);
+                                            break;
+                                          case 'del':
+                                            _deleteMesocycle(m);
+                                            break;
+                                        }
+                                      },
+                                      itemBuilder: (ctx) => const [
+                                        PopupMenuItem(value: 'edit', child: Text('Редактировать')),
+                                        PopupMenuItem(value: 'micro', child: Text('Микроциклы')),
+                                        PopupMenuItem(value: 'del', child: Text('Удалить')),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+            ),
+          ],
+        ),
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showEditMesocycleDialog(),
         icon: const Icon(Icons.add),

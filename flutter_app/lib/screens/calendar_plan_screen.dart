@@ -12,6 +12,7 @@ import 'package:workout_app/models/plan_schedule.dart';
 import 'package:workout_app/models/mesocycle.dart';
 import 'package:workout_app/models/microcycle.dart';
 
+
 class CalendarPlanScreen extends ConsumerStatefulWidget {
   final int planId;
   const CalendarPlanScreen({super.key, required this.planId});
@@ -689,20 +690,23 @@ class _CalendarPlanScreenState extends ConsumerState<CalendarPlanScreen> {
                             final exerciseName = _exerciseNames[um.exerciseId] ?? 'Упражнение #${um.exerciseId}';
                             final uid = um.id;
                             final selected = uid != null && _selectedUserMaxIds.contains(uid);
-                            return CheckboxListTile(
-                              value: selected,
-                              onChanged: (val) {
-                                setModalState(() {
-                                  if (uid == null) return;
-                                  if (val == true) {
-                                    _selectedUserMaxIds.add(uid);
-                                  } else {
-                                    _selectedUserMaxIds.remove(uid);
-                                  }
-                                });
-                              },
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
                               title: Text(exerciseName),
                               subtitle: Text('RM${um.repMax}: ${um.maxWeight} кг'),
+                              trailing: Checkbox(
+                                value: selected,
+                                onChanged: (val) {
+                                  setModalState(() {
+                                    if (uid == null) return;
+                                    if (val == true) {
+                                      _selectedUserMaxIds.add(uid);
+                                    } else {
+                                      _selectedUserMaxIds.remove(uid);
+                                    }
+                                  });
+                                },
+                              ),
                             );
                           },
                         ),
@@ -799,6 +803,132 @@ class _CalendarPlanScreenState extends ConsumerState<CalendarPlanScreen> {
     );
   }
 
+  Future<void> _openAddMesocycleSheet() async {
+    bool localSubmitting = false;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        final nameCtrl = TextEditingController();
+        final notesCtrl = TextEditingController();
+        final orderCtrl = TextEditingController();
+        final formKey = GlobalKey<FormState>();
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            Future<void> save() async {
+              if (localSubmitting) return;
+              if (!formKey.currentState!.validate()) return;
+              setModalState(() => localSubmitting = true);
+              try {
+                final newName = nameCtrl.text.trim();
+                final newNotes = notesCtrl.text.trim();
+                final newOrder = orderCtrl.text.trim().isEmpty ? null : int.tryParse(orderCtrl.text.trim());
+                final svc = ref.read(mesocycleServiceProvider);
+                await svc.createMesocycle(
+                  widget.planId,
+                  MesocycleUpdateDto(
+                    name: newName.isEmpty ? null : newName,
+                    notes: newNotes.isEmpty ? '' : newNotes,
+                    orderIndex: newOrder,
+                  ),
+                );
+                if (!mounted) return;
+                await _loadMesocyclesForPlan(widget.planId);
+                Navigator.of(ctx).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Мезоцикл добавлен')),
+                );
+              } catch (e, st) {
+                _logger.e('Failed to add mesocycle: $e\n$st');
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Не удалось добавить мезоцикл')),
+                );
+              } finally {
+                // Avoid setState after pop; do not reset localSubmitting here if sheet closed
+              }
+            }
+
+            final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(left: 16, right: 16, top: 16, bottom: bottomInset + 16),
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Новый мезоцикл', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.of(ctx).pop(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: nameCtrl,
+                        decoration: const InputDecoration(labelText: 'Название'),
+                        textInputAction: TextInputAction.next,
+                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Введите название' : null,
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: orderCtrl,
+                        decoration: const InputDecoration(labelText: 'Порядок (целое, необязательно)'),
+                        keyboardType: TextInputType.number,
+                        textInputAction: TextInputAction.next,
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) return null;
+                          return int.tryParse(v.trim()) == null ? 'Введите число' : null;
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: notesCtrl,
+                        decoration: const InputDecoration(labelText: 'Описание (необязательно)'),
+                        minLines: 2,
+                        maxLines: 5,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: localSubmitting ? null : () => Navigator.of(ctx).pop(),
+                              child: const Text('Отмена'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: localSubmitting ? null : save,
+                              icon: localSubmitting
+                                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                  : const Icon(Icons.add),
+                              label: const Text('Добавить'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -809,71 +939,86 @@ class _CalendarPlanScreenState extends ConsumerState<CalendarPlanScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('План тренировок'),
-        centerTitle: true,
+        leading: const BackButton(color: Colors.black),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        iconTheme: const IconThemeData(color: Colors.black),
+        foregroundColor: Colors.black,
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'edit') {
+                _createInstance();
+              } else if (value == 'apply') {
+                _openApplyPlanSheet();
+              } else if (value == 'add_meso') {
+                _openAddMesocycleSheet();
+              }
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'edit',
+                child: Text('Редактировать копию'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'apply',
+                child: Text('Применить план'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'add_meso',
+                child: Text('Добавить мезоцикл'),
+              ),
+            ],
+          ),
+        ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(_errorMessage!, textAlign: TextAlign.center),
-                        const SizedBox(height: 12),
-                        ElevatedButton(
-                          onPressed: _loadPlan,
-                          child: const Text('Повторить'),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : _plan == null
-                  ? const SizedBox.shrink()
-                  : Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Название: ${_plan!.name}', style: Theme.of(context).textTheme.titleLarge),
-                            const SizedBox(height: 8),
-                            Text('Длительность: ${_plan!.durationWeeks} недель'),
-                            const SizedBox(height: 8),
-                            Text('Активен: ${_plan!.isActive ? 'Да' : 'Нет'}'),
-                            const SizedBox(height: 16),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                onPressed: _createInstance,
-                                icon: const Icon(Icons.copy_all),
-                                label: const Text('Создать редактируемую копию'),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                onPressed: _openApplyPlanSheet,
-                                icon: const Icon(Icons.playlist_add_check_circle),
-                                label: const Text('Применить план'),
-                              ),
-                            ),
-                            // Removed explicit "Редактировать мезоциклы" button; long-press on mesocycle card opens editor
-                            const SizedBox(height: 16),
-                            Text('Расписание', style: Theme.of(context).textTheme.titleMedium),
-                            const SizedBox(height: 8),
-                            if (_mesocycles.isNotEmpty)
-                              ..._mesocycles.map((meso) => _buildMesocycleSection(meso)).toList()
-                            else
-                              _buildSchedule(_plan!.schedule),
-                          ],
-                        ),
-                      ),
-                    ),
+      body: RefreshIndicator(
+        onRefresh: _loadPlan,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _errorMessage != null
+                ? Center(child: Text(_errorMessage!))
+                : _plan == null
+                    ? const Center(child: Text('План не найден'))
+                    : _buildPlanDetails(),
+      ),
+    );
+  }
+
+  Widget _buildPlanDetails() {
+    return Column(
+      children: [
+        const SizedBox(height: 16),
+        Text('Активен: ${_plan!.isActive ? 'Да' : 'Нет'}'),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _createInstance,
+            icon: const Icon(Icons.copy_all),
+            label: const Text('Создать редактируемую копию'),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _openApplyPlanSheet,
+            icon: const Icon(Icons.playlist_add_check_circle),
+            label: const Text('Применить план'),
+          ),
+        ),
+        // Removed explicit "Редактировать мезоциклы" button; long-press on mesocycle card opens editor
+        const SizedBox(height: 16),
+        Text('Расписание', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        if (_mesocycles.isNotEmpty)
+          ..._mesocycles.map((meso) => _buildMesocycleSection(meso)).toList()
+        else
+          _buildSchedule(_plan!.schedule),
+      ],
     );
   }
 

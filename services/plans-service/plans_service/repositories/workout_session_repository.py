@@ -12,12 +12,19 @@ class WorkoutSessionRepository:
         self.db = db
 
     def get(self, session_id: int) -> Optional[WorkoutSession]:
-        return self.db.query(WorkoutSession).filter(WorkoutSession.id == session_id).first()
+        return (
+            self.db.query(WorkoutSession)
+            .filter(WorkoutSession.id == session_id)
+            .first()
+        )
 
     def get_active_for_workout(self, workout_id: int) -> Optional[WorkoutSession]:
         return (
             self.db.query(WorkoutSession)
-            .filter(WorkoutSession.workout_id == workout_id, WorkoutSession.status == "active")
+            .filter(
+                WorkoutSession.workout_id == workout_id,
+                WorkoutSession.status == "active",
+            )
             .first()
         )
 
@@ -30,13 +37,20 @@ class WorkoutSessionRepository:
         )
 
     def create_for_workout(self, workout_id: int) -> WorkoutSession:
-        ws = WorkoutSession(workout_id=workout_id, started_at=datetime.utcnow(), status="active", progress={})
+        ws = WorkoutSession(
+            workout_id=workout_id,
+            started_at=datetime.utcnow(),
+            status="active",
+            progress={},
+        )
         self.db.add(ws)
         self.db.commit()
         self.db.refresh(ws)
         return ws
 
-    def update_progress(self, session: WorkoutSession, instance_id: int, set_id: int, completed: bool) -> WorkoutSession:
+    def update_progress(
+        self, session: WorkoutSession, instance_id: int, set_id: int, completed: bool
+    ) -> WorkoutSession:
         progress = dict(session.progress or {})
         completed_map = dict(progress.get("completed") or {})
         key = str(instance_id)
@@ -71,7 +85,11 @@ class WorkoutSessionRepository:
             session.ended_at = datetime.utcnow()
         session.status = "cancelled" if cancelled else "completed"
         try:
-            session.duration_seconds = int((session.ended_at - session.started_at).total_seconds()) if session.started_at else None
+            session.duration_seconds = (
+                int((session.ended_at - session.started_at).total_seconds())
+                if session.started_at
+                else None
+            )
         except Exception:
             session.duration_seconds = None
         # Persist optional metrics if provided

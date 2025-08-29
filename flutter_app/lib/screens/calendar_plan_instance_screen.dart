@@ -488,47 +488,64 @@ class _CalendarPlanInstanceScreenState extends ConsumerState<CalendarPlanInstanc
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Редактор плана'),
-        actions: [
-          IconButton(onPressed: _saveMeta, icon: const Icon(Icons.save)),
-          IconButton(
-            onPressed: _openApplyPlanSheet,
-            tooltip: 'Применить план',
-            icon: const Icon(Icons.playlist_add_check_circle),
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
-              ? Center(child: Text(_errorMessage!))
-              : _instance == null
-                  ? const SizedBox.shrink()
-                  : Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            TextField(
-                              controller: _nameCtrl,
-                              decoration: const InputDecoration(labelText: 'Название плана'),
-                            ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: _durationCtrl,
-                              decoration: const InputDecoration(labelText: 'Длительность (недели)'),
-                              keyboardType: TextInputType.number,
-                            ),
-                            const SizedBox(height: 16),
-                            Text('Расписание', style: Theme.of(context).textTheme.titleMedium),
-                            const SizedBox(height: 8),
-                            _buildSchedule(_instance!),
-                          ],
-                        ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const BackButton(),
+                  Text('Редактор плана', style: Theme.of(context).textTheme.titleLarge),
+                  Row(
+                    children: [
+                      IconButton(onPressed: _saveMeta, icon: const Icon(Icons.save)),
+                      IconButton(
+                        onPressed: _openApplyPlanSheet,
+                        tooltip: 'Применить план',
+                        icon: const Icon(Icons.playlist_add_check_circle),
                       ),
-                    ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _errorMessage != null
+                      ? Center(child: Text(_errorMessage!))
+                      : _instance == null
+                          ? const SizedBox.shrink()
+                          : Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: SingleChildScrollView(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    TextField(
+                                      controller: _nameCtrl,
+                                      decoration: const InputDecoration(labelText: 'Название плана'),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    TextField(
+                                      controller: _durationCtrl,
+                                      decoration: const InputDecoration(labelText: 'Длительность (недели)'),
+                                      keyboardType: TextInputType.number,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text('Расписание', style: Theme.of(context).textTheme.titleMedium),
+                                    const SizedBox(height: 8),
+                                    _buildSchedule(_instance!),
+                                  ],
+                                ),
+                              ),
+                            ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

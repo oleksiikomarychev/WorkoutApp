@@ -194,28 +194,20 @@ class _Step3Schedule extends ConsumerWidget {
                 child: Column(
                   children: [
                     for (int day = 1; day <= w.daysCount; day++)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8.0),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: 88,
-                              child: Text('День $day', style: theme.textTheme.bodyMedium),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextFormField(
-                                initialValue: w.days[day]?.note ?? '',
-                                maxLines: 2,
-                                decoration: const InputDecoration(
-                                  labelText: 'Заметка',
-                                  hintText: 'Например: ЛС жим/спина',
-                                ),
-                                onChanged: (v) => notifier.setDayNote(wIndex, day, v.isEmpty ? null : v),
-                              ),
-                            ),
-                          ],
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text('День $day', style: theme.textTheme.bodyMedium),
+                        subtitle: TextFormField(
+                          initialValue: w.days[day]?.note ?? '',
+                          maxLines: 2,
+                          decoration: const InputDecoration(
+                            labelText: 'Заметка',
+                            hintText: 'Например: ЛС жим/спина',
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.only(top: 4, bottom: 4),
+                          ),
+                          onChanged: (v) => notifier.setDayNote(wIndex, day, v.isEmpty ? null : v),
                         ),
                       ),
                   ],
@@ -490,72 +482,74 @@ class _CalendarPlanWizardScreenState extends ConsumerState<CalendarPlanWizardScr
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Мастер создания плана'),
-        actions: [
-          IconButton(
-            tooltip: 'Сбросить черновик',
-            icon: const Icon(Icons.refresh),
-            onPressed: () async {
-              await notifier.resetDraft();
-              if (!mounted) return;
-              _nameCtrl.text = '';
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Черновик сброшен')));
-            },
-          ),
-        ],
+        leading: const BackButton(color: Colors.black),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        iconTheme: const IconThemeData(color: Colors.black),
+        foregroundColor: Colors.black,
       ),
-      body: Stepper(
-        currentStep: _currentStep,
-        onStepTapped: _submitting ? null : (i) => setState(() => _currentStep = i),
-        onStepContinue: _submitting ? null : _onContinue,
-        onStepCancel: _submitting ? null : _onBack,
-        controlsBuilder: (context, details) {
-          return Row(
-            children: [
-              ElevatedButton(
-                onPressed: _submitting ? null : details.onStepContinue,
-                child: Text(_currentStep == 3 ? 'Готово' : 'Далее'),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: Stepper(
+                currentStep: _currentStep,
+                onStepTapped: _submitting ? null : (i) => setState(() => _currentStep = i),
+                onStepContinue: _submitting ? null : _onContinue,
+                onStepCancel: _submitting ? null : _onBack,
+                controlsBuilder: (context, details) {
+                  return Row(
+                    children: [
+                      ElevatedButton(
+                        onPressed: _submitting ? null : details.onStepContinue,
+                        child: Text(_currentStep == 3 ? 'Готово' : 'Далее'),
+                      ),
+                      const SizedBox(width: 12),
+                      if (_currentStep > 0)
+                        TextButton(onPressed: _submitting ? null : details.onStepCancel, child: const Text('Назад')),
+                      const SizedBox(width: 12),
+                      if (_submitting) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                    ],
+                  );
+                },
+                steps: [
+                  Step(
+                    title: const Text('Основное'),
+                    isActive: _currentStep >= 0,
+                    state: _currentStep > 0 ? StepState.complete : StepState.indexed,
+                    content: _Step1BasicMicro(
+                      nameCtrl: _nameCtrl,
+                      microcycleLength: draft.microcycleLength,
+                      onNameChanged: notifier.setName,
+                      onDecLength: draft.microcycleLength > 1 ? () => notifier.setMicrocycleLength(draft.microcycleLength - 1) : null,
+                      onIncLength: () => notifier.setMicrocycleLength(draft.microcycleLength + 1),
+                    ),
+                  ),
+                  Step(
+                    title: const Text('Распределение по мезоциклам'),
+                    isActive: _currentStep >= 1,
+                    state: _currentStep > 1 ? StepState.complete : StepState.indexed,
+                    content: const _Step2Mesocycles(),
+                  ),
+                  Step(
+                    title: const Text('Редактор расписания'),
+                    isActive: _currentStep >= 2,
+                    state: _currentStep > 2 ? StepState.complete : StepState.indexed,
+                    content: const _Step3Schedule(),
+                  ),
+                  Step(
+                    title: const Text('Обзор и отправка'),
+                    isActive: _currentStep >= 3,
+                    state: StepState.indexed,
+                    content: const _Step4Review(),
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              if (_currentStep > 0)
-                TextButton(onPressed: _submitting ? null : details.onStepCancel, child: const Text('Назад')),
-              const SizedBox(width: 12),
-              if (_submitting) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-            ],
-          );
-        },
-        steps: [
-          Step(
-            title: const Text('Основное'),
-            isActive: _currentStep >= 0,
-            state: _currentStep > 0 ? StepState.complete : StepState.indexed,
-            content: _Step1BasicMicro(
-              nameCtrl: _nameCtrl,
-              microcycleLength: draft.microcycleLength,
-              onNameChanged: notifier.setName,
-              onDecLength: draft.microcycleLength > 1 ? () => notifier.setMicrocycleLength(draft.microcycleLength - 1) : null,
-              onIncLength: () => notifier.setMicrocycleLength(draft.microcycleLength + 1),
             ),
-          ),
-          Step(
-            title: const Text('Распределение по мезоциклам'),
-            isActive: _currentStep >= 1,
-            state: _currentStep > 1 ? StepState.complete : StepState.indexed,
-            content: const _Step2Mesocycles(),
-          ),
-          Step(
-            title: const Text('Редактор расписания'),
-            isActive: _currentStep >= 2,
-            state: _currentStep > 2 ? StepState.complete : StepState.indexed,
-            content: const _Step3Schedule(),
-          ),
-          Step(
-            title: const Text('Обзор и отправка'),
-            isActive: _currentStep >= 3,
-            state: StepState.indexed,
-            content: const _Step4Review(),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

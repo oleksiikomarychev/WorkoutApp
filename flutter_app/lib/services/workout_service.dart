@@ -16,11 +16,11 @@ class WorkoutService extends BaseApiService {
   
   WorkoutService(this._apiClient) : super(_apiClient);
 
-  /// Fetches all workouts from the API
-  Future<List<Workout>> getWorkouts() async {
+  /// Fetches workouts from the API (paginated)
+  Future<List<Workout>> getWorkoutsPaged({int skip = 0, int limit = 20}) async {
     try {
       final response = await _apiClient.get(
-        ApiConfig.workoutsEndpoint,
+        '${ApiConfig.workoutsEndpoint}/summary?skip=$skip&limit=$limit',
         context: 'WorkoutService.getWorkouts',
       );
       
@@ -31,19 +31,10 @@ class WorkoutService extends BaseApiService {
         
         for (var item in response.whereType<Map<String, dynamic>>()) {
           try {
-            // Ensure exercise_instances is always a list in the JSON
-            final exerciseInstances = (item['exercise_instances'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-            _logger.d('Parsing exercise instances: ${exerciseInstances.length}');
-            
-            final exerciseInstanceObjects = exerciseInstances
-                .map((ei) => ExerciseInstance.fromJson(ei))
-                .toList();
-                
+            // Super lightweight list item: do not parse nested instances at all here
             final workout = Workout.fromJson(item).copyWith(
-              exerciseInstances: exerciseInstanceObjects,
+              exerciseInstances: const [],
             );
-            
-            _logger.d('Parsed workout: ${workout.toString()}');
             workouts.add(workout);
           } catch (e, stackTrace) {
             _logger.e('Error parsing workout item: ${e.toString()}', e, stackTrace);
@@ -54,14 +45,9 @@ class WorkoutService extends BaseApiService {
         
         return workouts;
       } else if (response is Map<String, dynamic>) {
-        // Handle single workout response
+        // Handle single workout response (rare for list route)
         try {
-          final exerciseInstances = (response['exercise_instances'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-          final workout = Workout.fromJson(response).copyWith(
-            exerciseInstances: exerciseInstances
-                .map((ei) => ExerciseInstance.fromJson(ei))
-                .toList(),
-          );
+          final workout = Workout.fromJson(response).copyWith(exerciseInstances: const []);
           return [workout];
         } catch (e, stackTrace) {
           _logger.e('Error parsing single workout: ${e.toString()}', e, stackTrace);
@@ -76,6 +62,11 @@ class WorkoutService extends BaseApiService {
       handleError('Failed to get workouts', e, stackTrace);
       return [];
     }
+  }
+
+  /// Backward compatible method: returns first page
+  Future<List<Workout>> getWorkouts() async {
+    return getWorkoutsPaged(skip: 0, limit: 20);
   }
 
   /// Fetches workouts filtered by progression template ID

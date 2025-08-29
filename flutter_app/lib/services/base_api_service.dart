@@ -53,6 +53,33 @@ abstract class BaseApiService {
     }
   }
 
+  /// Generic PATCH request handler
+  Future<T> patch<T>(
+    String endpoint,
+    Map<String, dynamic> data,
+    T Function(Map<String, dynamic>) fromJson, {
+    Map<String, dynamic>? queryParams,
+  }) async {
+    try {
+      _logger.d('PATCH request to: $endpoint');
+      _logger.d('Request data: $data');
+
+      final response = await _apiClient.patch(
+        endpoint,
+        data,
+        queryParams: queryParams,
+      );
+
+      if (response is Map<String, dynamic>) {
+        return fromJson(response);
+      } else {
+        throw Exception('Unexpected response format: expected Map<String, dynamic>');
+      }
+    } catch (e) {
+      throw handleError('Failed to patch at $endpoint', e);
+    }
+  }
+
   /// Generic GET request handler that may return null
   Future<T?> getOptional<T>(
     String endpoint,

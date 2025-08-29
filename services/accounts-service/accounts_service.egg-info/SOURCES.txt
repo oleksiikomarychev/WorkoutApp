@@ -1,0 +1,13 @@
+pyproject.toml
+./accounts_service/__init__.py
+./accounts_service/db.py
+./accounts_service/deps.py
+./accounts_service/main.py
+./accounts_service/models.py
+./accounts_service/schemas.py
+./accounts_service/settings.py
+accounts_service.egg-info/PKG-INFO
+accounts_service.egg-info/SOURCES.txt
+accounts_service.egg-info/dependency_links.txt
+accounts_service.egg-info/requires.txt
+accounts_service.egg-info/top_level.txt

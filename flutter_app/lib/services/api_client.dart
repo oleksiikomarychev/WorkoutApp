@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../config/api_config.dart';
 import 'logger_service.dart';
 import 'base_api_service.dart';
@@ -24,6 +25,45 @@ class ApiClient {
   factory ApiClient.create() {
     return ApiClient();
   }
+  Future<dynamic> patch(String endpoint, Map<String, dynamic> data, {Map<String, dynamic>? queryParams, String? context}) async {
+    final url = ApiConfig.buildFullUrl(endpoint);
+    final uri = Uri.parse(url).replace(queryParameters: queryParams);
+    
+    _logRequest('PATCH', uri, body: data, context: context);
+    try {
+      final headers = {
+        ..._defaultHeaders,
+        ...await _authHeaders(),
+      };
+      final response = await _httpClient.patch(
+        uri,
+        headers: headers,
+        body: json.encode(data),
+      ).timeout(const Duration(seconds: 10));
+      
+      _logResponse(response, context: context);
+      return _handleResponse(response);
+    } catch (e) {
+      _logError('PATCH', uri, e, context: context);
+      rethrow;
+    }
+  }
+  Future<Map<String, String>> _authHeaders() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return const {};
+      final token = await user.getIdToken();
+      // Provide both Authorization for gateway verification and X-User-Id as a fallback
+      return {
+        'Authorization': 'Bearer $token',
+        'X-User-Id': user.uid,
+      };
+    } catch (e) {
+      // If anything goes wrong obtaining token, send no auth headers
+      return const {};
+    }
+  }
+
   Future<dynamic> get(String endpoint, {Map<String, dynamic>? queryParams, String? context}) async {
     final url = ApiConfig.buildFullUrl(endpoint);
     final uri = Uri.parse(url).replace(queryParameters: queryParams);
@@ -31,9 +71,13 @@ class ApiClient {
     _logRequest('GET', uri, context: context);
     try {
       print('Making GET request to: ${uri.toString()}');
+      final headers = {
+        ..._defaultHeaders,
+        ...await _authHeaders(),
+      };
       final response = await _httpClient.get(
         uri,
-        headers: _defaultHeaders,
+        headers: headers,
       ).timeout(const Duration(seconds: 10));
       
       print('Response status: ${response.statusCode}');
@@ -55,11 +99,15 @@ class ApiClient {
     try {
       print('POST request to: ${uri.toString()}');
       print('Request body: ${json.encode(data)}');
-      print('Headers: $_defaultHeaders');
+      final headers = {
+        ..._defaultHeaders,
+        ...await _authHeaders(),
+      };
+      print('Headers: $headers');
       
       final response = await _httpClient.post(
         uri,
-        headers: _defaultHeaders,
+        headers: headers,
         body: json.encode(data),
       ).timeout(const Duration(seconds: 10));
       
@@ -80,9 +128,13 @@ class ApiClient {
     
     _logRequest('PUT', uri, body: data, context: context);
     try {
+      final headers = {
+        ..._defaultHeaders,
+        ...await _authHeaders(),
+      };
       final response = await _httpClient.put(
         uri,
-        headers: _defaultHeaders,
+        headers: headers,
         body: json.encode(data),
       ).timeout(const Duration(seconds: 10));
       
@@ -100,11 +152,15 @@ class ApiClient {
     _logRequest('DELETE', uri, context: context);
     try {
       print('Sending DELETE request to: ${uri.toString()}');
-      print('Headers: $_defaultHeaders');
+      final headers = {
+        ..._defaultHeaders,
+        ...await _authHeaders(),
+      };
+      print('Headers: $headers');
       
       final response = await _httpClient.delete(
         uri,
-        headers: _defaultHeaders,
+        headers: headers,
       ).timeout(const Duration(seconds: 10));
       
       print('DELETE response status: ${response.statusCode}');

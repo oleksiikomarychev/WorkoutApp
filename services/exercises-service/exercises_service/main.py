@@ -12,6 +12,88 @@ app = FastAPI(title="exercises-service", version="0.1.0")
 # Tables are managed via Alembic migrations. Do not auto-create here.
 
 
+# Muscle metadata: user-friendly labels and groups
+MUSCLE_LABELS: dict[exercise_schemas.Muscle, tuple[str, str]] = {
+    # Chest
+    exercise_schemas.Muscle.PectoralisMajor: ("Pectoralis Major", "Chest"),
+    exercise_schemas.Muscle.PectoralisMinor: ("Pectoralis Minor", "Chest"),
+    exercise_schemas.Muscle.SerratusAnterior: ("Serratus Anterior", "Chest"),
+
+    # Back
+    exercise_schemas.Muscle.LatissimusDorsi: ("Latissimus Dorsi", "Back"),
+    exercise_schemas.Muscle.TrapeziusUpper: ("Trapezius (Upper)", "Back"),
+    exercise_schemas.Muscle.TrapeziusMiddle: ("Trapezius (Middle)", "Back"),
+    exercise_schemas.Muscle.TrapeziusLower: ("Trapezius (Lower)", "Back"),
+    exercise_schemas.Muscle.RhomboidMajor: ("Rhomboid Major", "Back"),
+    exercise_schemas.Muscle.RhomboidMinor: ("Rhomboid Minor", "Back"),
+    exercise_schemas.Muscle.ErectorSpinae: ("Erector Spinae", "Back"),
+    exercise_schemas.Muscle.TeresMajor: ("Teres Major", "Back"),
+    exercise_schemas.Muscle.TeresMinor: ("Teres Minor", "Back"),
+    exercise_schemas.Muscle.Infraspinatus: ("Infraspinatus", "Back"),
+
+    # Shoulders
+    exercise_schemas.Muscle.DeltoidAnterior: ("Deltoid (Anterior)", "Shoulders"),
+    exercise_schemas.Muscle.DeltoidLateral: ("Deltoid (Lateral)", "Shoulders"),
+    exercise_schemas.Muscle.DeltoidPosterior: ("Deltoid (Posterior)", "Shoulders"),
+    exercise_schemas.Muscle.Supraspinatus: ("Supraspinatus", "Shoulders"),
+    exercise_schemas.Muscle.Subscapularis: ("Subscapularis", "Shoulders"),
+
+    # Arms
+    exercise_schemas.Muscle.BicepsBrachiiShortHead: ("Biceps Brachii (Short Head)", "Arms"),
+    exercise_schemas.Muscle.BicepsBrachiiLongHead: ("Biceps Brachii (Long Head)", "Arms"),
+    exercise_schemas.Muscle.Brachialis: ("Brachialis", "Arms"),
+    exercise_schemas.Muscle.Brachioradialis: ("Brachioradialis", "Arms"),
+    exercise_schemas.Muscle.TricepsLongHead: ("Triceps (Long Head)", "Arms"),
+    exercise_schemas.Muscle.TricepsLateralHead: ("Triceps (Lateral Head)", "Arms"),
+    exercise_schemas.Muscle.TricepsMedialHead: ("Triceps (Medial Head)", "Arms"),
+    exercise_schemas.Muscle.ForearmFlexors: ("Forearm Flexors", "Arms"),
+    exercise_schemas.Muscle.ForearmExtensors: ("Forearm Extensors", "Arms"),
+
+    # Legs
+    exercise_schemas.Muscle.GluteusMaximus: ("Gluteus Maximus", "Legs"),
+    exercise_schemas.Muscle.GluteusMedius: ("Gluteus Medius", "Legs"),
+    exercise_schemas.Muscle.GluteusMinimus: ("Gluteus Minimus", "Legs"),
+    exercise_schemas.Muscle.QuadricepsRectusFemoris: ("Quadriceps (Rectus Femoris)", "Legs"),
+    exercise_schemas.Muscle.QuadricepsVastusLateralis: ("Quadriceps (Vastus Lateralis)", "Legs"),
+    exercise_schemas.Muscle.QuadricepsVastusMedialis: ("Quadriceps (Vastus Medialis)", "Legs"),
+    exercise_schemas.Muscle.QuadricepsVastusIntermedius: ("Quadriceps (Vastus Intermedius)", "Legs"),
+    exercise_schemas.Muscle.HamstringsBicepsFemoris: ("Hamstrings (Biceps Femoris)", "Legs"),
+    exercise_schemas.Muscle.HamstringsSemitendinosus: ("Hamstrings (Semitendinosus)", "Legs"),
+    exercise_schemas.Muscle.HamstringsSemimembranosus: ("Hamstrings (Semimembranosus)", "Legs"),
+    exercise_schemas.Muscle.AdductorLongus: ("Adductor Longus", "Legs"),
+    exercise_schemas.Muscle.AdductorBrevis: ("Adductor Brevis", "Legs"),
+    exercise_schemas.Muscle.AdductorMagnus: ("Adductor Magnus", "Legs"),
+    exercise_schemas.Muscle.Gracilis: ("Gracilis", "Legs"),
+    exercise_schemas.Muscle.Sartorius: ("Sartorius", "Legs"),
+    exercise_schemas.Muscle.TensorFasciaeLatae: ("Tensor Fasciae Latae", "Legs"),
+    exercise_schemas.Muscle.GastrocnemiusMedialHead: ("Gastrocnemius (Medial Head)", "Legs"),
+    exercise_schemas.Muscle.GastrocnemiusLateralHead: ("Gastrocnemius (Lateral Head)", "Legs"),
+    exercise_schemas.Muscle.Soleus: ("Soleus", "Legs"),
+    exercise_schemas.Muscle.TibialisAnterior: ("Tibialis Anterior", "Legs"),
+
+    # Core
+    exercise_schemas.Muscle.RectusAbdominis: ("Rectus Abdominis", "Core"),
+    exercise_schemas.Muscle.ExternalOblique: ("External Oblique", "Core"),
+    exercise_schemas.Muscle.InternalOblique: ("Internal Oblique", "Core"),
+    exercise_schemas.Muscle.TransversusAbdominis: ("Transversus Abdominis", "Core"),
+    exercise_schemas.Muscle.QuadratusLumborum: ("Quadratus Lumborum", "Core"),
+
+    # Neck
+    exercise_schemas.Muscle.Sternocleidomastoid: ("Sternocleidomastoid", "Neck"),
+    exercise_schemas.Muscle.SpleniusCapitis: ("Splenius Capitis", "Neck"),
+    exercise_schemas.Muscle.LevatorScapulae: ("Levator Scapulae", "Neck"),
+}
+
+
+@app.get("/api/v1/exercises/muscles", response_model=List[exercise_schemas.MuscleInfo])
+def list_muscles() -> List[exercise_schemas.MuscleInfo]:
+    """Return enum of muscles with user-friendly labels and groups."""
+    items: List[exercise_schemas.MuscleInfo] = []
+    for m in exercise_schemas.Muscle:
+        label, group = MUSCLE_LABELS.get(m, (m.value, "Other"))
+        items.append(exercise_schemas.MuscleInfo(key=m, label=label, group=group))
+    return items
+
 @app.get("/api/v1/health")
 async def health() -> Dict[str, str]:
     return {"status": "ok"}

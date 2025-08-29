@@ -5,7 +5,6 @@ import 'package:workout_app/models/user_max.dart';
 import 'package:workout_app/models/exercise_definition.dart';
 import 'package:workout_app/providers/providers.dart';
 import 'package:workout_app/widgets/empty_state.dart';
-import 'package:workout_app/screens/user_max_screen.dart';
 import 'package:workout_app/services/service_locator.dart';
 
 class UserMaxesScreen extends ConsumerStatefulWidget {
@@ -20,11 +19,23 @@ class _UserMaxesScreenState extends ConsumerState<UserMaxesScreen> {
   List<UserMax> _userMaxes = [];
   String? _errorMessage;
   Map<int, ExerciseDefinition> _exerciseById = {};
+  // Add form state for inline add dialog
+  final _formKey = GlobalKey<FormState>();
+  ExerciseDefinition? _selectedExercise;
+  final TextEditingController _maxWeightController = TextEditingController();
+  final TextEditingController _repMaxController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadUserMaxes();
+  }
+
+  @override
+  void dispose() {
+    _maxWeightController.dispose();
+    _repMaxController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadUserMaxes() async {
@@ -83,27 +94,11 @@ class _UserMaxesScreenState extends ConsumerState<UserMaxesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Мои максимумы'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadUserMaxes,
-            tooltip: 'Обновить',
-          ),
-        ],
+      body: SafeArea(
+        child: _buildBody(),
       ),
-      body: _buildBody(),
       floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const UserMaxScreen()),
-          );
-          if (mounted) {
-            _loadUserMaxes();
-          }
-        },
+        onPressed: _showAddUserMaxDialog,
         child: const Icon(Icons.add),
       ),
     );
@@ -145,6 +140,114 @@ class _UserMaxesScreenState extends ConsumerState<UserMaxesScreen> {
           subtitle: Text('Макс. вес: ${max.maxWeight} кг x ${max.repMax} повтор.'),
         );
       },
+    );
+  }
+
+  Future<void> _showAddUserMaxDialog() async {
+    final exerciseService = ref.read(exerciseServiceProvider);
+    List<ExerciseDefinition> exercises = [];
+    try {
+      exercises = await exerciseService.getExerciseDefinitions();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось загрузить упражнения: $e')),
+      );
+      return;
+    }
+
+    if (exercises.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Сначала добавьте упражнения!')),
+      );
+      return;
+    }
+
+    _selectedExercise = exercises.first;
+    _maxWeightController.clear();
+    _repMaxController.clear();
+
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Добавить максимум'),
+          content: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<ExerciseDefinition>(
+                  value: _selectedExercise,
+                  decoration: const InputDecoration(labelText: 'Упражнение'),
+                  items: exercises
+                      .map((e) => DropdownMenuItem<ExerciseDefinition>(
+                            value: e,
+                            child: Text(e.name),
+                          ))
+                      .toList(),
+                  onChanged: (val) => setDialogState(() => _selectedExercise = val),
+                  validator: (val) => val == null ? 'Выберите упражнение' : null,
+                ),
+                TextFormField(
+                  controller: _maxWeightController,
+                  decoration: const InputDecoration(labelText: 'Вес (кг)'),
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return 'Введите вес';
+                    final v = int.tryParse(value);
+                    if (v == null || v <= 0) return 'Введите корректное число';
+                    return null;
+                  },
+                ),
+                TextFormField(
+                  controller: _repMaxController,
+                  decoration: const InputDecoration(labelText: 'Повторений максимум'),
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return 'Введите повторения';
+                    final v = int.tryParse(value);
+                    if (v == null || v <= 0 || v > 12) return '1..12';
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Отмена'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (!_formKey.currentState!.validate()) return;
+                final userMaxService = ref.read(userMaxServiceProvider);
+                final newMax = UserMax(
+                  exerciseId: _selectedExercise!.id!,
+                  maxWeight: int.parse(_maxWeightController.text),
+                  repMax: int.parse(_repMaxController.text),
+                );
+                try {
+                  await userMaxService.createUserMax(newMax);
+                  if (!mounted) return;
+                  Navigator.of(ctx).pop();
+                  await _loadUserMaxes();
+                } catch (e) {
+                  if (!mounted) return;
+                  Navigator.of(ctx).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Ошибка: $e')),
+                  );
+                }
+              },
+              child: const Text('Добавить'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

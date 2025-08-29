@@ -12,6 +12,7 @@ import 'applied_calendar_plan_service.dart';
 import 'workout_session_service.dart';
 import 'mesocycle_service.dart';
 import 'rpe_service.dart';
+import 'accounts_service.dart';
 
 // Riverpod Providers
 final workoutServiceProvider = Provider<WorkoutService>((ref) {
@@ -52,6 +53,11 @@ final mesocycleServiceProvider = Provider<MesocycleService>((ref) {
 final rpeServiceProvider = Provider<RpeService>((ref) {
   final apiClient = ref.watch(apiClientProvider);
   return RpeService(apiClient);
+});
+
+final accountsServiceProvider = Provider<AccountsService>((ref) {
+  final apiClient = ref.watch(apiClientProvider);
+  return AccountsService(apiClient);
 });
 
 final apiClientProvider = Provider<ApiClient>((ref) {
@@ -111,6 +117,10 @@ class ServiceProvider extends StatelessWidget {
         provider.ProxyProvider<ApiClient, MesocycleService>(
           update: (_, apiClient, __) => MesocycleService(apiClient),
         ),
+
+        provider.ProxyProvider<ApiClient, AccountsService>(
+          update: (_, apiClient, __) => AccountsService(apiClient),
+        ),
       ],
       child: child,
     );
@@ -142,4 +152,5 @@ extension ServiceExtension on BuildContext {
   AppliedCalendarPlanService get appliedCalendarPlanService => getService<AppliedCalendarPlanService>();
   WorkoutSessionService get workoutSessionService => getService<WorkoutSessionService>();
   MesocycleService get mesocycleService => getService<MesocycleService>();
+  AccountsService get accountsService => getService<AccountsService>();
 }

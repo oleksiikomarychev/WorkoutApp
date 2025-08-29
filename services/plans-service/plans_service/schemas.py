@@ -40,6 +40,7 @@ class AppliedCalendarPlanResponse(BaseModel):
 
 # ===== Phase 2: Instances and Apply request =====
 
+
 class ApplyPlanComputeSettings(BaseModel):
     compute_weights: bool = Field(default=True)
     rounding_step: float = Field(default=2.5, gt=0)

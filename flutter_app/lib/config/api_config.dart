@@ -1,7 +1,7 @@
 class ApiConfig {
   // Base URLs (ensure no trailing slashes)
   static const String androidEmulatorBaseUrl = 'http://10.0.2.2:8010';
-  static const String localBaseUrl = 'http://127.0.0.1:8010';
+  static const String localBaseUrl = 'http://localhost:8010';
   static const String productionBaseUrl = 'https://yourproductionapi.com';
   
   // Timeouts
@@ -55,6 +55,9 @@ class ApiConfig {
   static String exerciseDefinitionByIdEndpoint(String id) => 
       buildEndpoint('/exercises/list/$id');
 
+  // Muscles (enum + labels) Endpoint
+  static String get musclesEndpoint => buildEndpoint('/exercises/muscles');
+
   // Exercise Instance Endpoints
   static String get exerciseInstancesEndpoint => buildEndpoint('/exercise-instances');
   static String exerciseInstanceByWorkoutEndpoint(String workoutId) => 
@@ -106,6 +109,8 @@ class ApiConfig {
       buildEndpoint('/applied-calendar-plans/active');
   static String get userAppliedCalendarPlansEndpoint =>
       buildEndpoint('/applied-calendar-plans/user');
+  static String appliedCalendarPlanEndpoint(String planId) =>
+      buildEndpoint('/applied-calendar-plans/user/$planId');
   static String appliedCalendarPlanByIdEndpoint(String planId) => 
       buildEndpoint('/applied-calendar-plans/$planId');
 
@@ -140,4 +145,18 @@ class ApiConfig {
 
   // Utils
   static String get rpeEndpoint => buildEndpoint('/rpe');
+
+  // Accounts-service endpoints (proxied via gateway)
+  static String get accountsBase => buildEndpoint('/accounts');
+  // Me
+  static String get accountsMe => buildEndpoint('/accounts/me');
+  // Clients
+  static String get accountsClients => buildEndpoint('/accounts/clients');
+  // Notes
+  static String accountsClientNotes(String clientUserId) => buildEndpoint('/accounts/clients/$clientUserId/notes');
+  static String accountsNoteById(String noteId) => buildEndpoint('/accounts/notes/$noteId');
+  // Tags
+  static String get accountsTags => buildEndpoint('/accounts/tags');
+  static String accountsClientTags(String clientUserId) => buildEndpoint('/accounts/clients/$clientUserId/tags');
+  static String accountsClientTagById(String clientUserId, String tagId) => buildEndpoint('/accounts/clients/$clientUserId/tags/$tagId');
 }
