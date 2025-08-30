@@ -1,6 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
+<<<<<<< HEAD
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+=======
+// import 'package:google_sign_in/google_sign_in.dart' as gsi; // Not required when using signInWithProvider
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+>>>>>>> 5abd336 (Resolve unmerged files: keep deletion of google-services.json; keep theirs for firebase_auth_service.dart)
 
 class FirebaseAuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -55,6 +61,7 @@ class FirebaseAuthService {
         }
       }
 
+<<<<<<< HEAD
       final GoogleSignInAccount? googleUser = await GoogleSignIn.instance.authenticate();
       if (googleUser == null) {
         // The user canceled the sign-in
@@ -69,6 +76,18 @@ class FirebaseAuthService {
       );
 
       return await _auth.signInWithCredential(credential);
+=======
+      // Android/iOS: use Firebase Auth's native OAuth flow (no google_sign_in plugin needed)
+      if (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS) {
+        final provider = GoogleAuthProvider();
+        return await _auth.signInWithProvider(provider);
+      }
+
+      // Desktop (e.g., macOS): fall back to manual credential flow if needed in the future.
+      // For now, return null to indicate not supported on this platform.
+      return null;
+>>>>>>> 5abd336 (Resolve unmerged files: keep deletion of google-services.json; keep theirs for firebase_auth_service.dart)
     } on FirebaseAuthException catch (e) {
       // TODO: Handle errors properly
       print(e.message);
@@ -82,6 +101,7 @@ class FirebaseAuthService {
 
   Future<void> signOut() async {
     try {
+<<<<<<< HEAD
       if (kIsWeb) {
         // On Web, google_sign_in is not used for the sign-in flow above,
         // so calling GoogleSignIn.signOut() can throw. Sign out only via Firebase.
@@ -93,6 +113,10 @@ class FirebaseAuthService {
         } catch (_) {}
         await _auth.signOut();
       }
+=======
+      // Sign out only via Firebase. When using signInWithProvider, separate Google session sign-out is unnecessary.
+      await _auth.signOut();
+>>>>>>> 5abd336 (Resolve unmerged files: keep deletion of google-services.json; keep theirs for firebase_auth_service.dart)
     } catch (_) {
       // Swallow errors to prevent UI from getting stuck; AuthGate will reflect the actual state
     }

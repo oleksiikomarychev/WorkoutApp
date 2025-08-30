@@ -21,6 +21,78 @@ COACH_SERVICE_URL = os.getenv("COACH_SERVICE_URL", "http://localhost:8007")
 MONO_WORKOUTS = os.getenv("MONO_WORKOUTS", "false").lower() in ("1", "true", "yes", "on")
 
 app = FastAPI(title="api-gateway", version="0.1.0")
+<<<<<<< HEAD
+=======
+# Avoid automatic 307 redirects for missing/extra trailing slashes
+app.router.redirect_slashes = False
+
+
+def _forward_headers(request: Request) -> Dict[str, str]:
+    """Collect headers to forward to downstream services.
+
+    Behavior:
+    - Always forward selected technical headers.
+    - If Firebase auth middleware set request.state.user_id -> forward it as X-User-Id.
+    - Additionally, if the client already provided X-User-Id header, forward it through
+      for local development convenience. This is safe for dev since downstream services
+      are not exposed publicly and production should rely on verified tokens.
+    """
+    allowed = {k: v for k, v in request.headers.items() if k.lower() in ("traceparent", "x-request-id", "content-type")}
+    # Prefer user id from verified token when available
+    user_id = getattr(request.state, "user_id", None)
+    if user_id:
+        allowed["X-User-Id"] = user_id
+    else:
+        # Fallback: pass through incoming X-User-Id if present (dev-only convenience)
+        incoming_uid = request.headers.get("X-User-Id") or request.headers.get("x-user-id")
+        if incoming_uid:
+            allowed["X-User-Id"] = incoming_uid
+    return allowed
+
+
+class FirebaseAuthMiddleware(BaseHTTPMiddleware):
+    """Verifies Firebase ID token from Authorization header and attaches user_id to request.state.
+
+    Behavior:
+    - If Authorization header is missing: continue without auth (public endpoints keep working).
+    - If Authorization: Bearer <token> provided: verify via Firebase; on success set request.state.user_id.
+      On failure: return 401.
+    """
+
+    def __init__(self, app):
+        super().__init__(app)
+        self.auth = AuthService()
+
+    async def dispatch(self, request: Request, call_next):
+        # Let CORS preflight pass through without auth checks
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+        if auth_header and auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+            try:
+                decoded = self.auth.verify_id_token(token)
+                request.state.user_id = decoded.get("uid") or decoded.get("user_id")
+            except Exception as e:
+                return JSONResponse(status_code=401, content={"detail": "Invalid or expired token", "error": str(e)})
+        return await call_next(request)
+
+
+"""Attach middleware in the correct order: CORS should be outermost."""
+# First attach auth middleware (inner)
+app.add_middleware(FirebaseAuthMiddleware)
+
+# Then attach CORS (outer)
+_cors_origins = os.getenv("CORS_ORIGINS", "*")
+_allow_origins = [o.strip() for o in _cors_origins.split(",")] if _cors_origins != "*" else ["*"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allow_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+>>>>>>> 5abd336 (Resolve unmerged files: keep deletion of google-services.json; keep theirs for firebase_auth_service.dart)
 # Avoid automatic 307 redirects for missing/extra trailing slashes
 app.router.redirect_slashes = False
 
