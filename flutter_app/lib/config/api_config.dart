@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+
 class ApiConfig {
   // Base URLs (ensure no trailing slashes)
   static const String androidEmulatorBaseUrl = 'http://10.0.2.2:8010';
@@ -14,8 +16,18 @@ class ApiConfig {
   // API Base Path
   static const String apiBasePath = 'api';
   
-  /// Returns the base URL for API requests
-  static String getBaseUrl() => localBaseUrl;
+  /// Returns the base URL for API requests (platform-aware)
+  static String getBaseUrl() {
+    if (kIsWeb) return localBaseUrl; // web runs in host browser
+
+    // Android emulator cannot reach host via localhost; use 10.0.2.2
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return androidEmulatorBaseUrl;
+    }
+
+    // iOS simulator and desktop can use localhost to reach host
+    return localBaseUrl;
+  }
   
   /// Builds a full API URL by combining base URL, API path, and endpoint
   static String buildEndpoint(String path) {
