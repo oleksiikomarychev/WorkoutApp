@@ -25,15 +25,15 @@ class CalendarPlan {
 
   factory CalendarPlan.fromJson(Map<String, dynamic> json) {
     return CalendarPlan(
-      id: json['id'],
+      id: (json['id'] as int?) ?? 0,
       name: json['name'] ?? '',
       schedule: Map<String, dynamic>.from(json['schedule'] ?? {}),
-      durationWeeks: json['duration_weeks'] ?? 0,
+      durationWeeks: (json['duration_weeks'] as int?) ?? 0,
       isActive: json['is_active'] ?? false,
       startDate: json['start_date'] != null ? DateTime.parse(json['start_date']) : null,
       endDate: json['end_date'] != null ? DateTime.parse(json['end_date']) : null,
       mesocycles: (json['mesocycles'] as List<dynamic>? ?? [])
-          .map((e) => Mesocycle.fromJson(e as Map<String, dynamic>))
+          .map((e) => e != null ? Mesocycle.fromJson(e as Map<String, dynamic>) : Mesocycle(id: 0, name: '', orderIndex: 0))
           .toList(),
     );
   }

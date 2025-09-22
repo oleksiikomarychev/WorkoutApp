@@ -1,15 +1,13 @@
 from typing import List, Dict, Optional
-from pydantic import BaseModel, Field, constr
+from pydantic import BaseModel, Field, constr, model_validator
 from enum import Enum
-from .schedule_item import ExerciseScheduleItem
 
-
+# ===== Mesocycle Schemas =====
 class NormalizationUnit(str, Enum):
     kg = "kg"
     percent = "%"
 
 
-# ===== Mesocycle Schemas =====
 class MesocycleBase(BaseModel):
     name: str = Field(..., max_length=255)
     notes: Optional[constr(max_length=100)] = None
@@ -53,35 +51,17 @@ class MesocycleResponse(MesocycleBase):
         from_attributes = True
 
 
-# ===== Microcycle Schemas =====
 class MicrocycleBase(BaseModel):
     name: str = Field(..., max_length=255)
     notes: Optional[constr(max_length=100)] = None
     order_index: int = Field(default=0, ge=0)
-    schedule: Dict[str, List[ExerciseScheduleItem]]
-    normalization_value: Optional[float] = Field(
-        default=None, description="Normalization amount to apply after this microcycle"
-    )
-    normalization_unit: Optional[NormalizationUnit] = Field(
-        default=None, description="Normalization unit: 'kg' or '%'"
-    )
-    days_count: Optional[int] = Field(
-        default=None, ge=1, le=31, description="Length of this microcycle in days"
-    )
+    normalization_value: Optional[float] = Field(default=None, description="Normalization amount to apply after this microcycle")
+    normalization_unit: Optional[NormalizationUnit] = Field(default=None, description="Normalization unit: 'kg' or '%'")
+    days_count: Optional[int] = Field(default=None, ge=1, le=31, description="Length of this microcycle in days")
 
 
-class MicrocycleCreate(MicrocycleBase):
-    mesocycle_id: int
-
-
-class MicrocycleUpdate(BaseModel):
-    name: Optional[str] = Field(default=None, max_length=255)
-    notes: Optional[constr(max_length=100)] = None
-    order_index: Optional[int] = Field(default=None, ge=0)
-    schedule: Optional[Dict[str, List[ExerciseScheduleItem]]] = None
-    normalization_value: Optional[float] = Field(default=None)
-    normalization_unit: Optional[NormalizationUnit] = Field(default=None)
-    days_count: Optional[int] = Field(default=None, ge=1, le=31)
+class MicrocycleUpdate(MicrocycleBase):
+    pass
 
 
 class MicrocycleResponse(MicrocycleBase):
@@ -90,6 +70,10 @@ class MicrocycleResponse(MicrocycleBase):
 
     class Config:
         from_attributes = True
+
+
+class MicrocycleCreate(MicrocycleBase):
+    pass
 
 
 MesocycleResponse.model_rebuild()

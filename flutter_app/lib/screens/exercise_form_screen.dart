@@ -1,34 +1,24 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:workout_app/models/exercise_definition.dart';
 import 'package:workout_app/models/exercise_instance.dart';
 import 'package:workout_app/models/exercise_set_dto.dart';
 import 'package:workout_app/models/progression_template.dart';
-import 'package:workout_app/models/user_max.dart';
-import 'package:workout_app/services/progression_service.dart';
 import 'package:workout_app/services/exercise_service.dart';
-import 'package:workout_app/services/user_max_service.dart';
-import 'package:workout_app/services/workout_service.dart';
+import 'package:workout_app/services/service_locator.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class ExerciseFormScreen extends StatefulWidget {
-  final int workoutId;
+class ExerciseFormScreen extends ConsumerStatefulWidget {
   final ExerciseDefinition? exercise;
-  final ExerciseInstance? instance;
 
-  const ExerciseFormScreen({
-    Key? key,
-    required this.workoutId,
-    this.exercise,
-    this.instance,
-  }) : super(key: key);
+  const ExerciseFormScreen({super.key, this.exercise});
 
   @override
-  _ExerciseFormScreenState createState() => _ExerciseFormScreenState();
+  ConsumerState<ExerciseFormScreen> createState() => _ExerciseFormScreenState();
 }
 
-class _ExerciseFormScreenState extends State<ExerciseFormScreen> {
+class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _nameController;
   late TextEditingController _muscleGroupController;
@@ -42,10 +32,7 @@ class _ExerciseFormScreenState extends State<ExerciseFormScreen> {
 
   List<ProgressionTemplate> _templates = [];
   ProgressionTemplate? _selectedTemplate;
-  List<UserMax> _userMaxes = [];
-  UserMax? _selectedUserMax;
   bool _isLoading = false;
-  bool _isLoadingMaxes = false;
 
   // Set helpers
   void _addSetRow({String volume = '5', String weight = '0'}) {
@@ -83,40 +70,12 @@ class _ExerciseFormScreenState extends State<ExerciseFormScreen> {
     if (widget.exercise != null) {
       _nameController.text = widget.exercise!.name;
       _muscleGroupController.text = widget.exercise!.muscleGroup ?? '';
-    } else if (widget.instance?.exerciseDefinition != null) {
-      _nameController.text = widget.instance!.exerciseDefinition!.name;
-      _muscleGroupController.text = widget.instance!.exerciseDefinition?.muscleGroup ?? '';
     }
 
     // Defer selected value initialization until groups are loaded
     _selectedMuscleGroup = null;
 
-    if (widget.instance != null) {
-      // If instance has sets, populate all
-      if (widget.instance!.sets.isNotEmpty) {
-        // clear initial default
-        _clearAllSetRows();
-        for (final s in widget.instance!.sets) {
-          _addSetRow(
-            volume: (s.reps).toString(),
-            weight: (s.weight).toString(),
-          );
-        }
-      } else {
-        // fallback from deprecated fields
-        _volumeControllers.first.text = (widget.instance!.volume ?? 0).toString();
-        _weightControllers.first.text = (widget.instance!.weight ?? 0).toString();
-      }
-    } else {
-      _volumeControllers.first.text = '5';
-      _weightControllers.first.text = '0';
-    }
-
     _loadData();
-    final exerciseId = widget.exercise?.id ?? widget.instance?.exerciseDefinitionId;
-    if (exerciseId != null) {
-      _fetchUserMaxes(exerciseId);
-    }
   }
 
   @override
@@ -133,29 +92,23 @@ class _ExerciseFormScreenState extends State<ExerciseFormScreen> {
       _isLoading = true;
     });
     try {
-      final progressionService = Provider.of<ProgressionService>(context, listen: false);
-      final exerciseService = Provider.of<ExerciseService>(context, listen: false);
-
+      final exerciseService = ref.read(exerciseServiceProvider);
       // Fetch in parallel
       final results = await Future.wait([
-        progressionService.getTemplates(),
+        exerciseService.getTemplates(),
         exerciseService.getMuscles(),
       ]);
 
       final templates = results[0] as List<ProgressionTemplate>;
-      final muscles = results[1] as List<dynamic>; // MuscleInfo but we just need groups
+      final muscles = results[1]; // MuscleInfo but we just need groups
 
       // Derive unique, sorted groups
-      final groups = muscles
-          .map((m) => (m as dynamic).group as String)
-          .toSet()
-          .toList()
-        ..sort();
+      final groups = Set<String>.from(muscles.map((m) => (m as dynamic).group as String));
+      _muscleGroups = groups.toList()..sort();
 
       if (mounted) {
         setState(() {
           _templates = templates;
-          _muscleGroups = groups;
           // Initialize selected muscle group if existing value matches a group (case-insensitive, trimmed)
           final current = _muscleGroupController.text.trim();
           if (current.isNotEmpty) {
@@ -187,79 +140,21 @@ class _ExerciseFormScreenState extends State<ExerciseFormScreen> {
     }
   }
 
-  Future<void> _fetchUserMaxes(int exerciseId) async {
-    setState(() {
-      _isLoadingMaxes = true;
-    });
-    final workoutService = Provider.of<WorkoutService>(context, listen: false);
-    try {
-      final maxes = await workoutService.getUserMaxesForExercise(exerciseId);
-      if (mounted) {
-        setState(() {
-          _userMaxes = maxes;
-          _isLoadingMaxes = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoadingMaxes = false;
-        });
-        debugPrint('Failed to load user maxes: $e');
-      }
-    }
-  }
-
   Future<bool> _saveExercise() async {
-    if (!_formKey.currentState!.validate()) {
-      return false;
-    }
+    if (_formKey.currentState?.validate() ?? false) {
+      setState(() {
+        _isLoading = true;
+      });
 
-    setState(() {
-      _isLoading = true;
-    });
+      try {
+        // Build sets array from controllers
+        final sets = <Map<String, int>>[];
+        for (int i = 0; i < _volumeControllers.length; i++) {
+          final volume = int.tryParse(_volumeControllers[i].text) ?? 0;
+          final weight = int.tryParse(_weightControllers[i].text) ?? 0;
+          sets.add({'weight': weight, 'volume': volume});
+        }
 
-    final workoutService = Provider.of<WorkoutService>(context, listen: false);
-    final isUpdating = widget.instance != null;
-
-    try {
-      // Build sets array from controllers
-      final sets = <Map<String, int>>[];
-      for (int i = 0; i < _volumeControllers.length; i++) {
-        final volume = int.tryParse(_volumeControllers[i].text) ?? 0;
-        final weight = int.tryParse(_weightControllers[i].text) ?? 0;
-        sets.add({'weight': weight, 'volume': volume});
-      }
-      final int? userMaxId = _selectedUserMax?.id;
-
-      if (isUpdating) {
-        // Update the exercise definition if needed
-        final updatedDefinition = (widget.instance?.exerciseDefinition ?? widget.exercise)?.copyWith(
-          name: _nameController.text,
-          muscleGroup: _muscleGroupController.text,
-        );
-        
-        // Convert form sets to ExerciseSetDto objects
-        final setDtos = sets.map((set) {
-          final reps = int.tryParse(set['volume']?.toString() ?? '0') ?? 0;
-          final weight = double.tryParse(set['weight']?.toString() ?? '0') ?? 0.0;
-          
-          return ExerciseSetDto(
-            id: null, // Will be handled by the server
-            reps: reps,
-            weight: weight,
-            volume: reps, // Set volume from reps for backward compatibility
-          );
-        }).toList();
-        
-        final updatedInstance = widget.instance!.copyWith(
-          exerciseDefinition: updatedDefinition,
-          sets: setDtos,
-          userMaxId: userMaxId,
-        );
-        
-        await workoutService.updateExerciseInstance(updatedInstance);
-      } else {
         // Convert form sets to ExerciseSetDto objects
         final setDtos = sets.map((set) {
           final reps = int.tryParse(set['volume']?.toString() ?? '0') ?? 0;
@@ -276,49 +171,39 @@ class _ExerciseFormScreenState extends State<ExerciseFormScreen> {
         
         final newInstance = ExerciseInstance(
           id: 0, // Will be assigned by the server
-          workoutId: widget.workoutId,
+          workoutId: 0, // Will be assigned by the server
           exerciseListId: widget.exercise!.id!,
           sets: setDtos,
-          userMaxId: userMaxId,
+          userMaxId: null, // We removed userMaxId
           order: 0, // Default order
           notes: null, // Optional field
           exerciseDefinition: widget.exercise, // Pass the exercise definition directly
         );
         
-        await workoutService.createExerciseInstance(newInstance);
-      }
-      return true;
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving: $e')),
-        );
-      }
-      return false;
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  void _calculateAndUpdateWeight() {
-    if (_selectedTemplate != null && _selectedUserMax != null) {
-      final intensity = _selectedTemplate!.intensity;
-      final userMaxWeight = _selectedUserMax!.maxWeight;
-      final currentIntensity = intensity ?? 0.0;
-      final calculatedWeight = userMaxWeight * (currentIntensity / 100.0);
-      if (_weightControllers.isNotEmpty) {
-        _weightControllers.first.text = calculatedWeight.toStringAsFixed(0);
+        final exerciseService = ref.read(exerciseServiceProvider);
+        await exerciseService.createExerciseInstance(newInstance);
+        return true;
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error saving: $e')),
+          );
+        }
+        return false;
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       }
     }
+    return false;
   }
 
   Widget _buildTemplateDropdown() {
     return DropdownButtonFormField<ProgressionTemplate>(
-      value: _selectedTemplate,
+      initialValue: _selectedTemplate,
       decoration: const InputDecoration(
         labelText: 'Progression Template (optional)',
         border: OutlineInputBorder(),
@@ -335,7 +220,7 @@ class _ExerciseFormScreenState extends State<ExerciseFormScreen> {
             value: template,
             child: Text(template.name),
           );
-        }).toList(),
+        }),
       ],
       onChanged: (template) {
         setState(() {
@@ -345,7 +230,7 @@ class _ExerciseFormScreenState extends State<ExerciseFormScreen> {
             if (_volumeControllers.isNotEmpty) {
               _volumeControllers.first.text = template.volume.toString();
             }
-            _calculateAndUpdateWeight();
+            // We removed the weight calculation because it depended on user max
           } else {
             if (_volumeControllers.isNotEmpty) {
               _volumeControllers.first.text = '5';
@@ -372,7 +257,7 @@ class _ExerciseFormScreenState extends State<ExerciseFormScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      widget.instance == null ? 'Add Exercise' : 'Edit Exercise',
+                      'Add Exercise',
                       style: Theme.of(context).textTheme.headlineSmall,
                       textAlign: TextAlign.center,
                     ),
@@ -392,7 +277,7 @@ class _ExerciseFormScreenState extends State<ExerciseFormScreen> {
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
-                      value: _selectedMuscleGroup,
+                      initialValue: _selectedMuscleGroup,
                       decoration: const InputDecoration(
                         labelText: 'Muscle Group',
                         border: OutlineInputBorder(),
@@ -423,31 +308,6 @@ class _ExerciseFormScreenState extends State<ExerciseFormScreen> {
                     ),
                     const SizedBox(height: 16),
                     _buildTemplateDropdown(),
-                    const SizedBox(height: 16),
-                    if (_isLoadingMaxes)
-                      const LinearProgressIndicator()
-                    else if (_userMaxes.isNotEmpty)
-                      DropdownButtonFormField<UserMax>(
-                        value: _selectedUserMax,
-                        decoration: const InputDecoration(
-                          labelText: 'Select Max (optional)',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: [
-                          const DropdownMenuItem<UserMax>(
-                            value: null,
-                            child: Text('No max selected'),
-                          ),
-                        ],
-                        onChanged: (max) {
-                          setState(() {
-                            _selectedUserMax = max;
-                            if (max != null && _selectedTemplate != null) {
-                              _calculateAndUpdateWeight();
-                            }
-                          });
-                        },
-                      ),
                     const SizedBox(height: 24),
                     const Text(
                       'Sets',

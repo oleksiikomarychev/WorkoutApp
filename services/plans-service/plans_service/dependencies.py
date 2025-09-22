@@ -1,30 +1,24 @@
-from typing import Optional
+from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.orm import sessionmaker
 
-from .database import SessionLocal
-from .services.workout_service import WorkoutService
+from .database import database_url
+from .workout_calculation import WorkoutCalculator
 
+# Create an async database engine
+engine = create_async_engine(database_url)
 
-async def get_user_id(
-    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
-) -> str:
-    if x_user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="X-User-Id header is required",
-        )
-    return x_user_id
+# Create an async sessionmaker
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
 
+async def get_db() -> AsyncSession:
+    async with AsyncSessionLocal() as session:
+        yield session
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-def get_workout_service(db: Session = Depends(get_db)) -> WorkoutService:
-    return WorkoutService(db)
+def get_workout_service() -> WorkoutCalculator:
+    return WorkoutCalculator()

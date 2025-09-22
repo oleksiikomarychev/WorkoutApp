@@ -5,7 +5,7 @@ import '../models/exercise_list.dart';
 import '../services/exercise_service.dart';
 
 class ExerciseListScreen extends StatefulWidget {
-  const ExerciseListScreen({Key? key}) : super(key: key);
+  const ExerciseListScreen({super.key});
 
   @override
   _ExerciseListScreenState createState() => _ExerciseListScreenState();
@@ -71,7 +71,7 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                value: _selectedMuscleGroup,
+                initialValue: _selectedMuscleGroup,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Группа мышц'),
                 hint: _loadingMuscles

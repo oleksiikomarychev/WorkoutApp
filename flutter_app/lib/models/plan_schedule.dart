@@ -1,47 +1,77 @@
+import 'exercise_dto.dart';
+
 class ParamsSets {
-  final int? intensity;
-  final int? effort;
-  final int? volume;
+  double? intensity;
+  double? effort;
+  double? volume;
 
-  const ParamsSets({this.intensity, this.effort, this.volume});
-
-  // Coerce incoming dynamic JSON to int?
-  static int? _toInt(dynamic v) {
-    if (v == null) return null;
-    if (v is num) return v.toInt();
-    if (v is String) return int.tryParse(v);
-    if (v is bool) return v ? 1 : 0;
-    return null;
-  }
+  ParamsSets({
+    this.intensity,
+    this.effort,
+    this.volume,
+  });
 
   factory ParamsSets.fromJson(Map<String, dynamic> json) => ParamsSets(
-        intensity: _toInt(json['intensity']),
-        effort: _toInt(json['effort']),
-        volume: _toInt(json['volume']),
-      );
+    intensity: json['intensity'] != null ? (json['intensity'] as num).toDouble() : null,
+    effort: json['effort'] != null ? (json['effort'] as num).toDouble() : null,
+    volume: json['volume'] != null ? (json['volume'] as num).toDouble() : null,
+  );
 
   Map<String, dynamic> toJson() => {
-        'intensity': intensity,
-        'effort': effort,
-        'volume': volume,
-      };
+    'intensity': intensity,
+    'effort': effort,
+    'volume': volume,
+  };
 }
 
 class ExerciseScheduleItemDto {
+  final int id;
   final int exerciseId;
   final List<ParamsSets> sets;
+  final String name;
+  final List<ExerciseDto> exercises;
 
-  const ExerciseScheduleItemDto({required this.exerciseId, required this.sets});
+  ExerciseScheduleItemDto({
+    required this.id,
+    required this.exerciseId,
+    required this.sets,
+    required this.name,
+    required this.exercises,
+  });
 
-  factory ExerciseScheduleItemDto.fromJson(Map<String, dynamic> json) => ExerciseScheduleItemDto(
-        exerciseId: json['exercise_id'] as int,
-        sets: (json['sets'] as List<dynamic>? ?? [])
-            .map((e) => ParamsSets.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
+  factory ExerciseScheduleItemDto.fromJson(Map<String, dynamic> json) {
+    return ExerciseScheduleItemDto(
+      id: json['id'] as int? ?? 0,
+      exerciseId: json['exercise_id'] as int? ?? 0,
+      sets: (json['sets'] as List<dynamic>? ?? [])
+          .map((e) => e != null ? ParamsSets.fromJson(e as Map<String, dynamic>) : ParamsSets())
+          .toList(),
+      name: json['name'] as String? ?? '',
+      exercises: (json['exercises'] as List<dynamic>? ?? [])
+          .map((e) => ExerciseDto.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
 
   Map<String, dynamic> toJson() => {
+        'id': id,
         'exercise_id': exerciseId,
-        'sets': sets.map((e) => e.toJson()).toList(),
+        'sets': sets.map((set) => set.toJson()).toList(),
+        'name': name,
+        'exercises': exercises.map((e) => e.toJson()).toList(),
       };
+}
+
+class MicrocycleCreate {
+  final Map<String, List<ParamsSets>> schedule;
+
+  MicrocycleCreate({required this.schedule});
+
+  factory MicrocycleCreate.fromJson(Map<String, dynamic> json) => MicrocycleCreate(
+    schedule: Map<String, List<ParamsSets>>.from(json['schedule']?.map((k, v) => MapEntry(k, (v as List).map((e) => ParamsSets.fromJson(e as Map<String, dynamic>)).toList().cast<ParamsSets>())) ?? {}),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'schedule': schedule.map((k, v) => MapEntry(k, v.map((e) => e.toJson()).toList())).cast<String, List>(),
+  };
 }

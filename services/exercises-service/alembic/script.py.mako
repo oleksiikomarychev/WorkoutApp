@@ -1,15 +1,19 @@
-"""Generic Alembic migration script template for exercises-service"""
+"""${message}"""
+
 from alembic import op
 import sqlalchemy as sa
-import json
+${imports if imports else ""}
 
-revision = ${repr(revision)}
+# revision identifiers, used by Alembic.
+revision = ${repr(up_revision)}
 down_revision = ${repr(down_revision)}
 branch_labels = ${repr(branch_labels)}
 depends_on = ${repr(depends_on)}
 
+
 def upgrade():
-    pass
+    ${upgrades if upgrades else "pass"}
+
 
 def downgrade():
-    pass
+    ${downgrades if downgrades else "pass"}

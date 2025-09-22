@@ -4,22 +4,20 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 
 from plans_service.database import Base
-from plans_service import models  # noqa: F401
 
-# this is the Alembic Config object, which provides access to the values within the .ini file in use.
 config = context.config
 
-# Interpret the config file for Python logging.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Resolve DB URL: prefer DATABASE_URL, then PLANS_DATABASE_URL, then SQLite fallback
-db_url = (
-    os.getenv("DATABASE_URL")
-    or os.getenv("PLANS_DATABASE_URL")
-    or "sqlite:////app/data/plans.db"
-)
+
+# Set database URL based on environment
+db_url = os.getenv("PLANS_DATABASE_URL")
+
 config.set_main_option("sqlalchemy.url", db_url)
+
+# Import all models to ensure they are attached to the Base.metadata
+from plans_service import models  # noqa: F401
 
 target_metadata = Base.metadata
 
@@ -31,6 +29,7 @@ def run_migrations_offline():
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        file_template='%(rev)s_%(slug)s'
     )
 
     with context.begin_transaction():
@@ -45,7 +44,11 @@ def run_migrations_online():
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            file_template='%(rev)s_%(slug)s'
+        )
         with context.begin_transaction():
             context.run_migrations()
 

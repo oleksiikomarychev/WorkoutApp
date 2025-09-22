@@ -49,6 +49,11 @@ mixin _$Workout {
       throw _privateConstructorUsedError;
   @JsonKey(includeFromJson: false, includeToJson: false)
   int? get localId => throw _privateConstructorUsedError;
+  @JsonKey(name: 'next_workout_id')
+  int? get nextWorkoutId =>
+      throw _privateConstructorUsedError; // Add workout type classification
+  @JsonKey(name: 'workout_type')
+  WorkoutType get workoutType => throw _privateConstructorUsedError;
 
   /// Serializes this Workout to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -80,7 +85,9 @@ abstract class $WorkoutCopyWith<$Res> {
       @JsonKey(name: 'completed_at') DateTime? completedAt,
       @JsonKey(name: 'exercise_instances')
       List<ExerciseInstance> exerciseInstances,
-      @JsonKey(includeFromJson: false, includeToJson: false) int? localId});
+      @JsonKey(includeFromJson: false, includeToJson: false) int? localId,
+      @JsonKey(name: 'next_workout_id') int? nextWorkoutId,
+      @JsonKey(name: 'workout_type') WorkoutType workoutType});
 }
 
 /// @nodoc
@@ -113,6 +120,8 @@ class _$WorkoutCopyWithImpl<$Res, $Val extends Workout>
     Object? completedAt = freezed,
     Object? exerciseInstances = null,
     Object? localId = freezed,
+    Object? nextWorkoutId = freezed,
+    Object? workoutType = null,
   }) {
     return _then(_value.copyWith(
       id: freezed == id
@@ -175,6 +184,14 @@ class _$WorkoutCopyWithImpl<$Res, $Val extends Workout>
           ? _value.localId
           : localId // ignore: cast_nullable_to_non_nullable
               as int?,
+      nextWorkoutId: freezed == nextWorkoutId
+          ? _value.nextWorkoutId
+          : nextWorkoutId // ignore: cast_nullable_to_non_nullable
+              as int?,
+      workoutType: null == workoutType
+          ? _value.workoutType
+          : workoutType // ignore: cast_nullable_to_non_nullable
+              as WorkoutType,
     ) as $Val);
   }
 }
@@ -202,7 +219,9 @@ abstract class _$$WorkoutImplCopyWith<$Res> implements $WorkoutCopyWith<$Res> {
       @JsonKey(name: 'completed_at') DateTime? completedAt,
       @JsonKey(name: 'exercise_instances')
       List<ExerciseInstance> exerciseInstances,
-      @JsonKey(includeFromJson: false, includeToJson: false) int? localId});
+      @JsonKey(includeFromJson: false, includeToJson: false) int? localId,
+      @JsonKey(name: 'next_workout_id') int? nextWorkoutId,
+      @JsonKey(name: 'workout_type') WorkoutType workoutType});
 }
 
 /// @nodoc
@@ -233,6 +252,8 @@ class __$$WorkoutImplCopyWithImpl<$Res>
     Object? completedAt = freezed,
     Object? exerciseInstances = null,
     Object? localId = freezed,
+    Object? nextWorkoutId = freezed,
+    Object? workoutType = null,
   }) {
     return _then(_$WorkoutImpl(
       id: freezed == id
@@ -295,6 +316,14 @@ class __$$WorkoutImplCopyWithImpl<$Res>
           ? _value.localId
           : localId // ignore: cast_nullable_to_non_nullable
               as int?,
+      nextWorkoutId: freezed == nextWorkoutId
+          ? _value.nextWorkoutId
+          : nextWorkoutId // ignore: cast_nullable_to_non_nullable
+              as int?,
+      workoutType: null == workoutType
+          ? _value.workoutType
+          : workoutType // ignore: cast_nullable_to_non_nullable
+              as WorkoutType,
     ));
   }
 }
@@ -319,7 +348,9 @@ class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
       @JsonKey(name: 'completed_at') this.completedAt,
       @JsonKey(name: 'exercise_instances')
       final List<ExerciseInstance> exerciseInstances = const [],
-      @JsonKey(includeFromJson: false, includeToJson: false) this.localId})
+      @JsonKey(includeFromJson: false, includeToJson: false) this.localId,
+      @JsonKey(name: 'next_workout_id') this.nextWorkoutId,
+      @JsonKey(name: 'workout_type') this.workoutType = WorkoutType.manual})
       : _exerciseInstances = exerciseInstances,
         super._();
 
@@ -376,10 +407,17 @@ class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
   @override
   @JsonKey(includeFromJson: false, includeToJson: false)
   final int? localId;
+  @override
+  @JsonKey(name: 'next_workout_id')
+  final int? nextWorkoutId;
+// Add workout type classification
+  @override
+  @JsonKey(name: 'workout_type')
+  final WorkoutType workoutType;
 
   @override
   String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'Workout(id: $id, name: $name, notes: $notes, status: $status, startedAt: $startedAt, durationSeconds: $durationSeconds, rpeSession: $rpeSession, location: $location, readinessScore: $readinessScore, appliedPlanId: $appliedPlanId, planOrderIndex: $planOrderIndex, scheduledFor: $scheduledFor, completedAt: $completedAt, exerciseInstances: $exerciseInstances, localId: $localId)';
+    return 'Workout(id: $id, name: $name, notes: $notes, status: $status, startedAt: $startedAt, durationSeconds: $durationSeconds, rpeSession: $rpeSession, location: $location, readinessScore: $readinessScore, appliedPlanId: $appliedPlanId, planOrderIndex: $planOrderIndex, scheduledFor: $scheduledFor, completedAt: $completedAt, exerciseInstances: $exerciseInstances, localId: $localId, nextWorkoutId: $nextWorkoutId, workoutType: $workoutType)';
   }
 
   @override
@@ -401,7 +439,9 @@ class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
       ..add(DiagnosticsProperty('scheduledFor', scheduledFor))
       ..add(DiagnosticsProperty('completedAt', completedAt))
       ..add(DiagnosticsProperty('exerciseInstances', exerciseInstances))
-      ..add(DiagnosticsProperty('localId', localId));
+      ..add(DiagnosticsProperty('localId', localId))
+      ..add(DiagnosticsProperty('nextWorkoutId', nextWorkoutId))
+      ..add(DiagnosticsProperty('workoutType', workoutType));
   }
 
   @override
@@ -433,7 +473,11 @@ class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
                 other.completedAt == completedAt) &&
             const DeepCollectionEquality()
                 .equals(other._exerciseInstances, _exerciseInstances) &&
-            (identical(other.localId, localId) || other.localId == localId));
+            (identical(other.localId, localId) || other.localId == localId) &&
+            (identical(other.nextWorkoutId, nextWorkoutId) ||
+                other.nextWorkoutId == nextWorkoutId) &&
+            (identical(other.workoutType, workoutType) ||
+                other.workoutType == workoutType));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -454,7 +498,9 @@ class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
       scheduledFor,
       completedAt,
       const DeepCollectionEquality().hash(_exerciseInstances),
-      localId);
+      localId,
+      nextWorkoutId,
+      workoutType);
 
   /// Create a copy of Workout
   /// with the given fields replaced by the non-null parameter values.
@@ -489,8 +535,10 @@ abstract class _Workout extends Workout {
       @JsonKey(name: 'completed_at') final DateTime? completedAt,
       @JsonKey(name: 'exercise_instances')
       final List<ExerciseInstance> exerciseInstances,
-      @JsonKey(includeFromJson: false, includeToJson: false)
-      final int? localId}) = _$WorkoutImpl;
+      @JsonKey(includeFromJson: false, includeToJson: false) final int? localId,
+      @JsonKey(name: 'next_workout_id') final int? nextWorkoutId,
+      @JsonKey(name: 'workout_type')
+      final WorkoutType workoutType}) = _$WorkoutImpl;
   const _Workout._() : super._();
 
   factory _Workout.fromJson(Map<String, dynamic> json) = _$WorkoutImpl.fromJson;
@@ -537,6 +585,12 @@ abstract class _Workout extends Workout {
   @override
   @JsonKey(includeFromJson: false, includeToJson: false)
   int? get localId;
+  @override
+  @JsonKey(name: 'next_workout_id')
+  int? get nextWorkoutId; // Add workout type classification
+  @override
+  @JsonKey(name: 'workout_type')
+  WorkoutType get workoutType;
 
   /// Create a copy of Workout
   /// with the given fields replaced by the non-null parameter values.

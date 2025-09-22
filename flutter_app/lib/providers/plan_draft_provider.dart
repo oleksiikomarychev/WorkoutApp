@@ -203,7 +203,9 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
     if (ms[mesoIndex].weeksCount <= 0) return;
     final weeks = List<WeekDraft>.from(state.weeks);
     int start = 0;
-    for (int i = 0; i < mesoIndex; i++) start += ms[i].weeksCount;
+    for (int i = 0; i < mesoIndex; i++) {
+      start += ms[i].weeksCount;
+    }
     final endExclusive = start + ms[mesoIndex].weeksCount;
     final removeIndex = endExclusive - 1;
     if (removeIndex >= 0 && removeIndex < weeks.length) {
@@ -404,7 +406,9 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
     // apply to all weeks in this mesocycle block
     final weeks = List<WeekDraft>.from(state.weeks);
     int start = 0;
-    for (int i = 0; i < index; i++) start += ms[i].weeksCount;
+    for (int i = 0; i < index; i++) {
+      start += ms[i].weeksCount;
+    }
     final endExclusive = start + ms[index].weeksCount;
     for (int i = start; i < endExclusive && i < weeks.length; i++) {
       final w = weeks[i];
@@ -448,7 +452,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
     }
 
     // Ensure minimum 1 per meso if possible
-    final minPer = 1;
+    const minPer = 1;
     if (ms.length > totalWeeks) {
       // Assign 1 to first totalWeeks, 0 to rest
       for (int i = 0; i < ms.length; i++) {
@@ -534,7 +538,9 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
 
     // Finally, clamp except as well if needed so total matches
     int sumAll = 0;
-    for (final m in ms) sumAll += m.weeksCount;
+    for (final m in ms) {
+      sumAll += m.weeksCount;
+    }
     if (sumAll != totalWeeks) {
       final delta = totalWeeks - sumAll;
       // Adjust the first eligible meso (prefer except if present)
@@ -546,7 +552,9 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
           ms[i].weeksCount = newVal;
           // recalc sum and delta
           sumAll = 0;
-          for (final m in ms) sumAll += m.weeksCount;
+          for (final m in ms) {
+            sumAll += m.weeksCount;
+          }
         }
       }
     }

@@ -2,6 +2,7 @@
 /// 
 /// This file contains constants that are used throughout the app.
 /// It helps maintain consistency and makes it easier to update values in one place.
+library;
 
 class AppConstants {
   // App info
@@ -14,19 +15,6 @@ class AppConstants {
   static const int apiTimeout = 30; // in seconds
   static const int maxRetryAttempts = 3;
   static const int itemsPerPage = 20;
-  
-  // Local storage keys
-  static const String authTokenKey = 'auth_token';
-  static const String refreshTokenKey = 'refresh_token';
-  static const String userIdKey = 'user_id';
-  static const String themeModeKey = 'theme_mode';
-  static const String localeKey = 'locale';
-  
-  // Validation messages
-  static const String requiredField = 'This field is required';
-  static const String invalidEmail = 'Please enter a valid email';
-  static const String passwordTooShort = 'Password must be at least 6 characters';
-  static const String passwordsDontMatch = 'Passwords do not match';
   
   // Date and time formats
   static const String dateFormat = 'MMM d, yyyy';

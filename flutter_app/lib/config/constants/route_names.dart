@@ -3,16 +3,11 @@
 /// This file contains all the route names used in the app.
 /// It's recommended to use these constants instead of hardcoding route names.
 class RouteNames {
-  // Auth routes
-  static const String splash = '/splash';
-  static const String login = '/login';
-  static const String register = '/register';
-  static const String forgotPassword = '/forgot-password';
-  static const String resetPassword = '/reset-password';
-
   // Main app routes
   static const String home = '/home';
   static const String dashboard = '/dashboard';
+  static const String debug = '/debug';
+  static const String profile = '/profile';
   
   // Workout routes
   static const String workouts = '/workouts';
@@ -50,7 +45,6 @@ class RouteNames {
   
   // Settings routes
   static const String settings = '/settings';
-  static const String profile = '/profile';
   static const String notifications = '/notifications';
   static const String about = '/about';
   

@@ -1,21 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-
 import '../models/exercise_definition.dart';
 import '../screens/exercise_form_screen.dart';
 import '../services/exercise_service.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:workout_app/services/service_locator.dart';
 
-class ExerciseSelectionScreen extends StatefulWidget {
-  
-  const ExerciseSelectionScreen({Key? key}) : super(key: key);
+class ExerciseSelectionScreen extends ConsumerStatefulWidget {
+  const ExerciseSelectionScreen({super.key});
 
   @override
-  _ExerciseSelectionScreenState createState() => _ExerciseSelectionScreenState();
+  ConsumerState<ExerciseSelectionScreen> createState() => _ExerciseSelectionScreenState();
 }
 
-class _ExerciseSelectionScreenState extends State<ExerciseSelectionScreen> {
-  final _storage = const FlutterSecureStorage();
+class _ExerciseSelectionScreenState extends ConsumerState<ExerciseSelectionScreen> {
   List<ExerciseDefinition> _exercises = [];
   List<ExerciseDefinition> _filteredExercises = [];
   bool _isLoading = true;
@@ -36,7 +33,8 @@ class _ExerciseSelectionScreenState extends State<ExerciseSelectionScreen> {
 
   Future<void> _loadExercises() async {
     try {
-      final exerciseService = Provider.of<ExerciseService>(context, listen: false);
+      // Use correct service provider
+      final exerciseService = ref.read(exerciseServiceProvider);
       final exercises = await exerciseService.getExerciseDefinitions();
       setState(() {
         _exercises = exercises;

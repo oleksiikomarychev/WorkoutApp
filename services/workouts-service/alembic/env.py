@@ -1,7 +1,8 @@
 from logging.config import fileConfig
 import os
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, create_engine
+from sqlalchemy.engine import URL
 from alembic import context
 
 config = context.config
@@ -47,12 +48,20 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
-
+    """Run migrations in 'online' mode."""
+    db_url = os.getenv("WORKOUTS_DATABASE_URL")
+    if not db_url:
+        raise RuntimeError("WORKOUTS_DATABASE_URL environment variable is not set")
+    
+    # Ensure we're using synchronous driver for migrations
+    if "+asyncpg" in db_url:
+        db_url = db_url.replace("postgresql+asyncpg", "postgresql+psycopg2")
+    elif "+psycopg2" not in db_url:
+        # Add psycopg2 driver if not specified
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg2://")
+    
+    connectable = create_engine(db_url)
+    
     with connectable.connect() as connection:
         context.configure(
             connection=connection,
@@ -60,7 +69,7 @@ def run_migrations_online() -> None:
             compare_type=True,
             compare_server_default=True,
         )
-
+        
         with context.begin_transaction():
             context.run_migrations()
 

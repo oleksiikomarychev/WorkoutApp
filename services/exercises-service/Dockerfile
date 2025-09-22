@@ -10,14 +10,19 @@ COPY pyproject.toml /app/
 COPY exercises_service /app/exercises_service
 COPY alembic.ini /app/
 COPY alembic /app/alembic
+COPY entrypoint.sh /app/
 
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir .
+    && pip install --no-cache-dir . \
+    && chmod +x /app/entrypoint.sh
 
 # Ensure sqlite data dir exists for default mode
 RUN mkdir -p /app/data
 VOLUME ["/app/data"]
 
+ENV DB_PATH=/app/data/exercises.db
+ENV EXERCISES_DATABASE_URL=sqlite+aiosqlite:////app/data/exercises.db
+
 EXPOSE 8002
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn exercises_service.main:app --host 0.0.0.0 --port 8002"]
+CMD ["/app/entrypoint.sh", "uvicorn", "exercises_service.main:app", "--host", "0.0.0.0", "--port", "8002"]

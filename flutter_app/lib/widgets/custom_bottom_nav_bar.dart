@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:workout_app/config/constants/theme_constants.dart';
 
 class BottomNavBarItem {
   final IconData icon;
@@ -52,8 +51,8 @@ class CustomBottomNavBar extends StatelessWidget {
     // Calculate available width for each item
     final screenWidth = mediaQuery.size.width;
     final itemCount = items.length.toDouble();
-    final itemSpacing = 8.0; // Reduced spacing between items
-    final horizontalPadding = 16.0; // Padding on the sides
+    const itemSpacing = 8.0; // Reduced spacing between items
+    const horizontalPadding = 16.0; // Padding on the sides
     final availableWidth = screenWidth - (horizontalPadding * 2) - (itemSpacing * (itemCount - 1));
     final itemWidth = availableWidth / itemCount;
 
@@ -77,7 +76,7 @@ class CustomBottomNavBar extends StatelessWidget {
           child: SizedBox(
             height: kBottomNavigationBarHeight,
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+              padding: const EdgeInsets.symmetric(horizontal: horizontalPadding),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: List.generate(

@@ -123,14 +123,15 @@ class AppliedCalendarPlan {
             ),
       userMaxes: json['user_maxes'] != null
           ? (json['user_maxes'] as List<dynamic>)
-              .whereType<Map<String, dynamic>>()
-              .map(UserMax.fromJson)
+              .map((umJson) => UserMax.fromJson(umJson))
               .toList()
           : json['user_max_ids'] != null
               ? (json['user_max_ids'] as List<dynamic>)
                   .map((id) => UserMax(
                         id: id as int,
+                        name: 'Unknown',
                         exerciseId: 0,
+                        exerciseName: 'Unknown',
                         maxWeight: 0,
                         repMax: 0,
                       ))
