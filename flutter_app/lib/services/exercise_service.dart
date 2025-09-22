@@ -1,6 +1,3 @@
-import 'dart:convert';
-import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import '../models/exercise_instance.dart';
 import '../models/exercise_definition.dart';
 import 'api_client.dart';
@@ -8,6 +5,7 @@ import 'base_api_service.dart';
 import 'logger_service.dart';
 import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/models/muscle_info.dart';
+import 'package:workout_app/models/progression_template.dart';
 
 class ExerciseService extends BaseApiService {
   final ApiClient _apiClient;
@@ -43,17 +41,14 @@ class ExerciseService extends BaseApiService {
   }
 
   /// Fetches muscles enum with labels and groups
-  Future<List<MuscleInfo>> getMuscles() async {
+  Future<List<dynamic>> getMuscles() async {
     try {
       final response = await _apiClient.get(
         ApiConfig.musclesEndpoint,
         context: 'ExerciseService.getMuscles',
       );
       if (response is List) {
-        return response
-            .whereType<Map<String, dynamic>>()
-            .map((e) => MuscleInfo.fromJson(e))
-            .toList();
+        return response;
       }
       handleError('Invalid response format for muscles', Exception('Expected a list'));
       return [];
@@ -185,6 +180,12 @@ class ExerciseService extends BaseApiService {
     }
   }
 
+  /// Fetches progression templates
+  Future<List<ProgressionTemplate>> getTemplates() async {
+    // TODO: Implement actual API call
+    return [];
+  }
+
   // --- ExerciseInstance Methods ---
 
   /// Fetches an exercise instance by ID
@@ -211,19 +212,10 @@ class ExerciseService extends BaseApiService {
   }
 
   /// Creates a new exercise instance in a workout
-  Future<ExerciseInstance> createExerciseInstance({
-    required int workoutId,
-    required int exerciseDefinitionId,
-    required List<Map<String, int>> sets,
-    int? userMaxId,
-  }) async {
+  Future<ExerciseInstance> createExerciseInstance(ExerciseInstance instance) async {
     try {
-      final endpoint = ApiConfig.exerciseInstancesByWorkoutEndpoint(workoutId.toString());
-      final body = {
-        'exercise_list_id': exerciseDefinitionId,
-        'sets': sets,
-        if (userMaxId != null) 'user_max_id': userMaxId,
-      };
+      final endpoint = ApiConfig.getInstancesByWorkoutEndpoint(instance.workoutId.toString());
+      final body = instance.toJson();
       _logger.d('POST ExerciseInstance | endpoint=$endpoint | body=$body');
       final response = await _apiClient.post(
         endpoint,

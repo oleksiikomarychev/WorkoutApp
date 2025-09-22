@@ -1,9 +1,10 @@
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:http/http.dart' as http;
 
 class ApiConfig {
   // Base URLs (ensure no trailing slashes)
-  static const String androidEmulatorBaseUrl = 'http://10.0.2.2:8010';
-  static const String localBaseUrl = 'http://localhost:8010';
+  static const String androidEmulatorBaseUrl = 'http://10.0.2.2:8000';
+  static const String localBaseUrl = 'http://localhost:8000';
   static const String productionBaseUrl = 'https://yourproductionapi.com';
   
   // Timeouts
@@ -46,129 +47,93 @@ class ApiConfig {
   }
 
   // Health Check
+  static String get rpeHealthEndpoint => buildEndpoint('/rpe/health');
   static String get healthEndpoint => buildEndpoint('/health');
-
-  // Workout Endpoints
-  static String get workoutsEndpoint => buildEndpoint('/workouts');
-  static String createWorkoutEndpoint() => buildEndpoint('/workouts/');
-  static String workoutByIdEndpoint(String workoutId) => 
-      buildEndpoint('/workouts/$workoutId');
-  static String workoutCalendarEndpoint(String workoutId) => 
-      buildEndpoint('/workouts/$workoutId/calendar');
-  static String exerciseInstancesByWorkoutEndpoint(String workoutId) =>
-      buildEndpoint('/exercises/workouts/$workoutId/instances');
-  static String exerciseInstanceByIdEndpoint(String instanceId) =>
-      buildEndpoint('/exercises/instances/$instanceId');
-  static String deleteExerciseInstanceEndpoint(String instanceId) =>
-      buildEndpoint('/exercises/instances/$instanceId');
-
-  // Exercise Definition Endpoints
-  static String get exerciseDefinitionsEndpoint => buildEndpoint('/exercises/list');
-  static String exerciseDefinitionByIdEndpoint(String id) => 
-      buildEndpoint('/exercises/list/$id');
-
-  // Muscles (enum + labels) Endpoint
+  static String get exercisesHealthEndpoint => buildEndpoint('/exercises/health');
   static String get musclesEndpoint => buildEndpoint('/exercises/muscles');
+  static String get exerciseDefinitionsEndpoint => buildEndpoint('/exercises/definitions');
+  static String createExerciseDefinitionEndpoint() => buildEndpoint('/exercises/definitions');
+  static String exerciseDefinitionByIdEndpoint(String exerciseListId) => buildEndpoint('/exercises/definitions/$exerciseListId');
+  static String updateExerciseDefinitionEndpoint(String exerciseListId) => buildEndpoint('/exercises/definitions/$exerciseListId');
+  static String deleteExerciseDefinitionEndpoint(String exerciseListId) => buildEndpoint('/exercises/definitions/$exerciseListId');
+  static String exerciseInstanceByIdEndpoint(String instanceId) => buildEndpoint('/exercises/instances/$instanceId');
+  static String updateExerciseInstanceEndpoint(String instanceId) => buildEndpoint('/exercises/instances/$instanceId');
+  static String deleteExerciseInstanceEndpoint(String instanceId) => buildEndpoint('/exercises/instances/$instanceId');
+  static String createExerciseInstanceEndpoint(String workoutId) => buildEndpoint('/exercises/instances/workouts/$workoutId/instances');
+  static String getInstancesByWorkoutEndpoint(String workoutId) => buildEndpoint('/exercises/instances/workouts/$workoutId/instances');
+  static String updateExerciseSetEndpoint(String instanceId, String setId) => buildEndpoint('/exercises/instances/$instanceId/sets/$setId');
+  static String deleteExerciseSetEndpoint(String instanceId, String setId) => buildEndpoint('/exercises/instances/$instanceId/sets/$setId');
+  static String createExerciseInstancesBatchEndpoint() => buildEndpoint('/exercises/instances/batch');
+  static String migrateSetIdsEndpoint() => buildEndpoint('/exercises/instances/migrate-set-ids');
+  static String get userMaxHealthEndpoint => buildEndpoint('/user-max/health');
+  static String createUserMaxEndpoint() => buildEndpoint('/user-max');
+  static String getUserMaxesEndpoint() => buildEndpoint('/user-max');
+  static String getByExerciseEndpoint(String exerciseId) => buildEndpoint('/user-max/by_exercise/$exerciseId');
+  static String getUserMaxEndpoint(String userMaxId) => buildEndpoint('/user-max/$userMaxId');
+  static String updateUserMaxEndpoint(String userMaxId) => buildEndpoint('/user-max/$userMaxId');
+  static String deleteUserMaxEndpoint(String userMaxId) => buildEndpoint('/user-max/$userMaxId');
+  static String calculateTrue1rmEndpoint(String userMaxId) => buildEndpoint('/user-max/$userMaxId/calculate-true-1rm');
+  static String getUserMaxesByExercisesEndpoint() => buildEndpoint('/user-max/by-exercises');
+  static String verify1rmEndpoint(String userMaxId) => buildEndpoint('/user-max/$userMaxId/verify');
+  static String createBulkUserMaxEndpoint() => buildEndpoint('/user-max/bulk');
+  static String createWorkoutEndpoint() => buildEndpoint('/workouts');
+  static String get workoutsEndpoint => buildEndpoint('/workouts/');
+  static String getWorkoutsEndpoint() => buildEndpoint('/workouts');
+  static String getWorkoutEndpoint(String workoutId) => buildEndpoint('/workouts/$workoutId');
+  static String updateWorkoutEndpoint(String workoutId) => buildEndpoint('/workouts/$workoutId');
+  static String deleteWorkoutEndpoint(String workoutId) => buildEndpoint('/workouts/$workoutId');
+  static String createWorkoutsBatchEndpoint() => buildEndpoint('/workouts/batch');
+  static String startWorkoutSessionEndpoint(String workoutId) => buildEndpoint('/workouts/sessions/$workoutId/start');
+  static String getActiveSessionEndpoint(String workoutId) => buildEndpoint('/workouts/sessions/$workoutId/active');
+  static String getSessionHistoryEndpoint(String workoutId) => buildEndpoint('/workouts/sessions/$workoutId/history');
+  static String finishSessionEndpoint(String sessionId) => buildEndpoint('/workouts/sessions/$sessionId/finish');
+  static String generateWorkoutsEndpoint() => buildEndpoint('/workouts/workout-generation/generate');
+  static String get rootEndpoint => buildEndpoint('/');
+  static String get rpeTableEndpoint => buildEndpoint('/rpe/table');
+  static String computeRpeSetEndpoint() => buildEndpoint('/rpe/compute');
+  static String applyPlanEndpoint(String planId) => buildEndpoint('/plans/applied-plans/apply/$planId');
+  static String getUserAppliedPlansEndpoint() => buildEndpoint('/plans/applied-plans/user');
+  static String getAppliedPlanDetailsEndpoint(String planId) => buildEndpoint('/plans/applied-plans/$planId');
+  static String getAppliedPlansEndpoint() => buildEndpoint('/plans/applied-plans');
+  static String getAllPlansEndpoint() => buildEndpoint('/plans/calendar-plans');
+  static String createCalendarPlanEndpoint() => buildEndpoint('/plans/calendar-plans');
+  static String getFavoritePlansEndpoint() => buildEndpoint('/plans/calendar-plans/favorites');
+  static String get calendarPlansEndpoint => buildEndpoint('/plans/calendar-plans');
+  static String getCalendarPlanEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId');
+  static String updateCalendarPlanEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId');
+  static String deleteCalendarPlanEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId');
+  static String getPlanWorkoutsEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/workouts');
+  static String addFavoritePlanEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/favorite');
+  static String removeFavoritePlanEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/favorite');
+  static String listMesocyclesEndpoint(String planId) => buildEndpoint('/plans/mesocycles/$planId/mesocycles');
+  static String createMesocycleEndpoint(String planId) => buildEndpoint('/plans/mesocycles/$planId/mesocycles');
+  static String updateMesocycleEndpoint(String mesocycleId) => buildEndpoint('/plans/mesocycles/$mesocycleId');
+  static String deleteMesocycleEndpoint(String mesocycleId) => buildEndpoint('/plans/mesocycles/$mesocycleId');
+  static String listMicrocyclesEndpoint(String mesocycleId) => buildEndpoint('/plans/mesocycles/$mesocycleId/microcycles');
+  static String createMicrocycleEndpoint(String mesocycleId) => buildEndpoint('/plans/mesocycles/$mesocycleId/microcycles');
+  static String getMicrocycleEndpoint(String mesocycleId, String microcycleId) => buildEndpoint('/plans/mesocycles/$mesocycleId/microcycles/$microcycleId');
+  static String updateMicrocycleEndpoint(String microcycleId) => buildEndpoint('/plans/mesocycles/microcycles/$microcycleId');
+  static String deleteMicrocycleEndpoint(String microcycleId) => buildEndpoint('/plans/mesocycles/microcycles/$microcycleId');
+  static String userMaxesByExerciseEndpoint(String exerciseId) => getByExerciseEndpoint(exerciseId);
+  static String sessionSetCompletionEndpoint(String sessionId, String instanceId, String setId) => buildEndpoint('/workouts/sessions/$sessionId/instances/$instanceId/sets/$setId/completion');
+  static String workoutsEndpointWithPagination(int skip, int limit) => "${buildEndpoint('/workouts/')}?skip=$skip&limit=$limit";
 
-  // Exercise Instance Endpoints
-  static String get exerciseInstancesEndpoint => buildEndpoint('/exercise-instances');
-  static String exerciseInstanceByWorkoutEndpoint(String workoutId) => 
-      buildEndpoint('/exercises/workouts/$workoutId/instances');
-  static String updateExerciseInstanceEndpoint(String instanceId) => 
-      buildEndpoint('/exercises/instances/$instanceId');
-  // Helper for deleting a specific set within an instance
-  static String exerciseSetByIdEndpoint(String instanceId, String setId) => 
-      buildEndpoint('/exercises/instances/$instanceId/sets/$setId');
+  // New endpoints for workout filtering
+  static String workoutsByTypeEndpoint(String type) => "${buildEndpoint('/workouts/')}?type=$type";
+  static String get firstGeneratedWorkoutEndpoint => buildEndpoint('/workouts/generated/first');
+  static String get nextGeneratedWorkoutEndpoint => buildEndpoint('/workouts/generated/next');
+  static String nextWorkoutInPlanEndpoint(String workoutId) => buildEndpoint('/workouts/$workoutId/next');
 
-  // User Max Endpoints
-  static String get userMaxesEndpoint => buildEndpoint('/user-max');
-  static String userMaxByIdEndpoint(String maxId) => 
-      buildEndpoint('/user-max/$maxId');
-  static String userMaxesByExerciseEndpoint(String exerciseId) => 
-      buildEndpoint('/user-max/by_exercise/$exerciseId');
+  static String get getActivePlanEndpoint => buildEndpoint('/plans/applied-plans/active');
 
-  // Progression Template Endpoints
-  static String get progressionTemplatesEndpoint => 
-      buildEndpoint('/progression-templates');
-  static String progressionTemplateByIdEndpoint(String templateId) => 
-      buildEndpoint('/progression-templates/$templateId');
-  static String progressionTemplateExercisesEndpoint(String templateId) => 
-      buildEndpoint('/progression-templates/$templateId/exercises');
+  static String get activePlanEndpoint => buildEndpoint('/plans/applied-plans/active');
+  static String get activePlanWorkoutsEndpoint => buildEndpoint('$activePlanEndpoint/workouts');
+  static String nextWorkoutInActivePlanEndpoint(String planId) => 
+      buildEndpoint('/plans/$planId/next-workout');
 
-  // Calendar Plan Endpoints
-  static String get calendarPlansEndpoint => buildEndpoint('/calendar-plans');
-  static String calendarPlanByIdEndpoint(String planId) => 
-      buildEndpoint('/calendar-plans/$planId');
-  static String calendarPlanWorkoutsEndpoint(String planId) => 
-      buildEndpoint('/calendar-plans/$planId/workouts');
-  // Calendar Plan Favorites
-  static String get calendarPlanFavoritesEndpoint => buildEndpoint('/calendar-plans/favorites');
-  static String calendarPlanFavoriteByIdEndpoint(String planId) =>
-      buildEndpoint('/calendar-plans/$planId/favorite');
-
-  // Calendar Plan Instances
-  static String get calendarPlanInstancesEndpoint => buildEndpoint('/calendar-plan-instances');
-  static String calendarPlanInstanceByIdEndpoint(String id) => buildEndpoint('/calendar-plan-instances/$id');
-  static String createInstanceFromPlanEndpoint(String planId) => buildEndpoint('/calendar-plan-instances/from-plan/$planId');
-  static String applyFromInstanceEndpoint(String instanceId) =>
-      buildEndpoint('/calendar-plan-instances/$instanceId/apply');
-      
-  // Applied Calendar Plan Endpoints
-  static String get appliedCalendarPlansEndpoint => buildEndpoint('/applied-calendar-plans');
-  static String applyCalendarPlanEndpoint(String planId) => 
-      buildEndpoint('/applied-calendar-plans/apply/$planId');
-  static String get activeAppliedCalendarPlanEndpoint => 
-      buildEndpoint('/applied-calendar-plans/active');
-  static String get userAppliedCalendarPlansEndpoint =>
-      buildEndpoint('/applied-calendar-plans/user');
-  static String appliedCalendarPlanEndpoint(String planId) =>
-      buildEndpoint('/applied-calendar-plans/user/$planId');
-  static String appliedCalendarPlanByIdEndpoint(String planId) => 
-      buildEndpoint('/applied-calendar-plans/$planId');
-
-  // Mesocycle & Microcycle Endpoints
-  // Mesocycles under a calendar plan
-  static String calendarPlanMesocyclesEndpoint(String planId) =>
-      buildEndpoint('/calendar-plans/$planId/mesocycles');
-  // Single mesocycle by ID
-  static String mesocycleByIdEndpoint(String mesocycleId) =>
-      buildEndpoint('/mesocycles/$mesocycleId');
-  // Microcycles under a mesocycle
-  static String mesocycleMicrocyclesEndpoint(String mesocycleId) =>
-      buildEndpoint('/mesocycles/$mesocycleId/microcycles');
-  // Single microcycle by ID
-  static String microcycleByIdEndpoint(String microcycleId) =>
-      buildEndpoint('/microcycles/$microcycleId');
-
-  // Workout Session Endpoints
-  static String startWorkoutSessionEndpoint(String workoutId) =>
-      buildEndpoint('/workouts/$workoutId/start');
-  static String activeWorkoutSessionEndpoint(String workoutId) =>
-      buildEndpoint('/workouts/$workoutId/active');
-  static String workoutSessionHistoryEndpoint(String workoutId) =>
-      buildEndpoint('/workouts/$workoutId/history');
-  static String sessionSetCompletionEndpoint(
-    String sessionId,
-    String instanceId,
-    String setId,
-  ) => buildEndpoint('/sessions/$sessionId/instances/$instanceId/sets/$setId');
-  static String finishSessionEndpoint(String sessionId) =>
-      buildEndpoint('/sessions/$sessionId/finish');
-
-  // Utils
-  static String get rpeEndpoint => buildEndpoint('/rpe');
-
-  // Accounts-service endpoints (proxied via gateway)
-  static String get accountsBase => buildEndpoint('/accounts');
-  // Me
-  static String get accountsMe => buildEndpoint('/accounts/me');
-  // Clients
-  static String get accountsClients => buildEndpoint('/accounts/clients');
-  // Notes
-  static String accountsClientNotes(String clientUserId) => buildEndpoint('/accounts/clients/$clientUserId/notes');
-  static String accountsNoteById(String noteId) => buildEndpoint('/accounts/notes/$noteId');
-  // Tags
-  static String get accountsTags => buildEndpoint('/accounts/tags');
-  static String accountsClientTags(String clientUserId) => buildEndpoint('/accounts/clients/$clientUserId/tags');
-  static String accountsClientTagById(String clientUserId, String tagId) => buildEndpoint('/accounts/clients/$clientUserId/tags/$tagId');
+  static void logApiError(http.Response response) {
+    print('API Error: ${response.statusCode}');
+    print('URL: ${response.request?.url}');
+    print('Body: ${response.body}');
+  }
 }

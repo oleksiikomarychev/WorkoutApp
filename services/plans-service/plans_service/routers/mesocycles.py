@@ -1,107 +1,69 @@
 from typing import List
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.orm import Session
-
-from ..dependencies import get_db, get_user_id
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from ..dependencies import get_db
+from ..models import Microcycle
+from ..services.calendar_plan_service import CalendarPlanService
 from ..services.mesocycle_service import MesocycleService
+from ..schemas.calendar_plan import MesocycleResponse
+from ..schemas.calendar_plan import MicrocycleResponse
 from ..schemas.mesocycle import (
     MesocycleCreate,
     MesocycleUpdate,
     MesocycleResponse,
-    MicrocycleCreate,
     MicrocycleUpdate,
-    MicrocycleResponse,
+    MicrocycleCreate
 )
 
-router = APIRouter()
+router = APIRouter(prefix="/mesocycles")
 
 
-# ===== Mesocycles =====
-@router.get(
-    "/calendar-plans/{plan_id}/mesocycles", response_model=List[MesocycleResponse]
-)
-def list_mesocycles(
-    plan_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)
-):
+@router.get("/{plan_id}/mesocycles", response_model=List[MesocycleResponse])
+async def list_mesocycles(plan_id: int, db: Session = Depends(get_db)):
     svc = MesocycleService(db)
-    return svc.list_mesocycles(plan_id, user_id)
+    return await svc.list_mesocycles(plan_id)
 
 
-@router.post(
-    "/calendar-plans/{plan_id}/mesocycles",
-    response_model=MesocycleResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_mesocycle(
-    plan_id: int,
-    body: MesocycleUpdate,
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
-):
-    # Reuse MesocycleUpdate fields for simple creation from path plan_id
-    data = MesocycleCreate(
-        calendar_plan_id=plan_id,
-        name=body.name or "Mesocycle",
-        notes=body.notes,
-        order_index=body.order_index or 0,
-        normalization_value=body.normalization_value,
-        normalization_unit=body.normalization_unit,
-        weeks_count=body.weeks_count,
-        microcycle_length_days=body.microcycle_length_days,
-    )
+@router.post("/{plan_id}/mesocycles", response_model=MesocycleResponse, status_code=status.HTTP_201_CREATED)
+async def create_mesocycle(plan_id: int, body: MesocycleCreate, db: Session = Depends(get_db)):
     svc = MesocycleService(db)
-    return svc.create_mesocycle(data, user_id)
+    return await svc.create_mesocycle(body)
 
 
-@router.put("/mesocycles/{mesocycle_id}", response_model=MesocycleResponse)
-def update_mesocycle(
-    mesocycle_id: int,
-    body: MesocycleUpdate,
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
-):
+@router.put("/{mesocycle_id}", response_model=MesocycleResponse)
+async def update_mesocycle(mesocycle_id: int, body: MesocycleUpdate, db: Session = Depends(get_db)):
     svc = MesocycleService(db)
-    return svc.update_mesocycle(mesocycle_id, body, user_id)
+    return await svc.update_mesocycle(mesocycle_id, body)
 
 
-@router.delete(
-    "/mesocycles/{mesocycle_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def delete_mesocycle(
-    mesocycle_id: int,
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
-):
+@router.delete("/{mesocycle_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_mesocycle(mesocycle_id: int, db: Session = Depends(get_db)):
     svc = MesocycleService(db)
-    svc.delete_mesocycle(mesocycle_id, user_id)
+    await svc.delete_mesocycle(mesocycle_id)
     return None
 
 
-# ===== Microcycles =====
-@router.get(
-    "/mesocycles/{mesocycle_id}/microcycles", response_model=List[MicrocycleResponse]
-)
-def list_microcycles(
-    mesocycle_id: int,
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
+@router.get("/{mesocycle_id}", response_model=MesocycleResponse)
+async def get_mesocycle(
+    mesocycle_id: int, db: Session = Depends(get_db)
 ):
     svc = MesocycleService(db)
-    return svc.list_microcycles(mesocycle_id, user_id)
+    mesocycle = await svc.get_mesocycle_by_id(mesocycle_id)
+    if not mesocycle:
+        raise HTTPException(status_code=404, detail="Mesocycle not found")
+    return mesocycle
 
 
-@router.post(
-    "/mesocycles/{mesocycle_id}/microcycles",
-    response_model=MicrocycleResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_microcycle(
-    mesocycle_id: int,
-    body: MicrocycleUpdate,
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
-):
+@router.get("/{mesocycle_id}/microcycles", response_model=List[MicrocycleResponse])
+async def list_microcycles(mesocycle_id: int, db: Session = Depends(get_db)):
+    svc = MesocycleService(db)
+    return await svc.list_microcycles(mesocycle_id)
+
+
+@router.post("/{mesocycle_id}/microcycles", response_model=MicrocycleResponse, status_code=status.HTTP_201_CREATED)
+async def create_microcycle(mesocycle_id: int, body: MicrocycleUpdate, db: Session = Depends(get_db)):
     data = MicrocycleCreate(
         mesocycle_id=mesocycle_id,
         name=body.name or "Microcycle",
@@ -113,29 +75,38 @@ def create_microcycle(
         days_count=body.days_count,
     )
     svc = MesocycleService(db)
-    return svc.create_microcycle(data, user_id)
+    return await svc.create_microcycle(data)
 
 
 @router.put("/microcycles/{microcycle_id}", response_model=MicrocycleResponse)
-def update_microcycle(
-    microcycle_id: int,
-    body: MicrocycleUpdate,
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
-):
+async def update_microcycle(microcycle_id: int, body: MicrocycleUpdate, db: Session = Depends(get_db)):
     svc = MesocycleService(db)
-    return svc.update_microcycle(microcycle_id, body, user_id)
+    return await svc.update_microcycle(microcycle_id, body)
 
 
-@router.delete(
-    "/microcycles/{microcycle_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def delete_microcycle(
-    microcycle_id: int,
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
-):
+@router.delete("/microcycles/{microcycle_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_microcycle(microcycle_id: int, db: Session = Depends(get_db)):
     svc = MesocycleService(db)
-    svc.delete_microcycle(microcycle_id, user_id)
+    await svc.delete_microcycle(microcycle_id)
     return None
+
+
+
+@router.post("/validate")
+async def validate_microcycles(microcycle_ids: list[int], db: AsyncSession = Depends(get_db)):
+    if not microcycle_ids:
+        return {"valid_ids": []}
+    
+    result = await db.execute(select(Microcycle.id).where(Microcycle.id.in_(microcycle_ids)))
+    valid_ids = [row[0] for row in result.all()]
+    return {"valid_ids": valid_ids}
+
+
+@router.get("/{microcycle_id}", response_model=MicrocycleResponse)
+async def get_microcycle(
+    microcycle_id: int, db: AsyncSession = Depends(get_db)
+):
+    microcycle = await CalendarPlanService.get_microcycle_by_id(db, microcycle_id)
+    if not microcycle:
+        raise HTTPException(status_code=404, detail="Microcycle not found")
+    return microcycle

@@ -1,11 +1,15 @@
 import 'package:flutter/foundation.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:collection/collection.dart';
 import 'exercise_instance.dart';
-import 'exercise_definition.dart';
 
 part 'workout.freezed.dart';
 part 'workout.g.dart';
+
+// Add workout type enum
+enum WorkoutType {
+  manual,
+  generated,
+}
 
 @freezed
 class Workout with _$Workout {
@@ -30,6 +34,9 @@ class Workout with _$Workout {
     @JsonKey(name: 'completed_at') DateTime? completedAt,
     @JsonKey(name: 'exercise_instances') @Default([]) List<ExerciseInstance> exerciseInstances,
     @JsonKey(includeFromJson: false, includeToJson: false) int? localId,
+    @JsonKey(name: 'next_workout_id') int? nextWorkoutId,
+    // Add workout type classification
+    @JsonKey(name: 'workout_type') @Default(WorkoutType.manual) WorkoutType workoutType,
   }) = _Workout;
 
   factory Workout.fromJson(Map<String, dynamic> json) =>
@@ -97,9 +104,11 @@ class Workout with _$Workout {
       if (planOrderIndex != null) 'plan_order_index': planOrderIndex,
       if (scheduledFor != null) 'scheduled_for': scheduledFor?.toIso8601String(),
       if (completedAt != null) 'completed_at': completedAt?.toIso8601String(),
+      if (nextWorkoutId != null) 'next_workout_id': nextWorkoutId, // Added
       'exercise_instances': exerciseInstances
           .map((ei) => ei.toFormData())
           .toList(),
+      'workout_type': workoutType.toString().split('.').last, // Fixed access
     };
   }
 }

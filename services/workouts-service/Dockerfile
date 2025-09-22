@@ -19,5 +19,4 @@ ENV PYTHONUNBUFFERED=1 \
 
 EXPOSE 8004
 
-CMD alembic upgrade head && \
-    uvicorn workouts_service.main:app --host 0.0.0.0 --port ${PORT}
+CMD uvicorn workouts_service.main:app --host 0.0.0.0 --port ${PORT}

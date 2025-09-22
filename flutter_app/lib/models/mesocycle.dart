@@ -24,16 +24,16 @@ class Mesocycle {
   });
 
   factory Mesocycle.fromJson(Map<String, dynamic> json) => Mesocycle(
-        id: json['id'] as int,
+        id: (json['id'] as int?) ?? 0,
         name: json['name'] ?? '',
         notes: json['notes'],
-        orderIndex: (json['order_index'] ?? 0) as int,
+        orderIndex: (json['order_index'] as int?) ?? 0,
         normalizationValue: (json['normalization_value'] as num?)?.toDouble(),
         normalizationUnit: json['normalization_unit'] as String?,
         weeksCount: json['weeks_count'] as int?,
         microcycleLengthDays: json['microcycle_length_days'] as int?,
         microcycles: (json['microcycles'] as List<dynamic>? ?? [])
-            .map((e) => Microcycle.fromJson(e as Map<String, dynamic>))
+            .map((e) => e != null ? Microcycle.fromJson(e as Map<String, dynamic>) : Microcycle(id: 0, mesocycleId: 0, name: '', orderIndex: 0, schedule: {}))
             .toList(),
       );
 

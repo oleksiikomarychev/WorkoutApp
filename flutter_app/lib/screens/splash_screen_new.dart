@@ -86,7 +86,7 @@ class _SplashScreenNewState extends State<SplashScreenNew>
             const SizedBox(height: 20),
             const Text(
               'Workout App',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 16),
             const CircularProgressIndicator(),

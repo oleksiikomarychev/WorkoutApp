@@ -33,6 +33,7 @@ mixin _$ExerciseDefinition {
   String? get movementType => throw _privateConstructorUsedError;
   @JsonKey(name: 'region')
   String? get region => throw _privateConstructorUsedError;
+  double? get oneRepMax => throw _privateConstructorUsedError;
 
   /// Serializes this ExerciseDefinition to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -58,7 +59,8 @@ abstract class $ExerciseDefinitionCopyWith<$Res> {
       @JsonKey(name: 'target_muscles') List<String>? targetMuscles,
       @JsonKey(name: 'synergist_muscles') List<String>? synergistMuscles,
       @JsonKey(name: 'movement_type') String? movementType,
-      @JsonKey(name: 'region') String? region});
+      @JsonKey(name: 'region') String? region,
+      double? oneRepMax});
 }
 
 /// @nodoc
@@ -84,6 +86,7 @@ class _$ExerciseDefinitionCopyWithImpl<$Res, $Val extends ExerciseDefinition>
     Object? synergistMuscles = freezed,
     Object? movementType = freezed,
     Object? region = freezed,
+    Object? oneRepMax = freezed,
   }) {
     return _then(_value.copyWith(
       id: freezed == id
@@ -118,6 +121,10 @@ class _$ExerciseDefinitionCopyWithImpl<$Res, $Val extends ExerciseDefinition>
           ? _value.region
           : region // ignore: cast_nullable_to_non_nullable
               as String?,
+      oneRepMax: freezed == oneRepMax
+          ? _value.oneRepMax
+          : oneRepMax // ignore: cast_nullable_to_non_nullable
+              as double?,
     ) as $Val);
   }
 }
@@ -138,7 +145,8 @@ abstract class _$$ExerciseDefinitionImplCopyWith<$Res>
       @JsonKey(name: 'target_muscles') List<String>? targetMuscles,
       @JsonKey(name: 'synergist_muscles') List<String>? synergistMuscles,
       @JsonKey(name: 'movement_type') String? movementType,
-      @JsonKey(name: 'region') String? region});
+      @JsonKey(name: 'region') String? region,
+      double? oneRepMax});
 }
 
 /// @nodoc
@@ -162,6 +170,7 @@ class __$$ExerciseDefinitionImplCopyWithImpl<$Res>
     Object? synergistMuscles = freezed,
     Object? movementType = freezed,
     Object? region = freezed,
+    Object? oneRepMax = freezed,
   }) {
     return _then(_$ExerciseDefinitionImpl(
       id: freezed == id
@@ -196,6 +205,10 @@ class __$$ExerciseDefinitionImplCopyWithImpl<$Res>
           ? _value.region
           : region // ignore: cast_nullable_to_non_nullable
               as String?,
+      oneRepMax: freezed == oneRepMax
+          ? _value.oneRepMax
+          : oneRepMax // ignore: cast_nullable_to_non_nullable
+              as double?,
     ));
   }
 }
@@ -211,7 +224,8 @@ class _$ExerciseDefinitionImpl implements _ExerciseDefinition {
       @JsonKey(name: 'target_muscles') final List<String>? targetMuscles,
       @JsonKey(name: 'synergist_muscles') final List<String>? synergistMuscles,
       @JsonKey(name: 'movement_type') this.movementType,
-      @JsonKey(name: 'region') this.region})
+      @JsonKey(name: 'region') this.region,
+      this.oneRepMax})
       : _targetMuscles = targetMuscles,
         _synergistMuscles = synergistMuscles;
 
@@ -256,10 +270,12 @@ class _$ExerciseDefinitionImpl implements _ExerciseDefinition {
   @override
   @JsonKey(name: 'region')
   final String? region;
+  @override
+  final double? oneRepMax;
 
   @override
   String toString() {
-    return 'ExerciseDefinition(id: $id, name: $name, muscleGroup: $muscleGroup, equipment: $equipment, targetMuscles: $targetMuscles, synergistMuscles: $synergistMuscles, movementType: $movementType, region: $region)';
+    return 'ExerciseDefinition(id: $id, name: $name, muscleGroup: $muscleGroup, equipment: $equipment, targetMuscles: $targetMuscles, synergistMuscles: $synergistMuscles, movementType: $movementType, region: $region, oneRepMax: $oneRepMax)';
   }
 
   @override
@@ -279,7 +295,9 @@ class _$ExerciseDefinitionImpl implements _ExerciseDefinition {
                 .equals(other._synergistMuscles, _synergistMuscles) &&
             (identical(other.movementType, movementType) ||
                 other.movementType == movementType) &&
-            (identical(other.region, region) || other.region == region));
+            (identical(other.region, region) || other.region == region) &&
+            (identical(other.oneRepMax, oneRepMax) ||
+                other.oneRepMax == oneRepMax));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -293,7 +311,8 @@ class _$ExerciseDefinitionImpl implements _ExerciseDefinition {
       const DeepCollectionEquality().hash(_targetMuscles),
       const DeepCollectionEquality().hash(_synergistMuscles),
       movementType,
-      region);
+      region,
+      oneRepMax);
 
   /// Create a copy of ExerciseDefinition
   /// with the given fields replaced by the non-null parameter values.
@@ -321,8 +340,8 @@ abstract class _ExerciseDefinition implements ExerciseDefinition {
       @JsonKey(name: 'target_muscles') final List<String>? targetMuscles,
       @JsonKey(name: 'synergist_muscles') final List<String>? synergistMuscles,
       @JsonKey(name: 'movement_type') final String? movementType,
-      @JsonKey(name: 'region')
-      final String? region}) = _$ExerciseDefinitionImpl;
+      @JsonKey(name: 'region') final String? region,
+      final double? oneRepMax}) = _$ExerciseDefinitionImpl;
 
   factory _ExerciseDefinition.fromJson(Map<String, dynamic> json) =
       _$ExerciseDefinitionImpl.fromJson;
@@ -348,6 +367,8 @@ abstract class _ExerciseDefinition implements ExerciseDefinition {
   @override
   @JsonKey(name: 'region')
   String? get region;
+  @override
+  double? get oneRepMax;
 
   /// Create a copy of ExerciseDefinition
   /// with the given fields replaced by the non-null parameter values.

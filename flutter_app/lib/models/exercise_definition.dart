@@ -14,6 +14,7 @@ class ExerciseDefinition with _$ExerciseDefinition {
     @JsonKey(name: 'synergist_muscles') List<String>? synergistMuscles,
     @JsonKey(name: 'movement_type') String? movementType,
     @JsonKey(name: 'region') String? region,
+    double? oneRepMax,
   }) = _ExerciseDefinition;
 
   factory ExerciseDefinition.fromJson(Map<String, dynamic> json) =>

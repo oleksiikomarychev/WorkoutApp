@@ -8,51 +8,15 @@ services:
       - RPE_TABLE_PATH=/app/rpe_table.json
     ports:
       - "8001:8001"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/v1/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
     restart: unless-stopped
-
-  coach-service:
-    build: ./services/coach-service
-    container_name: coach-service
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=${COACH_DATABASE_URL}
-    volumes:
-      - coach_data:/app/data
-    ports:
-      - "8007:8007"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8007/api/v1/health')"]
-      interval: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 5s
       timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
-  accounts-service:
-    build: ./services/accounts-service
-    container_name: accounts-service
-    env_file:
-      - .env
-    environment:
-      # SQLite fallback per-service DB strategy (can override via ACCOUNTS_DATABASE_URL)
-      - DATABASE_URL=${ACCOUNTS_DATABASE_URL}
-      # Disable coach-related routers in accounts-service when coach-service is enabled
-      - ACCOUNTS_ENABLE_COACH_ROUTERS=false
-    volumes:
-      - accounts_data:/app/data
-    ports:
-      - "8006:8006"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/api/v1/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
+      retries: 15
+      start_period: 30s
+    networks:
+      - workout-net
 
   plans-service:
     build: ./services/plans-service
@@ -62,37 +26,45 @@ services:
     environment:
       - DATABASE_URL=${PLANS_DATABASE_URL}
       - ENABLE_EXERCISES_ROUTER=true
+      - WORKOUTS_SERVICE_URL=http://workouts-service:8004
     volumes:
       - plans_data:/app/data
       - ./services/plans-service/alembic:/app/alembic
     ports:
       - "8005:8005"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/api/v1/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    networks:
+      - workout-net
 
   exercises-service:
-    build: ./services/exercises-service
+    build:
+      context: ./services/exercises-service
     container_name: exercises-service
     env_file:
       - .env
     environment:
-      # Force SQLite fallback inside the container (per-service DB strategy)
       - DATABASE_URL=${EXERCISES_DATABASE_URL}
-    # DATABASE_URL is optional; defaults to sqlite:////app/data/exercises.db
+      - PYTHONPATH=/app
     volumes:
       - exercises_data:/app/data
+      - ./services/exercises-service/alembic:/app/alembic
     ports:
       - "8002:8002"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/api/v1/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    networks:
+      - workout-net
 
   gateway:
     build: ./gateway
@@ -105,26 +77,25 @@ services:
       USER_MAX_SERVICE_URL: "http://user-max-service:8003"
       WORKOUTS_SERVICE_URL: "http://workouts-service:8004"
       PLANS_SERVICE_URL: "http://plans-service:8005"
-      ACCOUNTS_SERVICE_URL: "http://accounts-service:8006"
-      COACH_SERVICE_URL: "http://coach-service:8007"
       MONO_WORKOUTS: "true"
       FIREBASE_CREDENTIALS_BASE64: "${FIREBASE_CREDENTIALS_BASE64}"
     ports:
-      - "8010:8000"
+      - "8000:8000"
     depends_on:
-      - rpe-service
-      - exercises-service
-      - user-max-service
-      - workouts-service
-      - plans-service
-      - accounts-service
-      - coach-service
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      exercises-service:
+        condition: service_healthy
+      user-max-service:
+        condition: service_healthy
+      rpe-service:
+        condition: service_healthy
+      plans-service:
+        condition: service_healthy
+      workouts-service:
+        condition: service_healthy
     restart: unless-stopped
+    networks:
+      - workout-net
+      - default
 
   user-max-service:
     build: ./services/user-max-service
@@ -132,18 +103,21 @@ services:
     env_file:
       - .env
     environment:
-      # Force SQLite fallback inside the container (per-service DB strategy)
       - DATABASE_URL=${USER_MAX_DATABASE_URL}
     volumes:
       - user_max_data:/app/data
+      - ./services/user-max-service/alembic:/app/alembic
     ports:
       - "8003:8003"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/api/v1/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+    networks:
+      - workout-net
 
   workouts-service:
     build: ./services/workouts-service
@@ -151,22 +125,28 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=${WORKOUTS_DATABASE_URL}
+      - WORKOUTS_DATABASE_URL=${WORKOUTS_DATABASE_URL}
     volumes:
       - workouts_data:/app/data
+      - ./services/workouts-service/alembic/versions:/app/alembic/versions
     ports:
       - "8004:8004"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/api/v1/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    networks:
+      - workout-net
 
 volumes:
   exercises_data:
   user_max_data:
   workouts_data:
   plans_data:
-  accounts_data:
-  coach_data:
+
+networks:
+  workout-net:
+    driver: bridge

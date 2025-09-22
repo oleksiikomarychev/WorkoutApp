@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/models/workout_session.dart';
 import 'package:workout_app/services/api_client.dart';
@@ -34,7 +32,7 @@ class WorkoutSessionService extends BaseApiService {
 
   // GET /workouts/{workout_id}/active -> may be 404 (no active)
   Future<WorkoutSession?> getActiveSession(int workoutId) async {
-    final endpoint = ApiConfig.activeWorkoutSessionEndpoint(workoutId.toString());
+    final endpoint = ApiConfig.getActiveSessionEndpoint(workoutId.toString());
     try {
       _logger.d('Fetching active session for workout $workoutId');
       final response = await _apiClient.get(
@@ -59,7 +57,7 @@ class WorkoutSessionService extends BaseApiService {
   // GET /workouts/{workout_id}/history
   Future<List<WorkoutSession>> listSessions(int workoutId) async {
     try {
-      final endpoint = ApiConfig.workoutSessionHistoryEndpoint(workoutId.toString());
+      final endpoint = ApiConfig.getSessionHistoryEndpoint(workoutId.toString());
       _logger.d('Listing sessions for workout $workoutId');
       final response = await _apiClient.get(
         endpoint,

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:workout_app/config/constants/theme_constants.dart';
 
 /// A widget to display when there's no data to show
 class EmptyState extends StatelessWidget {
@@ -68,7 +67,7 @@ class EmptyState extends StatelessWidget {
               title,
               style: textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.bold,
-                color: colorScheme.onBackground,
+                color: colorScheme.onSurface,
               ),
               textAlign: TextAlign.center,
             ),
@@ -142,7 +141,7 @@ class ErrorState extends StatelessWidget {
             Text(
               'Something went wrong',
               style: theme.textTheme.titleLarge?.copyWith(
-                color: colorScheme.onBackground,
+                color: colorScheme.onSurface,
                 fontWeight: FontWeight.bold,
               ),
               textAlign: TextAlign.center,

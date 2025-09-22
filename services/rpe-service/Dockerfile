@@ -5,9 +5,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Copy project first to leverage Docker layer cache
+#Копируем проект в Docker-контейнер для оптимизации кэширования слоев
 COPY pyproject.toml /app/
 COPY rpe_service /app/rpe_service
+COPY rpe_table.json /app/
 
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir .

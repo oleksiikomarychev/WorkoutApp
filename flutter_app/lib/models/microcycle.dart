@@ -27,18 +27,20 @@ class Microcycle {
     final raw = Map<String, dynamic>.from(json['schedule'] ?? {});
     final sched = <String, List<ExerciseScheduleItemDto>>{};
     raw.forEach((key, value) {
-      final list = (value as List<dynamic>? ?? [])
-          .map((e) => ExerciseScheduleItemDto.fromJson(e as Map<String, dynamic>))
+      final List<ExerciseScheduleItemDto> list = (value as List<dynamic>? ?? [])
+          .map<ExerciseScheduleItemDto>((e) => e != null
+              ? ExerciseScheduleItemDto.fromJson(e as Map<String, dynamic>)
+              : ExerciseScheduleItemDto(id: 0, exerciseId: 0, sets: [], name: '', exercises: []))
           .toList();
       sched[key] = list;
     });
 
     return Microcycle(
-      id: json['id'] as int,
-      mesocycleId: json['mesocycle_id'] as int,
+      id: (json['id'] as int?) ?? 0,
+      mesocycleId: (json['mesocycle_id'] as int?) ?? 0,
       name: json['name'] ?? '',
       notes: json['notes'],
-      orderIndex: (json['order_index'] ?? 0) as int,
+      orderIndex: (json['order_index'] as int?) ?? 0,
       schedule: sched,
       daysCount: json['days_count'] as int?,
       normalizationValue: (json['normalization_value'] as num?)?.toDouble(),

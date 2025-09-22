@@ -31,6 +31,10 @@ _$WorkoutImpl _$$WorkoutImplFromJson(Map<String, dynamic> json) =>
               ?.map((e) => ExerciseInstance.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
+      nextWorkoutId: (json['next_workout_id'] as num?)?.toInt(),
+      workoutType:
+          $enumDecodeNullable(_$WorkoutTypeEnumMap, json['workout_type']) ??
+              WorkoutType.manual,
     );
 
 Map<String, dynamic> _$$WorkoutImplToJson(_$WorkoutImpl instance) =>
@@ -50,4 +54,11 @@ Map<String, dynamic> _$$WorkoutImplToJson(_$WorkoutImpl instance) =>
       'completed_at': instance.completedAt?.toIso8601String(),
       'exercise_instances':
           instance.exerciseInstances.map((e) => e.toJson()).toList(),
+      'next_workout_id': instance.nextWorkoutId,
+      'workout_type': _$WorkoutTypeEnumMap[instance.workoutType]!,
     };
+
+const _$WorkoutTypeEnumMap = {
+  WorkoutType.manual: 'manual',
+  WorkoutType.generated: 'generated',
+};

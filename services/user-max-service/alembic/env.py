@@ -13,23 +13,19 @@ if config.config_file_name is not None:
 
 # Import service metadata and resolved DB URL
 try:
-    from user_max_service.database import Base as ServiceBase
-    from user_max_service.database import DATABASE_URL as SERVICE_DATABASE_URL
+    from user_max_service.database import Base
+    from user_max_service.database import DATABASE_URL
 except Exception:
-    ServiceBase = None
-    SERVICE_DATABASE_URL = None
+    Base = None
+    DATABASE_URL = os.getenv("USER_MAX_DATABASE_URL")
 
 # target metadata
-if ServiceBase is not None:
-    target_metadata = ServiceBase.metadata
-else:
-    target_metadata = None
+if Base is not None:
+    target_metadata = Base.metadata
 
 # Resolve URL: prefer service's resolved DATABASE_URL, then env DATABASE_URL, then USER_MAX_DATABASE_URL, then config
 DB_URL = (
-    SERVICE_DATABASE_URL
-    or os.getenv("DATABASE_URL")
-    or os.getenv("USER_MAX_DATABASE_URL")
+os.getenv("USER_MAX_DATABASE_URL")
     or config.get_main_option("sqlalchemy.url")
 )
 if DB_URL:
