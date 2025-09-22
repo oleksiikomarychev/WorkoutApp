@@ -1,0 +1,33 @@
+# Игнорируем ненужные для сборки файлы
+.git
+.gitignore
+.vscode
+.idea
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.venv
+venv
+ENV
+env.bak
+venv.bak
+
+# Игнорируем логи и временные файлы
+*.log
+*.tmp
+*.bak
+
+# Игнорируем файлы зависимостей
+poetry.lock
+
+# Игнорируем локальные конфиги
+docker-compose.yml
+docker-compose.override.yml
+.env
+secrets.env
+
+# Игнорируем тестовые данные
+tests/
+test/

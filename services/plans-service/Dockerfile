@@ -6,6 +6,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Install system dependencies for PostgreSQL client
+RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml /app/
 COPY plans_service /app/plans_service
 RUN pip install --upgrade pip && pip install -e .
@@ -16,4 +19,5 @@ ENV HOST=0.0.0.0 PORT=8005
 
 RUN mkdir -p /app/data
 
-CMD alembic upgrade head && uvicorn plans_service.main:app --host $HOST --port $PORT
+
+CMD uvicorn plans_service.main:app --host $HOST --port $PORT

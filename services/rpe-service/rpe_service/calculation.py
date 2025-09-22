@@ -2,72 +2,14 @@ import math
 from typing import Dict, Optional, Union
 import os
 import json
+from pathlib import Path
+from typing import Dict, Union, Optional
+import logging
 
-# RPE table copied from monolith to keep behavior identical
-RPE_TABLE: Dict[int, Dict[int, int]] = {
-    100: {10: 1},
-    99:  {10: 1},
-    98:  {10: 1},
-    97:  {10: 1},
-    96:  {10: 1},
-    95:  {10: 2, 9: 1},
-    94:  {10: 2, 9: 1},
-    93:  {10: 3, 9: 2, 8: 1},
-    92:  {10: 3, 9: 2, 8: 1},
-    91:  {10: 4, 9: 3, 8: 2, 7: 1},
-    90:  {10: 4, 9: 3, 8: 2, 7: 1},
-    89:  {10: 5, 9: 4, 8: 3, 7: 2, 6: 1},
-    88:  {10: 5, 9: 4, 8: 3, 7: 2, 6: 1},
-    87:  {10: 6, 9: 5, 8: 4, 7: 3, 6: 2, 5: 1},
-    86:  {10: 6, 9: 5, 8: 4, 7: 3, 6: 2, 5: 1},
-    85:  {10: 6, 9: 5, 8: 4, 7: 3, 6: 2, 5: 1},
-    84:  {10: 7, 9: 6, 8: 5, 7: 4, 6: 3, 5: 2, 4: 1},
-    83:  {10: 7, 9: 6, 8: 5, 7: 4, 6: 3, 5: 2, 4: 1},
-    82:  {10: 8, 9: 7, 8: 6, 7: 5, 6: 4, 5: 3, 4: 2},
-    81:  {10: 8, 9: 7, 8: 6, 7: 5, 6: 4, 5: 3, 4: 2},
-    80:  {10: 8, 9: 7, 8: 6, 7: 5, 6: 4, 5: 3, 4: 2},
-    79:  {10: 9, 9: 8, 8: 7, 7: 6, 6: 5, 5: 4, 4: 3},
-    78:  {10: 9, 9: 8, 8: 7, 7: 6, 6: 5, 5: 4, 4: 3},
-    77:  {10: 10, 9: 9, 8: 8, 7: 7, 6: 6, 5: 5, 4: 4},
-    76:  {10: 10, 9: 9, 8: 8, 7: 7, 6: 6, 5: 5, 4: 4},
-    75:  {10: 10, 9: 9, 8: 8, 7: 7, 6: 6, 5: 5, 4: 4},
-    74:  {10: 11, 9:10, 8: 9, 7: 8, 6: 7, 5: 6, 4: 5},
-    73:  {10: 11, 9:10, 8: 9, 7: 8, 6: 7, 5: 6, 4: 5},
-    72:  {10: 12, 9:11, 8:10, 7: 9, 6: 8, 5: 7, 4: 6},
-    71:  {10: 12, 9:11, 8:10, 7: 9, 6: 8, 5: 7, 4: 6},
-    70:  {10: 12, 9:11, 8:10, 7: 9, 6: 8, 5: 7, 4: 6},
-    69:  {10: 13, 9:12, 8:11, 7: 10, 6: 9, 5: 8, 4: 7},
-    68:  {10: 14, 9:13, 8:12, 7:11, 6:10, 5: 9, 4: 8},
-    67:  {10: 15, 9:14, 8:13, 7:12, 6:11, 5:10, 4: 9},
-    66:  {10: 16, 9:15, 8:14, 7:13, 6:12, 5:11, 4: 10},
-    65:  {10: 17, 9:16, 8:15, 7:14, 6:13, 5:12, 4: 11},
-    64:  {10: 18, 9:17, 8:16, 7:15, 6:14, 5:13, 4: 12},
-    63:  {10: 19, 9:18, 8:17, 7:16, 6:15, 5:14, 4: 13},
-    62:  {10: 20, 9:19, 8:18, 7:17, 6:16, 5:15, 4: 14},
-    61:  {10: 21, 9:20, 8:19, 7:18, 6:17, 5:16, 4: 15},
-    60:  {10: 22, 9:21, 8:20, 7:19, 6:18, 5:17, 4: 16},
-    59:  {10: 23, 9:22, 8:21, 7:20, 6:19, 5:18, 4: 17},
-    58:  {10: 24, 9:23, 8:22, 7:21, 6:20, 5:19, 4: 18},
-    57:  {10: 25, 9:24, 8:23, 7:22, 6:21, 5:20, 4: 19},
-    56:  {10: 26, 9:25, 8:24, 7:23, 6:22, 5:21, 4: 20},
-    55:  {10: 27, 9:26, 8:25, 7:24, 6:23, 5:22, 4: 21},
-    54:  {10: 28, 9:27, 8:26, 7:25, 6:24, 5:23, 4: 22},
-    53:  {10: 29, 9:28, 8:27, 7:26, 6:25, 5:24, 4: 23},
-    52:  {10: 30, 9:29, 8:28, 7:27, 6:26, 5:25, 4: 24},
-    51:  {10: 31, 9:30, 8:29, 7:28, 6:27, 5:26, 4: 25},
-    50:  {10: 32, 9:31, 8:30, 7:29, 6:28, 5:27, 4: 26},
-    49:  {10: 33, 9:32, 8:31, 7:30, 6:29, 5:28, 4: 27},
-    48:  {10: 34, 9:33, 8:32, 7:31, 6:30, 5:29, 4: 28},
-    47:  {10: 35, 9:34, 8:33, 7:32, 6:31, 5:30, 4: 29},
-    46:  {10: 36, 9:35, 8:34, 7:33, 6:32, 5:31, 4: 30},
-    45:  {10: 37, 9:36, 8:35, 7:34, 6:33, 5:32, 4: 31},
-    44:  {10: 38, 9:37, 8:36, 7:35, 6:34, 5:33, 4: 32},
-    43:  {10: 39, 9:38, 8:37, 7:36, 6:35, 5:34, 4: 33},
-    42:  {10: 40, 9:39, 8:38, 7:37, 6:36, 5:35, 4: 34},
-    41:  {10: 41, 9:40, 8:39, 7:38, 6:37, 5:36, 4: 35},
-    40:  {10: 42, 9:41, 8:40, 7:39, 6:38, 5:37, 4: 36},
-}
+logger = logging.getLogger(__name__)
 
+
+#Преобразует строковые значения словаря в целые числа
 def _normalize_int_keys(d):
     if isinstance(d, dict):
         out = {}
@@ -79,65 +21,76 @@ def _normalize_int_keys(d):
             out[ik] = _normalize_int_keys(v)
         return out
     return d
+    
+#Округляет значение до ближайшего кратного
+def round_to_step(value: float, step: float, mode: str) -> float:
+    if step <= 0:
+        return value
+    ratio = value / step
+    if mode == 'floor':
+        return math.floor(ratio) * step
+    if mode == 'ceil':
+        return math.ceil(ratio) * step
+    return round(ratio) * step
 
-# Allow overriding RPE_TABLE from environment for easy sync with monolith
-_json_str = os.getenv('RPE_TABLE_JSON')
-_json_path = os.getenv('RPE_TABLE_PATH')
-_override = None
-if _json_str:
+    
+#Проверяет структуру таблицы RPE на соответствие ожидаемому формату
+def validate_rpe_table(table: Dict) -> bool:
+    if not isinstance(table, dict):
+        return False
+    for intensity, efforts in table.items():
+        if not isinstance(intensity, int) or not (40 <= intensity <= 100):
+            return False
+        if not isinstance(efforts, dict):
+            return False
+            
+        for effort, reps in efforts.items():
+            if not isinstance(effort, int) or not (1 <= effort <= 10):
+                return False
+            if not isinstance(reps, int) or not (1 <= reps <= 100):
+                return False
+    return True
+
+
+#Загружает таблицу RPE из JSON-файла или переменной окружения
+def load_rpe_table() -> Dict[int, Dict[int, int]]:
+    default_json_path = Path(__file__).parent.parent / 'rpe_table.json'
+    json_str = os.getenv('RPE_TABLE_JSON')
+    json_path = os.getenv('RPE_TABLE_PATH', str(default_json_path))
+
+    if json_str:
+        try:
+            data = json.loads(json_str)
+            logger.info("Loaded RPE table from environment")
+        except json.JSONDecodeError as e:
+            logger.error("Invalid JSON in RPE_TABLE_JSON environment variable")
+            raise RuntimeError("Invalid JSON in RPE_TABLE_JSON environment variable") from e
+    else:
+        if not os.path.exists(json_path):
+            logger.error("RPE table file not found at %s", json_path)
+            raise RuntimeError(f"RPE table file not found at {json_path}")
+        try:
+            with open(json_path, 'r') as f:
+                data = json.load(f)
+                logger.info("Loaded RPE table from file: %s", json_path)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.error("Error reading RPE table from %s", json_path)
+            raise RuntimeError(f"Error reading RPE table from {json_path}") from e
+
     try:
-        _override = json.loads(_json_str)
-    except Exception:
-        _override = None
-elif _json_path and os.path.exists(_json_path):
-    try:
-        with open(_json_path, 'r') as _f:
-            _override = json.load(_f)
-    except Exception:
-        _override = None
-if _override:
-    try:
-        RPE_TABLE = _normalize_int_keys(_override)  # type: ignore
-    except Exception:
-        pass
+        return _normalize_int_keys(data)
+    except Exception as e:
+        logger.error("Error normalizing RPE table keys")
+        raise RuntimeError("Error normalizing RPE table keys") from e
 
-class WorkoutCalculator:
-    RPE_TABLE = RPE_TABLE
+_RPE_TABLE_CACHE = None
 
-    @classmethod
-    def get_volume(cls, intensity: int, effort: float) -> Union[int, None]:
-        if intensity is None or effort is None:
-            return None
-        effort_key = math.floor(effort)
-        return cls.RPE_TABLE.get(intensity, {}).get(effort_key, None)
 
-    @classmethod
-    def get_intensity(cls, volume: int, effort: float) -> Union[int, None]:
-        if volume is None or effort is None:
-            return None
-        effort_key = math.floor(effort)
-        for intensity, efforts in cls.RPE_TABLE.items():
-            if effort_key in efforts and efforts[effort_key] == volume:
-                return intensity
-        return None
-
-    @classmethod
-    def get_effort(cls, volume: int, intensity: int) -> Union[float, None]:
-        if volume is None or intensity is None:
-            return None
-        efforts = cls.RPE_TABLE.get(intensity, {})
-        for effort, vol in efforts.items():
-            if vol == volume:
-                return effort
-        return None
-
-    @staticmethod
-    def round_to_step(value: float, step: float, mode: str) -> float:
-        if step <= 0:
-            return value
-        ratio = value / step
-        if mode == 'floor':
-            return math.floor(ratio) * step
-        if mode == 'ceil':
-            return math.ceil(ratio) * step
-        return round(ratio) * step
+#Возвращает кэшированную таблицу RPE (загружает при первом вызове)
+def get_rpe_table() -> Dict[int, Dict[int, int]]:
+    global _RPE_TABLE_CACHE
+    if _RPE_TABLE_CACHE is None:
+        _RPE_TABLE_CACHE = load_rpe_table()
+        if not validate_rpe_table(_RPE_TABLE_CACHE):
+            raise RuntimeError("Invalid RPE table structure")
+    return _RPE_TABLE_CACHE

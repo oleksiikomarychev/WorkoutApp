@@ -8,7 +8,7 @@ import 'package:intl/intl.dart';
 
 class ProgressionDetailScreen extends StatefulWidget {
   final int templateId;
-  const ProgressionDetailScreen({Key? key, required this.templateId}) : super(key: key);
+  const ProgressionDetailScreen({super.key, required this.templateId});
 
   @override
   _ProgressionDetailScreenState createState() => _ProgressionDetailScreenState();

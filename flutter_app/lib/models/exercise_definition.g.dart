@@ -21,6 +21,7 @@ _$ExerciseDefinitionImpl _$$ExerciseDefinitionImplFromJson(
           .toList(),
       movementType: json['movement_type'] as String?,
       region: json['region'] as String?,
+      oneRepMax: (json['oneRepMax'] as num?)?.toDouble(),
     );
 
 Map<String, dynamic> _$$ExerciseDefinitionImplToJson(
@@ -34,4 +35,5 @@ Map<String, dynamic> _$$ExerciseDefinitionImplToJson(
       'synergist_muscles': instance.synergistMuscles,
       'movement_type': instance.movementType,
       'region': instance.region,
+      'oneRepMax': instance.oneRepMax,
     };

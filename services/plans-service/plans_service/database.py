@@ -1,23 +1,14 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
 import os
 from dotenv import load_dotenv
-from sqlalchemy.orm import declarative_base
+from .models.calendar import Base  # Изменяем импорт
 
 load_dotenv()
 
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL") or "sqlite:////app/data/plans.db"
+database_url = os.getenv("DATABASE_URL")
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Replace 'postgresql' with 'postgresql+asyncpg' for async support
+if database_url.startswith("postgresql://"):
+    database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-Base = declarative_base()
-
-
-# FastAPI dependency for DB session
-def get_db():
-    db: Session = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Import all models to ensure they are registered with the Base metadata
+from .models.calendar import Base  # noqa: F401

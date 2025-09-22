@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:workout_app/config/constants/theme_constants.dart';
 import 'package:workout_app/config/constants/app_constants.dart';
 import 'package:workout_app/services/logger_service.dart';
 import 'package:workout_app/services/exercise_service.dart';
@@ -84,7 +83,7 @@ class _TagAutocompleteState extends State<_TagAutocomplete> {
         // Nudge options to open when focused with empty text
         focusNode.addListener(() {
           if (focusNode.hasFocus) {
-            controller.value = controller.value.copyWith(text: controller.text + ' ');
+            controller.value = controller.value.copyWith(text: '${controller.text} ');
             controller.value = controller.value.copyWith(text: controller.text.isNotEmpty ? controller.text.trimRight() : '');
           }
         });
@@ -218,6 +217,13 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
     super.dispose();
   }
 
+  Future<List<String>> _loadMuscleGroups() async {
+    final service = ref.read(exerciseServiceProvider);
+    final muscles = await service.getMuscles();
+    final groups = muscles.map((m) => m.group).toSet().toList()..sort();
+    return groups.cast<String>();
+  }
+
   Future<void> _showExerciseDialog({ExerciseDefinition? initial}) async {
     _nameController.text = initial?.name ?? '';
     _selectedMuscleGroup = initial?.muscleGroup;
@@ -245,18 +251,11 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
     final isEdit = initial?.id != null;
 
     // Prepare groups Future (load from backend muscles endpoint)
-    _groupsFuture = service.getMuscles().then((muscles) {
-      final groups = muscles.map((m) => m.group).toSet().toList()..sort();
-      // Ensure selected group is valid
-      if (_selectedMuscleGroup != null && !groups.contains(_selectedMuscleGroup)) {
-        _selectedMuscleGroup = null;
-      }
-      return groups;
-    });
+    _groupsFuture = _loadMuscleGroups();
 
     // Load full muscles list for tag pickers and wait for it
     try {
-      _muscles = await service.getMuscles();
+      _muscles = (await service.getMuscles()).cast<MuscleInfo>();
     } catch (e) {
       // Handle error if needed
       _muscles = [];
@@ -299,7 +298,7 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
                   }
                   final groups = snapshot.data ?? const <String>[];
                   return DropdownButtonFormField<String>(
-                    value: _selectedMuscleGroup,
+                    initialValue: _selectedMuscleGroup,
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Muscle group'),
                     hint: const Text('Select group'),
@@ -335,7 +334,7 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
                     allOptions: muscles.map((m) => m.label).toList(),
                     selectedLabels: selectedLabels,
                     onDeleted: (label) => setDialogState(() {
-                      final key = _muscles.firstWhere((m) => m.label == label, orElse: () => const MuscleInfo(key: '', label: '', group: '')).key;
+                      final key = _muscles.firstWhere((m) => m.label == label, orElse: () => MuscleInfo(key: '', label: '', group: '')).key;
                       if (key.isNotEmpty) _selectedTargetKeys.remove(key);
                     }),
                     exclude: _selectedTargetKeys
@@ -346,7 +345,7 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
                       final key = muscles
                           .firstWhere(
                             (m) => m.label.trim().toLowerCase() == normalized,
-                            orElse: () => const MuscleInfo(key: '', label: '', group: ''),
+                            orElse: () => MuscleInfo(key: '', label: '', group: ''),
                           )
                           .key;
                       if (key.isNotEmpty) _selectedTargetKeys.add(key);
@@ -379,7 +378,7 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
                     allOptions: muscles.map((m) => m.label).toList(),
                     selectedLabels: selectedLabels,
                     onDeleted: (label) => setDialogState(() {
-                      final key = _muscles.firstWhere((m) => m.label == label, orElse: () => const MuscleInfo(key: '', label: '', group: '')).key;
+                      final key = _muscles.firstWhere((m) => m.label == label, orElse: () => MuscleInfo(key: '', label: '', group: '')).key;
                       if (key.isNotEmpty) _selectedSynergistKeys.remove(key);
                     }),
                     exclude: _selectedSynergistKeys
@@ -390,7 +389,7 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
                       final key = muscles
                           .firstWhere(
                             (m) => m.label.trim().toLowerCase() == normalized,
-                            orElse: () => const MuscleInfo(key: '', label: '', group: ''),
+                            orElse: () => MuscleInfo(key: '', label: '', group: ''),
                           )
                           .key;
                       if (key.isNotEmpty) _selectedSynergistKeys.add(key);
@@ -418,7 +417,7 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                value: _movementType,
+                initialValue: _movementType,
                 decoration: const InputDecoration(labelText: 'Movement type'),
                 items: const [
                   DropdownMenuItem(value: 'compound', child: Text('Compound')),
@@ -428,7 +427,7 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                value: _region,
+                initialValue: _region,
                 decoration: const InputDecoration(labelText: 'Region'),
                 items: const [
                   DropdownMenuItem(value: 'upper', child: Text('Upper')),
@@ -537,7 +536,7 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
               
               return RefreshIndicator(
                 onRefresh: () async {
-                  await ref.refresh(exercisesNotifierProvider);
+                  ref.refresh(exercisesNotifierProvider);
                   await ref.read(exercisesNotifierProvider.notifier).loadExercises();
                 },
                 child: ListView.builder(

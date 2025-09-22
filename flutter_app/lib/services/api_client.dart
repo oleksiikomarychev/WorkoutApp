@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../config/api_config.dart';
 import 'logger_service.dart';
 import 'base_api_service.dart';
@@ -33,7 +32,7 @@ class ApiClient {
     try {
       final headers = {
         ..._defaultHeaders,
-        ...await _authHeaders(),
+        ...await _getHeaders(),
       };
       final response = await _httpClient.patch(
         uri,
@@ -48,20 +47,10 @@ class ApiClient {
       rethrow;
     }
   }
-  Future<Map<String, String>> _authHeaders() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return const {};
-      final token = await user.getIdToken();
-      // Provide both Authorization for gateway verification and X-User-Id as a fallback
-      return {
-        'Authorization': 'Bearer $token',
-        'X-User-Id': user.uid,
-      };
-    } catch (e) {
-      // If anything goes wrong obtaining token, send no auth headers
-      return const {};
-    }
+  Future<Map<String, String>> _getHeaders() async {
+    return {
+      'Content-Type': 'application/json',
+    };
   }
 
   Future<dynamic> get(String endpoint, {Map<String, dynamic>? queryParams, String? context}) async {
@@ -73,7 +62,7 @@ class ApiClient {
       print('Making GET request to: ${uri.toString()}');
       final headers = {
         ..._defaultHeaders,
-        ...await _authHeaders(),
+        ...await _getHeaders(),
       };
       final response = await _httpClient.get(
         uri,
@@ -101,7 +90,7 @@ class ApiClient {
       print('Request body: ${json.encode(data)}');
       final headers = {
         ..._defaultHeaders,
-        ...await _authHeaders(),
+        ...await _getHeaders(),
       };
       print('Headers: $headers');
       
@@ -130,7 +119,7 @@ class ApiClient {
     try {
       final headers = {
         ..._defaultHeaders,
-        ...await _authHeaders(),
+        ...await _getHeaders(),
       };
       final response = await _httpClient.put(
         uri,
@@ -154,7 +143,7 @@ class ApiClient {
       print('Sending DELETE request to: ${uri.toString()}');
       final headers = {
         ..._defaultHeaders,
-        ...await _authHeaders(),
+        ...await _getHeaders(),
       };
       print('Headers: $headers');
       

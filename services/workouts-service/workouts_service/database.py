@@ -1,25 +1,25 @@
 import os
-from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("WORKOUTS_DATABASE_URL")
 
 if not DATABASE_URL:
-    os.makedirs("/app/data", exist_ok=True)
-    DATABASE_URL = "sqlite:////app/data/workouts.db"
+    raise ValueError("WORKOUTS_DATABASE_URL environment variable is not set")
 
-engine_args = {"echo": False}
-if DATABASE_URL.startswith("sqlite"):
-    engine_args["connect_args"] = {"check_same_thread": False}
+# Adjust the URL to use asyncpg driver if it's a standard PostgreSQL URL
+if DATABASE_URL and DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-engine = create_engine(DATABASE_URL, **engine_args)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+engine_args = {"echo": True}
+
+engine = create_async_engine(DATABASE_URL, **engine_args)
+AsyncSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
 Base = declarative_base()
 
+# Явный импорт моделей для Alembic
+from . import models  # noqa: F401
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        yield session

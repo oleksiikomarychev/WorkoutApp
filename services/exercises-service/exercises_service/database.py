@@ -1,27 +1,24 @@
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-# Fallback to a local SQLite database inside container volume
-if not DATABASE_URL:
-    os.makedirs("/app/data", exist_ok=True)
-    DATABASE_URL = "sqlite:////app/data/exercises.db"
-
-# For SQLite we need check_same_thread=False for use in FastAPI
-engine_args = {"echo": False}
-if DATABASE_URL.startswith("sqlite"):   # pragma: no cover
-    engine_args["connect_args"] = {"check_same_thread": False}
-
-engine = create_engine(DATABASE_URL, **engine_args)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+# Import models to ensure they are registered with Base.metadata
+from . import models
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+EXERCISES_DATABASE_URL = os.getenv("EXERCISES_DATABASE_URL")
+
+# Ensure we are using an async driver
+if EXERCISES_DATABASE_URL:
+    if EXERCISES_DATABASE_URL.startswith("postgresql://"):
+        EXERCISES_DATABASE_URL = EXERCISES_DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+engine = create_async_engine(EXERCISES_DATABASE_URL, echo=True)
+
+AsyncSessionLocal = sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
