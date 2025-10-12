@@ -39,3 +39,13 @@ Modern strength training tracker that turns your plan into actionable daily work
 - Frontend: Flutter (Material 3)
 - Layers: `routers/` (HTTP), `services/` (business logic), `repositories/` (data)
 - RPE/1RM logic: proper intensity tables and true 1RM calculation from real sets
+
+## AI Agent Flow
+
+![AI Agent pipeline](gateway/gateway_app/image/AI_Agent_pipeline.png)
+
+- **Starter**: `services/agent-service/agent_service/main.py` boots FastAPI and creates a session in `ConversationGraph`.
+- **Dialogue Brain**: `services/agent-service/agent_service/services/conversation_graph.py` runs the FSM, calls `AutonomyManager`, and decides which questions to ask.
+- **Data Refinement**: `AutonomyManager` coordinates with prompts from `prompts/conversation.py`, normalizes answers, and checks readiness for generation.
+- **Plan Generation**: `services/agent-service/agent_service/services/plan_generation.py` orchestrates staged LLM steps and assembles the `TrainingPlan`.
+- **Integrations**: `services/agent-service/agent_service/services/plans_service.py` and `services/agent-service/agent_service/services/rpe_rpc.py` persist the result and notify the RPE service.
