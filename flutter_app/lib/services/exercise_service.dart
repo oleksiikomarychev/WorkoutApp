@@ -41,16 +41,19 @@ class ExerciseService extends BaseApiService {
   }
 
   /// Fetches muscles enum with labels and groups
-  Future<List<dynamic>> getMuscles() async {
+  Future<List<MuscleInfo>> getMuscles() async {
     try {
       final response = await _apiClient.get(
         ApiConfig.musclesEndpoint,
         context: 'ExerciseService.getMuscles',
       );
       if (response is List) {
-        return response;
+        return response
+            .whereType<Map<String, dynamic>>()
+            .map((json) => MuscleInfo.fromJson(json))
+            .toList();
       }
-      handleError('Invalid response format for muscles', Exception('Expected a list'));
+      handleError('Invalid response format for muscles', Exception('Expected a list of muscles'));
       return [];
     } catch (e, stackTrace) {
       handleError('Failed to get muscles', e, stackTrace);

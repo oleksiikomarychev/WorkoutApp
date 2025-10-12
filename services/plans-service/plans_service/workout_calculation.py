@@ -16,11 +16,25 @@ class WorkoutCalculator:
     async def calculate_true_1rm(cls, weight: float, reps: int, rpe: float = 10.0) -> Optional[float]:
         if weight is None or reps is None or rpe is None:
             return None
-        rpe_table = await cls._get_rpe_table()
-        intensity = await get_intensity(volume=reps, effort=rpe)
+        # Best-effort: warm up RPE table cache, but do not fail if unavailable
+        try:
+            await cls._get_rpe_table()
+        except Exception:
+            pass
+        # Compute intensity via RPC with safe fallback
+        try:
+            intensity = await get_intensity(volume=reps, effort=rpe)
+        except Exception:
+            return None
         if intensity is None:
             return None
-        true_1rm = (weight / intensity) * 100
+        try:
+            intensity_f = float(intensity)
+        except (TypeError, ValueError):
+            return None
+        if intensity_f == 0.0:
+            return None
+        true_1rm = (float(weight) / intensity_f) * 100.0
         return round(true_1rm, 1)
 
     @classmethod

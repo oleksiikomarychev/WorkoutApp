@@ -90,6 +90,7 @@ class Workout with _$Workout {
   
   // Convert to form data for API submission
   Map<String, dynamic> toFormData() {
+    // prefer service-layer payload builder for API calls
     return {
       if (id != null) 'id': id,
       'name': name,

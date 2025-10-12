@@ -35,32 +35,100 @@ class WorkoutService:
             return dt.replace(tzinfo=None)
         return dt
 
-    async def create_workout(self, payload: WorkoutCreate, user_id: int, plan_workout_id: int = None) -> WorkoutResponse:
+    async def create_workout(self, payload: WorkoutCreate, plan_workout_id: int = None) -> WorkoutResponse:
+        # Convert payload to dict and filter only valid ORM columns to avoid
+        # passing unexpected kwargs like 'day' to SQLAlchemy model constructor.
+        raw_data = payload.model_dump()
+        valid_fields = {f.name for f in models.Workout.__table__.columns}
+        filtered_data = {k: v for k, v in raw_data.items() if k in valid_fields}
+
+        # Log any invalid/ignored fields for observability (e.g., 'day', 'exercises')
+        ignored = set(raw_data.keys()) - valid_fields
+        if ignored:
+            logger.warning(f"Ignoring invalid fields in WorkoutCreate: {', '.join(sorted(ignored))}")
+
         # Convert timezone-aware datetimes to naive UTC
-        item_data = payload.model_dump()
         for field in ['scheduled_for', 'completed_at', 'started_at']:
-            if field in item_data and item_data[field] is not None:
-                item_data[field] = self._convert_to_naive_utc(item_data[field])
-                
-        item = models.Workout(**item_data, plan_workout_id=plan_workout_id, user_id=user_id)
+            if field in filtered_data and filtered_data[field] is not None:
+                filtered_data[field] = self._convert_to_naive_utc(filtered_data[field])
+
+        # 'plan_workout_id' is not a column on Workout; ignore if provided
+        if plan_workout_id is not None:
+            logger.warning("'plan_workout_id' argument is ignored: column does not exist on models.Workout")
+
+        item = models.Workout(**filtered_data)
         self.db.add(item)
         await self.db.commit()
         await self.db.refresh(item)
-        return WorkoutResponse.model_validate(item)
+
+        workout_dict = {
+            "id": item.id,
+            "name": item.name,
+            "applied_plan_id": item.applied_plan_id,
+            "plan_order_index": item.plan_order_index,
+            "scheduled_for": item.scheduled_for,
+            "completed_at": item.completed_at,
+            "notes": item.notes,
+            "status": item.status,
+            "started_at": item.started_at,
+            "duration_seconds": item.duration_seconds,
+            "rpe_session": item.rpe_session,
+            "location": item.location,
+            "readiness_score": item.readiness_score,
+            "workout_type": item.workout_type,
+            "exercises": [],
+        }
+
+        return WorkoutResponse.model_validate(workout_dict)
 
     async def get_workout(self, workout_id: int) -> schemas.workout.WorkoutResponse:
         result = await self.db.execute(
             select(models.Workout)
             .options(
-                joinedload(models.Workout.exercises).joinedload(models.WorkoutExercise.sets)
+                selectinload(models.Workout.exercises)
+                .selectinload(models.WorkoutExercise.sets)
             )
-            .filter(models.Workout.id == workout_id)
+            .where(models.Workout.id == workout_id)
         )
-        workout = result.unique().scalars().first()
+        workout = result.scalars().first()
         if not workout:
             raise WorkoutNotFoundException(workout_id)
-            
-        return schemas.workout.WorkoutResponse.model_validate(workout)
+
+        workout_dict = {
+            "id": workout.id,
+            "name": workout.name,
+            "applied_plan_id": workout.applied_plan_id,
+            "plan_order_index": workout.plan_order_index,
+            "scheduled_for": workout.scheduled_for,
+            "completed_at": workout.completed_at,
+            "notes": workout.notes,
+            "status": workout.status,
+            "started_at": workout.started_at,
+            "duration_seconds": workout.duration_seconds,
+            "rpe_session": workout.rpe_session,
+            "location": workout.location,
+            "readiness_score": workout.readiness_score,
+            "workout_type": workout.workout_type,
+            "exercises": [
+                {
+                    "id": ex.id,
+                    "exercise_id": ex.exercise_id,
+                    "sets": [
+                        {
+                            "id": s.id,
+                            "intensity": s.intensity,
+                            "effort": s.effort,
+                            "volume": s.volume,
+                            "working_weight": s.working_weight,
+                        }
+                        for s in ex.sets
+                    ],
+                }
+                for ex in workout.exercises
+            ],
+        }
+
+        return schemas.workout.WorkoutResponse.model_validate(workout_dict)
 
     async def list_workouts(
         self,
@@ -97,16 +165,72 @@ class WorkoutService:
         return [WorkoutListResponse.model_validate(w) for w in workout_dicts]
 
     async def update_workout(self, workout_id: int, payload: WorkoutUpdate) -> WorkoutResponse:
-        item = await self.get_workout(workout_id)
+        # Fetch the ORM model directly (not the Pydantic response)
+        result = await self.db.execute(
+            select(models.Workout)
+            .options(
+                selectinload(models.Workout.exercises)
+                .selectinload(models.WorkoutExercise.sets)
+            )
+            .where(models.Workout.id == workout_id)
+        )
+        item = result.scalars().first()
+        if not item:
+            raise WorkoutNotFoundException(workout_id)
+        
+        # Update attributes on the ORM model
         data = payload.model_dump(exclude_unset=True)
         for k, v in data.items():
             setattr(item, k, v)
             
         await self.db.commit()
-        await self.db.refresh(item)
         
-        # Convert to response model after update
-        return WorkoutResponse.model_validate(item)
+        # Re-fetch with exercises after commit to ensure relationships are loaded
+        result = await self.db.execute(
+            select(models.Workout)
+            .options(
+                selectinload(models.Workout.exercises)
+                .selectinload(models.WorkoutExercise.sets)
+            )
+            .where(models.Workout.id == workout_id)
+        )
+        item = result.scalars().first()
+        
+        # Convert ORM model to Pydantic response
+        workout_dict = {
+            "id": item.id,
+            "name": item.name,
+            "applied_plan_id": item.applied_plan_id,
+            "plan_order_index": item.plan_order_index,
+            "scheduled_for": item.scheduled_for,
+            "completed_at": item.completed_at,
+            "notes": item.notes,
+            "status": item.status,
+            "started_at": item.started_at,
+            "duration_seconds": item.duration_seconds,
+            "rpe_session": item.rpe_session,
+            "location": item.location,
+            "readiness_score": item.readiness_score,
+            "workout_type": item.workout_type,
+            "exercises": [
+                {
+                    "id": ex.id,
+                    "exercise_id": ex.exercise_id,
+                    "sets": [
+                        {
+                            "id": s.id,
+                            "intensity": s.intensity,
+                            "effort": s.effort,
+                            "volume": s.volume,
+                            "working_weight": s.working_weight,
+                        }
+                        for s in ex.sets
+                    ],
+                }
+                for ex in item.exercises
+            ],
+        }
+        return WorkoutResponse.model_validate(workout_dict)
 
     async def delete_workout(self, workout_id: int) -> None:
         # Fetch the ORM model directly for deletion

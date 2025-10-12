@@ -1,7 +1,6 @@
 import os
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
-from ...dependencies import get_user_id
+from fastapi import APIRouter, HTTPException
 
 EXERCISE_SERVICE_URL = os.getenv("EXERCISE_SERVICE_URL", "http://exercises-service:8000")
 
@@ -30,7 +29,7 @@ async def create_exercise_instances_batch(instances: list) -> list:
         )
 
 @router.get("/list/{exercise_id}")
-async def get_exercise_details(exercise_id: int, user_id: str = Depends(get_user_id)):
+async def get_exercise_details(exercise_id: int):
     try:
         return {"id": exercise_id, "name": "Bench Press", "muscle_group": "Chest"}
     except Exception as e:

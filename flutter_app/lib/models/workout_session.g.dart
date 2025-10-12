@@ -11,9 +11,9 @@ _$WorkoutSessionImpl _$$WorkoutSessionImplFromJson(Map<String, dynamic> json) =>
       id: (json['id'] as num?)?.toInt(),
       workoutId: (json['workout_id'] as num).toInt(),
       startedAt: DateTime.parse(json['started_at'] as String),
-      endedAt: json['ended_at'] == null
+      finishedAt: json['finished_at'] == null
           ? null
-          : DateTime.parse(json['ended_at'] as String),
+          : DateTime.parse(json['finished_at'] as String),
       status: json['status'] as String? ?? 'active',
       durationSeconds: (json['duration_seconds'] as num?)?.toInt(),
       progress: json['progress'] as Map<String, dynamic>? ??
@@ -32,7 +32,7 @@ Map<String, dynamic> _$$WorkoutSessionImplToJson(
       'id': instance.id,
       'workout_id': instance.workoutId,
       'started_at': instance.startedAt.toIso8601String(),
-      'ended_at': instance.endedAt?.toIso8601String(),
+      'finished_at': instance.finishedAt?.toIso8601String(),
       'status': instance.status,
       'duration_seconds': instance.durationSeconds,
       'progress': instance.progress,

@@ -64,6 +64,62 @@ class WorkoutService extends BaseApiService {
     }
   }
 
+  /// Starts a workout via BFF endpoint and returns aggregated workout
+  Future<Workout> startWorkoutBff(int id, {bool includeDefinitions = true}) async {
+    try {
+      final endpoint = '${ApiConfig.startWorkoutBffEndpoint(id.toString())}'
+          '${includeDefinitions ? '?include=exercise_instances.exercise_definition' : ''}';
+      _logger.d('Starting workout via BFF: $endpoint');
+      final response = await apiClient.post(
+        endpoint,
+        <String, dynamic>{},
+        context: 'WorkoutService.startWorkoutBff',
+      );
+      if (response is Map<String, dynamic>) {
+        return Workout.fromJson(response);
+      } else {
+        handleError('Invalid response format when starting workout via BFF',
+            Exception('Expected a workout object'));
+        throw Exception('Failed to start workout');
+      }
+    } catch (e, st) {
+      handleError('Failed to start workout via BFF', e, st);
+      rethrow;
+    }
+  }
+
+  /// Finishes a workout via BFF endpoint and returns aggregated workout
+  Future<Workout> finishWorkoutBff(
+    int id, {
+    bool includeDefinitions = true,
+    bool? cancelled,
+    bool? markWorkoutCompleted,
+  }) async {
+    try {
+      final endpoint = '${ApiConfig.finishWorkoutBffEndpoint(id.toString())}'
+          '${includeDefinitions ? '?include=exercise_instances.exercise_definition' : ''}';
+      _logger.d('Finishing workout via BFF: $endpoint');
+      final response = await apiClient.post(
+        endpoint,
+        <String, dynamic>{
+          if (cancelled != null) 'cancelled': cancelled,
+          if (markWorkoutCompleted != null) 'mark_workout_completed': markWorkoutCompleted,
+        },
+        context: 'WorkoutService.finishWorkoutBff',
+      );
+      if (response is Map<String, dynamic>) {
+        return Workout.fromJson(response);
+      } else {
+        handleError('Invalid response format when finishing workout via BFF',
+            Exception('Expected a workout object'));
+        throw Exception('Failed to finish workout');
+      }
+    } catch (e, st) {
+      handleError('Failed to finish workout via BFF', e, st);
+      rethrow;
+    }
+  }
+
   /// Backward compatible method: returns first page
   Future<List<Workout>> getWorkouts() async {
     return getWorkoutsPaged(skip: 0, limit: 20);
@@ -154,10 +210,11 @@ class WorkoutService extends BaseApiService {
   /// Creates a new workout
   Future<Workout> createWorkout(Workout workout) async {
     try {
-      _logger.d('Creating workout: ${workout.toJson()}');
+      final payload = _buildWorkoutPayload(workout);
+      _logger.d('Creating workout: $payload');
       final response = await apiClient.post(
         ApiConfig.createWorkoutEndpoint(),
-        workout.toJson(),
+        payload,
         context: 'WorkoutService.createWorkout',
       );
 
@@ -182,10 +239,11 @@ class WorkoutService extends BaseApiService {
     }
     
     try {
-      _logger.d('Updating workout ${workout.id}: ${workout.toJson()}');
+      final payload = _buildWorkoutPayload(workout);
+      _logger.d('Updating workout ${workout.id}: $payload');
       final response = await apiClient.put(
         '${ApiConfig.getWorkoutsEndpoint()}/${workout.id}',
-        workout.toJson(),
+        payload,
         context: 'WorkoutService.updateWorkout',
       );
 
@@ -371,7 +429,7 @@ class WorkoutService extends BaseApiService {
   /// Fetches the next workout in plan
   Future<Workout?> getNextWorkoutInPlan(int workoutId) async {
     try {
-      final endpoint = ApiConfig.nextWorkoutInPlanEndpoint(workoutId.toString());
+      final endpoint = '${ApiConfig.nextWorkoutInPlanEndpoint(workoutId.toString())}?include=exercise_instances.exercise_definition';
       final response = await apiClient.get(
         endpoint,
         context: 'WorkoutService.getNextWorkoutInPlan',
@@ -497,5 +555,29 @@ class WorkoutService extends BaseApiService {
       handleError('Failed to delete exercise instance', e, stackTrace);
       return false;
     }
+  }
+
+  Map<String, dynamic> _buildWorkoutPayload(Workout workout) {
+    final payload = <String, dynamic>{
+      'name': workout.name,
+      if (workout.notes != null) 'notes': workout.notes,
+      if (workout.status != null) 'status': workout.status,
+      if (workout.startedAt != null) 'started_at': workout.startedAt!.toIso8601String(),
+      if (workout.durationSeconds != null) 'duration_seconds': workout.durationSeconds,
+      if (workout.rpeSession != null) 'rpe_session': workout.rpeSession,
+      if (workout.location != null) 'location': workout.location,
+      if (workout.readinessScore != null) 'readiness_score': workout.readinessScore,
+      if (workout.appliedPlanId != null) 'applied_plan_id': workout.appliedPlanId,
+      if (workout.planOrderIndex != null) 'plan_order_index': workout.planOrderIndex,
+      if (workout.scheduledFor != null) 'scheduled_for': workout.scheduledFor!.toIso8601String(),
+      if (workout.completedAt != null) 'completed_at': workout.completedAt!.toIso8601String(),
+    };
+
+    final typeStr = workout.workoutType.toString().split('.').last;
+    if (typeStr != 'manual') {
+      payload['workout_type'] = typeStr;
+    }
+
+    return payload;
   }
 }

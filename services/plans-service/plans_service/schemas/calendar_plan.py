@@ -126,6 +126,12 @@ class MicrocycleCreate(MicrocycleBase):
 class MicrocycleResponse(BaseModel):
     id: int
     mesocycle_id: int
+    name: str = Field(default="")
+    notes: Optional[str] = None
+    order_index: int = Field(default=0, ge=0)
+    normalization_value: Optional[float] = None
+    normalization_unit: Optional[str] = None
+    days_count: Optional[int] = Field(default=None, ge=1, le=31)
     plan_workouts: List["PlanWorkoutResponse"] = Field(default_factory=list)
 
     class Config:
@@ -285,6 +291,8 @@ class AppliedCalendarPlanResponse(AppliedCalendarPlanBase):
     end_date: datetime
     calendar_plan: CalendarPlanResponse  # Полный объект плана
     workouts: List[AppliedPlanWorkoutResponse] = Field(default_factory=list)
+    # Include selected user maxes attached to the applied plan
+    user_maxes: List[UserMaxResponse] = Field(default_factory=list)
     # Optional: next workout summary for active plans
 
     class NextWorkoutSummary(BaseModel):

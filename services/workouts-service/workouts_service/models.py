@@ -15,7 +15,6 @@ class Workout(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, index=True)
-    user_id = Column(String, nullable=True)
 
     # Plan linkage and scheduling
     applied_plan_id = Column(Integer, nullable=True)
@@ -78,7 +77,7 @@ class WorkoutSession(Base):
     id = Column(Integer, primary_key=True, index=True)
     workout_id = Column(Integer, ForeignKey("workouts.id", ondelete="CASCADE"), nullable=False, index=True)
     started_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    ended_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
     status = Column(String(50), nullable=False, default="active")
     # Derived at finish; seconds
     duration_seconds = Column(Integer, nullable=True)

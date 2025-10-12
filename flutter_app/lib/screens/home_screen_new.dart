@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:workout_app/screens/workouts_screen.dart';
 import 'package:workout_app/screens/calendar_plans_screen.dart';
+import 'package:workout_app/screens/chat_screen.dart';
+import 'package:workout_app/screens/debug_screen.dart';
 import 'package:workout_app/widgets/custom_bottom_nav_bar.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
 import 'package:workout_app/config/api_config.dart';
@@ -18,11 +20,15 @@ class _HomeScreenNewState extends State<HomeScreenNew> {
   final List<Widget> _widgetOptions = [
     const WorkoutsScreen(),  // Connected to workoutEndpoint
     const CalendarPlansScreen(), // Connected to calendarPlansEndpoint
+    const ChatScreen(embedded: true),
+    const DebugScreen(),
   ];
 
   final List<String> _appBarTitles = [
     'Тренировки',  // workoutEndpoint
     'Планы тренировок',   // calendarPlansEndpoint
+    'Чат ассистента',
+    'Отладка',
   ];
 
   void _onItemTapped(int index) {
@@ -33,8 +39,14 @@ class _HomeScreenNewState extends State<HomeScreenNew> {
         case 0: // Workouts
           debugPrint('Accessing endpoint: ${ApiConfig.workoutsEndpoint}');
           break;
-        case 1: // Exercises
+        case 1: // Plans
           debugPrint('Accessing endpoint: ${ApiConfig.calendarPlansEndpoint}');
+          break;
+        case 2: // Chat
+          debugPrint('Accessing endpoint: ${ApiConfig.chatEndpoint}');
+          break;
+        case 3: // Debug
+          debugPrint('Navigating to DebugScreen');
           break;
       }
     });
@@ -58,10 +70,7 @@ class _HomeScreenNewState extends State<HomeScreenNew> {
           ),
         ],
       ),
-      body: Padding(
-        padding: EdgeInsets.only(bottom: kBottomNavigationBarHeight + bottomPadding),
-        child: _widgetOptions.elementAt(_selectedIndex),
-      ),
+      body: _widgetOptions.elementAt(_selectedIndex),
       bottomNavigationBar: CustomBottomNavBar(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
@@ -75,6 +84,16 @@ class _HomeScreenNewState extends State<HomeScreenNew> {
             icon: Icons.schedule,
             label: 'Планы',
             activeLabel: 'Планы',
+          ),
+          BottomNavBarItem(
+            icon: Icons.chat_bubble_outline,
+            label: 'Чат',
+            activeLabel: 'Чат',
+          ),
+          BottomNavBarItem(
+            icon: Icons.bug_report_outlined,
+            label: 'Debug',
+            activeLabel: 'Debug',
           ),
         ],
       ),

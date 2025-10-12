@@ -3,7 +3,7 @@ import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 from datetime import date
-from fastapi import FastAPI, Depends, HTTPException, status, APIRouter
+from fastapi import FastAPI, Depends, HTTPException, status, APIRouter, Query
 from sqlalchemy.orm import Session
 import asyncio
 
@@ -11,13 +11,14 @@ from .database import get_db
 from .models import UserMax
 from . import schemas as schemas  
 from .services.true_1rm_service import calculate_true_1rm
+from .services.exercise_service import get_exercise_name_by_id
+from .services.analysis_service import compute_weak_muscles
 
 
 app = FastAPI(title="user-max-service", version="0.1.0")
 router = APIRouter(prefix="/user-max")
 
 
-#функция-зависимость для получения UserMax по ID или возврата 404
 def get_user_max_or_404(user_max_id: int, db: Session = Depends(get_db)) -> UserMax:
     user_max = db.get(UserMax, user_max_id)
     if user_max is None:
@@ -38,12 +39,54 @@ def health() -> Dict[str, str]:
 
 @router.post("/", response_model=schemas.UserMaxResponse, status_code=status.HTTP_201_CREATED)
 async def create_user_max(user_max: schemas.UserMaxCreate, db: Session = Depends(get_db)):
+    # Fetch exercise name automatically
+    try:
+        exercise_name = get_exercise_name_by_id(user_max.exercise_id)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error fetching exercise name: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch exercise name: {str(e)}"
+        )
+    # Upsert by (exercise_id, rep_max, date)
+    existing = (
+        db.query(UserMax)
+        .filter(
+            UserMax.exercise_id == user_max.exercise_id,
+            UserMax.rep_max == user_max.rep_max,
+            UserMax.date == user_max.date,
+        )
+        .first()
+    )
+    if existing:
+        # Keep the best weight for the day and update name if changed
+        try:
+            if user_max.max_weight is not None and float(user_max.max_weight) > float(existing.max_weight or 0):
+                existing.max_weight = user_max.max_weight
+        except Exception:
+            # If comparison fails for any reason, just keep existing value
+            pass
+        if exercise_name and existing.exercise_name != exercise_name:
+            existing.exercise_name = exercise_name
+        # Optional fields
+        if user_max.true_1rm is not None:
+            existing.true_1rm = user_max.true_1rm
+        if user_max.verified_1rm is not None:
+            existing.verified_1rm = user_max.verified_1rm
+        db.commit()
+        db.refresh(existing)
+        return existing
+
     db_user_max = UserMax(
         exercise_id=user_max.exercise_id,
-        exercise_name=user_max.exercise_name,  # Ensure exercise_name is set
+        exercise_name=exercise_name,
         max_weight=user_max.max_weight,
         rep_max=user_max.rep_max,
         date=user_max.date,
+        true_1rm=user_max.true_1rm,
+        verified_1rm=user_max.verified_1rm,
     )
     db.add(db_user_max)
     db.commit()
@@ -64,6 +107,29 @@ async def list_user_maxes(exercise_id: Optional[int] = None, skip: int = 0, limi
 async def get_by_exercise(exercise_id: int, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     """Получить записи UserMax для указанного exercise_id с пагинацией"""
     return db.query(UserMax).filter(UserMax.exercise_id == exercise_id).offset(skip).limit(limit).all()
+
+
+@router.get("/by-exercises", response_model=List[schemas.UserMaxResponse])
+async def get_user_maxes_by_exercises(exercise_ids: List[int], db: Session = Depends(get_db)):
+    """Получить записи UserMax по списку ID упражнений"""
+    if not all(isinstance(id, int) for id in exercise_ids):
+        raise HTTPException(400, "Некорректные ID упражнений")
+    return db.query(UserMax).filter(UserMax.exercise_id.in_(exercise_ids)).all()
+
+
+@router.get("/by-ids", response_model=List[schemas.UserMaxResponse])
+async def get_user_maxes_by_ids(ids: List[int] = Query(..., alias="ids"), db: Session = Depends(get_db)):
+    """Получить записи UserMax по списку их идентификаторов"""
+    if not ids:
+        raise HTTPException(status_code=400, detail="Необходимо указать хотя бы один идентификатор user_max")
+    invalid = [value for value in ids if not isinstance(value, int)]
+    if invalid:
+        raise HTTPException(status_code=400, detail="Список идентификаторов содержит некорректные значения")
+    records = db.query(UserMax).filter(UserMax.id.in_(ids)).all()
+    # Сохраняем порядок, указанный в запросе
+    by_id = {um.id: um for um in records}
+    ordered = [by_id[id_] for id_ in ids if id_ in by_id]
+    return ordered
 
 
 @router.get("/{user_max_id}", response_model=schemas.UserMaxResponse)
@@ -96,14 +162,6 @@ async def calculate_true_1rm_endpoint(user_max: UserMax = Depends(get_user_max_o
     return calculate_true_1rm(user_max)
 
 
-@router.get("/by-exercises", response_model=List[schemas.UserMaxResponse])
-async def get_user_maxes_by_exercises(exercise_ids: List[int], db: Session = Depends(get_db)):
-    """Получить записи UserMax по списку ID упражнений"""
-    if not all(isinstance(id, int) for id in exercise_ids):
-        raise HTTPException(400, "Некорректные ID упражнений")
-    return db.query(UserMax).filter(UserMax.exercise_id.in_(exercise_ids)).all()
-
-
 @router.put("/{user_max_id}/verify", response_model=schemas.UserMaxResponse)
 async def verify_1rm(verified_1rm: float, user_max: UserMax = Depends(get_user_max_or_404), db: Session = Depends(get_db)):
     user_max.verified_1rm = verified_1rm
@@ -114,19 +172,139 @@ async def verify_1rm(verified_1rm: float, user_max: UserMax = Depends(get_user_m
 
 @router.post("/bulk", response_model=List[schemas.UserMaxBulkResponse])
 async def create_bulk_user_max(user_maxes: List[schemas.UserMaxCreate], db: Session = Depends(get_db)):
-    """Создать несколько записей UserMax за один запрос"""
+    """Create multiple UserMax records in one request"""
     logger.info(f"Received bulk create request with {len(user_maxes)} items")
-    db_user_maxes = []
-    for um in user_maxes:
-        logger.info(f"Creating UserMax for exercise: {um.exercise_id}")
-        db_um = UserMax(**um.model_dump())
-        db.add(db_um)
-        db_user_maxes.append(db_um)
-    db.commit()
-    for um in db_user_maxes:
-        db.refresh(um)
-    return db_user_maxes
+    
+    # Collect all exercise IDs
+    exercise_ids = [um.exercise_id for um in user_maxes]
 
-from .schemas import UserMaxCreate, UserMaxResponse, UserMaxUpdate, UserMaxBulkResponse
+    # Fetch all exercise names at once
+    exercise_names: Dict[int, str] = {}
+    for exercise_id in exercise_ids:
+        try:
+            exercise_names[exercise_id] = get_exercise_name_by_id(exercise_id)
+        except HTTPException as e:
+            # If it's a service unavailable error, log and use a placeholder
+            if e.status_code == 503:
+                logger.error(f"Exercises-service unavailable for ID {exercise_id}: {e.detail}")
+                exercise_names[exercise_id] = "Unknown"
+            else:
+                # For other HTTP errors, re-raise
+                raise
+        except Exception as e:
+            logger.error(f"Unexpected error fetching exercise name for ID {exercise_id}: {str(e)}")
+            exercise_names[exercise_id] = "Unknown"
+
+    # 1) Deduplicate incoming payload by (exercise_id, rep_max, date) taking the max weight
+    merged: Dict[tuple, schemas.UserMaxCreate] = {}
+    for um in user_maxes:
+        key = (um.exercise_id, um.rep_max, um.date)
+        if key in merged:
+            # keep the best weight
+            if um.max_weight > merged[key].max_weight:
+                merged[key] = um
+        else:
+            merged[key] = um
+
+    # 2) Upsert each entry
+    results: List[UserMax] = []
+    for (exercise_id, rep_max, dt), um in merged.items():
+        logger.info(
+            "Upserting UserMax exercise_id=%s rep_max=%s date=%s", exercise_id, rep_max, dt
+        )
+        existing = (
+            db.query(UserMax)
+            .filter(
+                UserMax.exercise_id == exercise_id,
+                UserMax.rep_max == rep_max,
+                UserMax.date == dt,
+            )
+            .first()
+        )
+        if existing:
+            try:
+                if float(um.max_weight) > float(existing.max_weight or 0):
+                    existing.max_weight = um.max_weight
+            except Exception:
+                pass
+            ex_name = exercise_names.get(exercise_id, "Unknown")
+            if ex_name and existing.exercise_name != ex_name:
+                existing.exercise_name = ex_name
+            if um.true_1rm is not None:
+                existing.true_1rm = um.true_1rm
+            if um.verified_1rm is not None:
+                existing.verified_1rm = um.verified_1rm
+            results.append(existing)
+        else:
+            db_um = UserMax(
+                exercise_id=exercise_id,
+                exercise_name=exercise_names.get(exercise_id, "Unknown"),
+                max_weight=um.max_weight,
+                rep_max=rep_max,
+                date=dt,
+                true_1rm=um.true_1rm,
+                verified_1rm=um.verified_1rm,
+            )
+            db.add(db_um)
+            results.append(db_um)
+
+    db.commit()
+    for um in results:
+        db.refresh(um)
+    return results
 
 app.include_router(router)
+
+
+# ------------------------------
+# Analysis endpoints
+# ------------------------------
+@app.get("/user-max/analysis/weak-muscles")
+def get_weak_muscles(
+    recent_days: int = 180,
+    min_records: int = 1,
+    synergist_weight: float = 0.25,
+    use_llm: bool = False,
+    fresh: bool = False,
+    # Robust relative normalization flags
+    relative_by_exercise: bool = True,
+    robust: bool = True,
+    quantile_mode: str = "p",
+    quantile_p: float = 0.25,
+    iqr_floor: float = 0.08,
+    sigma_floor: float = 0.06,
+    k_shrink: float = 12.0,
+    z_clip: float = 3.0,
+    db: Session = Depends(get_db)
+):
+    """
+    Analyze user_maxes to identify weaker muscles using exercise metadata.
+    - recent_days: size of the recency window for trend calc
+    - min_records: minimal number of UserMax per exercise to consider
+    - synergist_weight: contribution of synergist_muscles (0..1)
+    - fresh: bypass cache if True
+    """
+    try:
+        user_maxes = db.query(UserMax).all()
+        profile = compute_weak_muscles(
+            user_maxes=user_maxes,
+            recent_days=recent_days,
+            min_records=min_records,
+            synergist_weight=synergist_weight,
+            use_llm=use_llm,
+            use_cache=not fresh,
+            relative_by_exercise=relative_by_exercise,
+            robust=robust,
+            quantile_mode=quantile_mode,
+            quantile_p=quantile_p,
+            iqr_floor=iqr_floor,
+            sigma_floor=sigma_floor,
+            k_shrink=k_shrink,
+            z_clip=z_clip,
+        )
+        return profile
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")

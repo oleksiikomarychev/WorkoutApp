@@ -80,6 +80,30 @@ class WorkoutSessionService extends BaseApiService {
     }
   }
 
+  Future<List<WorkoutSession>> listAllSessions() async {
+    try {
+      final endpoint = ApiConfig.getAllSessionsHistoryEndpoint();
+      _logger.d('Listing all sessions');
+      final response = await _apiClient.get(
+        endpoint,
+        context: 'WorkoutSessionService.listAllSessions',
+      );
+
+      if (response is List) {
+        return response
+            .whereType<Map<String, dynamic>>()
+            .map(WorkoutSession.fromJson)
+            .toList();
+      }
+      if (response is Map<String, dynamic>) {
+        return [WorkoutSession.fromJson(response)];
+      }
+      throw Exception('Unexpected response format for all session history');
+    } catch (e, st) {
+      handleError('Failed to list all sessions', e, st);
+    }
+  }
+
   // PUT /sessions/{session_id}/instances/{instance_id}/sets/{set_id}
   Future<WorkoutSession> updateSetCompletion({
     required int sessionId,

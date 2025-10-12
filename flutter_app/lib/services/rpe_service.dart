@@ -1,6 +1,11 @@
+import 'package:workout_app/services/api_client.dart';
 import 'package:workout_app/config/rpe_table.dart' as rpe_table;
 
 class RpeService {
+  final ApiClient _apiClient;
+
+  RpeService(this._apiClient);
+
   /// ⚡ ULTRA-FAST: Calculate RPE from intensity and reps using optimized local lookup
   /// No HTTP calls - instant results
   Future<double?> calculateRpe(double intensity, int reps) async {

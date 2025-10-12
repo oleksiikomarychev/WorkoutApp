@@ -102,11 +102,12 @@ async def validate_microcycles(microcycle_ids: list[int], db: AsyncSession = Dep
     return {"valid_ids": valid_ids}
 
 
-@router.get("/{microcycle_id}", response_model=MicrocycleResponse)
+@router.get("/microcycles/{microcycle_id}", response_model=MicrocycleResponse)
 async def get_microcycle(
     microcycle_id: int, db: AsyncSession = Depends(get_db)
 ):
-    microcycle = await CalendarPlanService.get_microcycle_by_id(db, microcycle_id)
+    svc = MesocycleService(db)
+    microcycle = await svc.get_microcycle_by_id(microcycle_id)
     if not microcycle:
         raise HTTPException(status_code=404, detail="Microcycle not found")
     return microcycle

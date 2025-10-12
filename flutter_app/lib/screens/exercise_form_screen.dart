@@ -10,9 +10,18 @@ import 'package:workout_app/services/service_locator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class ExerciseFormScreen extends ConsumerStatefulWidget {
-  final ExerciseDefinition? exercise;
+  final ExerciseDefinition exercise;
+  final int workoutId;
+  final ExerciseInstance? initialInstance;
+  final int? defaultOrder;
 
-  const ExerciseFormScreen({super.key, this.exercise});
+  const ExerciseFormScreen({
+    super.key,
+    required this.exercise,
+    required this.workoutId,
+    this.initialInstance,
+    this.defaultOrder,
+  });
 
   @override
   ConsumerState<ExerciseFormScreen> createState() => _ExerciseFormScreenState();
@@ -25,6 +34,7 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
   // Multiple set controllers
   final List<TextEditingController> _volumeControllers = [];
   final List<TextEditingController> _weightControllers = [];
+  final List<ExerciseSetDto?> _existingSetDtos = [];
 
   // Muscle group dropdown (loaded from backend enum)
   List<String> _muscleGroups = [];
@@ -35,17 +45,26 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
   bool _isLoading = false;
 
   // Set helpers
-  void _addSetRow({String volume = '5', String weight = '0'}) {
-    final v = TextEditingController(text: volume);
-    final w = TextEditingController(text: weight);
+  void _addSetRow({ExerciseSetDto? existing, String? volume, String? weight}) {
+    final defaultReps = existing?.reps.toString() ?? '5';
+    final defaultWeight = () {
+      final val = existing?.weight ?? 0.0;
+      return (val % 1 == 0)
+          ? val.toStringAsFixed(0)
+          : val.toStringAsFixed(1);
+    }();
+    final v = TextEditingController(text: volume ?? defaultReps);
+    final w = TextEditingController(text: weight ?? defaultWeight);
     _volumeControllers.add(v);
     _weightControllers.add(w);
+    _existingSetDtos.add(existing);
   }
 
   void _removeSetRow(int index) {
     if (index < 0 || index >= _volumeControllers.length) return;
     final v = _volumeControllers.removeAt(index);
     final w = _weightControllers.removeAt(index);
+    _existingSetDtos.removeAt(index);
     v.dispose();
     w.dispose();
     setState(() {});
@@ -54,6 +73,7 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
   void _clearAllSetRows() {
     for (final c in _volumeControllers) { c.dispose(); }
     for (final c in _weightControllers) { c.dispose(); }
+    _existingSetDtos.clear();
     _volumeControllers.clear();
     _weightControllers.clear();
   }
@@ -62,14 +82,16 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
   void initState() {
     super.initState();
 
-    _nameController = TextEditingController();
-    _muscleGroupController = TextEditingController();
-    // initialize first set by default
-    _addSetRow();
+    _nameController = TextEditingController(text: widget.exercise.name);
+    _muscleGroupController = TextEditingController(text: widget.exercise.muscleGroup ?? '');
 
-    if (widget.exercise != null) {
-      _nameController.text = widget.exercise!.name;
-      _muscleGroupController.text = widget.exercise!.muscleGroup ?? '';
+    final existingSets = widget.initialInstance?.sets ?? [];
+    if (existingSets.isNotEmpty) {
+      for (final set in existingSets) {
+        _addSetRow(existing: set);
+      }
+    } else {
+      _addSetRow();
     }
 
     // Defer selected value initialization until groups are loaded
@@ -147,41 +169,47 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
       });
 
       try {
-        // Build sets array from controllers
-        final sets = <Map<String, int>>[];
-        for (int i = 0; i < _volumeControllers.length; i++) {
-          final volume = int.tryParse(_volumeControllers[i].text) ?? 0;
-          final weight = int.tryParse(_weightControllers[i].text) ?? 0;
-          sets.add({'weight': weight, 'volume': volume});
+        final exerciseDef = widget.exercise;
+        final exerciseListId = exerciseDef.id;
+        if (exerciseListId == null) {
+          throw Exception('Exercise definition id is required');
         }
 
-        // Convert form sets to ExerciseSetDto objects
-        final setDtos = sets.map((set) {
-          final reps = int.tryParse(set['volume']?.toString() ?? '0') ?? 0;
-          final weight = double.tryParse(set['weight']?.toString() ?? '0') ?? 0.0;
-          
-          return ExerciseSetDto(
-            id: null, // Will be assigned by the server
+        final sets = <ExerciseSetDto>[];
+        for (int i = 0; i < _volumeControllers.length; i++) {
+          final reps = int.tryParse(_volumeControllers[i].text.trim()) ?? 0;
+          final weightRaw = _weightControllers[i].text.replaceAll(',', '.').trim();
+          final weight = double.tryParse(weightRaw) ?? 0.0;
+          final existing = _existingSetDtos[i];
+
+          sets.add(ExerciseSetDto(
+            id: existing?.id,
             reps: reps,
             weight: weight,
-            volume: reps, // Set volume from reps for backward compatibility
-            // Include other set properties if available
-          );
-        }).toList();
-        
+            rpe: existing?.rpe,
+            order: existing?.order ?? i,
+            exerciseInstanceId: existing?.exerciseInstanceId,
+          ));
+        }
+
         final newInstance = ExerciseInstance(
-          id: 0, // Will be assigned by the server
-          workoutId: 0, // Will be assigned by the server
-          exerciseListId: widget.exercise!.id!,
-          sets: setDtos,
-          userMaxId: null, // We removed userMaxId
-          order: 0, // Default order
-          notes: null, // Optional field
-          exerciseDefinition: widget.exercise, // Pass the exercise definition directly
+          id: widget.initialInstance?.id,
+          workoutId: widget.initialInstance?.workoutId ?? widget.workoutId,
+          exerciseListId: exerciseListId,
+          exerciseDefinition: exerciseDef,
+          userMaxId: widget.initialInstance?.userMaxId,
+          sets: sets,
+          notes: widget.initialInstance?.notes,
+          order: widget.initialInstance?.order ?? widget.defaultOrder,
         );
-        
-        final exerciseService = ref.read(exerciseServiceProvider);
-        await exerciseService.createExerciseInstance(newInstance);
+
+        if (mounted) {
+          Navigator.of(context).pop({
+            'instance': newInstance,
+            'isNew': widget.initialInstance == null,
+            'refresh': true,
+          });
+        }
         return true;
       } catch (e) {
         if (mounted) {

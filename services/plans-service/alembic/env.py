@@ -3,7 +3,7 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 
-from plans_service.database import Base
+from plans_service.models.calendar import Base
 
 config = context.config
 

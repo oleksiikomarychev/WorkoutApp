@@ -28,12 +28,10 @@ class WorkoutBase(BaseModel):
 
 
 class WorkoutCreate(WorkoutBase):
-    day: Optional[str] = None
     microcycle_id: Optional[int] = None
-    exercises: Optional[List[dict]] = None
 
     class Config:
-        extra = "allow"
+        extra = "forbid"
 
 
 class WorkoutUpdate(WorkoutBase):

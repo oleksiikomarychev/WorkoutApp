@@ -4,11 +4,14 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:heroicons/heroicons.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:animations/animations.dart';
+import 'package:intl/intl.dart';
 
 import '../models/workout.dart';
 import '../models/progression_template.dart';
 import '../services/workout_service.dart';
 import '../services/progression_service.dart';
+import '../services/plan_service.dart';
+import '../services/api_client.dart';
 import 'workout_detail_screen.dart';
 
 class WorkoutListScreen extends StatefulWidget {
@@ -26,6 +29,7 @@ class WorkoutListScreen extends StatefulWidget {
 class _WorkoutListScreenState extends State<WorkoutListScreen> {
   late Future<List<Workout>> _workoutsFuture;
   bool _isRefreshing = false;
+  late Future<Workout?> _nextWorkoutFuture;
   
   final TextEditingController _nameController = TextEditingController();
 
@@ -33,6 +37,7 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
   void initState() {
     super.initState();
     _loadWorkouts();
+    _loadNextWorkout();
   }
   
   Future<void> _loadWorkouts() async {
@@ -43,6 +48,37 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
       _workoutsFuture = workoutService.getWorkouts();
     }
   }
+
+  Future<void> _loadNextWorkout() async {
+    final apiClient = ApiClient.create();
+    final planService = PlanService(apiClient: apiClient);
+    final workoutService = Provider.of<WorkoutService>(context, listen: false);
+    _nextWorkoutFuture = () async {
+      try {
+        debugPrint('[WorkoutListScreen] Loading next workout (by plan order)...');
+        final activePlan = await planService.getActivePlan();
+        if (activePlan == null) {
+          debugPrint('[WorkoutListScreen] No active plan');
+          return null;
+        }
+        final workouts = await workoutService.getWorkoutsByAppliedPlan(activePlan.id);
+        debugPrint('[WorkoutListScreen] Loaded ${workouts.length} workouts from active plan');
+        if (workouts.isEmpty) return null;
+        workouts.sort((a, b) => (a.planOrderIndex ?? 1 << 30).compareTo(b.planOrderIndex ?? 1 << 30));
+        for (final w in workouts) {
+          final completed = (w.status?.toLowerCase() == 'completed') || (w.completedAt != null);
+          if (!completed) {
+            debugPrint('[WorkoutListScreen] Next workout by order: id=${w.id}, idx=${w.planOrderIndex}');
+            return w;
+          }
+        }
+        debugPrint('[WorkoutListScreen] All workouts in plan are completed');
+        return null;
+      } catch (_) {
+        return null;
+      }
+    }();
+  }
   
   Future<void> _refreshWorkouts() async {
     setState(() {
@@ -50,6 +86,7 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
     });
     
     await _loadWorkouts();
+    await _loadNextWorkout();
     
     if (mounted) {
       setState(() {
@@ -103,7 +140,6 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
                     final workoutService = Provider.of<WorkoutService>(context, listen: false);
                     final workout = Workout(
                       name: _nameController.text,
-                      progressionTemplateId: widget.progressionId > 0 ? widget.progressionId : null,
                       exerciseInstances: [],
                       id: null,
                     );
@@ -154,6 +190,51 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 12),
           children: [
+            // Next Workout section (from active plan)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: FutureBuilder<Workout?>(
+                future: _nextWorkoutFuture,
+                builder: (context, snap) {
+                  if (snap.connectionState == ConnectionState.waiting) {
+                    return const SizedBox.shrink();
+                  }
+                  if (snap.hasError) {
+                    return const SizedBox.shrink();
+                  }
+                  final nw = snap.data;
+                  if (nw == null) {
+                    return const SizedBox.shrink();
+                  }
+                  final when = nw.scheduledFor != null
+                      ? ' • ${DateFormat('yMMMd, HH:mm').format(nw.scheduledFor!.toLocal())}'
+                      : '';
+                  return Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.upcoming),
+                      title: const Text('Следующая тренировка'),
+                      subtitle: Text('${nw.name}$when'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        final result = await Navigator.push<bool>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => WorkoutDetailScreen(workoutId: nw.id!),
+                          ),
+                        );
+                        if (result == true && mounted) {
+                          await _refreshWorkouts();
+                        } else {
+                          // Ensure next workout card is refreshed after returning
+                          await _loadNextWorkout();
+                          if (mounted) setState(() {});
+                        }
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
             // Workouts list section
             FutureBuilder<List<Workout>>(
               future: _workoutsFuture,
@@ -230,7 +311,7 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
                         final result = await Navigator.push<bool>(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => WorkoutDetailScreen(workout: workout),
+                            builder: (context) => WorkoutDetailScreen(workoutId: workout.id!),
                           ),
                         );
                         

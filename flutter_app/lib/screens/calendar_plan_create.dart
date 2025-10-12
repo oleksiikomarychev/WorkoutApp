@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:provider/provider.dart' as provider_package;
 import 'package:workout_app/main.dart';
 import 'package:workout_app/models/exercise_definition.dart';
 import 'package:workout_app/models/plan_schedule.dart';
@@ -23,12 +24,29 @@ class ExerciseWithSets {
         )).toList();
 
   Map<String, dynamic> toJson() => {
-        'exercise_id': exercise.id,
+        'exercise_definition_id': exercise.id,
         'sets': setDrafts.map((draft) {
+          int? intensity = draft.intensity?.round();
+          if (intensity != null) {
+            if (intensity < 0) intensity = 0;
+            if (intensity > 100) intensity = 100;
+          }
+
+          int? effort = draft.effort?.round();
+          if (effort != null) {
+            if (effort < 1) effort = 1;
+            if (effort > 10) effort = 10;
+          }
+
+          int? volume = draft.volume?.round();
+          if (volume != null) {
+            if (volume < 1) volume = 1;
+          }
+
           return {
-            'intensity': draft.intensity,
-            'effort': draft.effort,
-            'volume': draft.volume,
+            'intensity': intensity,
+            'effort': effort,
+            'volume': volume,
           };
         }).toList(),
       };
@@ -137,7 +155,7 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
   @override
   void initState() {
     super.initState();
-    _rpeService = ref.read(rpeServiceProvider);
+    _rpeService = provider_package.Provider.of<RpeService>(context, listen: false);
     
     // Add initial mesocycle with one microcycle
     _mesocycles.add(MesocycleCreate(
@@ -691,7 +709,7 @@ class MesocycleCreate {
   Map<String, dynamic> toJson() {
     return {
       'name': name,
-      'microcycle_length_days': microcycleLengthDays,
+      'duration_weeks': microcycles.length,
       'microcycles': microcycles.map((m) => m.toJson()).toList(),
       'order_index': orderIndex,
     };
@@ -726,11 +744,37 @@ class MicrocycleCreate {
   }
 
   Map<String, dynamic> toJson() {
+    // Build plan_workouts from the schedule map
+    final List<Map<String, dynamic>> planWorkouts = [];
+    final entries = schedule.entries.toList()
+      ..sort((a, b) => int.tryParse(a.key)?.compareTo(int.tryParse(b.key) ?? 0) ?? 0);
+
+    for (final entry in entries) {
+      final int day = int.tryParse(entry.key) ?? 0;
+      final List<Workout> workouts = entry.value;
+
+      // Flatten all exercises from all workouts within the day
+      final List<Map<String, dynamic>> exercises = [];
+      for (final workout in workouts) {
+        for (final ex in workout.exercises) {
+          exercises.add(ex.toJson());
+        }
+      }
+
+      if (exercises.isNotEmpty) {
+        planWorkouts.add({
+          'day_label': 'Day $day',
+          'order_index': day > 0 ? day - 1 : 0,
+          'exercises': exercises,
+        });
+      }
+    }
+
     return {
       'name': name,
       'days_count': daysCount,
-      'schedule': schedule.map((k, v) => MapEntry(k, v.map((e) => e.toJson()).toList())),
       'order_index': orderIndex,
+      'plan_workouts': planWorkouts,
     };
   }
 }

@@ -1,6 +1,6 @@
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 class WorkoutSessionBase(BaseModel):
     workout_id: int
@@ -17,6 +17,7 @@ class WorkoutSessionResponse(WorkoutSessionBase):
     rpe_session: Optional[float] = None
     location: Optional[str] = None
     readiness_score: Optional[int] = None
+    progress: Dict[str, Any] = Field(default_factory=dict)
 
     class Config:
         from_attributes = True
