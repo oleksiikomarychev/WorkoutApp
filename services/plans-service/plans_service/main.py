@@ -1,15 +1,12 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import time
-import logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 from .routers import calendar_plans, applied_calendar_plans
 from .routers import (
     mesocycles,
 )
 from .dependencies import engine
-from .database import Base
+from .models.calendar import Base
 
 
 def create_tables():

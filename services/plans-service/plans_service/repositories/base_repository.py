@@ -2,9 +2,6 @@ from typing import Any, Generic, Type, TypeVar, Optional, Union
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from ..database import Base
-import logging
-
-logger = logging.getLogger(__name__)
 
 ModelType = TypeVar("ModelType", bound=Base)
 CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
@@ -32,9 +29,8 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             db.commit()
             db.refresh(db_obj)
             return db_obj
-        except Exception as e:
+        except Exception:
             db.rollback()
-            logger.error(f"Error creating {self.model.__name__}: {e}")
             return None
 
     def update(
@@ -59,9 +55,8 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             db.commit()
             db.refresh(db_obj)
             return db_obj
-        except Exception as e:
+        except Exception:
             db.rollback()
-            logger.error(f"Error updating {self.model.__name__} {db_obj.id}: {e}")
             return None
 
     def remove(self, db: Session, *, id: int) -> Optional[ModelType]:
@@ -71,7 +66,6 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
                 db.delete(obj)
                 db.commit()
             return obj
-        except Exception as e:
+        except Exception:
             db.rollback()
-            logger.error(f"Error removing {self.model.__name__} {id}: {e}")
             return None

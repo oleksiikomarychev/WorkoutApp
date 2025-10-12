@@ -14,31 +14,28 @@ class CalendarPlanInstanceService:
     def __init__(self, db: Session):
         self.db = db
 
-    def list_instances(self, user_id: str) -> List[CalendarPlanInstanceResponse]:
+    def list_instances(self) -> List[CalendarPlanInstanceResponse]:
         instances = (
             self.db.query(CalendarPlanInstance)
-            .filter(CalendarPlanInstance.user_id == user_id)
             .all()
         )
         return [self._to_response(i) for i in instances]
 
-    def get_instance(self, instance_id: int, user_id: str) -> Optional[CalendarPlanInstanceResponse]:
+    def get_instance(self, instance_id: int) -> Optional[CalendarPlanInstanceResponse]:
         inst = (
             self.db.query(CalendarPlanInstance)
             .filter(
                 CalendarPlanInstance.id == instance_id,
-                CalendarPlanInstance.user_id == user_id,
             )
             .first()
         )
         return self._to_response(inst) if inst else None
 
-    def delete_instance(self, instance_id: int, user_id: str) -> None:
+    def delete_instance(self, instance_id: int) -> None:
         inst = (
             self.db.query(CalendarPlanInstance)
             .filter(
                 CalendarPlanInstance.id == instance_id,
-                CalendarPlanInstance.user_id == user_id,
             )
             .first()
         )
@@ -46,15 +43,14 @@ class CalendarPlanInstanceService:
             self.db.delete(inst)
             self.db.commit()
 
-    def create_from_plan(self, plan_id: int, user_id: str) -> CalendarPlanInstanceResponse:
+    def create_from_plan(self, plan_id: int) -> CalendarPlanInstanceResponse:
         try:
             # User can only create an instance from their own plan or a global one
             plan = (
                 self.db.query(CalendarPlan)
                 .filter(
                     CalendarPlan.id == plan_id,
-                    or_(CalendarPlan.user_id == user_id, CalendarPlan.user_id.is_(None)),
-                )
+                    )
                 .first()
             )
             if not plan:
@@ -109,7 +105,6 @@ class CalendarPlanInstanceService:
 
             inst = CalendarPlanInstance(
                 source_plan_id=plan.id,
-                user_id=user_id,
                 name=plan.name,
                 schedule=schedule_with_ids,
                 duration_weeks=duration_weeks,
@@ -122,7 +117,7 @@ class CalendarPlanInstanceService:
             self.db.rollback()
             raise
 
-    def create(self, data: CalendarPlanInstanceCreate, user_id: str) -> CalendarPlanInstanceResponse:
+    def create(self, data: CalendarPlanInstanceCreate) -> CalendarPlanInstanceResponse:
         try:
             schedule = data.schedule
             # trust incoming ids; otherwise index if empty
@@ -133,7 +128,6 @@ class CalendarPlanInstanceService:
                 schedule = self._dump_schedule(schedule)
             inst = CalendarPlanInstance(
                 source_plan_id=data.source_plan_id,
-                user_id=user_id,
                 name=data.name,
                 schedule=schedule,
                 duration_weeks=data.duration_weeks,
@@ -146,13 +140,12 @@ class CalendarPlanInstanceService:
             self.db.rollback()
             raise
 
-    def update(self, instance_id: int, data: CalendarPlanInstanceUpdate, user_id: str) -> CalendarPlanInstanceResponse:
+    def update(self, instance_id: int, data: CalendarPlanInstanceUpdate) -> CalendarPlanInstanceResponse:
         try:
             inst = (
                 self.db.query(CalendarPlanInstance)
                 .filter(
                     CalendarPlanInstance.id == instance_id,
-                    CalendarPlanInstance.user_id == user_id,
                 )
                 .first()
             )

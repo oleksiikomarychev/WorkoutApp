@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:workout_app/models/muscle_info.dart';
-import '../models/exercise_list.dart';
+import '../models/exercise_definition.dart';
 import '../services/exercise_service.dart';
 
 class ExerciseListScreen extends StatefulWidget {
@@ -12,7 +12,7 @@ class ExerciseListScreen extends StatefulWidget {
 }
 
 class _ExerciseListScreenState extends State<ExerciseListScreen> {
-  late Future<List<ExerciseList>> _exercisesFuture;
+  late Future<List<ExerciseDefinition>> _exercisesFuture;
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _equipmentController = TextEditingController();
   // Muscles
@@ -38,7 +38,7 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
       final muscles = await svc.getMuscles();
       final groups = muscles.map((m) => m.group).toSet().toList()..sort();
       setState(() {
-        _muscleGroups = groups;
+        _muscleGroups = groups.cast<String>();
         // Keep previous selection if still valid
         if (_selectedMuscleGroup != null && !_muscleGroups.contains(_selectedMuscleGroup)) {
           _selectedMuscleGroup = null;
@@ -132,7 +132,7 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
     }
     try {
       final exerciseService = Provider.of<ExerciseService>(context, listen: false);
-      final exercise = ExerciseList(
+      final exercise = ExerciseDefinition(
         name: _nameController.text,
         muscleGroup: _selectedMuscleGroup,
         equipment: _equipmentController.text.isEmpty ? null : _equipmentController.text,
@@ -194,7 +194,7 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
               ),
             ),
             Expanded(
-              child: FutureBuilder<List<ExerciseList>>(
+              child: FutureBuilder<List<ExerciseDefinition>>(
                 future: _exercisesFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {

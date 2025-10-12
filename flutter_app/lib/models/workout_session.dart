@@ -13,7 +13,7 @@ class WorkoutSession with _$WorkoutSession {
     int? id,
     @JsonKey(name: 'workout_id') required int workoutId,
     @JsonKey(name: 'started_at') required DateTime startedAt,
-    @JsonKey(name: 'ended_at') DateTime? endedAt,
+    @JsonKey(name: 'finished_at') DateTime? finishedAt,
     @Default('active') String status,
     @JsonKey(name: 'duration_seconds') int? durationSeconds,
     @Default(<String, dynamic>{}) Map<String, dynamic> progress,
@@ -30,5 +30,5 @@ class WorkoutSession with _$WorkoutSession {
       _$WorkoutSessionFromJson(json);
 
   // Convenience
-  bool get isActive => status.toLowerCase() == 'active' && endedAt == null;
+  bool get isActive => status.toLowerCase() == 'active' && finishedAt == null;
 }

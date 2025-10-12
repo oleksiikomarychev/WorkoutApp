@@ -19,6 +19,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/providers/workout_provider.dart';
+import 'package:workout_app/config/constants/theme_constants.dart';
 
 // Top-level editor to manage TextEditingControllers for inline set editing
 class _SetEditor {
@@ -41,8 +42,8 @@ class _SetEditor {
 // Top-level container for baseline values used by readiness scaling
 class _BaselineSet {
   final int reps;
-  final double weight;
-  const _BaselineSet({required this.reps, required this.weight});
+  final double? weight;
+  const _BaselineSet({required this.reps, this.weight});
 }
 
 class WorkoutDetailScreen extends ConsumerWidget {
@@ -56,7 +57,14 @@ class WorkoutDetailScreen extends ConsumerWidget {
     final workoutAsync = ref.watch(workoutProvider(workoutId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Workout Details')),
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: const Text('Workout Details'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: AppColors.textPrimary),
+        titleTextStyle: AppTextStyles.headlineSmall.copyWith(color: AppColors.textPrimary),
+      ),
       body: workoutAsync.when(
         data: (workout) => _WorkoutDetailContent(workout: workout),
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -102,8 +110,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   final TextEditingController _locationCtrl = TextEditingController();
   final TextEditingController _durationCtrl = TextEditingController();
   final TextEditingController _rpeSessionCtrl = TextEditingController();
-  // Manual coefficient for readiness scaling (multiplier)
-  final TextEditingController _manualCoeffCtrl = TextEditingController(text: '1.00');
+  final TextEditingController _readinessCtrl = TextEditingController();
   DateTime? _editedStartedAt;
   bool _isSavingMetadata = false;
 
@@ -111,6 +118,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   double _readinessSlider = 10.0;
   bool _isApplyingReadiness = false;
   final bool _scaleRepsWithReadiness = true;
+  bool _isProgrammaticReadinessUpdate = false;
 
   // Baseline snapshot to make scaling reversible and non-destructive
   // Keyed by editor key (instance+set identity)
@@ -127,19 +135,40 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   @override
   void initState() {
     super.initState();
+    // Seed local state from incoming widget
+    _workout = widget.workout;
     _syncMetadataControllers();
-    if (widget.workout != null) {
+
+    // Defer data loading until after first build so that _ref is available
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       _loadExercises();
-      // Also fetch raw API response for debugging (debug builds only, with timeout)
       if (kDebugMode) {
         _fetchRawWorkoutData();
       }
-    }
+      if (_workout?.id != null) {
+        _loadActiveSession();
+      }
+    });
+
     // Load helpers for inline recalculation
     _fetchRpeTable();
-    // Load active session if any
-    if (widget.workout.id != null) {
-      _loadActiveSession();
+  }
+
+  @override
+  void didUpdateWidget(covariant _WorkoutDetailContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // When parent provides a new workout, sync local state and refresh
+    if (oldWidget.workout.id != widget.workout.id) {
+      setState(() {
+        _workout = widget.workout;
+      });
+      _syncMetadataControllers();
+      // Safe to call; _ref is set after first build
+      _loadExercises();
+      if (_workout?.id != null) {
+        _loadActiveSession();
+      }
     }
   }
 
@@ -163,14 +192,6 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
     // Use a gentle mapping so 5/10 ~= 0.95 (not 0.5), 0/10 ~= 0.85, 10/10 ~= 1.05
     double factor = _readinessFactor(_readinessSlider.clamp(0, 10));
-    // Apply manual coefficient if provided (e.g., 0.95, 1.05). Sanitize input.
-    final raw = _manualCoeffCtrl.text.replaceAll(',', '.').trim();
-    final parsed = double.tryParse(raw);
-    if (parsed != null && parsed.isFinite && parsed > 0) {
-      // Clamp to a reasonable range to avoid accidental extremes
-      final clamped = parsed.clamp(0.5, 1.5);
-      factor *= clamped;
-    }
     int updates = 0;
     try {
       // Dynamic rounding: <=20 kg -> step 1.0, otherwise -> step 2.5
@@ -179,21 +200,29 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           final set = instance.sets[i];
           final String key = _editorKey(instance, i, set);
           final _BaselineSet base = _baselineSets[key] ?? _BaselineSet(reps: set.reps, weight: set.weight);
-          final double rawScaled = base.weight * factor;
-          final double step = rawScaled <= 20.0 ? 1.0 : 2.5;
-          final double newWeight = (_roundToStep(rawScaled, step).clamp(0.0, double.infinity));
+          final double? baseWeight = base.weight;
+          double? newWeight;
+          bool weightChanged = false;
+          if (baseWeight != null) {
+            final double rawScaled = baseWeight * factor;
+            final double step = rawScaled <= 20.0 ? 1.0 : 2.5;
+            newWeight = (_roundToStep(rawScaled, step).clamp(0.0, double.infinity));
+            final double currentWeight = set.weight ?? baseWeight;
+            weightChanged = (newWeight - currentWeight).abs() > 0.0001;
+          }
           final int newReps = _scaleRepsWithReadiness
               ? ((base.reps * factor).round().clamp(1, 10000))
               : set.reps;
 
-          final bool changed = (newReps != set.reps) || (newWeight - set.weight).abs() > 0.0001;
+          final bool repsChanged = newReps != set.reps;
+          final bool changed = repsChanged || weightChanged;
           if (!changed) continue;
 
           await _updateSetField(
             instance,
             i,
-            reps: newReps,
-            weight: newWeight,
+            reps: repsChanged ? newReps : null,
+            weight: weightChanged ? newWeight : null,
           );
           updates++;
         }
@@ -201,7 +230,11 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       _reconcileEditors();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Applied readiness ${_readinessSlider.round()}/10 to $updates set${updates == 1 ? '' : 's'}')),
+          SnackBar(
+            content: Text(
+              'Applied readiness ${_readinessSlider.round()}/10 (x${factor.toStringAsFixed(2)}) to $updates set${updates == 1 ? '' : 's'}',
+            ),
+          ),
         );
       }
     } catch (e) {
@@ -237,13 +270,27 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       ..addAll(snap);
   }
 
+  void _writeReadinessText(double value) {
+    final int clamped = value.clamp(0.0, 10.0).round();
+    final String next = clamped.toString();
+    if (_readinessCtrl.text == next) {
+      return;
+    }
+    _isProgrammaticReadinessUpdate = true;
+    _readinessCtrl.text = next;
+    _isProgrammaticReadinessUpdate = false;
+  }
+
   // Map readiness (0..10) to a gentle scaling factor around 1.0
-  // Defaults: 0 -> 0.85, 5 -> 0.95, 10 -> 1.05
+  // Defaults: 6 -> 0.95, 8 -> 1.00, 10 -> 1.05
   double _readinessFactor(double readiness) {
     final r = readiness.clamp(0.0, 10.0);
-    const double minF = 0.85;
-    const double maxF = 1.05;
-    return minF + (maxF - minF) * (r / 10.0);
+    const double base = 0.8;
+    const double slope = 0.025;
+    final double factor = base + slope * r;
+    if (factor < 0.8) return 0.8;
+    if (factor > 1.05) return 1.05;
+    return factor;
   }
 
   
@@ -315,6 +362,8 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         setState(() {
           _isLoading = false;
         });
+      } else {
+        _isLoading = false;
       }
     }
   }
@@ -643,6 +692,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     final double readinessRaw = (w?.readinessScore?.toDouble() ?? 10.0);
     final double normalized = readinessRaw > 10.0 ? readinessRaw / 10.0 : readinessRaw;
     _readinessSlider = normalized.clamp(0.0, 10.0);
+    _writeReadinessText(_readinessSlider);
     _editedStartedAt = w?.startedAt;
   }
 
@@ -712,8 +762,8 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       setState(() {
         _activeSession = session;
         // If a session exists, reflect its start time in the edited startedAt (without overriding manual edits)
-        if (session?.startedAt != null && _editedStartedAt == null) {
-          _editedStartedAt = session!.startedAt;
+        if (session != null && session.finishedAt != null) {
+          // Keep finished timestamp available for UI summaries
         }
       });
       _d('Active session loaded: id=${_activeSession?.id}, isActive=${_activeSession?.isActive}');
@@ -770,7 +820,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         return;
       }
       final start = _activeSession!.startedAt;
-      final end = _activeSession!.endedAt;
+      final end = _activeSession!.finishedAt;
       final now = DateTime.now();
       final dur = (end ?? now).difference(start);
       _elapsed = dur.isNegative ? Duration.zero : dur;
@@ -805,21 +855,20 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     try {
       _d('Starting session for workoutId=${_workout?.id}');
       setState(() => _isLoading = true);
-      final svc = _ref!.read(workoutSessionServiceProvider);
-      final session = await svc.startSession(_workout!.id!);
+      // Use BFF endpoint: POST /api/v1/workouts/{id}/start
+      final workoutSvc = _ref!.read(workoutServiceProvider);
+      final updated = await workoutSvc.startWorkoutBff(_workout!.id!, includeDefinitions: true);
       if (!mounted) return;
       setState(() {
-        _activeSession = session;
-        // Auto-set workout startedAt and reset duration counter when session begins
-        _editedStartedAt = session.startedAt;
+        _workout = updated;
+        // Reflect server-side startedAt and reset duration counter
+        _editedStartedAt = updated.startedAt;
         _durationCtrl.text = '0';
       });
-      _parseProgressFromSession();
-      _startSessionTicker();
-      // Persist startedAt to workout metadata
-      await _saveWorkoutMetadata();
+      // Load active session (created by BFF) and start ticker
+      await _loadActiveSession();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Workout session started')), 
+        const SnackBar(content: Text('Workout started')), 
       );
     } catch (e) {
       if (mounted) {
@@ -833,54 +882,36 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   }
 
   Future<void> _finishSession({bool cancelled = false, bool markWorkoutCompleted = false}) async {
-    if (_activeSession?.id == null) return;
+    if (_workout?.id == null) return;
     try {
-      _d('Finishing session id=${_activeSession?.id} cancelled=$cancelled markCompleted=$markWorkoutCompleted');
+      _d('Finishing workoutId=${_workout?.id} cancelled=$cancelled markCompleted=$markWorkoutCompleted');
       setState(() => _isLoading = true);
-      final svc = _ref!.read(workoutSessionServiceProvider);
-      final session = await svc.finishSession(
-        _activeSession!.id!,
+      // Use BFF endpoint: POST /api/v1/workouts/{id}/finish
+      final workoutSvc = _ref!.read(workoutServiceProvider);
+      final updated = await workoutSvc.finishWorkoutBff(
+        _workout!.id!,
+        includeDefinitions: true,
         cancelled: cancelled,
         markWorkoutCompleted: markWorkoutCompleted,
       );
       if (!mounted) return;
-      setState(() {
-        _activeSession = session;
-      });
-      _parseProgressFromSession();
+      // Stop ticker and clear active session (server finished it)
       _stopSessionTicker();
-      // On finish, auto-calculate and persist workout duration/startedAt
-      final started = session.startedAt;
-      final ended = session.endedAt;
-      if (ended != null) {
-        final secs = ended.difference(started).inSeconds;
-        setState(() {
-          _editedStartedAt ??= started;
-          _durationCtrl.text = secs.toString();
-        });
-        await _saveWorkoutMetadata();
-      }
+      await _loadActiveSession(); // should become null or inactive
+      // Reflect updated workout fields from BFF response
+      setState(() {
+        _workout = updated;
+        _editedStartedAt ??= updated.startedAt;
+        if ((updated.durationSeconds ?? 0) > 0) {
+          _durationCtrl.text = (updated.durationSeconds!).toString();
+        }
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(cancelled ? 'Session cancelled' : 'Session finished')), 
+        SnackBar(content: Text(cancelled ? 'Session cancelled' : 'Workout finished')),
       );
 
-      // If workout was marked completed and this workout belongs to an applied plan,
-      // attempt to auto-advance to the next workout in the active plan.
-      if (markWorkoutCompleted) {
-        final int? poi = _workout?.planOrderIndex;
-        final bool isFirstInPlan = poi != null && poi == 0;
-        if (isFirstInPlan) {
-          // For the very first workout of the plan, go back to the main screen instead of auto-advancing
-          if (mounted) {
-            Navigator.of(context).popUntil((route) => route.isFirst);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('First workout completed. Returning to home.')),
-            );
-          }
-        } else {
-          await _advanceToNextWorkoutInPlan(context);
-        }
-      }
+      // Do not auto-advance to the next workout here.
+      // Next workout will be presented in the list screen widget.
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -895,11 +926,18 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   Future<void> _advanceToNextWorkoutInPlan(BuildContext context) async {
     try {
       final workoutSvc = _ref!.read(workoutServiceProvider);
-      final nextId = _workout?.nextWorkoutId;
-      // If already showing the same workout (unlikely), skip.
-      if (_workout?.id == nextId) return;
-
-      final nextWorkout = await workoutSvc.getWorkoutWithDetails(nextId!);
+      // Fetch next workout from backend via gateway. Returns null on 404 (no next workout).
+      final nextWorkout = await workoutSvc.getNextWorkoutInPlan(_workout!.id!);
+      if (nextWorkout == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No next workout found in this plan')),
+          );
+        }
+        return;
+      }
+      // If already showing the same workout (safety), skip.
+      if (_workout?.id == nextWorkout.id) return;
 
       if (!mounted) return;
       // Reset session-related state and load next workout
@@ -1344,7 +1382,6 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         throw Exception('Workout ID is required');
       }
 
-      // Navigate to exercise selection screen
       final selectedExercise = await Navigator.push<ExerciseDefinition>(
         context,
         MaterialPageRoute(
@@ -1353,49 +1390,36 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       );
 
       if (selectedExercise != null) {
-        setState(() {
-          _isLoading = true;
-        });
-
-        // Create a new exercise instance
-        final newInstance = ExerciseInstance(
-          id: null, // Will be set by the backend
-          exerciseListId: selectedExercise.id!,
-          exerciseDefinition: selectedExercise,
-          workoutId: _workout!.id!,
-          order: _workout?.exerciseInstances.length ?? 0,
-          sets: [],
-          notes: null,
+        final result = await Navigator.push<Map<String, dynamic>>(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ExerciseFormScreen(
+              exercise: selectedExercise,
+              workoutId: _workout!.id!,
+              defaultOrder: _workout?.exerciseInstances.length,
+            ),
+          ),
         );
 
-        // Add a default set
-        final defaultSet = ExerciseSetDto(
-          id: null, // Will be set by the backend
-          reps: 5,
-          weight: 0.0,
-          order: 0,
-          exerciseInstanceId: 0, // This will be set by the backend
-          localId: null,
-          volume: (5 * 0.0).round(), // Calculate and round volume to nearest integer
-        );
-        newInstance.sets.add(defaultSet);
+        final instance = result?['instance'];
+        if (instance is ExerciseInstance) {
+          final workoutService = _ref!.read(workoutServiceProvider);
+          setState(() => _isLoading = true);
+          try {
+            final created = await workoutService.createExerciseInstance(instance);
+            _d('Created new exercise instance: ${created.id}');
+            await _loadExercises();
+          } finally {
+            if (mounted) {
+              setState(() => _isLoading = false);
+            }
+          }
 
-        // Save the new instance
-        final workoutService = _ref!.read(workoutServiceProvider);
-        final createdInstance = await workoutService.createExerciseInstance(newInstance);
-        print('Created new exercise instance: ${createdInstance.id}');
-        
-        // Navigate to the exercise form to edit the new instance
-        if (mounted) {
-          await _navigateToExerciseForm(
-            selectedExercise,
-            createdInstance,
-          );
-          
-          // Show success message
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Exercise added successfully')),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Exercise added successfully')),
+            );
+          }
         }
       }
     } catch (e, stackTrace) {
@@ -1406,12 +1430,6 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           SnackBar(content: Text('Failed to add exercise: ${e.toString()}')),
         );
       }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
     }
   }
 
@@ -1419,11 +1437,6 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     if (_workout?.id == null) return;
 
     try {
-      setState(() {
-        _isLoading = true;
-      });
-
-      // Ensure we have a valid exercise definition
       final exerciseDef = instance?.exerciseDefinition ?? exercise;
 
       final result = await Navigator.push<Map<String, dynamic>>(
@@ -1431,22 +1444,47 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         MaterialPageRoute(
           builder: (context) => ExerciseFormScreen(
             exercise: exerciseDef,
+            workoutId: _workout!.id!,
+            defaultOrder: _workout?.exerciseInstances.length,
+            initialInstance: instance,
           ),
         ),
       );
 
-      if (result != null && result['refresh'] == true && mounted) {
-        // Refresh the exercise data
-        await _loadExercises();
-        
-        // Show success message
-        final message = result['isNew'] == true 
-            ? 'Exercise added successfully' 
-            : 'Exercise updated successfully';
-            
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
+      if (result != null && mounted) {
+        final updatedInstance = result['instance'] as ExerciseInstance?;
+        final refresh = result['refresh'] == true;
+
+        if (updatedInstance != null) {
+          final workoutService = _ref!.read(workoutServiceProvider);
+          setState(() => _isLoading = true);
+          try {
+            if (updatedInstance.id == null) {
+              await workoutService.createExerciseInstance(updatedInstance);
+            } else {
+              await workoutService.updateExerciseInstance(updatedInstance);
+            }
+          } finally {
+            if (mounted) {
+              setState(() => _isLoading = false);
+            }
+          }
+        }
+
+        if (refresh) {
+          await _loadExercises();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  updatedInstance?.id == null
+                      ? 'Exercise added successfully'
+                      : 'Exercise updated successfully',
+                ),
+              ),
+            );
+          }
+        }
       }
     } catch (e, stackTrace) {
       print('Error in exercise form: $e');
@@ -1471,7 +1509,6 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         _isLoading = true;
       });
 
-      // Show confirmation dialog
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -1492,26 +1529,23 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       );
 
       if (confirmed == true && mounted) {
-        // Find all instances of this exercise in the workout
         final instancesToDelete = _workout?.exerciseInstances
-            .where((instance) => instance.exerciseListId == exerciseId)
-            .toList() ?? [];
-        
+                .where((inst) => inst.exerciseListId == exerciseId)
+                .toList() ?? [];
+
         if (instancesToDelete.isEmpty) {
           throw Exception('No exercise instances found for this exercise');
         }
-        
-        // Delete each instance
+
         final workoutService = _ref!.read(workoutServiceProvider);
-        for (final instance in instancesToDelete) {
-          if (instance.id != null) {
-            await workoutService.deleteExerciseInstance(instance.id!);
+        for (final inst in instancesToDelete) {
+          if (inst.id != null) {
+            await workoutService.deleteExerciseInstance(inst.id!);
           }
         }
-        
-        // Refresh the workout data
+
         await _loadExercises();
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Exercise removed from workout')),
@@ -1590,27 +1624,36 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       builder: (context, ref, _) {
         _ref = ref; // Store ref for later use
         if (_isLoading) {
-          return const Scaffold(
-            body: Center(
+          return Scaffold(
+            backgroundColor: AppColors.background,
+            body: const Center(
               child: CircularProgressIndicator(),
             ),
           );
         }
 
         return Scaffold(
+          backgroundColor: AppColors.background,
           appBar: AppBar(
             title: Text(_workout?.name ?? 'Workout Details'),
+            backgroundColor: Colors.white,
+            elevation: 0,
+            iconTheme: const IconThemeData(color: AppColors.textPrimary),
+            titleTextStyle: AppTextStyles.headlineSmall.copyWith(color: AppColors.textPrimary),
             actions: [
               IconButton(
                 icon: const Icon(Icons.refresh),
                 onPressed: _loadExercises,
+                color: AppColors.primary,
               ),
             ],
           ),
           body: _buildBody(),
-          floatingActionButton: FloatingActionButton(
+          floatingActionButton: FloatingActionButton.extended(
             onPressed: _showAddExerciseDialog,
-            child: const Icon(Icons.add),
+            backgroundColor: AppColors.primary,
+            icon: const Icon(Icons.add),
+            label: const Text('Add Exercise'),
           ),
         );
       },
@@ -1624,11 +1667,44 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
     Widget content;
     if (_uniqueExercises.isEmpty) {
-      content = const Center(
-        child: Text('No exercises added yet. Tap + to add some!'),
+      content = Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8ECFF),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.fitness_center,
+                  size: 48,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                'No exercises yet',
+                style: AppTextStyles.headlineMedium,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'Tap "Add Exercise" to get started',
+                style: AppTextStyles.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
       );
     } else {
       content = ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         itemCount: _uniqueExercises.length,
         itemBuilder: (context, index) {
           final exercise = _uniqueExercises[index];
@@ -1649,117 +1725,129 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   Widget _buildMetadataCard() {
     final theme = Theme.of(context);
     if (_workout == null) return const SizedBox.shrink();
-    final startedText = _editedStartedAt != null
-        ? _editedStartedAt!.toLocal().toString().split('.').first
-        : 'Not set';
-    return Card(
-      margin: const EdgeInsets.all(12),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Workout metadata',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+    
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: AppShadows.sm,
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8ECFF),
+              borderRadius: BorderRadius.circular(12),
             ),
-            const SizedBox(height: 8),
-            Row(
+            child: const Icon(
+              Icons.fitness_center,
+              color: AppColors.primary,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _notesCtrl,
-                    minLines: 2,
-                    maxLines: 4,
-                    decoration: const InputDecoration(labelText: 'Notes'),
+                Text(
+                  'Готовность к тренировке',
+                  style: AppTextStyles.titleMedium.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('RPE', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 6),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: IconButton(
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            tooltip: 'Decrease',
-                            icon: const Icon(Icons.remove, size: 18),
-                            onPressed: () {
-                              final current = int.tryParse(_rpeSessionCtrl.text) ?? 5;
-                              final next = (current - 1).clamp(1, 10);
-                              setState(() => _rpeSessionCtrl.text = next.toString());
-                            },
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: theme.dividerColor),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            (int.tryParse(_rpeSessionCtrl.text) ?? 0) == 0 ? '-' : _rpeSessionCtrl.text,
-                            style: theme.textTheme.titleMedium,
-                          ),
-                        ),
-                        SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: IconButton(
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            tooltip: 'Increase',
-                            icon: const Icon(Icons.add, size: 18),
-                            onPressed: () {
-                              final current = int.tryParse(_rpeSessionCtrl.text) ?? 5;
-                              final next = (current + 1).clamp(1, 10);
-                              setState(() => _rpeSessionCtrl.text = next.toString());
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    // Chips removed; +/- controls above handle quick changes.
-                  ],
+                const SizedBox(height: 4),
+                Text(
+                  'Коэффициент нагрузки: x${_readinessFactor(_readinessSlider).toStringAsFixed(2)}',
+                  style: AppTextStyles.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            const SizedBox(height: 8),
-            // StartedAt and Duration are intentionally hidden from the metadata UI.
-            const SizedBox(height: 8),
-            // Removed separate Session RPE TextField; now controlled by quick buttons above.
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                ElevatedButton(
-                  onPressed: (_workout?.id != null && !_isSavingMetadata) ? _saveWorkoutMetadata : null,
-                  child: _isSavingMetadata
-                      ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Save'),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.remove, size: 18),
+                  color: AppColors.primary,
+                  tooltip: 'Уменьшить',
+                  onPressed: () {
+                    final current = int.tryParse(_readinessCtrl.text) ?? _readinessSlider.round();
+                    final next = (current - 1).clamp(0, 10);
+                    setState(() {
+                      _readinessSlider = next.toDouble();
+                      _writeReadinessText(_readinessSlider);
+                    });
+                  },
                 ),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: _isSavingMetadata
-                      ? null
-                      : () {
-                          _syncMetadataControllers();
-                          setState(() {});
-                        },
-                  child: const Text('Revert'),
+              ),
+              Container(
+                width: 48,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8ECFF),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-              ],
+                child: Text(
+                  _readinessSlider.round().toString(),
+                  style: AppTextStyles.titleMedium.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.add, size: 18),
+                  color: AppColors.primary,
+                  tooltip: 'Увеличить',
+                  onPressed: () {
+                    final current = int.tryParse(_readinessCtrl.text) ?? _readinessSlider.round();
+                    final next = (current + 1).clamp(0, 10);
+                    setState(() {
+                      _readinessSlider = next.toDouble();
+                      _writeReadinessText(_readinessSlider);
+                    });
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 12),
+          ElevatedButton(
+            onPressed: (_isApplyingReadiness || _workout == null) ? null : _applyReadinessScaling,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
-          ],
-        ),
+            child: _isApplyingReadiness
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('Применить'),
+          ),
+        ],
       ),
     );
   }
@@ -1767,11 +1855,19 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   Widget _buildSessionBanner() {
     final theme = Theme.of(context);
     final isActive = _activeSession?.isActive == true;
-    return Container
-    (
+    return Container(
       width: double.infinity,
-      color: theme.colorScheme.surfaceContainerHighest,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isActive ? const Color(0xFFEFF8F2) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: AppShadows.sm,
+        border: Border.all(
+          color: isActive ? const Color(0xFF4CAF50).withOpacity(0.3) : AppColors.border,
+          width: 1.5,
+        ),
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -1779,26 +1875,63 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  isActive ? 'Active session' : 'No active session',
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: isActive ? const Color(0xFF4CAF50) : AppColors.textDisabled,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      isActive ? 'Active session' : 'No active session',
+                      style: AppTextStyles.titleMedium.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: isActive ? const Color(0xFF2E7D32) : AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
                 if (isActive)
                   ValueListenableBuilder<Duration>(
                     valueListenable: _elapsedNotifier,
-                    builder: (_, d, __) => Text(
-                      'Elapsed: ${_formatDuration(d)}',
-                      style: theme.textTheme.bodySmall,
+                    builder: (_, d, __) => Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Elapsed: ${_formatDuration(d)}',
+                        style: AppTextStyles.bodySmall.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
                     ),
                   ),
-                if (!isActive && _activeSession?.endedAt != null)
-                  Text('Last session: ${_formatDuration(_elapsed)}', style: theme.textTheme.bodySmall),
+                if (!isActive && _activeSession?.finishedAt != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Last session: ${_formatDuration(_elapsed)}',
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
           if (!isActive)
             ElevatedButton.icon(
               onPressed: (_workout?.id != null && !_isLoading) ? _startSession : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4CAF50),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
               icon: const Icon(Icons.play_arrow),
               label: const Text('Start'),
             )
@@ -1807,13 +1940,29 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
               children: [
                 OutlinedButton.icon(
                   onPressed: _isLoading ? null : () => _finishSession(cancelled: true),
-                  icon: const Icon(Icons.stop_circle_outlined),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.error,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    side: const BorderSide(color: AppColors.error),
+                  ),
+                  icon: const Icon(Icons.stop_circle_outlined, size: 18),
                   label: const Text('Cancel'),
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
                   onPressed: _isLoading ? null : () => _finishSession(cancelled: false, markWorkoutCompleted: true),
-                  icon: const Icon(Icons.check_circle_outline),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4CAF50),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.check_circle_outline, size: 18),
                   label: const Text('Finish'),
                 ),
               ],
@@ -1842,19 +1991,41 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              padding: const EdgeInsets.only(left: 4, top: 8, bottom: 12),
+              child: Row(
                 children: [
-                  Text(
-                    exercise.name,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8ECFF),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.fitness_center,
+                      color: AppColors.primary,
+                      size: 20,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text('${exercise.muscleGroup ?? 'No muscle group'} • ${exercise.equipment ?? 'No equipment'}'),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          exercise.name ?? '-',
+                          style: AppTextStyles.headlineSmall,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${exercise.muscleGroup ?? 'No muscle group'} • ${exercise.equipment ?? 'No equipment'}',
+                          style: AppTextStyles.bodySmall.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1868,93 +2039,138 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   Widget _buildInstanceCard(ExerciseInstance instance) {
     final theme = Theme.of(context);
     
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: AppShadows.sm,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ListTile(
-            title: Text(
-              '${instance.sets.length} ${instance.sets.length == 1 ? 'Set' : 'Sets'}',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            subtitle: instance.notes?.isNotEmpty == true 
-                ? Text(
-                    instance.notes!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  )
-                : null,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline, size: 22),
-                  onPressed: () => _addSetToInstance(instance),
-                  tooltip: 'Add set',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-                const SizedBox(width: 4),
-                IconButton(
-                  icon: Icon(Icons.edit_outlined, size: 20, color: theme.primaryColor),
-                  onPressed: () => _navigateToExerciseForm(
-                    instance.exerciseDefinition ?? 
-                      ExerciseDefinition(
-                        id: instance.exerciseListId, 
-                        name: 'Unknown',
-                        muscleGroup: '',
-                        equipment: '',
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${instance.sets.length} ${instance.sets.length == 1 ? 'Set' : 'Sets'}',
+                        style: AppTextStyles.titleMedium.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    instance,
+                      if (instance.notes?.isNotEmpty == true) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          instance.notes!,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.bodySmall.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  tooltip: 'Edit exercise',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
                 ),
-                const SizedBox(width: 4),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
-                  onPressed: () => _deleteExerciseInstance(instance),
-                  tooltip: 'Delete exercise',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline, size: 20),
+                      onPressed: () => _addSetToInstance(instance),
+                      tooltip: 'Add set',
+                      color: AppColors.primary,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 20),
+                      onPressed: () => _navigateToExerciseForm(
+                        instance.exerciseDefinition ?? 
+                          ExerciseDefinition(
+                            id: instance.exerciseListId, 
+                            name: 'Unknown',
+                            muscleGroup: '',
+                            equipment: '',
+                          ),
+                        instance,
+                      ),
+                      tooltip: 'Edit exercise',
+                      color: AppColors.primary,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 20),
+                      onPressed: () => _deleteExerciseInstance(instance),
+                      tooltip: 'Delete exercise',
+                      color: AppColors.error,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
           if (instance.sets.isNotEmpty) ...[
-            const Divider(height: 1, thickness: 1),
+            Divider(height: 1, thickness: 1, color: AppColors.border),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   SizedBox(
                     width: 40,
-                    child: Text('DONE', style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: theme.hintColor,
-                    ), textAlign: TextAlign.center),
+                    child: Text(
+                      'DONE',
+                      style: AppTextStyles.bodySmall.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                        letterSpacing: 0.5,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
-                  Text('SET', style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  )),
-                  Text('WEIGHT', style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.hintColor,
-                  )),
-                  Text('REPS', style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.hintColor,
-                  )),
-                  Text('RPE', style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.hintColor,
-                  )),
+                  Text(
+                    'SET',
+                    style: AppTextStyles.bodySmall.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  Text(
+                    'WEIGHT',
+                    style: AppTextStyles.bodySmall.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  Text(
+                    'REPS',
+                    style: AppTextStyles.bodySmall.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  Text(
+                    'RPE',
+                    style: AppTextStyles.bodySmall.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
                   const SizedBox(width: 24), // Space for delete button
                 ],
               ),
@@ -1968,18 +2184,22 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
             final bool canToggle = _activeSession?.isActive == true && instance.id != null && set.id != null;
             
             return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+              margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
               decoration: BoxDecoration(
-                color: isCompleted ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.5) : null,
-                borderRadius: BorderRadius.circular(8.0),
+                color: isCompleted ? const Color(0xFFEFF8F2) : AppColors.background.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(12.0),
+                border: Border.all(
+                  color: isCompleted ? const Color(0xFF4CAF50).withOpacity(0.3) : Colors.transparent,
+                  width: 1,
+                ),
               ),
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  borderRadius: BorderRadius.circular(8.0),
+                  borderRadius: BorderRadius.circular(12.0),
                   onTap: canToggle ? () => _toggleSetCompletion(instance, set) : null,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12.0),
+                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -2007,11 +2227,28 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                           child: TextField(
                             controller: _getSetEditor(instance, entry.key, set).weightCtrl,
                             keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              fontWeight: FontWeight.w500,
+                            ),
                             decoration: InputDecoration(
                               isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(4)),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: AppColors.border),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: AppColors.border),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+                              ),
                               hintText: 'kg',
+                              hintStyle: AppTextStyles.bodySmall.copyWith(
+                                color: AppColors.textHint,
+                              ),
                             ),
                             enabled: !isCompleted,
                             onChanged: (v) => _onInlineFieldChanged(instance, entry.key, set, 'weight', v),
@@ -2024,11 +2261,28 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                           child: TextField(
                             controller: _getSetEditor(instance, entry.key, set).repsCtrl,
                             keyboardType: TextInputType.number,
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              fontWeight: FontWeight.w500,
+                            ),
                             decoration: InputDecoration(
                               isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(4)),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: AppColors.border),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: AppColors.border),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+                              ),
                               hintText: 'reps',
+                              hintStyle: AppTextStyles.bodySmall.copyWith(
+                                color: AppColors.textHint,
+                              ),
                             ),
                             enabled: !isCompleted,
                             onChanged: (v) => _onInlineFieldChanged(instance, entry.key, set, 'reps', v),
@@ -2041,11 +2295,28 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                           child: TextField(
                             controller: _getSetEditor(instance, entry.key, set).rpeCtrl,
                             keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              fontWeight: FontWeight.w500,
+                            ),
                             decoration: InputDecoration(
                               isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(4)),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: AppColors.border),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: AppColors.border),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+                              ),
                               hintText: 'RPE',
+                              hintStyle: AppTextStyles.bodySmall.copyWith(
+                                color: AppColors.textHint,
+                              ),
                             ),
                             enabled: !isCompleted,
                             onChanged: (v) => _onInlineFieldChanged(instance, entry.key, set, 'rpe', v),
@@ -2053,12 +2324,13 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete_outline, size: 18, color: Colors.grey),
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          color: AppColors.textSecondary,
                           onPressed: _isLoading 
                               ? null 
                               : () => _handleDeleteSet(instance, entry.key),
                           padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                           tooltip: 'Delete set',
                         ),
                       ],
@@ -2125,7 +2397,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     _locationCtrl.dispose();
     _durationCtrl.dispose();
     _rpeSessionCtrl.dispose();
-    _manualCoeffCtrl.dispose();
+    _readinessCtrl.dispose();
     super.dispose();
   }
 }

@@ -14,11 +14,17 @@ class UserMaxBase(BaseModel):
     verified_1rm: Optional[float] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
-class UserMaxCreate(UserMaxBase):
-    pass
+class UserMaxCreate(BaseModel):
+    """Request schema for creating UserMax (without exercise_name)"""
+    exercise_id: int
+    max_weight: float
+    rep_max: int
+    date: date
+    true_1rm: Optional[float] = None
+    verified_1rm: Optional[float] = None
 
 
 class UserMaxResponse(UserMaxBase):
@@ -30,7 +36,7 @@ class UserMax(UserMaxBase):
     id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 #Не имеет rep_max чтобы  обновлять только max_weight в рамках прописанного ПМ(повторного максимума)

@@ -3,8 +3,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str
-    GEMINI_API_KEY: str
+    PLANS_DATABASE_URL: str = ""
+    GEMINI_API_KEY: str = ""
     DEBUG: bool = False
     ENVIRONMENT: str = "production"
 

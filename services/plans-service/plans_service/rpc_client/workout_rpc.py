@@ -1,9 +1,5 @@
 import requests
 import os
-import logging
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 WORKOUTS_SERVICE_URL = os.getenv("WORKOUTS_SERVICE_URL", "http://workouts-service:8004")
 # Ensure URL has a scheme
@@ -14,7 +10,6 @@ def create_workouts_batch(workouts: list) -> list:
     """Create multiple workouts via workouts-service"""
     try:
         url = f"{WORKOUTS_SERVICE_URL}/workouts/batch"
-        logger.debug(f"Calling workouts service at: {url}")
         response = requests.post(
             url,
             json=workouts,
@@ -29,7 +24,6 @@ def get_workouts_by_microcycle_ids(microcycle_ids: list) -> list:
     """Get workouts by microcycle IDs from workouts-service"""
     try:
         url = f"{WORKOUTS_SERVICE_URL}/workouts/by-microcycles"
-        logger.debug(f"Calling workouts service at: {url}")
         response = requests.post(
             url,
             json={"microcycle_ids": microcycle_ids},
@@ -51,10 +45,7 @@ def create_workout_rpc(workout_data: dict, microcycle_id: int, day: str) -> dict
         workout_payload = {k: v for k, v in workout_data.items() if k != 'exercises'}
         payload = [workout_payload]
         
-        logger.debug(f"Payload for workouts batch: {payload}")
-        
         url = f"{WORKOUTS_SERVICE_URL}/workouts/batch"
-        logger.debug(f"Calling workouts service at: {url}")
         response = requests.post(
             url,
             json=payload,

@@ -17,6 +17,15 @@ class SetService:
         normalized = []
         for s in sets:
             ns = s.copy()
+            # Backward compatibility: if effort is missing but rpe is present, mirror it
+            try:
+                if (ns.get('effort') is None) and (ns.get('rpe') is not None):
+                    ns['effort'] = ns.get('rpe')
+                if ns.get('effort') is not None and not ns.get('effort_type'):
+                    ns['effort_type'] = 'RPE'
+            except Exception:
+                # best-effort only
+                pass
             normalized.append(ns)
         return normalized
 

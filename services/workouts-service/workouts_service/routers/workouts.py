@@ -23,13 +23,11 @@ router = APIRouter(prefix="")
 @router.post("/", response_model=schemas.workout.WorkoutResponse, status_code=status.HTTP_201_CREATED)
 async def create_workout(
     payload: schemas.workout.WorkoutCreate,
-    workout_service: WorkoutService = Depends(get_workout_service),
-    user_id: str = "test_user"  # TODO: Get real user ID from auth
+    workout_service: WorkoutService = Depends(get_workout_service)
 ):
     try:
-        logger.info(f"Creating workout for user {user_id}")
         logger.debug(f"Workout payload: {payload}")
-        item = await workout_service.create_workout(payload, user_id)
+        item = await workout_service.create_workout(payload)
         logger.info(f"Successfully created workout {item.id}")
         return schemas.workout.WorkoutResponse.model_validate(item)
     except Exception as e:

@@ -76,6 +76,10 @@ class ApiConfig {
   static String getUserMaxesByExercisesEndpoint() => buildEndpoint('/user-max/by-exercises');
   static String verify1rmEndpoint(String userMaxId) => buildEndpoint('/user-max/$userMaxId/verify');
   static String createBulkUserMaxEndpoint() => buildEndpoint('/user-max/bulk');
+  static String getWeakMuscleAnalysisEndpoint({bool useLlm = true}) {
+    final base = buildEndpoint('/user-max/analysis/weak-muscles');
+    return useLlm ? '$base?use_llm=true' : base;
+  }
   static String createWorkoutEndpoint() => buildEndpoint('/workouts');
   static String get workoutsEndpoint => buildEndpoint('/workouts/');
   static String getWorkoutsEndpoint() => buildEndpoint('/workouts');
@@ -86,7 +90,11 @@ class ApiConfig {
   static String startWorkoutSessionEndpoint(String workoutId) => buildEndpoint('/workouts/sessions/$workoutId/start');
   static String getActiveSessionEndpoint(String workoutId) => buildEndpoint('/workouts/sessions/$workoutId/active');
   static String getSessionHistoryEndpoint(String workoutId) => buildEndpoint('/workouts/sessions/$workoutId/history');
+  static String getAllSessionsHistoryEndpoint() => buildEndpoint('/workouts/sessions/history/all');
   static String finishSessionEndpoint(String sessionId) => buildEndpoint('/workouts/sessions/$sessionId/finish');
+  // BFF endpoints (gateway) for starting/finishing a workout and returning aggregated workout
+  static String startWorkoutBffEndpoint(String workoutId) => buildEndpoint('/workouts/$workoutId/start');
+  static String finishWorkoutBffEndpoint(String workoutId) => buildEndpoint('/workouts/$workoutId/finish');
   static String generateWorkoutsEndpoint() => buildEndpoint('/workouts/workout-generation/generate');
   static String get rootEndpoint => buildEndpoint('/');
   static String get rpeTableEndpoint => buildEndpoint('/rpe/table');
@@ -124,12 +132,22 @@ class ApiConfig {
   static String get nextGeneratedWorkoutEndpoint => buildEndpoint('/workouts/generated/next');
   static String nextWorkoutInPlanEndpoint(String workoutId) => buildEndpoint('/workouts/$workoutId/next');
 
-  static String get getActivePlanEndpoint => buildEndpoint('/plans/applied-plans/active');
+  static String get getActivePlanEndpoint => buildEndpoint('plans/applied-plans/active');
 
-  static String get activePlanEndpoint => buildEndpoint('/plans/applied-plans/active');
+  static String get activePlanEndpoint => buildEndpoint('plans/applied-plans/active');
   static String get activePlanWorkoutsEndpoint => buildEndpoint('$activePlanEndpoint/workouts');
   static String nextWorkoutInActivePlanEndpoint(String planId) => 
       buildEndpoint('/plans/$planId/next-workout');
+
+  // Chat endpoint
+  static String get chatEndpoint => buildEndpoint('/chat');
+
+  // Progression Templates endpoints
+  static String get progressionTemplatesEndpoint => buildEndpoint('/progressions/templates');
+  static String progressionTemplateByIdEndpoint(String id) => buildEndpoint('/progressions/templates/$id');
+
+  // Analytics endpoint
+  static String get workoutMetricsEndpoint => buildEndpoint('/workout-metrics');
 
   static void logApiError(http.Response response) {
     print('API Error: ${response.statusCode}');

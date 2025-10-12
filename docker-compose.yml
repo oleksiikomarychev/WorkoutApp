@@ -10,7 +10,7 @@ services:
       - "8001:8001"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/rpe/health"]
       interval: 5s
       timeout: 5s
       retries: 15
@@ -138,6 +138,26 @@ services:
       timeout: 5s
       retries: 15
       start_period: 30s
+    networks:
+      - workout-net
+
+  agent-service:
+    build:
+      context: ./services/agent-service
+    environment:
+      - LLM_SPLIT_GENERATION=1
+      - AGENT_DATABASE_URL=${AGENT_DATABASE_URL}
+      - RPE_TABLE_URL=http://rpe-service:8001/rpe/table
+      - EXERCISES_SERVICE_URL=http://exercises-service:8002
+      - PLANS_SERVICE_URL=http://plans-service:8005
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    ports:
+      - "8006:8006"
+    depends_on:
+      - user-max-service
+      - exercises-service
+      - plans-service
+    restart: unless-stopped
     networks:
       - workout-net
 

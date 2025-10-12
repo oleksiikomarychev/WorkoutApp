@@ -8,7 +8,6 @@ from ..schemas.calendar_plan import (
     ApplyPlanComputeSettings,
 )
 from typing import Optional, List, Dict, Any
-import logging
 
 router = APIRouter(prefix="/applied-plans")
 
@@ -55,10 +54,6 @@ async def get_user_applied_plans(
         service = AppliedCalendarPlanService(db)
         return await service.get_user_applied_plans()
     except Exception as e:
-        import traceback
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error in get_user_applied_plans: {str(e)}")
-        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch user applied plans: {str(e)}"
@@ -114,8 +109,6 @@ async def apply_plan(
     db: Session = Depends(get_db),
 ):
     """Применение плана пользователем с настройками вычислений"""
-    # TODO: Get the real user ID from authentication
-    user_id = "test_user"
     try:
         # Convert comma-separated string to list of integers, skipping empty parts
         user_max_ids_list = [int(id.strip()) for id in user_max_ids.split(",") if id.strip()]

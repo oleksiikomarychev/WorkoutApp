@@ -1,10 +1,7 @@
 import httpx
-import logging
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from .config import settings
 from typing import Optional
-
-logger = logging.getLogger(__name__)
 
 _client = httpx.AsyncClient(
     timeout=10.0,
@@ -27,8 +24,7 @@ async def get_rpe_table():
             response = await client.get(f"{RPE_SERVICE_BASE}/rpe/table")
             response.raise_for_status()
             return response.json()
-    except Exception as e:
-        logger.error(f"Failed to fetch RPE table: {e}")
+    except Exception:
         return None
 
 @retry(**RETRY_CONFIG)

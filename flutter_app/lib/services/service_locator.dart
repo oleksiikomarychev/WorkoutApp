@@ -7,6 +7,7 @@ import 'package:workout_app/services/workout_session_service.dart';
 import 'package:workout_app/services/mesocycle_service.dart';
 import 'package:workout_app/services/logger_service.dart';
 import 'package:workout_app/services/rpe_service.dart';
+import 'package:workout_app/services/analytics_service.dart';
 
 // Riverpod Providers
 final apiClientProvider = Provider<ApiClient>((ref) {
@@ -35,7 +36,8 @@ final apiClientProviderVerify = Provider((ref) => ApiClient());
 final mesocycleServiceProvider = Provider((ref) => MesocycleService(apiClient: ref.read(apiClientProvider)));
 final workoutServiceProviderVerify = Provider((ref) => WorkoutService(apiClient: ref.read(apiClientProvider)));
 
-final rpeServiceProvider = Provider<RpeService>((ref) => RpeService());
+final rpeServiceProvider = Provider<RpeService>((ref) => RpeService(ref.watch(apiClientProvider)));
+final analyticsServiceProvider = Provider<AnalyticsService>((ref) => AnalyticsService(ref.watch(apiClientProvider)));
 
 // Verify service registrations
 class ServiceProvider extends ConsumerWidget {

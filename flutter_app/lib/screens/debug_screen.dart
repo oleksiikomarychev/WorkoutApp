@@ -1,30 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:workout_app/screens/exercise_selection_screen.dart';
-import 'package:workout_app/screens/login_screen.dart';
-import 'package:workout_app/screens/profile_screen.dart';
-import 'package:workout_app/screens/registration_screen.dart';
-import 'package:workout_app/screens/settings_screen.dart';
-import 'package:workout_app/screens/user_base_screen.dart';
-import 'package:workout_app/screens/workout_creation_screen.dart';
-import 'package:workout_app/screens/workout_detail_screen.dart';
-import 'package:workout_app/screens/workout_history_screen.dart';
-import 'package:workout_app/screens/workout_list_screen.dart';
-import 'package:workout_app/screens/workout_session_screen.dart';
-import 'package:workout_app/screens/workouts_screen.dart';
+
+import 'exercise_list_screen.dart';
+import 'exercise_selection_screen.dart';
+import 'user_max_screen.dart';
+import 'workout_detail_screen.dart';
+import 'workout_list_screen.dart';
+import 'workouts_screen.dart';
+import 'session_history_screen.dart';
 
 class DebugScreen extends StatelessWidget {
   const DebugScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final screens = <String, WidgetBuilder>{
-      'Exercise Selection': (context) => const ExerciseSelectionScreen(),
-      'Workout Creation': (context) => const WorkoutCreationScreen(),
-      'Workout Detail': (context) => const WorkoutDetailScreen(),
-      'Workout History': (context) => const WorkoutHistoryScreen(),
-      'Workout Session': (context) => const WorkoutSessionScreen(),
-      'Workouts': (context) => const WorkoutsScreen(),
-      'Workout List': (context) => const WorkoutListScreen(),
+    final Map<String, WidgetBuilder> screens = {
+      'Exercise Selection': (context) => ExerciseSelectionScreen(),
+      'Workout Detail': (context) => WorkoutDetailScreen(workoutId: 1),  // Example ID
+      'Workouts': (context) => WorkoutsScreen(),
+      'Workout List': (context) => WorkoutListScreen(progressionId: 1),
+      'Exercise List': (context) => ExerciseListScreen(),
+      'User Maxes': (context) => const UserMaxScreen(),
+      'Session History': (context) => const SessionHistoryScreen(),
     };
 
     return Scaffold(
@@ -48,5 +44,6 @@ class DebugScreen extends StatelessWidget {
         ],
       ),
     );
+
   }
 }

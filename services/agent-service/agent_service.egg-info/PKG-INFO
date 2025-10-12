@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: agent-service
+Version: 0.1.0
+Summary: WorkoutApp agent service with chat capabilities
+Author: WorkoutApp Team
+Requires-Python: >=3.11
+Requires-Dist: fastapi<0.112.0,>=0.110.0
+Requires-Dist: uvicorn[standard]<0.31.0,>=0.29.0
+Requires-Dist: httpx<0.28.0,>=0.27.0
+Requires-Dist: pydantic<2.8.0,>=2.7.0
+Requires-Dist: SQLAlchemy<2.1.0,>=2.0.29
+Requires-Dist: langchain==0.0.353
+Requires-Dist: openai<2.0.0,>=1.35.0

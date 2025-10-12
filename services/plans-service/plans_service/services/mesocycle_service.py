@@ -4,7 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 from fastapi import HTTPException, status
 
-from ..models.calendar import CalendarPlan, Mesocycle, Microcycle
+from ..models.calendar import (
+    CalendarPlan,
+    Mesocycle,
+    Microcycle,
+    PlanWorkout,
+    PlanExercise,
+)
 from ..schemas.mesocycle import (
     MesocycleCreate,
     MesocycleUpdate,
@@ -19,32 +25,28 @@ class MesocycleService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def _check_plan_permission(self, plan_id: int, user_id: str) -> CalendarPlan:
-        stmt = select(CalendarPlan).where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
+    async def _check_plan_permission(self, plan_id: int) -> CalendarPlan:
+        stmt = select(CalendarPlan).where(CalendarPlan.id == plan_id)
         result = await self.db.execute(stmt)
         plan = result.scalars().first()
         if not plan:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found or permission denied")
         return plan
 
-    async def _check_mesocycle_permission(self, mesocycle_id: int, user_id: Optional[str]) -> Optional[Mesocycle]:
+    async def _check_mesocycle_permission(self, mesocycle_id: int) -> Optional[Mesocycle]:
         stmt = select(Mesocycle).options(joinedload(Mesocycle.applied_calendar_plan)).where(Mesocycle.id == mesocycle_id)
         result = await self.db.execute(stmt)
         meso = result.scalars().first()
         if not meso:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mesocycle not found")
-        if meso.applied_calendar_plan and meso.applied_calendar_plan.user_id is not None and meso.applied_calendar_plan.user_id != user_id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
         return meso
 
-    async def _check_microcycle_permission(self, microcycle_id: int, user_id: str) -> Microcycle:
+    async def _check_microcycle_permission(self, microcycle_id: int) -> Microcycle:
         stmt = select(Microcycle).options(joinedload(Microcycle.mesocycle).joinedload(Mesocycle.applied_calendar_plan)).where(Microcycle.id == microcycle_id)
         result = await self.db.execute(stmt)
         micro = result.scalars().first()
         if not micro:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Microcycle not found")
-        if micro.mesocycle.applied_calendar_plan and micro.mesocycle.applied_calendar_plan.user_id is not None and micro.mesocycle.applied_calendar_plan.user_id != user_id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
         return micro
 
     async def _serialize_schedule(self, schedule: Optional[Dict[str, List[Any]]]) -> Dict[str, List[Dict[str, Any]]]:
@@ -62,9 +64,9 @@ class MesocycleService:
             serialized[day] = day_items
         return serialized
 
-    async def list_mesocycles(self, plan_id: int, user_id: str) -> List[MesocycleResponse]:
+    async def list_mesocycles(self, plan_id: int) -> List[MesocycleResponse]:
         try:
-            stmt = select(CalendarPlan).where(CalendarPlan.id == plan_id, or_(CalendarPlan.user_id == user_id, CalendarPlan.user_id.is_(None)))
+            stmt = select(CalendarPlan).where(CalendarPlan.id == plan_id)
             result = await self.db.execute(stmt)
             plan = result.scalars().first()
             if not plan:
@@ -76,9 +78,9 @@ class MesocycleService:
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to list mesocycles: {str(e)}")
 
-    async def create_mesocycle(self, data: MesocycleCreate, user_id: str) -> MesocycleResponse:
+    async def create_mesocycle(self, data: MesocycleCreate) -> MesocycleResponse:
         try:
-            await self._check_plan_permission(data.calendar_plan_id, user_id)
+            await self._check_plan_permission(data.calendar_plan_id)
             order_index = (data.order_index if (data.order_index is not None and data.order_index > 0) else None)
             if order_index is None:
                 stmt = select(Mesocycle).where(Mesocycle.calendar_plan_id == data.calendar_plan_id).order_by(Mesocycle.order_index.desc(), Mesocycle.id.desc())
@@ -104,8 +106,8 @@ class MesocycleService:
             self.db.rollback()
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to create mesocycle: {str(e)}")
 
-    async def update_mesocycle(self, mesocycle_id: int, data: MesocycleUpdate, user_id: str) -> MesocycleResponse:
-        m = await self._check_mesocycle_permission(mesocycle_id, user_id)
+    async def update_mesocycle(self, mesocycle_id: int, data: MesocycleUpdate) -> MesocycleResponse:
+        m = await self._check_mesocycle_permission(mesocycle_id)
         if data.name is not None:
             m.name = data.name
         if data.notes is not None:
@@ -124,8 +126,8 @@ class MesocycleService:
         await self.db.refresh(m)
         return MesocycleResponse.model_validate(m)
 
-    async def delete_mesocycle(self, mesocycle_id: int, user_id: str) -> None:
-        m = await self._check_mesocycle_permission(mesocycle_id, user_id)
+    async def delete_mesocycle(self, mesocycle_id: int) -> None:
+        m = await self._check_mesocycle_permission(mesocycle_id)
         self.db.delete(m)
         await self.db.commit()
 
@@ -134,15 +136,15 @@ class MesocycleService:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
-    async def list_microcycles(self, mesocycle_id: int, user_id: str) -> List[MicrocycleResponse]:
-        meso = await self._check_mesocycle_permission(mesocycle_id, user_id)
+    async def list_microcycles(self, mesocycle_id: int) -> List[MicrocycleResponse]:
+        meso = await self._check_mesocycle_permission(mesocycle_id)
         stmt = select(Microcycle).where(Microcycle.mesocycle_id == mesocycle_id).order_by(Microcycle.order_index.asc(), Microcycle.id.asc())
         result = await self.db.execute(stmt)
         micro = result.scalars().all()
         return [MicrocycleResponse.model_validate(mc) for mc in micro]
 
-    async def create_microcycle(self, data: MicrocycleCreate, user_id: str) -> MicrocycleResponse:
-        meso = await self._check_mesocycle_permission(data.mesocycle_id, user_id)
+    async def create_microcycle(self, data: MicrocycleCreate) -> MicrocycleResponse:
+        meso = await self._check_mesocycle_permission(data.mesocycle_id)
         if not meso:
             raise HTTPException(status_code=404, detail="Mesocycle not found")
         try:
@@ -171,8 +173,8 @@ class MesocycleService:
             self.db.rollback()
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to create microcycle: {str(e)}")
 
-    async def update_microcycle(self, microcycle_id: int, data: MicrocycleUpdate, user_id: str) -> MicrocycleResponse:
-        mc = await self._check_microcycle_permission(microcycle_id, user_id)
+    async def update_microcycle(self, microcycle_id: int, data: MicrocycleUpdate) -> MicrocycleResponse:
+        mc = await self._check_microcycle_permission(microcycle_id)
         if data.name is not None:
             mc.name = data.name
         if data.notes is not None:
@@ -191,12 +193,20 @@ class MesocycleService:
         await self.db.refresh(mc)
         return MicrocycleResponse.model_validate(mc)
 
-    async def delete_microcycle(self, microcycle_id: int, user_id: str) -> None:
-        mc = await self._check_microcycle_permission(microcycle_id, user_id)
+    async def delete_microcycle(self, microcycle_id: int) -> None:
+        mc = await self._check_microcycle_permission(microcycle_id)
         self.db.delete(mc)
         await self.db.commit()
 
     async def get_microcycle_by_id(self, microcycle_id: int) -> Optional[Microcycle]:
-        stmt = select(Microcycle).where(Microcycle.id == microcycle_id)
+        stmt = (
+            select(Microcycle)
+            .options(
+                selectinload(Microcycle.plan_workouts)
+                .selectinload(PlanWorkout.exercises)
+                .selectinload(PlanExercise.sets)
+            )
+            .where(Microcycle.id == microcycle_id)
+        )
         result = await self.db.execute(stmt)
         return result.scalars().first()

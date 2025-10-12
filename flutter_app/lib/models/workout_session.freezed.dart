@@ -25,8 +25,8 @@ mixin _$WorkoutSession {
   int get workoutId => throw _privateConstructorUsedError;
   @JsonKey(name: 'started_at')
   DateTime get startedAt => throw _privateConstructorUsedError;
-  @JsonKey(name: 'ended_at')
-  DateTime? get endedAt => throw _privateConstructorUsedError;
+  @JsonKey(name: 'finished_at')
+  DateTime? get finishedAt => throw _privateConstructorUsedError;
   String get status => throw _privateConstructorUsedError;
   @JsonKey(name: 'duration_seconds')
   int? get durationSeconds => throw _privateConstructorUsedError;
@@ -64,7 +64,7 @@ abstract class $WorkoutSessionCopyWith<$Res> {
       {int? id,
       @JsonKey(name: 'workout_id') int workoutId,
       @JsonKey(name: 'started_at') DateTime startedAt,
-      @JsonKey(name: 'ended_at') DateTime? endedAt,
+      @JsonKey(name: 'finished_at') DateTime? finishedAt,
       String status,
       @JsonKey(name: 'duration_seconds') int? durationSeconds,
       Map<String, dynamic> progress,
@@ -94,7 +94,7 @@ class _$WorkoutSessionCopyWithImpl<$Res, $Val extends WorkoutSession>
     Object? id = freezed,
     Object? workoutId = null,
     Object? startedAt = null,
-    Object? endedAt = freezed,
+    Object? finishedAt = freezed,
     Object? status = null,
     Object? durationSeconds = freezed,
     Object? progress = null,
@@ -118,9 +118,9 @@ class _$WorkoutSessionCopyWithImpl<$Res, $Val extends WorkoutSession>
           ? _value.startedAt
           : startedAt // ignore: cast_nullable_to_non_nullable
               as DateTime,
-      endedAt: freezed == endedAt
-          ? _value.endedAt
-          : endedAt // ignore: cast_nullable_to_non_nullable
+      finishedAt: freezed == finishedAt
+          ? _value.finishedAt
+          : finishedAt // ignore: cast_nullable_to_non_nullable
               as DateTime?,
       status: null == status
           ? _value.status
@@ -174,7 +174,7 @@ abstract class _$$WorkoutSessionImplCopyWith<$Res>
       {int? id,
       @JsonKey(name: 'workout_id') int workoutId,
       @JsonKey(name: 'started_at') DateTime startedAt,
-      @JsonKey(name: 'ended_at') DateTime? endedAt,
+      @JsonKey(name: 'finished_at') DateTime? finishedAt,
       String status,
       @JsonKey(name: 'duration_seconds') int? durationSeconds,
       Map<String, dynamic> progress,
@@ -202,7 +202,7 @@ class __$$WorkoutSessionImplCopyWithImpl<$Res>
     Object? id = freezed,
     Object? workoutId = null,
     Object? startedAt = null,
-    Object? endedAt = freezed,
+    Object? finishedAt = freezed,
     Object? status = null,
     Object? durationSeconds = freezed,
     Object? progress = null,
@@ -226,9 +226,9 @@ class __$$WorkoutSessionImplCopyWithImpl<$Res>
           ? _value.startedAt
           : startedAt // ignore: cast_nullable_to_non_nullable
               as DateTime,
-      endedAt: freezed == endedAt
-          ? _value.endedAt
-          : endedAt // ignore: cast_nullable_to_non_nullable
+      finishedAt: freezed == finishedAt
+          ? _value.finishedAt
+          : finishedAt // ignore: cast_nullable_to_non_nullable
               as DateTime?,
       status: null == status
           ? _value.status
@@ -279,7 +279,7 @@ class _$WorkoutSessionImpl extends _WorkoutSession
       {this.id,
       @JsonKey(name: 'workout_id') required this.workoutId,
       @JsonKey(name: 'started_at') required this.startedAt,
-      @JsonKey(name: 'ended_at') this.endedAt,
+      @JsonKey(name: 'finished_at') this.finishedAt,
       this.status = 'active',
       @JsonKey(name: 'duration_seconds') this.durationSeconds,
       final Map<String, dynamic> progress = const <String, dynamic>{},
@@ -305,8 +305,8 @@ class _$WorkoutSessionImpl extends _WorkoutSession
   @JsonKey(name: 'started_at')
   final DateTime startedAt;
   @override
-  @JsonKey(name: 'ended_at')
-  final DateTime? endedAt;
+  @JsonKey(name: 'finished_at')
+  final DateTime? finishedAt;
   @override
   @JsonKey()
   final String status;
@@ -350,7 +350,7 @@ class _$WorkoutSessionImpl extends _WorkoutSession
 
   @override
   String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'WorkoutSession(id: $id, workoutId: $workoutId, startedAt: $startedAt, endedAt: $endedAt, status: $status, durationSeconds: $durationSeconds, progress: $progress, deviceSource: $deviceSource, hrAvg: $hrAvg, hrMax: $hrMax, hydrationLiters: $hydrationLiters, mood: $mood, injuryFlags: $injuryFlags)';
+    return 'WorkoutSession(id: $id, workoutId: $workoutId, startedAt: $startedAt, finishedAt: $finishedAt, status: $status, durationSeconds: $durationSeconds, progress: $progress, deviceSource: $deviceSource, hrAvg: $hrAvg, hrMax: $hrMax, hydrationLiters: $hydrationLiters, mood: $mood, injuryFlags: $injuryFlags)';
   }
 
   @override
@@ -361,7 +361,7 @@ class _$WorkoutSessionImpl extends _WorkoutSession
       ..add(DiagnosticsProperty('id', id))
       ..add(DiagnosticsProperty('workoutId', workoutId))
       ..add(DiagnosticsProperty('startedAt', startedAt))
-      ..add(DiagnosticsProperty('endedAt', endedAt))
+      ..add(DiagnosticsProperty('finishedAt', finishedAt))
       ..add(DiagnosticsProperty('status', status))
       ..add(DiagnosticsProperty('durationSeconds', durationSeconds))
       ..add(DiagnosticsProperty('progress', progress))
@@ -383,7 +383,8 @@ class _$WorkoutSessionImpl extends _WorkoutSession
                 other.workoutId == workoutId) &&
             (identical(other.startedAt, startedAt) ||
                 other.startedAt == startedAt) &&
-            (identical(other.endedAt, endedAt) || other.endedAt == endedAt) &&
+            (identical(other.finishedAt, finishedAt) ||
+                other.finishedAt == finishedAt) &&
             (identical(other.status, status) || other.status == status) &&
             (identical(other.durationSeconds, durationSeconds) ||
                 other.durationSeconds == durationSeconds) &&
@@ -406,7 +407,7 @@ class _$WorkoutSessionImpl extends _WorkoutSession
       id,
       workoutId,
       startedAt,
-      endedAt,
+      finishedAt,
       status,
       durationSeconds,
       const DeepCollectionEquality().hash(_progress),
@@ -439,7 +440,7 @@ abstract class _WorkoutSession extends WorkoutSession {
       {final int? id,
       @JsonKey(name: 'workout_id') required final int workoutId,
       @JsonKey(name: 'started_at') required final DateTime startedAt,
-      @JsonKey(name: 'ended_at') final DateTime? endedAt,
+      @JsonKey(name: 'finished_at') final DateTime? finishedAt,
       final String status,
       @JsonKey(name: 'duration_seconds') final int? durationSeconds,
       final Map<String, dynamic> progress,
@@ -464,8 +465,8 @@ abstract class _WorkoutSession extends WorkoutSession {
   @JsonKey(name: 'started_at')
   DateTime get startedAt;
   @override
-  @JsonKey(name: 'ended_at')
-  DateTime? get endedAt;
+  @JsonKey(name: 'finished_at')
+  DateTime? get finishedAt;
   @override
   String get status;
   @override

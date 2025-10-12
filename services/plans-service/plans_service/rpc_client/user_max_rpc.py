@@ -1,7 +1,6 @@
 import httpx
 import os
-from fastapi import APIRouter, Depends, HTTPException
-from ...dependencies import get_user_id
+from fastapi import APIRouter, HTTPException
 
 USER_MAX_SERVICE_URL = os.getenv("USER_MAX_SERVICE_URL", "http://user-max-service:8000")
 
@@ -42,7 +41,7 @@ async def get_user_maxes_by_exercises(exercise_ids: list[int]) -> list[dict]:
         )
 
 @router.get("/by_exercise/{exercise_id}")
-async def get_user_max_by_exercise(exercise_id: int, user_id: str = Depends(get_user_id)):
+async def get_user_max_by_exercise(exercise_id: int):
     try:
         # Placeholder: implement actual RPC call
         return {"exercise_id": exercise_id, "max_weight": 100.0, "rep_max": 5}

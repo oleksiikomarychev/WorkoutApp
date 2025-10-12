@@ -13,9 +13,6 @@ from ..schemas.calendar_plan import (
 )
 from ..services.calendar_plan_service import CalendarPlanService
 from ..models.calendar import CalendarPlan, Mesocycle, Microcycle
-import logging
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/calendar-plans")
 
@@ -25,21 +22,14 @@ async def create_calendar_plan(
     plan_data: CalendarPlanCreate = Body(...),
     db: AsyncSession = Depends(get_db),
 ):
-    # Log the incoming request data
-    logger.debug(f"Received create plan request: {plan_data}")
-    logger.debug(f"Duration weeks value: {plan_data.duration_weeks}")
-    
     try:
         result = await CalendarPlanService.create_plan(db, plan_data)
-        logger.debug(f"Successfully created plan with duration_weeks={result.duration_weeks}")
         return result
     except ValueError as e:
-        logger.error(f"Validation error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
         )
     except Exception as e:
-        logger.exception(f"Error creating calendar plan: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error") from e
 
 

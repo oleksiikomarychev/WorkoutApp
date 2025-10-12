@@ -10,6 +10,14 @@ from ..exceptions import WorkoutNotFoundException, SessionNotFoundException, Act
 router = APIRouter(prefix="/sessions")
 
 
+@router.get("/history/all", response_model=List[sm.WorkoutSessionResponse])
+async def get_all_sessions(
+    session_service: SessionService = Depends(get_session_service)
+):
+    sessions = await session_service.get_all_sessions()
+    return [sm.WorkoutSessionResponse(**s.__dict__) for s in sessions]
+
+
 @router.post("/{workout_id}/start", response_model=sm.WorkoutSessionResponse, status_code=status.HTTP_201_CREATED)
 async def start_workout_session(
     workout_id: int,
@@ -51,4 +59,19 @@ async def finish_session(
     session = await session_service.finish_session(session_id)
     if not session:
         raise SessionNotFoundException(session_id)
+    return sm.WorkoutSessionResponse(**session.__dict__)
+
+
+@router.put("/{session_id}/progress", response_model=sm.WorkoutSessionResponse)
+async def update_session_progress(
+    session_id: int,
+    payload: sm.SessionProgressUpdate,
+    session_service: SessionService = Depends(get_session_service)
+):
+    session = await session_service.update_progress(
+        session_id=session_id,
+        instance_id=payload.instance_id,
+        set_id=payload.set_id,
+        completed=payload.completed,
+    )
     return sm.WorkoutSessionResponse(**session.__dict__)

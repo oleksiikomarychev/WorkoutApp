@@ -11,9 +11,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import timedelta, datetime
-import logging
-
-logging.basicConfig(level=logging.DEBUG)
 
 Base = declarative_base()
 
@@ -157,7 +154,7 @@ class Microcycle(Base):
     days_count = Column(Integer, nullable=True)
 
     mesocycle = relationship("Mesocycle", back_populates="microcycles")
-    plan_workouts = relationship("PlanWorkout", back_populates="microcycle", cascade="all, delete-orphan")
+    plan_workouts = relationship("PlanWorkout", back_populates="microcycle", cascade="all, delete-orphan", order_by="PlanWorkout.order_index")
 
     def __repr__(self):
         return f"<Microcycle(id={self.id}, mesocycle_id={self.mesocycle_id}, name='{self.name}', order={self.order_index})>"
@@ -223,7 +220,6 @@ class WorkoutProgress(Base): #Сопоставление с воркаут се�
     __tablename__ = "workout_progress"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String(255), nullable=False)  # From workouts-service
     plan_exercise_id = Column(Integer, ForeignKey("plan_exercises.id"), nullable=True)
     workout_set_id = Column(Integer, nullable=False)  # From workouts-service WorkoutSet.id
     planned_intensity = Column(Integer, nullable=True)
@@ -239,4 +235,4 @@ class WorkoutProgress(Base): #Сопоставление с воркаут се�
     plan_exercise = relationship("PlanExercise")
 
     def __repr__(self):
-        return f"<WorkoutProgress(id={self.id}, user_id='{self.user_id}', date={self.date})>"
+        return f"<WorkoutProgress(id={self.id}, date={self.date})>"

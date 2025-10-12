@@ -1,9 +1,7 @@
-from __future__ import annotations
+import asyncio
 
-import argparse
-from typing import List, Dict
-
-from ..database import SessionLocal, Base, engine
+from ..dependencies import engine, AsyncSessionLocal
+from ..models.calendar import Base
 from ..models.exercises import ExerciseList
 
 
@@ -59,7 +57,7 @@ DEFAULT_EXERCISES: List[Dict[str, str | None]] = [
 ]
 
 
-def seed(
+async def seed(
     exercises: List[Dict[str, str | None]] = DEFAULT_EXERCISES, upsert: bool = True
 ) -> None:
     """Заполняет таблицу exercise_list начальными данными.
@@ -70,55 +68,54 @@ def seed(
     # Создаём таблицы при необходимости (безопасно)
     Base.metadata.create_all(bind=engine)
 
-    db = SessionLocal()
-    created = 0
-    updated = 0
-    skipped = 0
+    # Use async context manager for database session
+    async with AsyncSessionLocal() as db:
+        created = 0
+        updated = 0
+        skipped = 0
 
-    try:
-        for e in exercises:
-            name = e.get("name")
-            if not name:
-                continue
+        try:
+            for e in exercises:
+                name = e.get("name")
+                if not name:
+                    continue
 
-            existing = db.query(ExerciseList).filter(ExerciseList.name == name).first()
-            if existing:
-                if upsert:
-                    changed = False
-                    mg = e.get("muscle_group")
-                    eq = e.get("equipment")
-                    if mg is not None and existing.muscle_group != mg:
-                        existing.muscle_group = mg
-                        changed = True
-                    if eq is not None and existing.equipment != eq:
-                        existing.equipment = eq
-                        changed = True
-                    if changed:
-                        updated += 1
+                existing = await db.get(ExerciseList, name)
+                if existing:
+                    if upsert:
+                        changed = False
+                        mg = e.get("muscle_group")
+                        eq = e.get("equipment")
+                        if mg is not None and existing.muscle_group != mg:
+                            existing.muscle_group = mg
+                            changed = True
+                        if eq is not None and existing.equipment != eq:
+                            existing.equipment = eq
+                            changed = True
+                        if changed:
+                            updated += 1
+                    else:
+                        skipped += 1
                 else:
-                    skipped += 1
-            else:
-                db.add(
-                    ExerciseList(
-                        name=name,
-                        muscle_group=e.get("muscle_group"),
-                        equipment=e.get("equipment"),
+                    db.add(
+                        ExerciseList(
+                            name=name,
+                            muscle_group=e.get("muscle_group"),
+                            equipment=e.get("equipment"),
+                        )
                     )
-                )
-                created += 1
+                    created += 1
 
-        db.commit()
-        print(
-            f"Exercises seeding finished: created={created}, updated={updated}, skipped={skipped}"
-        )
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+            await db.commit()
+            print(
+                f"Exercises seeding finished: created={created}, updated={updated}, skipped={skipped}"
+            )
+        except Exception:
+            await db.rollback()
+            raise
 
 
-def main() -> None:
+async def main() -> None:
     parser = argparse.ArgumentParser(description="Seed exercises into the database")
     parser.add_argument(
         "--no-upsert",
@@ -127,7 +124,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    seed(upsert=not args.no_upsert)
+    asyncio.run(seed(upsert=not args.no_upsert))
 
 
 if __name__ == "__main__":

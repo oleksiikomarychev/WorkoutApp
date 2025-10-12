@@ -7,18 +7,10 @@ from ..schemas.calendar_plan import CalendarPlanCreate, CalendarPlanUpdate, Cale
 from ..schemas.mesocycle import MicrocycleCreate
 from ..schemas.schedule_item import ExerciseScheduleItem, ParamsSets
 from fastapi import HTTPException, status
-import logging
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 class CalendarPlanService:
     async def create_plan(db: AsyncSession, plan_data: CalendarPlanCreate) -> CalendarPlanResponse:
         try:
-            # Log the incoming plan_data
-            logger.debug(f"Creating plan with data: {plan_data}")
-            logger.debug(f"Duration weeks: {plan_data.duration_weeks}")
-            
             # Create plan instance with only valid fields
             plan = CalendarPlan(
                 name=plan_data.name,
@@ -27,6 +19,8 @@ class CalendarPlanService:
             )
             db.add(plan)
             await db.flush()
+            # Capture primary key before commit to avoid expired attribute access
+            plan_id = plan.id
 
             # Process mesocycles
             for meso_idx, mesocycle_data in enumerate(plan_data.mesocycles):
@@ -34,7 +28,7 @@ class CalendarPlanService:
                     name=mesocycle_data.name,
                     order_index=meso_idx,
                     duration_weeks=mesocycle_data.duration_weeks,
-                    calendar_plan_id=plan.id
+                    calendar_plan_id=plan_id
                 )
                 db.add(mesocycle)
                 await db.flush()
@@ -93,31 +87,19 @@ class CalendarPlanService:
             # Refresh the plan and load relationships
             stmt = select(CalendarPlan).options(
                 selectinload(CalendarPlan.mesocycles).selectinload(Mesocycle.microcycles).selectinload(Microcycle.plan_workouts).selectinload(PlanWorkout.exercises).selectinload(PlanExercise.sets)
-            ).where(CalendarPlan.id == plan.id)
+            ).where(CalendarPlan.id == plan_id)
             result = await db.execute(stmt)
             plan = result.scalars().first()
             
             if not plan:
                 raise HTTPException(status_code=500, detail="Failed to load created plan")
             
-            # Log loaded relationships
-            logger.debug(f"Loaded plan ID: {plan.id}")
-            logger.debug(f"Number of mesocycles loaded: {len(plan.mesocycles) if hasattr(plan, 'mesocycles') else 0}")
-            for i, meso in enumerate(plan.mesocycles):
-                logger.debug(f"Mesocycle {i+1}: ID={meso.id}, Name={meso.name}")
-                logger.debug(f"  Microcycles count: {len(meso.microcycles) if hasattr(meso, 'microcycles') else 0}")
-                for j, micro in enumerate(meso.microcycles):
-                    logger.debug(f"  Microcycle {j+1}: ID={micro.id}, Name={micro.name}")
-                    logger.debug(f"    Workouts count: {len(micro.plan_workouts) if hasattr(micro, 'plan_workouts') else 0}")
-            
             return CalendarPlanService._get_plan_response(plan)
         except Exception as e:
             await db.rollback()
-            logger.exception(f"Error creating calendar plan: {type(e).__name__}: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
     async def get_plan(db: AsyncSession, plan_id: int) -> Optional[CalendarPlanResponse]:
-        logger.debug("Entering get_plan method")
         try:
             # Load the entire plan structure
             stmt = select(CalendarPlan).options(
@@ -133,37 +115,45 @@ class CalendarPlanService:
             if not plan:
                 return None
                 
-            logger.debug(f"Loaded plan with {len(plan.mesocycles)} mesocycles")
             return CalendarPlanService._get_plan_response(plan)
         except Exception as e:
-            logger.exception(f"Error getting plan: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to get plan: {str(e)}"
             )
 
     async def get_all_plans(db: AsyncSession) -> List[CalendarPlanResponse]:
-        logger.debug("Entering get_all_plans method")
         try:
-            logger.debug("Fetching all calendar plans")
-            plans = db.query(CalendarPlan).all()
-            logger.debug(f"Found {len(plans)} plans")
-            responses = []
+            stmt = (
+                select(CalendarPlan)
+                .options(
+                    selectinload(CalendarPlan.mesocycles)
+                    .selectinload(Mesocycle.microcycles)
+                    .selectinload(Microcycle.plan_workouts)
+                    .selectinload(PlanWorkout.exercises)
+                    .selectinload(PlanExercise.sets)
+                )
+            )
+            result = await db.execute(stmt)
+            plans = result.scalars().unique().all()
+
+            responses: List[CalendarPlanResponse] = []
             for plan in plans:
-                logger.debug(f"Processing plan id={plan.id}")
                 try:
                     responses.append(CalendarPlanService._get_plan_response(plan))
-                    logger.debug(f"Successfully processed plan id={plan.id}")
-                except Exception as e:
-                    logger.exception(f"Error converting plan id={plan.id} to response: {str(e)}")
+                except Exception:
+                    pass
             return responses
         except Exception as e:
-            logger.exception("Error fetching all plans")
-            raise e
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to fetch plans: {str(e)}",
+            )
 
     async def update_plan(db: AsyncSession, plan_id: int, plan_data: CalendarPlanUpdate) -> CalendarPlanResponse:
-        logger.debug("Entering update_plan method")
-        plan = db.query(CalendarPlan).filter(CalendarPlan.id == plan_id).first()
+        stmt = select(CalendarPlan).where(CalendarPlan.id == plan_id)
+        result = await db.execute(stmt)
+        plan = result.scalars().first()
         if not plan:
             raise ValueError("Plan not found or permission denied")
         for field, value in plan_data.model_dump(exclude_none=True).items():
@@ -173,52 +163,59 @@ class CalendarPlanService:
         return CalendarPlanService._get_plan_response(plan)
 
     async def delete_plan(db: AsyncSession, plan_id: int) -> None:
-        logger.debug("Entering delete_plan method")
         try:
-            # Load the plan with applied_plans and mesocycles using class-bound attributes
-            plan = db.query(CalendarPlan).options(
-                joinedload(CalendarPlan.applied_plans).joinedload(AppliedCalendarPlan.workouts),
-                joinedload(CalendarPlan.mesocycles).joinedload(Mesocycle.microcycles).joinedload(Microcycle.workouts)
-            ).filter(CalendarPlan.id == plan_id).first()
+            # Load plan with related applied instances and hierarchy
+            stmt = (
+                select(CalendarPlan)
+                .options(
+                    selectinload(CalendarPlan.mesocycles)
+                    .selectinload(Mesocycle.microcycles)
+                    .selectinload(Microcycle.plan_workouts)
+                    .selectinload(PlanWorkout.exercises)
+                    .selectinload(PlanExercise.sets),
+                    selectinload(CalendarPlan.applied_instances)
+                    .selectinload(AppliedCalendarPlan.workouts),
+                    selectinload(CalendarPlan.applied_instances)
+                    .selectinload(AppliedCalendarPlan.mesocycles)
+                    .selectinload(AppliedMesocycle.microcycles)
+                    .selectinload(AppliedMicrocycle.workouts)
+                )
+                .where(CalendarPlan.id == plan_id)
+            )
+            result = await db.execute(stmt)
+            plan = result.scalars().first()
             
             if plan:
-                logger.debug(f"Deleting plan {plan_id} with {len(plan.applied_plans)} applied plans and {len(plan.mesocycles)} mesocycles")
-                
-                # Delete applied_plans and their workouts
-                for applied_plan in plan.applied_plans:
-                    logger.debug(f"Deleting applied plan {applied_plan.id}")
-                    # Delete applied plan workouts
-                    for workout in applied_plan.workouts:
-                        logger.debug(f"Deleting applied plan workout {workout.id}")
-                        db.delete(workout)
-                    db.delete(applied_plan)
-                
-                # Delete mesocycles and their children
                 for mesocycle in plan.mesocycles:
-                    logger.debug(f"Deleting mesocycle {mesocycle.id}")
-                    for microcycle in mesocycle.microcycles:
-                        logger.debug(f"Deleting microcycle {microcycle.id}")
-                        for workout in microcycle.workouts:
-                            logger.debug(f"Deleting workout {workout.id}")
-                            db.delete(workout)
-                        db.delete(microcycle)
-                    db.delete(mesocycle)
-                
+                    for micro_cycle in mesocycle.microcycles:
+                        for workout in micro_cycle.plan_workouts:
+                            for exercise in workout.exercises:
+                                for plan_set in exercise.sets:
+                                    await db.delete(plan_set)
+                                await db.delete(exercise)
+                            await db.delete(workout)
+                        await db.delete(micro_cycle)
+                    await db.delete(mesocycle)
+
+                # Delete applied instances and related data
+                for applied_plan in plan.applied_instances:
+                    for workout in applied_plan.workouts:
+                        await db.delete(workout)
+                    for applied_meso in applied_plan.mesocycles:
+                        for applied_micro in applied_meso.microcycles:
+                            for applied_workout in applied_micro.workouts:
+                                await db.delete(applied_workout)
+                            await db.delete(applied_micro)
+                        await db.delete(applied_meso)
+                    await db.delete(applied_plan)
+
                 # Now delete the plan itself
-                logger.debug(f"Deleting calendar plan {plan_id}")
-                db.delete(plan)
+                await db.delete(plan)
                 await db.commit()
-                logger.debug(f"Successfully deleted plan {plan_id}")
         except Exception as e:
             await db.rollback()
-            # Log the full exception including traceback
-            logger.exception(f"Error deleting plan: {str(e)}")
-            # Also log the specific database error if available
-            if hasattr(e, 'orig') and e.orig is not None:
-                logger.error(f"Database error: {e.orig}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to delete plan: {str(e)}"
             )
 
     @staticmethod
@@ -240,13 +237,11 @@ class CalendarPlanService:
                     detail=f"Exercise with id {exercise_definition_id} not found"
                 )
             else:
-                logger.error(f"Exercises service error: {response.status_code}")
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Error fetching exercise details"
                 )
         except httpx.RequestError as e:
-            logger.error(f"Connection to exercises service failed: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Exercises service unavailable"
@@ -254,16 +249,8 @@ class CalendarPlanService:
 
     @staticmethod
     def _get_plan_response(plan: CalendarPlan) -> CalendarPlanResponse:
-        logger.debug("Entering _get_plan_response method")
-        logger.debug(f"Plan ID: {plan.id}")
-        logger.debug(f"Plan has mesocycles: {hasattr(plan, 'mesocycles')}")
-        if hasattr(plan, 'mesocycles'):
-            logger.debug(f"Number of mesocycles: {len(plan.mesocycles)}")
-        else:
-            logger.debug("Plan has no mesocycles attribute")
         try:
             # Build the response
-            logger.debug("Building response structure")
             mesocycles_list = []
             for mesocycle in plan.mesocycles:
                 microcycles = []
@@ -314,12 +301,8 @@ class CalendarPlanService:
                 "mesocycles": mesocycles_list
             }
             
-            logging.info(f"Loaded {len(plan.mesocycles)} mesocycles for calendar plan {plan.id}")
-            
             return CalendarPlanResponse.model_validate(response_data)
         except Exception as e:
-            logger.exception(f"Error building response: {str(e)}")  # Log full traceback
-            logger.error("Falling back to minimal response structure")
             # Include IDs in fallback response
             mesocycles_list = []
             for meso in plan.mesocycles:
