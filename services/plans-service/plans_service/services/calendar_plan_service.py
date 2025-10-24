@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload, joinedload
@@ -9,13 +9,14 @@ from ..schemas.schedule_item import ExerciseScheduleItem, ParamsSets
 from fastapi import HTTPException, status
 
 class CalendarPlanService:
-    async def create_plan(db: AsyncSession, plan_data: CalendarPlanCreate) -> CalendarPlanResponse:
+    async def create_plan(db: AsyncSession, plan_data: CalendarPlanCreate, user_id: str) -> CalendarPlanResponse:
         try:
             # Create plan instance with only valid fields
             plan = CalendarPlan(
                 name=plan_data.name,
                 duration_weeks=plan_data.duration_weeks,
-                is_active=True
+                is_active=True,
+                user_id=user_id,
             )
             db.add(plan)
             await db.flush()
@@ -87,7 +88,7 @@ class CalendarPlanService:
             # Refresh the plan and load relationships
             stmt = select(CalendarPlan).options(
                 selectinload(CalendarPlan.mesocycles).selectinload(Mesocycle.microcycles).selectinload(Microcycle.plan_workouts).selectinload(PlanWorkout.exercises).selectinload(PlanExercise.sets)
-            ).where(CalendarPlan.id == plan_id)
+            ).where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
             result = await db.execute(stmt)
             plan = result.scalars().first()
             
@@ -99,7 +100,7 @@ class CalendarPlanService:
             await db.rollback()
             raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-    async def get_plan(db: AsyncSession, plan_id: int) -> Optional[CalendarPlanResponse]:
+    async def get_plan(db: AsyncSession, plan_id: int, user_id: str) -> Optional[CalendarPlanResponse]:
         try:
             # Load the entire plan structure
             stmt = select(CalendarPlan).options(
@@ -122,7 +123,7 @@ class CalendarPlanService:
                 detail=f"Failed to get plan: {str(e)}"
             )
 
-    async def get_all_plans(db: AsyncSession) -> List[CalendarPlanResponse]:
+    async def get_all_plans(db: AsyncSession, user_id: str) -> List[CalendarPlanResponse]:
         try:
             stmt = (
                 select(CalendarPlan)
@@ -150,8 +151,107 @@ class CalendarPlanService:
                 detail=f"Failed to fetch plans: {str(e)}",
             )
 
-    async def update_plan(db: AsyncSession, plan_id: int, plan_data: CalendarPlanUpdate) -> CalendarPlanResponse:
-        stmt = select(CalendarPlan).where(CalendarPlan.id == plan_id)
+    async def get_favorite_plans(db: AsyncSession, user_id: str) -> List[CalendarPlanResponse]:
+        try:
+            stmt = (
+                select(CalendarPlan)
+                .options(
+                    selectinload(CalendarPlan.mesocycles)
+                    .selectinload(Mesocycle.microcycles)
+                    .selectinload(Microcycle.plan_workouts)
+                    .selectinload(PlanWorkout.exercises)
+                    .selectinload(PlanExercise.sets)
+                )
+                .where(CalendarPlan.user_id == user_id, CalendarPlan.is_active.is_(True))
+            )
+            result = await db.execute(stmt)
+            plans = result.scalars().unique().all()
+
+            return [CalendarPlanService._get_plan_response(plan) for plan in plans]
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to fetch favorite plans: {str(e)}",
+            )
+
+    async def generate_workouts(db: AsyncSession, plan_id: int, user_id: str) -> List[Dict[str, Any]]:
+        try:
+            stmt = (
+                select(CalendarPlan)
+                .options(
+                    selectinload(CalendarPlan.mesocycles)
+                    .selectinload(Mesocycle.microcycles)
+                    .selectinload(Microcycle.plan_workouts)
+                    .selectinload(PlanWorkout.exercises)
+                    .selectinload(PlanExercise.sets)
+                )
+                .where(CalendarPlan.id == plan_id)
+            )
+            result = await db.execute(stmt)
+            plan = result.scalars().first()
+
+            if not plan:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found or permission denied")
+
+            workouts: List[Dict[str, Any]] = []
+            for mesocycle in plan.mesocycles or []:
+                for microcycle in mesocycle.microcycles or []:
+                    for plan_workout in microcycle.plan_workouts or []:
+                        workout_payload: Dict[str, Any] = {
+                            "mesocycle": {
+                                "id": mesocycle.id,
+                                "name": mesocycle.name,
+                                "order_index": mesocycle.order_index,
+                            },
+                            "microcycle": {
+                                "id": microcycle.id,
+                                "name": microcycle.name,
+                                "order_index": microcycle.order_index,
+                                "days_count": microcycle.days_count,
+                            },
+                            "workout": {
+                                "id": plan_workout.id,
+                                "day_label": plan_workout.day_label,
+                                "order_index": plan_workout.order_index,
+                                "exercises": [],
+                            },
+                        }
+
+                        for exercise in plan_workout.exercises or []:
+                            exercise_payload: Dict[str, Any] = {
+                                "id": exercise.id,
+                                "exercise_definition_id": exercise.exercise_definition_id,
+                                "exercise_name": exercise.exercise_name,
+                                "order_index": exercise.order_index,
+                                "sets": [],
+                            }
+
+                            for plan_set in exercise.sets or []:
+                                exercise_payload["sets"].append(
+                                    {
+                                        "id": plan_set.id,
+                                        "order_index": plan_set.order_index,
+                                        "intensity": plan_set.intensity,
+                                        "effort": plan_set.effort,
+                                        "volume": plan_set.volume,
+                                    }
+                                )
+
+                            workout_payload["workout"]["exercises"].append(exercise_payload)
+
+                        workouts.append(workout_payload)
+
+            return workouts
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to generate workouts: {str(e)}",
+            )
+
+    async def update_plan(db: AsyncSession, plan_id: int, plan_data: CalendarPlanUpdate, user_id: str) -> CalendarPlanResponse:
+        stmt = select(CalendarPlan).where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
         result = await db.execute(stmt)
         plan = result.scalars().first()
         if not plan:
@@ -160,9 +260,10 @@ class CalendarPlanService:
             setattr(plan, field, value)
 
         await db.commit()
+        await db.refresh(plan)
         return CalendarPlanService._get_plan_response(plan)
 
-    async def delete_plan(db: AsyncSession, plan_id: int) -> None:
+    async def delete_plan(db: AsyncSession, plan_id: int, user_id: str) -> None:
         try:
             # Load plan with related applied instances and hierarchy
             stmt = (
@@ -176,42 +277,43 @@ class CalendarPlanService:
                     selectinload(CalendarPlan.applied_instances)
                     .selectinload(AppliedCalendarPlan.workouts),
                     selectinload(CalendarPlan.applied_instances)
-                    .selectinload(AppliedCalendarPlan.mesocycles)
                     .selectinload(AppliedMesocycle.microcycles)
                     .selectinload(AppliedMicrocycle.workouts)
                 )
-                .where(CalendarPlan.id == plan_id)
+                .where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
             )
             result = await db.execute(stmt)
             plan = result.scalars().first()
             
-            if plan:
-                for mesocycle in plan.mesocycles:
-                    for micro_cycle in mesocycle.microcycles:
-                        for workout in micro_cycle.plan_workouts:
-                            for exercise in workout.exercises:
-                                for plan_set in exercise.sets:
-                                    await db.delete(plan_set)
-                                await db.delete(exercise)
-                            await db.delete(workout)
-                        await db.delete(micro_cycle)
-                    await db.delete(mesocycle)
-
-                # Delete applied instances and related data
-                for applied_plan in plan.applied_instances:
-                    for workout in applied_plan.workouts:
+            if not plan:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found or permission denied")
+            
+            for mesocycle in plan.mesocycles:
+                for micro_cycle in mesocycle.microcycles:
+                    for workout in micro_cycle.plan_workouts:
+                        for exercise in workout.exercises:
+                            for plan_set in exercise.sets:
+                                await db.delete(plan_set)
+                            await db.delete(exercise)
                         await db.delete(workout)
-                    for applied_meso in applied_plan.mesocycles:
-                        for applied_micro in applied_meso.microcycles:
-                            for applied_workout in applied_micro.workouts:
-                                await db.delete(applied_workout)
-                            await db.delete(applied_micro)
-                        await db.delete(applied_meso)
-                    await db.delete(applied_plan)
+                    await db.delete(micro_cycle)
+                await db.delete(mesocycle)
 
-                # Now delete the plan itself
-                await db.delete(plan)
-                await db.commit()
+            # Delete applied instances and related data
+            for applied_plan in plan.applied_instances:
+                for workout in applied_plan.workouts:
+                    await db.delete(workout)
+                for applied_meso in applied_plan.mesocycles:
+                    for applied_micro in applied_meso.microcycles:
+                        for applied_workout in applied_micro.workouts:
+                            await db.delete(applied_workout)
+                        await db.delete(applied_micro)
+                    await db.delete(applied_meso)
+                await db.delete(applied_plan)
+
+            # Now delete the plan itself
+            await db.delete(plan)
+            await db.commit()
         except Exception as e:
             await db.rollback()
             raise HTTPException(

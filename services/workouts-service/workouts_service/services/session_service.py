@@ -16,19 +16,26 @@ logger = logging.getLogger(__name__)
 
 
 class SessionService:
-    def __init__(self, db: AsyncSession, user_max_client: Optional[UserMaxClient] = None):
+    def __init__(self, db: AsyncSession, user_max_client: Optional[UserMaxClient] = None, user_id: str = None):
         self.db = db
         self.user_max_client = user_max_client or UserMaxClient()
+        self.user_id = user_id
 
     async def start_workout_session(self, workout_id: int, started_at: datetime | None = None) -> WorkoutSession:
-        result = await self.db.execute(select(Workout).filter(Workout.id == workout_id))
+        result = await self.db.execute(
+            select(Workout)
+            .filter(Workout.id == workout_id)
+            .filter(Workout.user_id == self.user_id)
+        )
         workout = result.scalars().first()
         if not workout:
             raise WorkoutNotFoundException(workout_id)
 
         result = await self.db.execute(
             select(WorkoutSession)
-            .filter(WorkoutSession.workout_id == workout_id, WorkoutSession.status == "active")
+            .filter(WorkoutSession.workout_id == workout_id)
+            .filter(WorkoutSession.user_id == self.user_id)
+            .filter(WorkoutSession.status == "active")
         )
         active = result.scalars().first()
         if active:
@@ -41,7 +48,7 @@ class SessionService:
 
         naive_started_at = started_at.replace(tzinfo=None)
 
-        session = WorkoutSession(workout_id=workout_id, started_at=naive_started_at, status="active")
+        session = WorkoutSession(workout_id=workout_id, started_at=naive_started_at, status="active", user_id=self.user_id)
         self.db.add(session)
         if not workout.started_at:
             workout.started_at = naive_started_at
@@ -52,7 +59,9 @@ class SessionService:
     async def get_active_session(self, workout_id: int) -> WorkoutSession:
         result = await self.db.execute(
             select(WorkoutSession)
-            .filter(WorkoutSession.workout_id == workout_id, WorkoutSession.status == "active")
+            .filter(WorkoutSession.workout_id == workout_id)
+            .filter(WorkoutSession.user_id == self.user_id)
+            .filter(WorkoutSession.status == "active")
         )
         session = result.scalars().first()
         if not session:
@@ -63,6 +72,7 @@ class SessionService:
         result = await self.db.execute(
             select(WorkoutSession)
             .filter(WorkoutSession.workout_id == workout_id)
+            .filter(WorkoutSession.user_id == self.user_id)
             .order_by(WorkoutSession.id.desc())
         )
         return result.scalars().all()
@@ -70,12 +80,17 @@ class SessionService:
     async def get_all_sessions(self) -> List[WorkoutSession]:
         result = await self.db.execute(
             select(WorkoutSession)
+            .filter(WorkoutSession.user_id == self.user_id)
             .order_by(WorkoutSession.id.desc())
         )
         return result.scalars().all()
 
     async def finish_session(self, session_id: int) -> WorkoutSession:
-        result = await self.db.execute(select(WorkoutSession).filter(WorkoutSession.id == session_id))
+        result = await self.db.execute(
+            select(WorkoutSession)
+            .filter(WorkoutSession.id == session_id)
+            .filter(WorkoutSession.user_id == self.user_id)
+        )
         session = result.scalars().first()
         if not session:
             raise SessionNotFoundException(session_id)
@@ -107,12 +122,16 @@ class SessionService:
         await self.db.refresh(session)
 
         if sync_payload:
-            await self.user_max_client.push_entries(sync_payload)
+            await self.user_max_client.push_entries(sync_payload, user_id=self.user_id)
 
         return session
 
     async def update_progress(self, session_id: int, instance_id: int, set_id: int, completed: bool = True) -> WorkoutSession:
-        result = await self.db.execute(select(WorkoutSession).filter(WorkoutSession.id == session_id))
+        result = await self.db.execute(
+            select(WorkoutSession)
+            .filter(WorkoutSession.id == session_id)
+            .filter(WorkoutSession.user_id == self.user_id)
+        )
         session = result.scalars().first()
         if not session:
             raise SessionNotFoundException(session_id)
@@ -299,9 +318,10 @@ class SessionService:
         weight = self._safe_float(s.get("weight"))
         if weight is None or weight <= 0:
             return None
-        effort_val = s.get("effort")
+        # Prefer latest user-entered RPE over any stale 'effort' saved from templates
+        effort_val = s.get("rpe")
         if effort_val is None:
-            effort_val = s.get("rpe")
+            effort_val = s.get("effort")
         rir = self._estimate_rir(effort_val)
         rep_max = reps + rir
         rep_max = max(1, min(rep_max, 30))
@@ -339,9 +359,10 @@ class SessionService:
     async def _fetch_instances_from_exercises_service(self, workout_id: int) -> list[dict]:
         base_url = os.getenv("EXERCISES_SERVICE_URL", "http://exercises-service:8002").rstrip("/")
         url = f"{base_url}/exercises/instances/workouts/{workout_id}/instances"
+        headers = {"X-User-Id": self.user_id}
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                res = await client.get(url)
+                res = await client.get(url, headers=headers)
                 if res.status_code == 200:
                     data = res.json()
                     if isinstance(data, list):

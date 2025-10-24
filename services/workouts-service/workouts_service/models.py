@@ -14,6 +14,7 @@ class Workout(Base):
     __tablename__ = 'workouts'
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String(255), nullable=False, index=True)
     name = Column(String(255), nullable=False, index=True)
 
     # Plan linkage and scheduling
@@ -51,6 +52,7 @@ class WorkoutExercise(Base):
     __tablename__ = "workout_exercises"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String(255), nullable=False, index=True)
     workout_id = Column(Integer, ForeignKey("workouts.id", ondelete="CASCADE"), nullable=False)
     exercise_id = Column(Integer, nullable=False)
 
@@ -75,6 +77,7 @@ class WorkoutSession(Base):
     __tablename__ = "workout_sessions"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String(255), nullable=False, index=True)
     workout_id = Column(Integer, ForeignKey("workouts.id", ondelete="CASCADE"), nullable=False, index=True)
     started_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     finished_at = Column(DateTime, nullable=True)

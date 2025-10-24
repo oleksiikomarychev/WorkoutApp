@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.exc import IntegrityError
 from ..models import Workout, WorkoutExercise, WorkoutSet, workout_type_enum
 from ..schemas.workout import WorkoutCreate, WorkoutUpdate, WorkoutResponse, WorkoutListResponse
 from .. import schemas
@@ -23,10 +24,11 @@ import json
 logger = logging.getLogger(__name__)
 
 class WorkoutService:
-    def __init__(self, db: AsyncSession, plans_rpc: PlansServiceRPC, exercises_rpc: Any = None):
+    def __init__(self, db: AsyncSession, plans_rpc: PlansServiceRPC, exercises_rpc: Any = None, user_id: str = None):
         self.db = db
         self.plans_rpc = plans_rpc
         self.exercises_rpc = exercises_rpc
+        self.user_id = user_id
 
     def _convert_to_naive_utc(self, dt: datetime) -> datetime:
         """Convert aware datetime to naive UTC datetime"""
@@ -57,6 +59,7 @@ class WorkoutService:
             logger.warning("'plan_workout_id' argument is ignored: column does not exist on models.Workout")
 
         item = models.Workout(**filtered_data)
+        item.user_id = self.user_id
         self.db.add(item)
         await self.db.commit()
         await self.db.refresh(item)
@@ -89,6 +92,7 @@ class WorkoutService:
                 .selectinload(models.WorkoutExercise.sets)
             )
             .where(models.Workout.id == workout_id)
+            .where(models.Workout.user_id == self.user_id)
         )
         workout = result.scalars().first()
         if not workout:
@@ -137,7 +141,7 @@ class WorkoutService:
         type: Optional[str] = None,
         applied_plan_id: Optional[int] = None
     ) -> list[WorkoutListResponse]:
-        query = select(models.Workout)
+        query = select(models.Workout).where(models.Workout.user_id == self.user_id)
         if type:
             if type not in ['manual', 'generated']:
                 raise HTTPException(status_code=400, detail=f"Invalid workout type: {type}")
@@ -173,6 +177,7 @@ class WorkoutService:
                 .selectinload(models.WorkoutExercise.sets)
             )
             .where(models.Workout.id == workout_id)
+            .where(models.Workout.user_id == self.user_id)
         )
         item = result.scalars().first()
         if not item:
@@ -193,6 +198,7 @@ class WorkoutService:
                 .selectinload(models.WorkoutExercise.sets)
             )
             .where(models.Workout.id == workout_id)
+            .where(models.Workout.user_id == self.user_id)
         )
         item = result.scalars().first()
         
@@ -234,7 +240,11 @@ class WorkoutService:
 
     async def delete_workout(self, workout_id: int) -> None:
         # Fetch the ORM model directly for deletion
-        result = await self.db.execute(select(models.Workout).filter(models.Workout.id == workout_id))
+        result = await self.db.execute(
+            select(models.Workout)
+            .filter(models.Workout.id == workout_id)
+            .filter(models.Workout.user_id == self.user_id)
+        )
         item = result.scalars().first()
         if not item:
             raise WorkoutNotFoundException(workout_id)
@@ -260,6 +270,7 @@ class WorkoutService:
                     filtered_data[field] = self._convert_to_naive_utc(filtered_data[field])
             
             workout = models.Workout(**filtered_data)
+            workout.user_id = self.user_id
             self.db.add(workout)
             await self.db.flush()
             
@@ -319,46 +330,98 @@ class WorkoutService:
     async def generate_workouts(self, request: WorkoutGenerationRequest) -> List[int]:
         workout_ids = []
         
-        for workout_item in request.workouts:
-            # Create workout
-            scheduled_for = workout_item.scheduled_for
-            if isinstance(scheduled_for, str):
-                scheduled_for = datetime.fromisoformat(scheduled_for)
-                
-            workout = models.Workout(
-                name=workout_item.name,
-                scheduled_for=scheduled_for,
-                plan_order_index=workout_item.plan_order_index,
-                applied_plan_id=request.applied_plan_id,
-                workout_type='generated'
-            )
-            self.db.add(workout)
-            await self.db.flush()
-            
-            # Create exercises and sets
-            for exercise in workout_item.exercises:
-                workout_exercise = models.WorkoutExercise(
-                    workout_id=workout.id,
-                    exercise_id=exercise.exercise_id
+        logger.info(f"[WORKOUT_SERVICE] Generating {len(request.workouts)} workouts for applied_plan_id={request.applied_plan_id}, user_id={self.user_id}")
+        
+        # Check if workouts already exist for this applied_plan (idempotency check)
+        if request.applied_plan_id:
+            existing_result = await self.db.execute(
+                select(models.Workout)
+                .where(
+                    models.Workout.user_id == self.user_id,
+                    models.Workout.applied_plan_id == request.applied_plan_id
                 )
-                self.db.add(workout_exercise)
-                await self.db.flush()
+                .order_by(models.Workout.plan_order_index)
+            )
+            existing_workouts = existing_result.scalars().all()
+            if existing_workouts:
+                existing_ids = [w.id for w in existing_workouts]
+                logger.warning(f"[WORKOUT_SERVICE] Workouts already exist for applied_plan_id={request.applied_plan_id}: {existing_ids}. Returning existing IDs (idempotent).")
+                return existing_ids
+        
+        try:
+            for idx, workout_item in enumerate(request.workouts):
+                # Create workout
+                scheduled_for = workout_item.scheduled_for
+                if isinstance(scheduled_for, str):
+                    scheduled_for = datetime.fromisoformat(scheduled_for)
                 
-                for set_data in exercise.sets:
-                    workout_set = models.WorkoutSet(
-                        exercise_id=workout_exercise.id,
-                        intensity=set_data.intensity,
-                        effort=set_data.effort,
-                        volume=set_data.volume,
-                        working_weight=set_data.working_weight
+                logger.debug(f"[WORKOUT_SERVICE] Creating workout {idx+1}/{len(request.workouts)}: {workout_item.name}")
+                    
+                workout = models.Workout(
+                    name=workout_item.name,
+                    scheduled_for=scheduled_for,
+                    plan_order_index=workout_item.plan_order_index,
+                    applied_plan_id=request.applied_plan_id,
+                    workout_type='generated',
+                    user_id=self.user_id
+                )
+                self.db.add(workout)
+                await self.db.flush()
+                logger.debug(f"[WORKOUT_SERVICE] Created workout id={workout.id}")
+                
+                # Create exercises and sets
+                for ex_idx, exercise in enumerate(workout_item.exercises):
+                    workout_exercise = models.WorkoutExercise(
+                        workout_id=workout.id,
+                        exercise_id=exercise.exercise_id,
+                        user_id=self.user_id
                     )
-                    self.db.add(workout_set)
+                    self.db.add(workout_exercise)
                     await self.db.flush()
+                    logger.debug(f"[WORKOUT_SERVICE] Created workout_exercise id={workout_exercise.id} for exercise_id={exercise.exercise_id}")
+                    
+                    for set_idx, set_data in enumerate(exercise.sets):
+                        workout_set = models.WorkoutSet(
+                            exercise_id=workout_exercise.id,
+                            intensity=set_data.intensity,
+                            effort=set_data.effort,
+                            volume=set_data.volume,
+                            working_weight=set_data.working_weight
+                        )
+                        self.db.add(workout_set)
+                        await self.db.flush()
+                
+                workout_ids.append(workout.id)
             
-            workout_ids.append(workout.id)
-            
-        await self.db.commit()
-        return workout_ids
+            logger.info(f"[WORKOUT_SERVICE] Committing transaction with {len(workout_ids)} workouts")
+            await self.db.commit()
+            logger.info(f"[WORKOUT_SERVICE] Successfully committed workout_ids: {workout_ids}")
+            return workout_ids
+        except IntegrityError as e:
+            logger.error(f"[WORKOUT_SERVICE] IntegrityError during workout generation (likely duplicate): {e}")
+            await self.db.rollback()
+            # If we hit a duplicate constraint, fetch existing workouts and return them
+            if request.applied_plan_id:
+                logger.info(f"[WORKOUT_SERVICE] Fetching existing workouts for applied_plan_id={request.applied_plan_id}")
+                existing_result = await self.db.execute(
+                    select(models.Workout)
+                    .where(
+                        models.Workout.user_id == self.user_id,
+                        models.Workout.applied_plan_id == request.applied_plan_id
+                    )
+                    .order_by(models.Workout.plan_order_index)
+                )
+                existing_workouts = existing_result.scalars().all()
+                if existing_workouts:
+                    existing_ids = [w.id for w in existing_workouts]
+                    logger.info(f"[WORKOUT_SERVICE] Returning existing workout_ids: {existing_ids}")
+                    return existing_ids
+            raise
+        except Exception as e:
+            logger.error(f"[WORKOUT_SERVICE] Error during workout generation: {e}")
+            await self.db.rollback()
+            logger.error(f"[WORKOUT_SERVICE] Transaction rolled back")
+            raise
 
     async def get_next_generated_workout(self) -> models.Workout:
         """
@@ -371,6 +434,7 @@ class WorkoutService:
                 selectinload(models.Workout.exercises)
                 .selectinload(models.WorkoutExercise.sets)
             )
+            .where(models.Workout.user_id == self.user_id)
             .where(models.Workout.workout_type == 'generated')
             .where(models.Workout.status != 'completed')  # Only include not completed
             .where(models.Workout.scheduled_for > current_time)  # Only future workouts
@@ -412,6 +476,7 @@ class WorkoutService:
         current_result = await self.db.execute(
             select(models.Workout)
             .filter(models.Workout.id == current_workout_id)
+            .filter(models.Workout.user_id == self.user_id)
         )
         current_workout = current_result.scalars().first()
         
@@ -427,6 +492,7 @@ class WorkoutService:
                 selectinload(models.Workout.exercises)
                 .selectinload(models.WorkoutExercise.sets)
             )
+            .where(models.Workout.user_id == self.user_id)
             .where(models.Workout.applied_plan_id == current_workout.applied_plan_id)
             .where(models.Workout.plan_order_index > current_workout.plan_order_index)
             .where(or_(models.Workout.status != 'completed', models.Workout.status == None))
@@ -485,6 +551,7 @@ class WorkoutService:
                 selectinload(models.Workout.exercises)
                 .selectinload(models.WorkoutExercise.sets)
             )
+            .where(models.Workout.user_id == self.user_id)
             .where(models.Workout.workout_type == 'generated')
             .order_by(models.Workout.id.asc())
             .limit(1)
@@ -521,7 +588,9 @@ class WorkoutService:
         if not microcycle_ids:
             return []
 
-        stmt = select(models.Workout).where(models.Workout.microcycle_id.in_(microcycle_ids))
+        stmt = select(models.Workout).where(
+            models.Workout.user_id == self.user_id
+        ).where(models.Workout.microcycle_id.in_(microcycle_ids))
         result = await self.db.execute(stmt)
         workouts = result.scalars().all()
         logger.debug(f"Found {len(workouts)} workouts for microcycle IDs {microcycle_ids}")

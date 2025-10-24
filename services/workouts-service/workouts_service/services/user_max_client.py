@@ -16,16 +16,17 @@ class UserMaxClient:
         self.base_url = (base_env or "http://user-max-service:8003").rstrip("/")
         self.timeout = timeout
 
-    async def push_entries(self, entries: Iterable[dict]) -> None:
+    async def push_entries(self, entries: Iterable[dict], user_id: str) -> None:
         payload = [self._normalize_entry(e) for e in entries if self._normalize_entry(e)]
         if not payload:
             logger.info("UserMaxClient.push_entries: no valid entries to send")
             return
         url = f"{self.base_url}/user-max/bulk"
-        logger.info("UserMaxClient.push_entries: sending %d entries to %s | payload=%s", len(payload), url, payload)
+        headers = {"X-User-Id": user_id}
+        logger.info("UserMaxClient.push_entries: sending %d entries to %s for user %s | payload=%s", len(payload), url, user_id, payload)
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
-                response = await client.post(url, json=payload)
+                response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
                 logger.info("UserMaxClient.push_entries: success | status=%d response=%s", response.status_code, response.text[:200])
             except Exception as exc:

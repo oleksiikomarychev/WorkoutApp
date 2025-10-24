@@ -8,10 +8,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 class ExerciseInstanceService:
-    def __init__(self, db: AsyncSession, set_service: SetService):
+    def __init__(self, db: AsyncSession, set_service: SetService, user_id: str):
         self.db = db
         self.set_service = set_service
         self.repository = ExerciseRepository()
+        self.user_id = user_id
 
     async def create_instance(self, workout_id: int, instance_data: schemas.ExerciseInstanceCreate) -> dict:
         logger.info(f"1. Получен запрос на создание экземпляра упражнения для workout_id={workout_id}")
@@ -27,6 +28,7 @@ class ExerciseInstanceService:
         logger.info("3. Подготавливаем данные")
         instance_dict = instance_data.model_dump()
         instance_dict["workout_id"] = workout_id
+        instance_dict["user_id"] = self.user_id
         if 'sets' in instance_dict:
             instance_dict['sets'] = self.set_service.prepare_sets(instance_dict['sets'])
         logger.info(f"4. Данные для создания: {instance_dict}")
@@ -38,7 +40,7 @@ class ExerciseInstanceService:
         return result
 
     async def update_instance(self, instance_id: int, update_data: schemas.ExerciseInstanceBase) -> dict:
-        db_instance = await self.repository.get_exercise_instance(self.db, instance_id)
+        db_instance = await self.repository.get_exercise_instance(self.db, instance_id, self.user_id)
         if not db_instance:
             raise ValueError("Exercise instance not found")
         update_dict = update_data.model_dump(exclude_unset=True)
@@ -50,7 +52,7 @@ class ExerciseInstanceService:
         """
         Обновляет конкретный сет в экземпляре упражнения
         """
-        db_instance = await self.repository.get_exercise_instance(self.db, instance_id)
+        db_instance = await self.repository.get_exercise_instance(self.db, instance_id, self.user_id)
         if not db_instance:
             raise ValueError("Exercise instance not found")
         if not isinstance(db_instance.sets, list):

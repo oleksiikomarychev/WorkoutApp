@@ -21,6 +21,7 @@ class CalendarPlan(Base):
     name = Column(String(255), nullable=False)
     duration_weeks = Column(Integer, nullable=False)
     is_active = Column(Boolean, default=True, server_default=text('true'))
+    user_id = Column(String(255), nullable=False, index=True)
 
     applied_instances = relationship("AppliedCalendarPlan", back_populates="calendar_plan", cascade="all, delete-orphan")
     mesocycles = relationship(
@@ -48,6 +49,7 @@ class AppliedCalendarPlan(Base):
     is_active = Column(Boolean, default=True)
     user_max_ids = Column(JSON, nullable=True)
     current_workout_index = Column(Integer, default=0)
+    user_id = Column(String(255), nullable=False, index=True)
 
     calendar_plan = relationship("CalendarPlan", back_populates="applied_instances")
     workouts = relationship(

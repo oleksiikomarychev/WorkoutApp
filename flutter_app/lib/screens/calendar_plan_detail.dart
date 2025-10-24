@@ -242,6 +242,8 @@ class _SingleSelectSheetState<T> extends State<_SingleSelectSheet<T>> {
 
 class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   List<UserMax> _userMaxList = [];
+  Map<int, List<UserMax>> _userMaxesByExerciseId = {};
+  Map<String, List<UserMax>> _userMaxesByName = {};
   late final Set<int> _planExerciseDefinitionIds;
   late final Set<String> _planExerciseNames;
 
@@ -264,12 +266,188 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   bool _loadingMeta = true;
   String? _metaError;
 
+  String? _normalizeExerciseName(String? name) {
+    final value = name?.trim();
+    if (value == null || value.isEmpty) return null;
+    return value.toLowerCase();
+  }
+
+  void _indexUserMaxes(List<UserMax> userMaxes) {
+    final byId = <int, List<UserMax>>{};
+    final byName = <String, List<UserMax>>{};
+
+    for (final userMax in userMaxes) {
+      if (userMax.exerciseId > 0) {
+        byId.putIfAbsent(userMax.exerciseId, () => []).add(userMax);
+      }
+      final normalizedName = _normalizeExerciseName(userMax.exerciseName);
+      if (normalizedName != null) {
+        byName.putIfAbsent(normalizedName, () => []).add(userMax);
+      }
+    }
+
+    setState(() {
+      _userMaxList = userMaxes;
+      _userMaxesByExerciseId = byId;
+      _userMaxesByName = byName;
+    });
+  }
+
+  List<UserMax> _userMaxesForExercise(PlanExercise exercise) {
+    final byId = _userMaxesByExerciseId[exercise.exerciseDefinitionId];
+    if (byId != null && byId.isNotEmpty) {
+      return byId;
+    }
+    final normalized = _normalizeExerciseName(exercise.exerciseName);
+    if (normalized == null) {
+      return const [];
+    }
+    return _userMaxesByName[normalized] ?? const [];
+  }
+
+  UserMax? _latestUserMax(List<UserMax> userMaxes) {
+    if (userMaxes.isEmpty) {
+      return null;
+    }
+    UserMax latest = userMaxes.first;
+    for (final userMax in userMaxes.skip(1)) {
+      if (userMax.id > latest.id) {
+        latest = userMax;
+      }
+    }
+    return latest;
+  }
+
   Future<void> _fetchUserMaxes() async {
     try {
       final userMaxes = await PlanApi.getUserMaxes();
-      setState(() => _userMaxList = userMaxes);
+      if (!mounted) return;
+      _indexUserMaxes(userMaxes);
     } catch (e) {
       print('Failed to fetch user maxes: $e');
+    }
+  }
+
+  Future<void> _showAddUserMaxSheet(PlanExercise exercise) async {
+    final weightController = TextEditingController();
+    final repsController = TextEditingController(text: '1');
+    bool isSubmitting = false;
+    String? errorMessage;
+
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 16,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+          ),
+          child: StatefulBuilder(
+            builder: (context, setModalState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Добавить максимум для «${exercise.exerciseName}»',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: weightController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Вес (кг)',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: repsController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Повторения',
+                    ),
+                  ),
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      errorMessage!,
+                      style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: isSubmitting
+                          ? null
+                          : () async {
+                              final weight = int.tryParse(weightController.text);
+                              final reps = int.tryParse(repsController.text);
+                              if (weight == null || weight <= 0) {
+                                setModalState(() {
+                                  errorMessage = 'Введите корректный вес';
+                                });
+                                return;
+                              }
+                              if (reps == null || reps <= 0 || reps > 12) {
+                                setModalState(() {
+                                  errorMessage = 'Введите 1–12 повторений';
+                                });
+                                return;
+                              }
+
+                              setModalState(() {
+                                isSubmitting = true;
+                                errorMessage = null;
+                              });
+
+                              try {
+                                await PlanApi.createUserMax(
+                                  exerciseId: exercise.exerciseDefinitionId,
+                                  maxWeight: weight,
+                                  repMax: reps,
+                                  date: DateTime.now().toIso8601String().split('T').first,
+                                );
+                                if (Navigator.of(sheetContext).canPop()) {
+                                  Navigator.of(sheetContext).pop(true);
+                                }
+                              } catch (e) {
+                                setModalState(() {
+                                  errorMessage = 'Не удалось сохранить максимум: $e';
+                                  isSubmitting = false;
+                                });
+                              }
+                            },
+                      child: isSubmitting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Сохранить'),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    weightController.dispose();
+    repsController.dispose();
+
+    if (result == true) {
+      await _fetchUserMaxes();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Максимум для ${exercise.exerciseName} сохранён')),
+      );
     }
   }
 
@@ -292,6 +470,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
         context: context,
         isScrollControlled: true,
         builder: (context) => ApplyPlanWidget(
+          plan: widget.plan,
           userMaxList: _userMaxList,
           allowedExerciseIds: _planExerciseDefinitionIds,
           allowedExerciseNames: _planExerciseNames,
@@ -315,6 +494,9 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
               );
             }
           },
+          onUserMaxAdded: () {
+            _fetchUserMaxes();
+          },
         ),
       );
     } catch (e) {
@@ -329,7 +511,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.plan.name),
-        backgroundColor: Theme.of(context).primaryColor,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         actions: [
           IconButton(
             icon: const Icon(Icons.check),
@@ -1303,17 +1485,11 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     final ids = <int>{};
     final names = <String>{};
 
-    String? _normalizeName(String? name) {
-      final value = name?.trim();
-      if (value == null || value.isEmpty) return null;
-      return value.toLowerCase();
-    }
-
     void addExercise({int? id, String? name}) {
       if (id != null && id > 0) {
         ids.add(id);
       }
-      final normalized = _normalizeName(name);
+      final normalized = _normalizeExerciseName(name);
       if (normalized != null) {
         names.add(normalized);
       }
@@ -1375,6 +1551,9 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   }
 
   Widget _buildExerciseCard(PlanExercise exercise, int index) {
+    final userMaxes = _userMaxesForExercise(exercise);
+    final latestUserMax = _latestUserMax(userMaxes);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8.0),
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
@@ -1406,6 +1585,17 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            latestUserMax != null
+                ? 'Текущий максимум: ${latestUserMax.maxWeight} кг × ${latestUserMax.repMax}'
+                : 'Максимум не задан',
+            style: TextStyle(
+              fontSize: 12,
+              color: latestUserMax != null ? Colors.green[700] : Colors.grey[600],
+              fontWeight: latestUserMax != null ? FontWeight.w600 : FontWeight.w500,
+            ),
           ),
           if (exercise.sets.isNotEmpty) ...[
             const SizedBox(height: 8),

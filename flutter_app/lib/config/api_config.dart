@@ -148,6 +148,7 @@ class ApiConfig {
 
   // Analytics endpoint
   static String get workoutMetricsEndpoint => buildEndpoint('/workout-metrics');
+  static String get profileAggregatesEndpoint => buildEndpoint('/profile/aggregates');
 
   static void logApiError(http.Response response) {
     print('API Error: ${response.statusCode}');

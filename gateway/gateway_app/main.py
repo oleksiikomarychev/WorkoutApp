@@ -1,12 +1,15 @@
 import asyncio
+import base64
+import json
+import hashlib
 import logging
 import os
 import re
-from typing import Dict, List
-from gateway_app import schemas
+from typing import Dict, List, Optional
 import httpx
 from fastapi import APIRouter, FastAPI, Request, Response, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi import status, Query
@@ -22,6 +25,15 @@ USER_MAX_SERVICE_URL = os.getenv("USER_MAX_SERVICE_URL")
 WORKOUTS_SERVICE_URL = os.getenv("WORKOUTS_SERVICE_URL")
 PLANS_SERVICE_URL = os.getenv("PLANS_SERVICE_URL")
 
+try:
+    import firebase_admin
+    from firebase_admin import auth, credentials, exceptions as firebase_exceptions
+except Exception:  # pragma: no cover
+    firebase_admin = None  # type: ignore
+    auth = None  # type: ignore
+    credentials = None  # type: ignore
+    firebase_exceptions = None  # type: ignore
+
 _DEFAULT_PROXY_TIMEOUT = float(os.getenv("PROXY_REQUEST_TIMEOUT_SECONDS", "30"))
 _DEFAULT_CONNECT_TIMEOUT = float(os.getenv("PROXY_CONNECT_TIMEOUT_SECONDS", "5"))
 _PLANS_APPLY_TIMEOUT = float(os.getenv("PLANS_APPLY_TIMEOUT_SECONDS", str(max(_DEFAULT_PROXY_TIMEOUT, 90.0))))
@@ -33,11 +45,136 @@ app = FastAPI(
 )
 app.router.redirect_slashes = False
 
+# In-memory cache for profile aggregates
+_PROFILE_CACHE: dict[str, dict] = {}
+_PROFILE_CACHE_TTL_SECONDS = int(os.getenv("PROFILE_AGGREGATES_CACHE_TTL_SECONDS", "900"))
+
+def _invalidate_profile_cache_for_user(uid: Optional[str]) -> None:
+    """Invalidate profile aggregates cache entries for a given user."""
+    if not uid:
+        return
+    try:
+        keys = list(_PROFILE_CACHE.keys())
+        for k in keys:
+            if k.startswith(f"{uid}:"):
+                _PROFILE_CACHE.pop(k, None)
+    except Exception:
+        # Best-effort invalidation; ignore errors
+        pass
+
 
 def _forward_headers(request: Request) -> Dict[str, str]:
-    """Collect headers to forward to downstream services, adding X-User-Id if authenticated."""
-    allowed = {k: v for k, v in request.headers.items() if k.lower() in ("traceparent", "x-request-id", "content-type")}
-    return allowed
+    """Build downstream headers, ensuring X-User-Id is injected from the authenticated user."""
+
+    allowed_header_names = {"traceparent", "x-request-id", "content-type", "accept"}
+    forwarded: Dict[str, str] = {
+        k: v for k, v in request.headers.items() if k.lower() in allowed_header_names
+    }
+
+    user = getattr(request.state, "user", None)
+    if user and isinstance(user, dict):
+        uid = user.get("uid")
+        if uid:
+            forwarded["X-User-Id"] = str(uid)
+
+    return forwarded
+
+
+_FIREBASE_APP: Optional[firebase_admin.App] = None if firebase_admin else None  # type: ignore
+_FIREBASE_CHECK_REVOKED = True
+_FIREBASE_AUDIENCE: Optional[str] = os.getenv("FIREBASE_PROJECT_ID")
+_FIREBASE_ISSUER: Optional[str] = None
+_PUBLIC_PATHS = {"/api/v1/health", "/openapi.json", "/docs", "/docs/", "/redoc", "/redoc/"}
+
+
+def _initialize_firebase_app() -> None:
+    global _FIREBASE_APP, _FIREBASE_CHECK_REVOKED
+    if firebase_admin is None:
+        raise RuntimeError("firebase_admin is not available")
+    if _FIREBASE_APP is not None:
+        return
+    credentials_b64 = os.getenv("FIREBASE_CREDENTIALS_BASE64")
+    if not credentials_b64:
+        raise RuntimeError("FIREBASE_CREDENTIALS_BASE64 must be set")
+    try:
+        decoded = base64.b64decode(credentials_b64).decode("utf-8")
+        credential_data = json.loads(decoded)
+    except Exception as exc:
+        raise RuntimeError("FIREBASE_CREDENTIALS_BASE64 is invalid") from exc
+    project_id = os.getenv("FIREBASE_PROJECT_ID")
+    if project_id and not credential_data.get("project_id"):
+        credential_data["project_id"] = project_id
+    project_id = credential_data.get("project_id")
+    if project_id:
+        global _FIREBASE_AUDIENCE, _FIREBASE_ISSUER
+        _FIREBASE_AUDIENCE = project_id
+        _FIREBASE_ISSUER = f"https://securetoken.google.com/{project_id}"
+    emulator_host = os.getenv("FIREBASE_AUTH_EMULATOR_HOST")
+    if emulator_host:
+        os.environ["FIREBASE_AUTH_EMULATOR_HOST"] = emulator_host
+        _FIREBASE_CHECK_REVOKED = False
+    cert = credentials.Certificate(credential_data)
+    _FIREBASE_APP = firebase_admin.initialize_app(cert)
+
+
+def _is_public_route(method: str, path: str) -> bool:
+    if method in ("GET", "HEAD") and path in _PUBLIC_PATHS:
+        return True
+    return False
+
+
+class FirebaseAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        method = request.method.upper()
+        path = request.url.path
+        if method == "OPTIONS" or _is_public_route(method, path):
+            return await call_next(request)
+        authorization = request.headers.get("authorization")
+        if not authorization or not authorization.lower().startswith("bearer "):
+            logger.info("Missing Authorization header", extra={"path": path, "method": method})
+            return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Not authenticated"})
+        token = authorization.split(" ", 1)[1].strip()
+        if not token:
+            logger.info("Empty bearer token", extra={"path": path, "method": method})
+            return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Not authenticated"})
+        try:
+            if _FIREBASE_APP is None:
+                _initialize_firebase_app()
+            check_revoked = _FIREBASE_CHECK_REVOKED
+            decoded = auth.verify_id_token(token, check_revoked=check_revoked, app=_FIREBASE_APP)
+        except auth.RevokedIdTokenError:  # type: ignore[attr-defined]
+            logger.info("Firebase token revoked", extra={"path": path, "method": method})
+            return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"detail": "Token revoked"})
+        except (auth.InvalidIdTokenError, auth.ExpiredIdTokenError, ValueError):  # type: ignore[attr-defined]
+            logger.info("Invalid Firebase token", extra={"path": path, "method": method})
+            return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid authentication credentials"})
+        except Exception as exc:
+            if firebase_exceptions and isinstance(exc, firebase_exceptions.FirebaseError):  # type: ignore[attr-defined]
+                logger.error("Firebase verification error", exc_info=True)
+                return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"detail": "Authentication service unavailable"})
+            if isinstance(exc, RuntimeError):
+                logger.error("Firebase initialization failed", exc_info=True)
+                return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": "Authentication backend misconfigured"})
+            logger.error("Unexpected authentication error", exc_info=True)
+            return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": "Authentication error"})
+        if not decoded.get("uid"):
+            logger.info("Missing uid in Firebase token", extra={"path": path, "method": method})
+            return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid authentication credentials"})
+        if _FIREBASE_AUDIENCE and decoded.get("aud") not in {_FIREBASE_AUDIENCE, f"project-{_FIREBASE_AUDIENCE}"}:
+            logger.info("Firebase token audience mismatch", extra={"path": path, "method": method})
+            return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid authentication credentials"})
+        if _FIREBASE_ISSUER and decoded.get("iss") != _FIREBASE_ISSUER:
+            logger.info("Firebase token issuer mismatch", extra={"path": path, "method": method})
+            return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid authentication credentials"})
+        filtered_claims = {k: v for k, v in decoded.items() if k not in {"uid", "sub", "aud", "iss", "iat", "exp", "auth_time"}}
+        request.state.user = {
+            "uid": decoded["uid"],
+            "email": decoded.get("email"),
+            "name": decoded.get("name"),
+            "picture": decoded.get("picture"),
+            "claims": filtered_claims,
+        }
+        return await call_next(request)
 
 
 # First attach CORS (outer)
@@ -57,9 +194,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(FirebaseAuthMiddleware)
+
 @app.get("/api/v1/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/api/v1/auth/me")
+async def get_authenticated_user(request: Request) -> dict:
+    user = getattr(request.state, "user", None)
+    if not user or not isinstance(user, dict):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return {
+        "uid": user.get("uid"),
+        "email": user.get("email"),
+        "name": user.get("name"),
+        "picture": user.get("picture"),
+        "claims": user.get("claims") or {},
+    }
 
 async def fetch_service_spec(url: str) -> dict:
     async with httpx.AsyncClient() as client:
@@ -154,6 +307,255 @@ plans_instances_router = APIRouter(prefix="/api/v1/plans/calendar-plan-instances
 plans_mesocycles_router = APIRouter(prefix="/api/v1/plans/mesocycles")
 analytics_router = APIRouter(prefix="/api/v1")
 
+def _date_key_from_iso(iso_str: str) -> str:
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    except Exception:
+        return iso_str[:10]
+    return dt.date().isoformat()
+
+async def _fetch_instances_for_workout(workout_id: int, headers: dict) -> list[dict]:
+    url = f"{EXERCISES_SERVICE_URL}/exercises/instances/workouts/{workout_id}/instances"
+    async with httpx.AsyncClient() as client:
+        res = await client.get(url, headers=headers, follow_redirects=True)
+        if res.status_code == 200:
+            data = res.json() or []
+            return data if isinstance(data, list) else []
+    return []
+
+def _build_set_volume_index(instances: list[dict]) -> tuple[dict[int, float], float]:
+    set_volume: dict[int, float] = {}
+    total = 0.0
+    for inst in instances or []:
+        for s in inst.get("sets", []) or []:
+            sid = s.get("id")
+
+            # Prefer computed volume (reps * weight) when weight is provided
+            reps_raw = s.get("reps")
+            weight_raw = s.get("weight")
+            volume_raw = s.get("volume")
+
+            reps = 0.0
+            weight = None
+            try:
+                if reps_raw is not None:
+                    reps = float(reps_raw)
+            except Exception:
+                reps = 0.0
+            try:
+                if weight_raw is not None:
+                    weight = float(weight_raw)
+            except Exception:
+                weight = None
+
+            volume: float | None = None
+            if weight is not None and reps > 0:
+                volume = round(reps * weight, 2)
+
+            if volume is None:
+                try:
+                    volume = float(volume_raw)
+                except Exception:
+                    volume = None
+
+            if volume is None and reps > 0 and weight is None:
+                volume = round(reps, 2)
+
+            v = volume if volume is not None else 0.0
+
+            if isinstance(sid, int):
+                set_volume[sid] = v
+            total += v
+    return set_volume, total
+
+@analytics_router.get("/profile/aggregates", response_model=schemas.ProfileAggregatesResponse)
+async def get_profile_aggregates(request: Request, weeks: int = Query(48, ge=1, le=104), limit: int = Query(20, ge=1, le=100)):
+    headers = _forward_headers(request)
+    now = datetime.utcnow()
+    grid_end = datetime(now.year, now.month, now.day)
+    grid_start = grid_end - timedelta(days=weeks * 7 - 1)
+
+    # Check cache/ETag
+    user = getattr(request.state, "user", None)
+    uid = (user or {}).get("uid") if isinstance(user, dict) else None
+    cache_key = f"{uid or 'anon'}:{weeks}:{limit}"
+    inm = request.headers.get("if-none-match")
+    cached = _PROFILE_CACHE.get(cache_key)
+    if cached:
+        # serve 304 if etag matches and cache not expired
+        if cached.get("expires_at") and cached["expires_at"] > now and inm and inm == cached.get("etag"):
+            return Response(status_code=304)
+        # serve cached content if still fresh
+        if cached.get("expires_at") and cached["expires_at"] > now and cached.get("content"):
+            return JSONResponse(content=cached["content"], headers={"ETag": cached.get("etag", "")})
+
+    # 1) Fetch all sessions
+    sessions_url = f"{WORKOUTS_SERVICE_URL}/workouts/sessions/history/all"
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(sessions_url, headers=headers, follow_redirects=True)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail="Failed to fetch sessions history")
+        sessions_raw = resp.json() or []
+        if not isinstance(sessions_raw, list):
+            sessions_raw = [sessions_raw]
+
+    # 2) Filter completed sessions and date window
+    completed: list[dict] = []
+    for s in sessions_raw:
+        status_val = str(s.get("status") or "").lower()
+        finished_at = s.get("finished_at")
+        started_at = s.get("started_at")
+        if not started_at:
+            continue
+        # Parse date for filtering
+        try:
+            sdt = datetime.fromisoformat(str(started_at).replace("Z", "+00:00"))
+        except Exception:
+            continue
+        if sdt < grid_start or sdt > grid_end + timedelta(days=1):
+            # keep only for totals if needed later, but not recent window
+            pass
+        # consider completed
+        if status_val == "completed" or finished_at is not None:
+            completed.append(s)
+
+    if not completed:
+        return schemas.ProfileAggregatesResponse(
+            generated_at=now,
+            weeks=weeks,
+            total_workouts=0,
+            total_volume=0.0,
+            active_days=0,
+            max_day_volume=0.0,
+            activity_map={},
+            completed_sessions=[],
+        )
+
+    # 3) Sort desc by started_at and clip recent window for activity
+    def _parse_started(s: dict) -> datetime:
+        try:
+            return datetime.fromisoformat(str(s.get("started_at")).replace("Z", "+00:00"))
+        except Exception:
+            return datetime.min
+
+    completed.sort(key=_parse_started, reverse=True)
+
+    # 4) Build set-volume index per workout (with limited concurrency)
+    unique_wids: list[int] = []
+    seen: set[int] = set()
+    for s in completed:
+        wid = s.get("workout_id")
+        if isinstance(wid, int) and wid not in seen:
+            seen.add(wid)
+            unique_wids.append(wid)
+
+    wid_to_index: dict[int, dict[int, float]] = {}
+    wid_to_total: dict[int, float] = {}
+
+    sem = asyncio.Semaphore(6)
+
+    async def _build_for_wid(wid: int):
+        async with sem:
+            instances = await _fetch_instances_for_workout(wid, headers)
+            set_idx, total = _build_set_volume_index(instances)
+            wid_to_index[wid] = set_idx
+            wid_to_total[wid] = total
+
+    await asyncio.gather(*[_build_for_wid(wid) for wid in unique_wids])
+
+    # 5) Aggregate per day
+    activity_map: dict[str, dict] = {}
+    total_volume = 0.0
+    unique_days: set[str] = set()
+
+    for s in completed:
+        started_at = s.get("started_at")
+        day_key = _date_key_from_iso(str(started_at))
+        unique_days.add(day_key)
+        # Only count into activity window
+        day_date = datetime.fromisoformat(day_key)
+        if not (grid_start.date() <= day_date.date() <= grid_end.date()):
+            continue
+
+        wid = s.get("workout_id")
+        progress = s.get("progress") or {}
+        completed_map = progress.get("completed") or {}
+        session_volume = 0.0
+
+        if isinstance(wid, int):
+            set_lookup = wid_to_index.get(wid) or {}
+            # If nothing completed explicitly, fallback to total workout volume
+            if not isinstance(completed_map, dict) or not any(isinstance(v, list) and v for v in completed_map.values()):
+                session_volume = wid_to_total.get(wid, 0.0)
+            else:
+                for v in completed_map.values():
+                    if isinstance(v, list):
+                        for sid in v:
+                            if isinstance(sid, int):
+                                session_volume += float(set_lookup.get(sid, 0.0))
+
+        total_volume += session_volume
+        cur = activity_map.get(day_key)
+        if not cur:
+            activity_map[day_key] = {"session_count": 1, "volume": session_volume}
+        else:
+            cur["session_count"] += 1
+            cur["volume"] += session_volume
+
+    # 6) Compute max_day_volume
+    max_day_volume = 0.0
+    for v in activity_map.values():
+        vol = float(v.get("volume", 0.0))
+        if vol > max_day_volume:
+            max_day_volume = vol
+
+    # 7) Build response sessions (last N)
+    last_sessions: list[schemas.SessionLite] = []
+    for s in completed[:limit]:
+        last_sessions.append(
+            schemas.SessionLite(
+                id=int(s.get("id")),
+                workout_id=int(s.get("workout_id")),
+                started_at=datetime.fromisoformat(str(s.get("started_at")).replace("Z", "+00:00")),
+                finished_at=(datetime.fromisoformat(str(s.get("finished_at")).replace("Z", "+00:00")) if s.get("finished_at") else None),
+                status=str(s.get("status") or ""),
+            )
+        )
+
+    # 8) Cast activity map into schema type
+    typed_activity: dict[str, schemas.DayActivity] = {
+        k: schemas.DayActivity(session_count=int(v.get("session_count", 0)), volume=float(v.get("volume", 0.0)))
+        for k, v in activity_map.items()
+    }
+
+    # Build final content dict for stable ETag
+    content_model = schemas.ProfileAggregatesResponse(
+        generated_at=now,
+        weeks=weeks,
+        total_workouts=len(completed),
+        total_volume=float(total_volume),
+        active_days=len({k for k in (_date_key_from_iso(str(s.get("started_at"))) for s in completed)}),
+        max_day_volume=float(max_day_volume),
+        activity_map=typed_activity,
+        completed_sessions=last_sessions,
+    )
+    # Encode datetimes and nested models to JSON-serializable structures
+    content = jsonable_encoder(content_model, custom_encoder={datetime: lambda v: v.isoformat()})
+
+    # Compute ETag and cache
+    try:
+        etag = hashlib.sha256(json.dumps(content, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+    except Exception:
+        etag = ""
+    _PROFILE_CACHE[cache_key] = {
+        "etag": etag,
+        "content": content,
+        "expires_at": now + timedelta(seconds=_PROFILE_CACHE_TTL_SECONDS),
+    }
+    # Handle If-None-Match post-compute
+    if inm and inm == etag:
+        return Response(status_code=304)
+    return JSONResponse(content=content, headers={"ETag": etag})
 async def _proxy_request(request: Request, target_url: str, headers: dict) -> Response:
     method = request.method
     params = dict(request.query_params)
@@ -371,54 +773,69 @@ async def _assemble_workout_for_client(
     instances_url = f"{EXERCISES_SERVICE_URL}/exercises/instances/workouts/{workout_id}/instances"
     try:
         async with httpx.AsyncClient() as client:
-            instances_res = await client.get(instances_url, headers=headers)
+            print(f"[DEBUG] Fetching exercise instances from: {instances_url}")
+            instances_res = await client.get(instances_url, headers=headers, follow_redirects=True)
+            print(f"[DEBUG] Instances response status: {instances_res.status_code}")
             if instances_res.status_code == 200:
                 instances_data = instances_res.json() or []
+            else:
+                try:
+                    print(f"[DEBUG] Instances response body: {instances_res.text}")
+                except Exception:
+                    pass
     except Exception as e:
         print(f"[DEBUG] Failed to fetch instances for workout {workout_id}: {e}")
 
-    # 2) Fallback: map from workouts-service exercises
+    # 2) Fallbacks only when instances are unavailable
     if not instances_data:
-        exercises = workout_data.get("exercises") or []
-        if exercises:
-            mapped_instances: list[dict] = []
-            for ex in exercises:
-                sets = []
-                for s in ex.get("sets", []):
-                    # Keep compact client schema but include effort as a separate field for consistency
-                    sets.append({
+        # Determine workout type to scope fallbacks
+        workout_type = str(workout_data.get("workout_type") or "").lower()
+        if workout_type == "generated":
+            # 2a) Map from workouts-service embedded exercises (generated path)
+            exercises = workout_data.get("exercises") or []
+            if exercises:
+                mapped_instances: list[dict] = []
+                for ex in exercises:
+                    sets = []
+                    for s in ex.get("sets", []):
+                        # Keep compact client schema but include effort as a separate field for consistency
+                        sets.append({
+                            "id": None,
+                            "reps": s.get("volume"),
+                            "weight": s.get("working_weight") if s.get("working_weight") is not None else s.get("weight"),
+                            "rpe": s.get("effort"),
+                            "effort": s.get("effort"),
+                            "effort_type": "RPE",
+                            "intensity": s.get("intensity"),
+                            "order": None,
+                        })
+                    mapped_instances.append({
                         "id": None,
-                        "reps": s.get("volume"),
-                        "weight": s.get("working_weight") if s.get("working_weight") is not None else s.get("weight"),
-                        "rpe": s.get("effort"),
-                        "effort": s.get("effort"),
-                        "effort_type": "RPE",
-                        "intensity": s.get("intensity"),
+                        "exercise_list_id": ex.get("exercise_id"),
+                        "sets": sets,
+                        "notes": ex.get("notes"),
                         "order": None,
+                        "workout_id": workout_id,
+                        "user_max_id": None,
                     })
-                mapped_instances.append({
-                    "id": None,
-                    "exercise_list_id": ex.get("exercise_id"),
-                    "sets": sets,
-                    "notes": ex.get("notes"),
-                    "order": None,
-                    "workout_id": workout_id,
-                    "user_max_id": None,
-                })
-            workout_data["exercise_instances"] = mapped_instances
-        else:
-            # 3) Plan-based fallback for generated workouts
-            plan_instances = await _derive_exercise_instances_from_plan(
-                applied_plan_id=workout_data.get("applied_plan_id"),
-                plan_order_index=workout_data.get("plan_order_index"),
-                workout_name=workout_data.get("name"),
-                workout_id=workout_id,
-                headers=headers,
-            )
-            if plan_instances:
-                workout_data["exercise_instances"] = plan_instances
+                workout_data["exercise_instances"] = mapped_instances
             else:
-                workout_data["exercise_instances"] = workout_data.get("exercise_instances", [])
+                # 2b) Plan-based fallback for generated workouts
+                plan_instances = await _derive_exercise_instances_from_plan(
+                    applied_plan_id=workout_data.get("applied_plan_id"),
+                    plan_order_index=workout_data.get("plan_order_index"),
+                    workout_name=workout_data.get("name"),
+                    workout_id=workout_id,
+                    headers=headers,
+                )
+                if plan_instances:
+                    workout_data["exercise_instances"] = plan_instances
+                else:
+                    workout_data["exercise_instances"] = workout_data.get("exercise_instances", [])
+        else:
+            # Manual workouts: do NOT overwrite instances with embedded plan/exercises snapshot
+            # Keep existing instances as-is (or empty) to avoid showing stale values after refresh
+            workout_data["exercise_instances"] = workout_data.get("exercise_instances", [])
     else:
         workout_data["exercise_instances"] = instances_data
 
@@ -429,9 +846,9 @@ async def _assemble_workout_for_client(
             ids = [int(i) for i in ids if isinstance(i, (int, str)) and str(i).isdigit()]
             if ids:
                 q = ",".join(str(i) for i in sorted(set(ids)))
-                defs_url = f"{EXERCISES_SERVICE_URL}/exercises/definitions?ids={q}"
+                defs_url = f"{EXERCISES_SERVICE_URL}/exercises/definitions"
                 async with httpx.AsyncClient() as client:
-                    defs_res = await client.get(defs_url, headers=headers)
+                    defs_res = await client.get(defs_url, headers=headers, params={"ids": q}, follow_redirects=True)
                     if defs_res.status_code == 200:
                         defs_list = defs_res.json() or []
                         by_id = {int(d.get("id")): d for d in defs_list if d and d.get("id") is not None}
@@ -614,16 +1031,16 @@ async def create_workout(workout_data: schemas.WorkoutCreateWithExercises, reque
             
             # Создание инстансов
             if workout_data.exercise_instances:
-                instances_url = f"{EXERCISES_SERVICE_URL}/exercises/instances/workouts/{workout_id}/instances/"  
+                instances_url = f"{EXERCISES_SERVICE_URL}/exercises/instances/workouts/{workout_id}/instances"  
                 created_instances = []
                 
                 for instance in workout_data.exercise_instances:
                     instance_data = instance.model_dump_json()
-                    instance_resp = await client.post(instances_url, content=instance_data, headers=headers)
+                    instance_resp = await client.post(instances_url, content=instance_data, headers=headers, follow_redirects=True)
                     
                     if instance_resp.status_code != 201:
                         # Compensation: delete workout if instance creation fails
-                        await client.delete(f"{workout_url}{workout_id}/", headers=headers)  
+                        await client.delete(f"{workout_url}{workout_id}", headers=headers, follow_redirects=True)  
                         return JSONResponse(
                             content={"detail": "Failed to create exercise instance", "error": instance_resp.json()},
                             status_code=instance_resp.status_code
@@ -637,7 +1054,8 @@ async def create_workout(workout_data: schemas.WorkoutCreateWithExercises, reque
     except httpx.HTTPStatusError as e:
         # Если создание инстансов провалилось, удаляем тренировку
         if "workout_id" in locals():
-            await httpx.AsyncClient().delete(f"{workout_url}{workout_id}/", headers=headers)  
+            async with httpx.AsyncClient() as cleanup_client:
+                await cleanup_client.delete(f"{workout_url}{workout_id}/", headers=headers)
         return JSONResponse(
             content={"detail": str(e)},
             status_code=e.response.status_code
@@ -802,7 +1220,7 @@ async def get_workout_metrics(
         ids_query = ",".join(str(i) for i in sorted(exercise_ids))
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(20.0)) as client:
-                res = await client.get(f"{EXERCISES_SERVICE_URL}/exercises/definitions", headers=headers, params={"ids": ids_query})
+                res = await client.get(f"{EXERCISES_SERVICE_URL}/exercises/definitions", headers=headers, params={"ids": ids_query}, follow_redirects=True)
                 if res.status_code == 200:
                     defs = res.json() or []
                     for d in defs:
@@ -969,7 +1387,7 @@ async def get_next_workout_in_plan(workout_id: int, request: Request):
     instances_url = f"{EXERCISES_SERVICE_URL}/exercises/instances/workouts/{next_id}/instances"
     print(f"[DEBUG] Fetching instances for next workout from: {instances_url}")
     async with httpx.AsyncClient() as client:
-        instances_res = await client.get(instances_url, headers=headers)
+        instances_res = await client.get(instances_url, headers=headers, follow_redirects=True)
         print(f"[DEBUG] Next instances response status: {instances_res.status_code}")
         print(f"[DEBUG] Next instances response content: {instances_res.text}")
         instances_data = instances_res.json() if instances_res.status_code == 200 else []
@@ -1182,6 +1600,14 @@ async def finish_workout(workout_id: int, request: Request):
             print(f"[DEBUG] Update workout after finish status: {put_res.status_code}")
     except Exception as e:
         print(f"[DEBUG] Failed to update workout after finish: {e}")
+
+    # 3b) Invalidate profile aggregates cache for this user to reflect fresh activity immediately
+    try:
+        user = getattr(request.state, "user", None)
+        uid = (user or {}).get("uid") if isinstance(user, dict) else None
+        _invalidate_profile_cache_for_user(uid)
+    except Exception:
+        pass
 
     # 4) Fetch workout and assemble for client
     async with httpx.AsyncClient() as client:

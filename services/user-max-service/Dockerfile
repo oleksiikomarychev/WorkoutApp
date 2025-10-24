@@ -15,7 +15,6 @@ RUN pip install --no-cache-dir -U pip && \
 # Copy alembic config and migrations
 COPY ./alembic /app/alembic
 COPY ./alembic.ini /app/alembic.ini
-COPY ./run_migrations.sh /app/run_migrations.sh
 
 ENV PYTHONUNBUFFERED=1 \
     PORT=8003

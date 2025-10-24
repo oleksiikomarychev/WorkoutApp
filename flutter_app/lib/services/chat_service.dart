@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status_codes;
 
@@ -164,7 +165,17 @@ class ChatService {
     _cancelReconnectTimer();
 
     try {
-      final uri = ChatConfig.chatUri();
+      final base = ChatConfig.chatUri();
+      String? idToken;
+      try {
+        idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
+      } catch (_) {}
+      final qp = Map<String, String>.from(base.queryParameters);
+      if (idToken != null && idToken.isNotEmpty) {
+        qp['token'] = idToken;
+      }
+      final uri = base.replace(queryParameters: qp);
+
       final channel = WebSocketChannel.connect(uri);
       _channel = channel;
       _setConnectionState(ChatConnectionState.connected);

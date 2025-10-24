@@ -10,11 +10,11 @@ from .rpe_calculations import (
 from .calculation import round_to_step
 from .schemas import RpeComputeRequest, RpeComputeResponse, ComputationError
 from .rpc import get_effective_max
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from typing import Dict
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, Header
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,12 +26,20 @@ app = FastAPI(title="rpe-service", version="0.1.0")
 # Регистрация роутов
 router = APIRouter(prefix="/rpe")
 
+
+def get_current_user_id(x_user_id: str | None = Header(default=None, alias="X-User-Id")) -> str:
+    if not x_user_id:
+        raise HTTPException(status_code=401, detail="X-User-Id header required")
+    return x_user_id
+
+
 @router.get("/health")
-def health() -> Dict[str, str]:
+def health(user_id: str = Depends(get_current_user_id)) -> Dict[str, str]:
     return {"status": "ok"}
 
+
 @router.get("/table", tags=["Utils"])
-def get_rpe_table() -> Dict[int, Dict[int, int]]:
+def get_rpe_table(user_id: str = Depends(get_current_user_id)) -> Dict[int, Dict[int, int]]:
     try:
         logger.info("Serving RPE table")
         return cached_rpe_table()
@@ -40,7 +48,10 @@ def get_rpe_table() -> Dict[int, Dict[int, int]]:
         return JSONResponse(status_code=500, content=ComputationError(error="RPE_TABLE_ERROR", message=str(e)).model_dump())
 
 @router.post("/compute", tags=["Utils"], response_model=RpeComputeResponse)
-async def compute_rpe_set(payload: RpeComputeRequest) -> RpeComputeResponse:
+async def compute_rpe_set(
+    payload: RpeComputeRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> RpeComputeResponse:
     try:
         intensity = payload.intensity
         effort = payload.effort

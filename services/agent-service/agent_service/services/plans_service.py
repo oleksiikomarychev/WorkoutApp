@@ -72,17 +72,19 @@ def _to_calendar_plan_create_payload(plan: TrainingPlan) -> dict:
         "mesocycles": mesocycles_payload,
     }
 
-async def save_plan_to_plans_service(plan: TrainingPlan):
+async def save_plan_to_plans_service(plan: TrainingPlan, user_id: str):
     """Отправляем план в plans-service (create calendar plan)."""
     try:
         payload = _to_calendar_plan_create_payload(plan)
+        headers = {"X-User-Id": user_id}
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
                 f"{settings.plans_service_url}/plans/calendar-plans/",
                 json=payload,
+                headers=headers,
             )
             response.raise_for_status()
-            logger.info("Plan saved to plans-service | id=%s", response.json().get("id"))
+            logger.info("Plan saved to plans-service for user %s | id=%s", user_id, response.json().get("id"))
             return response.json()
     except (httpx.RequestError, httpx.HTTPStatusError) as e:
         logger.error(f"Ошибка сохранения плана: {str(e)}")

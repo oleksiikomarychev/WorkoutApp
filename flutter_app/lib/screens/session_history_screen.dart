@@ -16,16 +16,12 @@ class SessionHistoryScreen extends ConsumerStatefulWidget {
 class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
   final TextEditingController _workoutIdController = TextEditingController();
   final DateFormat _dateFormat = DateFormat('yyyy-MM-dd HH:mm');
-  bool _isLoading = false;
-  String? _error;
-  List<WorkoutSession> _sessions = const [];
+  int? _filterWorkoutId;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadSessions();
-    });
+    // No initial manual load; provider handles initial fetch
   }
 
   @override
@@ -34,54 +30,27 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
     super.dispose();
   }
 
-  Future<void> _loadSessions({int? workoutId}) async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    try {
-      final service = ref.read(workoutSessionServiceProvider);
-      final items = workoutId != null
-          ? await service.listSessions(workoutId)
-          : await service.listAllSessions();
-      setState(() {
-        _sessions = items;
-        if (items.isEmpty) {
-          _error = 'Сессий не найдено';
-        }
-      });
-    } catch (err) {
-      setState(() {
-        _error = 'Ошибка загрузки: $err';
-        _sessions = const [];
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
   Future<void> _handleLoadTapped() async {
     final raw = _workoutIdController.text.trim();
     if (raw.isEmpty) {
-      await _loadSessions();
+      setState(() {
+        _filterWorkoutId = null;
+      });
       return;
     }
 
     final workoutId = int.tryParse(raw);
     if (workoutId == null) {
+      // Invalid input -> clear filter
       setState(() {
-        _error = 'Введите корректный workout_id';
-        _sessions = const [];
+        _filterWorkoutId = null;
       });
       return;
     }
 
-    await _loadSessions(workoutId: workoutId);
+    setState(() {
+      _filterWorkoutId = workoutId;
+    });
   }
 
   String _formatDate(DateTime? dt) {
@@ -131,6 +100,7 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final sessionsAsync = ref.watch(completedSessionsProviderFamily(_filterWorkoutId));
     return Scaffold(
       appBar: AppBar(
         title: const Text('Session History Debug'),
@@ -154,7 +124,7 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
             Row(
               children: [
                 ElevatedButton.icon(
-                  onPressed: _isLoading ? null : _handleLoadTapped,
+                  onPressed: _handleLoadTapped,
                   icon: const Icon(Icons.refresh),
                   label: const Text('Загрузить истории'),
                 ),
@@ -162,38 +132,49 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
                 IconButton(
                   icon: const Icon(Icons.clear),
                   tooltip: 'Сбросить фильтр',
-                  onPressed: _isLoading
-                      ? null
-                      : () {
-                          _workoutIdController.clear();
-                          _loadSessions();
-                        },
+                  onPressed: () {
+                    _workoutIdController.clear();
+                    setState(() {
+                      _filterWorkoutId = null;
+                    });
+                  },
                 ),
-                if (_isLoading) const CircularProgressIndicator(),
+                sessionsAsync.isLoading ? const CircularProgressIndicator() : const SizedBox.shrink(),
               ],
             ),
             const SizedBox(height: 16),
-            if (_error != null)
-              Text(
-                _error!,
-                style: const TextStyle(color: Colors.red),
-              ),
             const SizedBox(height: 8),
-            if (_sessions.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'Всего сессий: ${_sessions.length}',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+            sessionsAsync.when(
+              loading: () => const Expanded(
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (err, _) => Expanded(
+                child: Center(
+                  child: Text('Ошибка загрузки: $err', style: const TextStyle(color: Colors.red)),
                 ),
               ),
-            Expanded(
-              child: _sessions.isEmpty
-                  ? const Center(child: Text('Нет данных для отображения'))
-                  : ListView.builder(
-                      itemCount: _sessions.length,
-                      itemBuilder: (context, index) => _buildSessionTile(_sessions[index]),
-                    ),
+              data: (sessions) => Expanded(
+                child: sessions.isEmpty
+                    ? const Center(child: Text('Нет данных для отображения'))
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              'Всего сессий: ${sessions.length}',
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          Expanded(
+                            child: ListView.builder(
+                              itemCount: sessions.length,
+                              itemBuilder: (context, index) => _buildSessionTile(sessions[index]),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
             ),
           ],
         ),

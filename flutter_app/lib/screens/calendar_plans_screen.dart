@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:workout_app/models/calendar_plan.dart';
 import 'package:workout_app/services/api_client.dart';
 import 'package:workout_app/config/api_config.dart';
+import 'package:workout_app/screens/user_profile_screen.dart';
 import 'calendar_plan_create.dart';
 import 'calendar_plan_detail.dart';
 import 'dart:async';
@@ -96,6 +97,14 @@ class _CalendarPlansScreenState extends State<CalendarPlansScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _fetchPlans,
+          ),
+          IconButton(
+            icon: const Icon(Icons.account_circle_outlined),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+              );
+            },
           ),
         ],
       ),

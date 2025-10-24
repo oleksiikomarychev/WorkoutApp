@@ -11,31 +11,46 @@ from ..schemas.calendar_plan import (
 
 
 class CalendarPlanInstanceService:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, user_id: str | None = None):
         self.db = db
+        self.user_id = user_id
+
+    def _require_user_id(self) -> str:
+        if not self.user_id:
+            raise ValueError("User context required")
+        return self.user_id
 
     def list_instances(self) -> List[CalendarPlanInstanceResponse]:
+        user_id = self._require_user_id()
         instances = (
             self.db.query(CalendarPlanInstance)
+            .join(CalendarPlan, CalendarPlan.id == CalendarPlanInstance.source_plan_id)
+            .filter(CalendarPlan.user_id == user_id)
             .all()
         )
         return [self._to_response(i) for i in instances]
 
     def get_instance(self, instance_id: int) -> Optional[CalendarPlanInstanceResponse]:
+        user_id = self._require_user_id()
         inst = (
             self.db.query(CalendarPlanInstance)
+            .join(CalendarPlan, CalendarPlan.id == CalendarPlanInstance.source_plan_id)
             .filter(
                 CalendarPlanInstance.id == instance_id,
+                CalendarPlan.user_id == user_id,
             )
             .first()
         )
         return self._to_response(inst) if inst else None
 
     def delete_instance(self, instance_id: int) -> None:
+        user_id = self._require_user_id()
         inst = (
             self.db.query(CalendarPlanInstance)
+            .join(CalendarPlan, CalendarPlan.id == CalendarPlanInstance.source_plan_id)
             .filter(
                 CalendarPlanInstance.id == instance_id,
+                CalendarPlan.user_id == user_id,
             )
             .first()
         )
@@ -45,16 +60,18 @@ class CalendarPlanInstanceService:
 
     def create_from_plan(self, plan_id: int) -> CalendarPlanInstanceResponse:
         try:
+            user_id = self._require_user_id()
             # User can only create an instance from their own plan or a global one
             plan = (
                 self.db.query(CalendarPlan)
                 .filter(
                     CalendarPlan.id == plan_id,
+                    CalendarPlan.user_id == user_id,
                     )
                 .first()
             )
             if not plan:
-                raise ValueError("Plan not found")
+                raise ValueError("Plan not found or permission denied")
 
             # If legacy top-level schedule is provided, keep backward compatibility
             if plan.schedule:
@@ -119,6 +136,7 @@ class CalendarPlanInstanceService:
 
     def create(self, data: CalendarPlanInstanceCreate) -> CalendarPlanInstanceResponse:
         try:
+            user_id = self._require_user_id()
             schedule = data.schedule
             # trust incoming ids; otherwise index if empty
             if not schedule:
@@ -126,8 +144,19 @@ class CalendarPlanInstanceService:
             else:
                 # Convert Pydantic objects into plain JSON-serializable dicts
                 schedule = self._dump_schedule(schedule)
+            plan = (
+                self.db.query(CalendarPlan)
+                .filter(
+                    CalendarPlan.id == data.source_plan_id,
+                    CalendarPlan.user_id == user_id,
+                )
+                .first()
+            )
+            if not plan:
+                raise ValueError("Plan not found or permission denied")
+
             inst = CalendarPlanInstance(
-                source_plan_id=data.source_plan_id,
+                source_plan_id=plan.id,
                 name=data.name,
                 schedule=schedule,
                 duration_weeks=data.duration_weeks,
@@ -142,10 +171,13 @@ class CalendarPlanInstanceService:
 
     def update(self, instance_id: int, data: CalendarPlanInstanceUpdate) -> CalendarPlanInstanceResponse:
         try:
+            user_id = self._require_user_id()
             inst = (
                 self.db.query(CalendarPlanInstance)
+                .join(CalendarPlan, CalendarPlan.id == CalendarPlanInstance.source_plan_id)
                 .filter(
                     CalendarPlanInstance.id == instance_id,
+                    CalendarPlan.user_id == user_id,
                 )
                 .first()
             )

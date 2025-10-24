@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from typing import List, Dict, Any
 
-from ..dependencies import get_db
+from ..dependencies import get_db, get_current_user_id
 from ..schemas.calendar_plan import (
     CalendarPlanCreate,
     CalendarPlanUpdate,
@@ -21,9 +21,10 @@ router = APIRouter(prefix="/calendar-plans")
 async def create_calendar_plan(
     plan_data: CalendarPlanCreate = Body(...),
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
     try:
-        result = await CalendarPlanService.create_plan(db, plan_data)
+        result = await CalendarPlanService.create_plan(db, plan_data, user_id)
         return result
     except ValueError as e:
         raise HTTPException(
@@ -35,28 +36,34 @@ async def create_calendar_plan(
 
 @router.get("/", response_model=List[CalendarPlanResponse])
 async def get_all_plans(
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ) -> List[CalendarPlanResponse]:
     try:
-        return await CalendarPlanService.get_all_plans(db)
+        return await CalendarPlanService.get_all_plans(db, user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 @router.get("/favorites", response_model=List[CalendarPlanResponse])
-async def get_favorite_plans(db: AsyncSession = Depends(get_db)) -> List[CalendarPlanResponse]:
+async def get_favorite_plans(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> List[CalendarPlanResponse]:
     try:
-        return await CalendarPlanService.get_favorite_plans(db)
+        return await CalendarPlanService.get_favorite_plans(db, user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to get favorite plans: {str(e)}") from e
 
 
 @router.get("/{plan_id}", response_model=CalendarPlanResponse)
 async def get_calendar_plan(
-    plan_id: int, db: AsyncSession = Depends(get_db)
+    plan_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
     try:
-        plan = await CalendarPlanService.get_plan(db, plan_id)
+        plan = await CalendarPlanService.get_plan(db, plan_id, user_id)
         if not plan:
             raise HTTPException(status_code=404, detail="Plan not found")
         # Convert to response model
@@ -70,10 +77,11 @@ async def get_calendar_plan(
 async def get_plan_workouts(
     plan_id: int, 
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
     compute: bool = Query(True, description="Apply normalization computations")
 ) -> List[Dict[str, Any]]:
     if compute:
-        return await CalendarPlanService.generate_workouts(db, plan_id)
+        return await CalendarPlanService.generate_workouts(db, plan_id, user_id)
     else:
         # Return base workout structure without computations
         return []
@@ -84,9 +92,10 @@ async def update_calendar_plan(
     plan_id: int,
     plan_data: CalendarPlanUpdate,
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
     try:
-        return await CalendarPlanService.update_plan(db, plan_id, plan_data)
+        return await CalendarPlanService.update_plan(db, plan_id, plan_data, user_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -95,9 +104,11 @@ async def update_calendar_plan(
 
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_calendar_plan(
-    plan_id: int, db: AsyncSession = Depends(get_db)
+    plan_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
     try:
-        await CalendarPlanService.delete_plan(db, plan_id)
+        await CalendarPlanService.delete_plan(db, plan_id, user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error") from e

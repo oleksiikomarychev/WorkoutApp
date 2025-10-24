@@ -1,13 +1,21 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, status
 from typing import List
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..dependencies import get_session_service
+from ..dependencies import get_db, get_current_user_id
 from ..services.session_service import SessionService
 from .. import schemas as sm
 from ..exceptions import WorkoutNotFoundException, SessionNotFoundException, ActiveSessionNotFoundException
 
 router = APIRouter(prefix="/sessions")
+
+
+def get_session_service(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+) -> SessionService:
+    return SessionService(db, user_id=user_id)
 
 
 @router.get("/history/all", response_model=List[sm.WorkoutSessionResponse])

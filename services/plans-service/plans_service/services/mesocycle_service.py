@@ -22,11 +22,18 @@ from ..schemas.mesocycle import (
 
 
 class MesocycleService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, user_id: str):
         self.db = db
+        self.user_id = user_id
+
+    def _require_user_id(self) -> str:
+        if not self.user_id:
+            raise ValueError("User context required")
+        return self.user_id
 
     async def _check_plan_permission(self, plan_id: int) -> CalendarPlan:
-        stmt = select(CalendarPlan).where(CalendarPlan.id == plan_id)
+        user_id = self._require_user_id()
+        stmt = select(CalendarPlan).where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
         result = await self.db.execute(stmt)
         plan = result.scalars().first()
         if not plan:
@@ -34,7 +41,13 @@ class MesocycleService:
         return plan
 
     async def _check_mesocycle_permission(self, mesocycle_id: int) -> Optional[Mesocycle]:
-        stmt = select(Mesocycle).options(joinedload(Mesocycle.applied_calendar_plan)).where(Mesocycle.id == mesocycle_id)
+        user_id = self._require_user_id()
+        stmt = (
+            select(Mesocycle)
+            .options(joinedload(Mesocycle.calendar_plan))
+            .join(Mesocycle.calendar_plan)
+            .where(Mesocycle.id == mesocycle_id, CalendarPlan.user_id == user_id)
+        )
         result = await self.db.execute(stmt)
         meso = result.scalars().first()
         if not meso:
@@ -42,7 +55,14 @@ class MesocycleService:
         return meso
 
     async def _check_microcycle_permission(self, microcycle_id: int) -> Microcycle:
-        stmt = select(Microcycle).options(joinedload(Microcycle.mesocycle).joinedload(Mesocycle.applied_calendar_plan)).where(Microcycle.id == microcycle_id)
+        user_id = self._require_user_id()
+        stmt = (
+            select(Microcycle)
+            .options(joinedload(Microcycle.mesocycle).joinedload(Mesocycle.calendar_plan))
+            .join(Microcycle.mesocycle)
+            .join(Mesocycle.calendar_plan)
+            .where(Microcycle.id == microcycle_id, CalendarPlan.user_id == user_id)
+        )
         result = await self.db.execute(stmt)
         micro = result.scalars().first()
         if not micro:
@@ -66,12 +86,17 @@ class MesocycleService:
 
     async def list_mesocycles(self, plan_id: int) -> List[MesocycleResponse]:
         try:
-            stmt = select(CalendarPlan).where(CalendarPlan.id == plan_id)
-            result = await self.db.execute(stmt)
-            plan = result.scalars().first()
-            if not plan:
-                raise HTTPException(status_code=404, detail="Plan not found or permission denied")
-            stmt = select(Mesocycle).where(Mesocycle.calendar_plan_id == plan_id).order_by(Mesocycle.order_index.asc(), Mesocycle.id.asc())
+            await self._check_plan_permission(plan_id)
+            user_id = self._require_user_id()
+            stmt = (
+                select(Mesocycle)
+                .join(Mesocycle.calendar_plan)
+                .where(
+                    Mesocycle.calendar_plan_id == plan_id,
+                    CalendarPlan.user_id == user_id,
+                )
+                .order_by(Mesocycle.order_index.asc(), Mesocycle.id.asc())
+            )
             result = await self.db.execute(stmt)
             meso = result.scalars().all()
             return [MesocycleResponse.model_validate(m) for m in meso]
@@ -81,9 +106,18 @@ class MesocycleService:
     async def create_mesocycle(self, data: MesocycleCreate) -> MesocycleResponse:
         try:
             await self._check_plan_permission(data.calendar_plan_id)
+            user_id = self._require_user_id()
             order_index = (data.order_index if (data.order_index is not None and data.order_index > 0) else None)
             if order_index is None:
-                stmt = select(Mesocycle).where(Mesocycle.calendar_plan_id == data.calendar_plan_id).order_by(Mesocycle.order_index.desc(), Mesocycle.id.desc())
+                stmt = (
+                    select(Mesocycle)
+                    .join(Mesocycle.calendar_plan)
+                    .where(
+                        Mesocycle.calendar_plan_id == data.calendar_plan_id,
+                        CalendarPlan.user_id == user_id,
+                    )
+                    .order_by(Mesocycle.order_index.desc(), Mesocycle.id.desc())
+                )
                 result = await self.db.execute(stmt)
                 last = result.scalars().first()
                 order_index = (last.order_index if last else 0) + 1
@@ -132,13 +166,23 @@ class MesocycleService:
         await self.db.commit()
 
     async def get_mesocycle_by_id(self, mesocycle_id: int) -> Optional[Mesocycle]:
+        await self._check_mesocycle_permission(mesocycle_id)
         stmt = select(Mesocycle).options(selectinload(Mesocycle.microcycles)).where(Mesocycle.id == mesocycle_id)
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
     async def list_microcycles(self, mesocycle_id: int) -> List[MicrocycleResponse]:
         meso = await self._check_mesocycle_permission(mesocycle_id)
-        stmt = select(Microcycle).where(Microcycle.mesocycle_id == mesocycle_id).order_by(Microcycle.order_index.asc(), Microcycle.id.asc())
+        stmt = (
+            select(Microcycle)
+            .join(Microcycle.mesocycle)
+            .join(Mesocycle.calendar_plan)
+            .where(
+                Microcycle.mesocycle_id == mesocycle_id,
+                CalendarPlan.user_id == self._require_user_id(),
+            )
+            .order_by(Microcycle.order_index.asc(), Microcycle.id.asc())
+        )
         result = await self.db.execute(stmt)
         micro = result.scalars().all()
         return [MicrocycleResponse.model_validate(mc) for mc in micro]
@@ -150,7 +194,16 @@ class MesocycleService:
         try:
             order_index = (data.order_index if (data.order_index is not None and data.order_index > 0) else None)
             if order_index is None:
-                stmt = select(Microcycle).where(Microcycle.mesocycle_id == data.mesocycle_id).order_by(Microcycle.order_index.desc(), Microcycle.id.desc())
+                stmt = (
+                    select(Microcycle)
+                    .join(Microcycle.mesocycle)
+                    .join(Mesocycle.calendar_plan)
+                    .where(
+                        Microcycle.mesocycle_id == data.mesocycle_id,
+                        CalendarPlan.user_id == self._require_user_id(),
+                    )
+                    .order_by(Microcycle.order_index.desc(), Microcycle.id.desc())
+                )
                 result = await self.db.execute(stmt)
                 last = result.scalars().first()
                 order_index = (last.order_index if last else 0) + 1
@@ -199,6 +252,7 @@ class MesocycleService:
         await self.db.commit()
 
     async def get_microcycle_by_id(self, microcycle_id: int) -> Optional[Microcycle]:
+        await self._check_microcycle_permission(microcycle_id)
         stmt = (
             select(Microcycle)
             .options(

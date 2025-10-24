@@ -1,14 +1,12 @@
-from fastapi import Depends
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import get_db
-from .services.workout_service import WorkoutService
-from .services.session_service import SessionService
 
 
-async def get_workout_service(db: AsyncSession = Depends(get_db)) -> WorkoutService:
-    return WorkoutService(db)
-
-
-async def get_session_service(db: AsyncSession = Depends(get_db)) -> SessionService:
-    return SessionService(db)
+async def get_current_user_id(request: Request) -> str:
+    """Extract user_id from X-User-Id header."""
+    user_id = request.headers.get("X-User-Id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="X-User-Id header required")
+    return user_id
