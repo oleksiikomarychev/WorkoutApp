@@ -311,6 +311,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       });
 
       final current = instance.sets[setIndex];
+      final oldSetId = current.id;
+      final wasCompleted = instance.id != null && oldSetId != null && _isSetCompleted(instance.id!, oldSetId);
+
       final updatedSet = current.copyWith(
         reps: reps ?? current.reps,
         weight: weight ?? current.weight,
@@ -350,6 +353,12 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           }
         });
       }
+      final newSets = savedInstance.sets;
+      final newSetId = (setIndex >= 0 && setIndex < newSets.length) ? newSets[setIndex].id : null;
+      if (wasCompleted && instance.id != null && oldSetId != null && newSetId != null && newSetId != oldSetId) {
+        await _handleCompletedSetIdMigration(instance.id!, oldSetId, newSetId);
+      }
+      await _loadExercises();
       _reconcileEditors();
     } catch (e) {
       if (mounted) {
@@ -1069,6 +1078,50 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     );
     _setEditors[key] = editor;
     return editor;
+  }
+
+  Future<void> _handleCompletedSetIdMigration(int instanceId, int oldSetId, int newSetId) async {
+    final localChanged = _updateLocalCompletion(instanceId, oldSetId, newSetId);
+    final sessionActive = _activeSession?.id != null && _activeSession?.isActive == true;
+    if (!sessionActive || _ref == null) {
+      if (localChanged && mounted) {
+        setState(() {});
+      }
+      return;
+    }
+    try {
+      final svc = _ref!.read(workoutSessionServiceProvider);
+      final sessionId = _activeSession!.id!;
+      await svc.updateSetCompletion(
+        sessionId: sessionId,
+        instanceId: instanceId,
+        setId: oldSetId,
+        completed: false,
+      );
+      final session = await svc.updateSetCompletion(
+        sessionId: sessionId,
+        instanceId: instanceId,
+        setId: newSetId,
+        completed: true,
+      );
+      if (!mounted) return;
+      setState(() => _activeSession = session);
+      _parseProgressFromSession();
+    } catch (e) {
+      _d('Failed to resync set completion: $e');
+    }
+  }
+
+  bool _updateLocalCompletion(int instanceId, int oldSetId, int newSetId) {
+    final current = _completedByInstance[instanceId];
+    if (current == null || !current.contains(oldSetId)) {
+      return false;
+    }
+    final updated = Set<int>.from(current);
+    updated.remove(oldSetId);
+    updated.add(newSetId);
+    _completedByInstance[instanceId] = updated;
+    return true;
   }
 
   void _onInlineFieldChanged(

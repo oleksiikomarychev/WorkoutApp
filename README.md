@@ -40,6 +40,27 @@ Modern strength training tracker that turns your plan into actionable daily work
 - Layers: `routers/` (HTTP), `services/` (business logic), `repositories/` (data)
 - RPE/1RM logic: proper intensity tables and true 1RM calculation from real sets
 
+## Authentication & User Scoping
+
+All services use user-scoped data isolation via the **`X-User-Id` header**:
+
+- **Header Name**: `X-User-Id` (case-insensitive matching in code)
+- **Required**: All authenticated endpoints require this header; missing header returns `401 Unauthorized`
+- **Propagation**: Services forward `X-User-Id` to downstream service calls (e.g., workouts-service → exercises-service, agent-service → plans-service)
+- **Isolation**: Each service filters queries by `user_id` to ensure users only access their own data
+
+### Services with User Scoping
+
+- **exercises-service**: `exercise_instances` filtered by `user_id`
+- **user-max-service**: `user_maxes` filtered by `user_id`
+- **workouts-service**: `workouts`, `sessions`, etc. filtered by `user_id`
+- **plans-service**: `calendar_plans` filtered by `user_id`
+- **agent-service**: `generated_plans` filtered by `user_id`
+
+### Gateway (Future)
+
+The API Gateway will validate bearer tokens and inject the `X-User-Id` header for internal service calls. Services trust this header only from the gateway network.
+
 ## AI Agent Flow
 
 ![AI Agent pipeline](gateway/gateway_app/image/AI_Agent_pipeline.png)

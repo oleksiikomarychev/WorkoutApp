@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "282810209663-2c8gaol6ijkhp96tc1c70fuj4bdvpgse.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.workout_app",
+            "certificate_hash": "54d4aa3addc19967e0c70ca66bc033ab3b78aa5a"
+          }
+        },
+        {
           "client_id": "282810209663-hqb6rd3lfme15d3l3s0ot6776stubutv.apps.googleusercontent.com",
           "client_type": 3
         }
@@ -29,6 +37,13 @@
             {
               "client_id": "282810209663-hqb6rd3lfme15d3l3s0ot6776stubutv.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "282810209663-psrtkj09pjudfn2ft0ifqfiugdm2oiel.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.workoutApp"
+              }
             }
           ]
         }

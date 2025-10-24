@@ -23,15 +23,30 @@ from sqlalchemy import select
 
 
 class AppliedCalendarPlanService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, user_id: str):
         self.db = db
+        self.user_id = user_id
+
+    def _require_user_id(self) -> str:
+        if not self.user_id:
+            raise ValueError("User context required")
+        return self.user_id
+
+    def _auth_headers(self) -> dict[str, str]:
+        headers = {
+            "Content-Type": "application/json",
+        }
+        user_id = self.user_id
+        if user_id:
+            headers["X-User-Id"] = user_id
+        return headers
 
     async def _fetch_user_maxes(self, exercise_ids: List[int]) -> List[Dict]:
         if not exercise_ids:
             return []
         base = "http://user-max-service:8003/user-max"
-        headers = {"Content-Type": "application/json"}
-        
+        headers = self._auth_headers()
+
         async with httpx.AsyncClient(timeout=10.0) as client:
             async def fetch_one(ex_id):
                 try:
@@ -55,9 +70,9 @@ class AppliedCalendarPlanService:
     async def _fetch_user_maxes_by_ids(self, user_max_ids: List[int]) -> List[Dict]:
         if not user_max_ids:
             return []
-        headers = {"Content-Type": "application/json"}
+        headers = self._auth_headers()
         base = "http://user-max-service:8003"
-        
+
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
                 url = f"{base}/user-max/by-ids"
@@ -75,15 +90,15 @@ class AppliedCalendarPlanService:
         """Ensure exercises exist by checking via the exercises-service API."""
         if not exercise_ids:
             return
-        
+
         base = "http://exercises-service:8002"
-        
+        headers = self._auth_headers()
+
         async with httpx.AsyncClient(timeout=10.0) as client:
             for ex_id in exercise_ids:
                 found = False
                 try:
                     url = f"{base}/exercises/definitions/{ex_id}"
-                    headers = {"Content-Type": "application/json"}
                     response = await client.get(url, headers=headers)
                     if response.status_code == 200:
                         found = True
@@ -95,10 +110,16 @@ class AppliedCalendarPlanService:
         return
 
     async def _generate_workouts_via_rpc(self, applied_plan_id: int, workouts: List[Dict[str, Any]], compute: ApplyPlanComputeSettings) -> Optional[List[int]]:
+        import logging
+        logger = logging.getLogger(__name__)
+        
         bases = [
             os.getenv("WORKOUTS_SERVICE_URL", "http://localhost:8004")
         ]
+        headers = self._auth_headers()
         
+        logger.info(f"[APPLY_PLAN] Generating {len(workouts)} workouts via RPC for applied_plan_id={applied_plan_id}")
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             for base in bases:
                 # Try only the path without /api/v1
@@ -106,6 +127,7 @@ class AppliedCalendarPlanService:
                 for path in paths:
                     url = urllib.parse.urljoin(base, path)
                     try:
+                        logger.info(f"[APPLY_PLAN] Posting to {url}")
                         response = await client.post(
                             url,
                             json={
@@ -114,13 +136,19 @@ class AppliedCalendarPlanService:
                                 "rounding_step": compute.rounding_step,
                                 "rounding_mode": compute.rounding_mode,
                                 "workouts": workouts
-                            }
+                            },
+                            headers=headers,
                         )
                         response.raise_for_status()
-                        return response.json().get("workout_ids")
-                    except Exception:
-                        pass
+                        workout_ids = response.json().get("workout_ids")
+                        logger.info(f"[APPLY_PLAN] Successfully generated workout_ids: {workout_ids}")
+                        return workout_ids
+                    except httpx.HTTPStatusError as e:
+                        logger.error(f"[APPLY_PLAN] HTTP error from {url}: status={e.response.status_code}, body={e.response.text}")
+                    except Exception as e:
+                        logger.error(f"[APPLY_PLAN] Failed to generate workouts via {url}: {e}")
         
+        logger.warning("[APPLY_PLAN] All workout generation attempts failed")
         return None
 
     async def _create_instances_for_workouts(
@@ -137,6 +165,7 @@ class AppliedCalendarPlanService:
             return
         base = os.getenv("EXERCISES_SERVICE_URL", "http://exercises-service:8002")
         # Ensure base has no trailing slash issues in joins
+        headers = self._auth_headers()
         async with httpx.AsyncClient(timeout=20.0) as client:
             for idx, workout_id in enumerate(workout_ids):
                 if idx >= len(workouts_to_generate):
@@ -168,7 +197,7 @@ class AppliedCalendarPlanService:
                     }
                     url = f"{base}/exercises/instances/workouts/{workout_id}/instances"
                     try:
-                        res = await client.post(url, json=instance_payload)
+                        res = await client.post(url, json=instance_payload, headers=headers)
                         # Do not raise on error to avoid aborting entire plan; just continue
                         if res.status_code not in (200, 201):
                             print(
@@ -180,15 +209,17 @@ class AppliedCalendarPlanService:
 
     async def apply_plan(self, plan_id: int, compute: ApplyPlanComputeSettings, user_max_ids: List[int]) -> AppliedCalendarPlanResponse:
         try:
-            # Async-compatible query for base plan with eager loading
+            user_id = self._require_user_id()
+            headers = self._auth_headers()
+
             stmt = (
                 select(CalendarPlan)
                 .options(
                     selectinload(CalendarPlan.mesocycles)
-                        .selectinload(Mesocycle.microcycles)
-                        .selectinload(Microcycle.plan_workouts)
-                        .selectinload(PlanWorkout.exercises)
-                        .selectinload(PlanExercise.sets)
+                    .selectinload(Mesocycle.microcycles)
+                    .selectinload(Microcycle.plan_workouts)
+                    .selectinload(PlanWorkout.exercises)
+                    .selectinload(PlanExercise.sets)
                 )
                 .where(CalendarPlan.id == plan_id)
             )
@@ -196,30 +227,39 @@ class AppliedCalendarPlanService:
             base_plan = result.scalars().first()
             if not base_plan:
                 raise ValueError(f"План с ID {plan_id} не найден")
-            
-            # Query mesocycles
-            stmt = select(Mesocycle).where(Mesocycle.calendar_plan_id == plan_id).order_by(Mesocycle.order_index.asc(), Mesocycle.id.asc())
+
+            stmt = (
+                select(Mesocycle)
+                .join(Mesocycle.calendar_plan)
+                .where(Mesocycle.calendar_plan_id == plan_id)
+                .order_by(Mesocycle.order_index.asc(), Mesocycle.id.asc())
+            )
             result = await self.db.execute(stmt)
             mesocycles = result.scalars().all()
-            
             if not mesocycles:
                 raise ValueError("План должен содержать хотя бы один мезоцикл")
-                
-            # Query microcycles with full eager loading
-            stmt = select(Microcycle).options(
-                selectinload(Microcycle.plan_workouts).selectinload(PlanWorkout.exercises).selectinload(PlanExercise.sets)
-            ).where(Microcycle.mesocycle_id.in_([m.id for m in mesocycles])).order_by(Microcycle.order_index.asc(), Microcycle.id.asc())
+
+            stmt = (
+                select(Microcycle)
+                .options(
+                    selectinload(Microcycle.plan_workouts)
+                    .selectinload(PlanWorkout.exercises)
+                    .selectinload(PlanExercise.sets)
+                )
+                .join(Microcycle.mesocycle)
+                .join(Mesocycle.calendar_plan)
+                .where(Microcycle.mesocycle_id.in_([m.id for m in mesocycles]))
+                .order_by(Microcycle.order_index.asc(), Microcycle.id.asc())
+            )
             result = await self.db.execute(stmt)
             microcycles = result.scalars().all()
-            
-            # Collect required exercises
-            required_exercises = set()
+
+            required_exercises: set[int] = set()
             for mc in microcycles:
                 for workout in mc.plan_workouts:
                     for exercise in workout.exercises:
                         required_exercises.add(exercise.exercise_definition_id)
-            
-            # Fetch user maxes selected by the user (priority) and ensure exercises exist
+
             selected_user_maxes = await self._fetch_user_maxes_by_ids(user_max_ids) if user_max_ids else []
 
             def _pick_preferred(existing: dict | None, candidate: dict | None) -> dict | None:
@@ -253,31 +293,37 @@ class AppliedCalendarPlanService:
 
             user_maxes = list(user_max_by_exercise.values())
             await self._ensure_exercises_present(required_exercises)
-            
-            # Deactivate any currently active plan
-            stmt = update(AppliedCalendarPlan).where(AppliedCalendarPlan.is_active.is_(True)).values(is_active=False)
+
+            stmt = (
+                update(AppliedCalendarPlan)
+                .where(
+                    AppliedCalendarPlan.is_active.is_(True),
+                    AppliedCalendarPlan.user_id == user_id,
+                )
+                .values(is_active=False)
+            )
             await self.db.execute(stmt)
-            
-            # Create new applied plan
+
             start_date = compute.start_date or datetime.now(timezone.utc)
             applied_plan = AppliedCalendarPlan(
                 calendar_plan_id=plan_id,
                 start_date=start_date,
+                user_id=user_id,
             )
             total_days = 0
             for mc in microcycles:
                 if mc.days_count is not None:
                     total_days += mc.days_count
                 else:
-                    total_days += len(mc.plan_workouts)  # Use number of workouts as fallback
+                    total_days += len(mc.plan_workouts)
             applied_plan.end_date = applied_plan.start_date + timedelta(days=total_days)
-            # Convert to naive UTC datetimes for database compatibility
             applied_plan.start_date = applied_plan.start_date.replace(tzinfo=None)
             applied_plan.end_date = applied_plan.end_date.replace(tzinfo=None)
             self.db.add(applied_plan)
             await self.db.flush()
-            
-            calculated_schedule = {}
+
+            calculated_schedule: dict[str, list[dict[str, Any]]] = {}
+
             def round_to_step(value: float) -> float:
                 step = compute.rounding_step
                 mode = compute.rounding_mode
@@ -286,67 +332,62 @@ class AppliedCalendarPlanService:
                 ratio = value / step
                 if mode == RoundingMode.floor:
                     return math.floor(ratio) * step
-                elif mode == RoundingMode.ceil:
+                if mode == RoundingMode.ceil:
                     return math.ceil(ratio) * step
-                else:  # nearest
-                    return round(ratio) * step
+                return round(ratio) * step
+
             plan_order = 0
-            meso_id_to_micro = {}
+            meso_id_to_micro: dict[int, list[Microcycle]] = {}
             for mc in microcycles:
                 meso_id_to_micro.setdefault(mc.mesocycle_id, []).append(mc)
+
             effective_1rms: dict[int, float] = {}
             for um in user_maxes:
-                base_true = await workout_calculation.WorkoutCalculator.get_true_1rm_from_user_max(um)
+                base_true = await workout_calculation.WorkoutCalculator.get_true_1rm_from_user_max(um, headers=headers)
                 effective_1rms[um["exercise_id"]] = float(base_true if base_true is not None else um["max_weight"])
 
-            workouts_to_generate = []
-            # cumulative day offset across microcycles (respects mc.days_count when available)
-            cumulative_days_offset = 0
+            workouts_to_generate: list[dict[str, Any]] = []
             for mi, meso in enumerate(mesocycles, start=1):
                 for mci, mc in enumerate(meso_id_to_micro.get(meso.id, []), start=1):
-                    # Build schedule_dict from ORM relationships
-                    schedule_dict = defaultdict(list)
-                    # Ensure deterministic ordering of plan workouts within a microcycle
+                    schedule_dict: dict[str, list[dict[str, Any]]] = defaultdict(list)
                     for workout in sorted(mc.plan_workouts, key=lambda w: (w.order_index, w.id)):
                         workout_data = {"exercises": []}
                         for exercise in workout.exercises:
                             sets_data = []
                             for s in exercise.sets:
-                                set_dict = {
-                                    "intensity": s.intensity,
-                                    "effort": s.effort,
-                                    "volume": s.volume
+                                sets_data.append(
+                                    {
+                                        "intensity": s.intensity,
+                                        "effort": s.effort,
+                                        "volume": s.volume,
+                                    }
+                                )
+                            workout_data["exercises"].append(
+                                {
+                                    "exercise_id": exercise.exercise_definition_id,
+                                    "sets": sets_data,
                                 }
-                                sets_data.append(set_dict)
-                            exercise_data = {
-                                "exercise_id": exercise.exercise_definition_id,
-                                "sets": sets_data
-                            }
-                            workout_data["exercises"].append(exercise_data)
+                            )
                         schedule_dict[workout.day_label].append(workout_data)
-                    
+
                     if not schedule_dict:
                         continue
-                    
-                    # Determine microcycle length in days
-                    micro_len = (mc.days_count or 0)
+
+                    micro_len = mc.days_count or 0
                     if micro_len <= 0:
-                        # fallback: use number of unique day slots or workouts count, minimum 7 if nothing set
                         micro_len = max(len(schedule_dict) if schedule_dict else 0, len(mc.plan_workouts))
                         if micro_len == 0:
                             micro_len = 7
 
                     for di, (day_key, workouts) in enumerate(schedule_dict.items(), start=1):
                         label = f"M{mi}-MC{mci}-D{di}: {day_key}"
-
                         calculated_schedule[label] = []
-                        for workout_index, workout in enumerate(workouts, start=1):
-                            workout_exercises = []  # Reset for each workout in the day
 
-                            for exercise in workout.get("exercises", []):
-                                # Keep exercise even if user_max is missing; we can compute sets without weight
+                        for workout_index, workout_payload in enumerate(workouts, start=1):
+                            workout_exercises: list[dict[str, Any]] = []
+
+                            for exercise in workout_payload.get("exercises", []):
                                 user_max = user_max_by_exercise.get(exercise["exercise_id"])
-
                                 calculated_sets = []
                                 for set_data in exercise["sets"]:
                                     intensity = set_data.get("intensity")
@@ -354,75 +395,94 @@ class AppliedCalendarPlanService:
                                     volume = set_data.get("volume")
                                     try:
                                         if intensity is not None and effort is not None:
-                                            volume = await get_volume(intensity=intensity, effort=effort)
+                                            volume = await get_volume(intensity=intensity, effort=effort, headers=headers)
                                         elif volume is not None and effort is not None:
-                                            intensity = await get_intensity(volume=volume, effort=effort)
+                                            intensity = await get_intensity(volume=volume, effort=effort, headers=headers)
                                         elif volume is not None and intensity is not None:
-                                            effort = await get_effort(volume=volume, intensity=intensity)
+                                            effort = await get_effort(volume=volume, intensity=intensity, headers=headers)
                                     except Exception:
-                                        # Keep original values if calculation fails
                                         pass
+
                                     weight = None
-                                    # Only compute weight when we have user_max info
                                     if compute.compute_weights and intensity is not None and user_max is not None:
                                         eff = effective_1rms.get(user_max["exercise_id"])
                                         if eff is None:
-                                            true_1rm = await workout_calculation.WorkoutCalculator.get_true_1rm_from_user_max(user_max)
+                                            true_1rm = await workout_calculation.WorkoutCalculator.get_true_1rm_from_user_max(user_max, headers=headers)
                                             eff = float(true_1rm) if true_1rm is not None else float(user_max["max_weight"])
                                             effective_1rms[user_max["exercise_id"]] = eff
                                         raw = eff * (intensity / 100.0)
                                         weight = round_to_step(raw)
 
-                                    calculated_sets.append({"intensity": intensity, "effort": effort, "volume": volume, "working_weight": weight, "weight": weight})
+                                    calculated_sets.append(
+                                        {
+                                            "intensity": intensity,
+                                            "effort": effort,
+                                            "volume": volume,
+                                            "working_weight": weight,
+                                            "weight": weight,
+                                        }
+                                    )
 
-                                calculated_exercise = {"exercise_id": exercise["exercise_id"],"sets": calculated_sets}
-                                calculated_schedule[label].append(calculated_exercise)
-                                
-                                workout_exercises.append({
-                                    "exercise_id": exercise["exercise_id"],
-                                    "sets": [{
+                                calculated_schedule[label].append(
+                                    {
                                         "exercise_id": exercise["exercise_id"],
-                                        "intensity": s["intensity"],
-                                        "effort": s["effort"],
-                                        "volume": s["volume"],
-                                        "working_weight": s["working_weight"]
-                                    } for s in calculated_sets]
-                                })
+                                        "sets": calculated_sets,
+                                    }
+                                )
 
-                            # Create a workout for this workout in the day
+                                workout_exercises.append(
+                                    {
+                                        "exercise_id": exercise["exercise_id"],
+                                        "sets": [
+                                            {
+                                                "exercise_id": exercise["exercise_id"],
+                                                "intensity": s["intensity"],
+                                                "effort": s["effort"],
+                                                "volume": s["volume"],
+                                                "working_weight": s["working_weight"],
+                                            }
+                                            for s in calculated_sets
+                                        ],
+                                    }
+                                )
+
                             workout_name = f"{label} - Workout {workout_index}"
-                            
-                            workouts_to_generate.append({
-                                "name": workout_name,
-                                "scheduled_for": (applied_plan.start_date + timedelta(days=plan_order)).isoformat(),
-                                "plan_order_index": plan_order,
-                                "exercises": workout_exercises
-                            })
+                            workouts_to_generate.append(
+                                {
+                                    "name": workout_name,
+                                    "scheduled_for": (applied_plan.start_date + timedelta(days=plan_order)).isoformat(),
+                                    "plan_order_index": plan_order,
+                                    "exercises": workout_exercises,
+                                }
+                            )
                             plan_order += 1
-                    
+
                     self._apply_normalization(
-                        effective_1rms, mc.normalization_value, mc.normalization_unit
+                        effective_1rms,
+                        mc.normalization_value,
+                        mc.normalization_unit,
                     )
+
             if compute.generate_workouts:
                 workout_ids = await self._generate_workouts_via_rpc(applied_plan.id, workouts_to_generate, compute)
                 if workout_ids:
                     from ..models.calendar import AppliedPlanWorkout
+
                     for i, workout_id in enumerate(workout_ids):
                         applied_workout = AppliedPlanWorkout(
                             applied_plan_id=applied_plan.id,
                             workout_id=workout_id,
-                            order_index=i
+                            order_index=i,
                         )
                         self.db.add(applied_workout)
                     await self.db.flush()
-                    # Variant A: immediately create exercise instances in exercises-service
                     try:
                         await self._create_instances_for_workouts(workout_ids, workouts_to_generate)
                     except Exception as e:
-                        # Do not fail plan application if instances creation had issues
                         print(f"[APPLY_PLAN] Non-fatal: failed to create some instances: {e}")
+
             calendar_plan_response = CalendarPlanService._get_plan_response(base_plan)
-            
+
             selected_user_maxes_by_id = {um.get("id"): um for um in selected_user_maxes if um.get("id") is not None}
             ordered_user_maxes = [selected_user_maxes_by_id.get(uid) for uid in user_max_ids] if user_max_ids else []
             ordered_user_maxes = [um for um in ordered_user_maxes if um]
@@ -430,26 +490,34 @@ class AppliedCalendarPlanService:
             applied_plan.user_max_ids = [um["id"] for um in ordered_user_maxes]
             self.db.add(applied_plan)
             await self.db.commit()
-            
             await self.db.refresh(applied_plan)
-            
+
             applied_plan_response = AppliedCalendarPlanResponse(
                 id=applied_plan.id,
                 calendar_plan_id=applied_plan.calendar_plan_id,
                 start_date=applied_plan.start_date,
                 end_date=applied_plan.end_date,
                 is_active=applied_plan.is_active,
-                calendar_plan=calendar_plan_response,  
-                user_maxes=[UserMaxResponse(id=um["id"],exercise_id=um["exercise_id"],max_weight=um["max_weight"],rep_max=um["rep_max"]) for um in ordered_user_maxes],
+                calendar_plan=calendar_plan_response,
+                user_maxes=[
+                    UserMaxResponse(
+                        id=um["id"],
+                        exercise_id=um["exercise_id"],
+                        max_weight=um["max_weight"],
+                        rep_max=um["rep_max"],
+                    )
+                    for um in ordered_user_maxes
+                ],
                 next_workout=None,
             )
 
             return applied_plan_response
-        except Exception as e:
+        except Exception:
             raise
 
     async def get_applied_plan_by_id(self, plan_id: int) -> Optional[AppliedCalendarPlan]:
         try:
+            user_id = self._require_user_id()
             stmt = (
                 select(AppliedCalendarPlan)
                 .options(
@@ -461,7 +529,10 @@ class AppliedCalendarPlanService:
                         .selectinload(PlanExercise.sets),
                     selectinload(AppliedCalendarPlan.workouts)
                 )
-                .where(AppliedCalendarPlan.id == plan_id)
+                .where(
+                    AppliedCalendarPlan.id == plan_id,
+                    AppliedCalendarPlan.user_id == user_id,
+                )
             )
             result = await self.db.execute(stmt)
             return result.scalars().first()
@@ -470,6 +541,7 @@ class AppliedCalendarPlanService:
 
     async def get_user_applied_plans(self) -> List[AppliedCalendarPlanResponse]:
         try:
+            user_id = self._require_user_id()
             stmt = (
                 select(AppliedCalendarPlan)
                 .options(
@@ -481,6 +553,7 @@ class AppliedCalendarPlanService:
                         .selectinload(PlanExercise.sets),
                     selectinload(AppliedCalendarPlan.workouts)
                 )
+                .where(AppliedCalendarPlan.user_id == user_id)
                 .order_by(AppliedCalendarPlan.start_date.desc())
             )
             result = await self.db.execute(stmt)
@@ -530,6 +603,7 @@ class AppliedCalendarPlanService:
 
     async def get_active_plan(self) -> Optional[AppliedCalendarPlan]:
         """Get the currently active plan with applied hierarchy"""
+        user_id = self._require_user_id()
         stmt = (
             select(AppliedCalendarPlan)
             .options(
@@ -541,7 +615,10 @@ class AppliedCalendarPlanService:
                     .selectinload(PlanExercise.sets),
                 selectinload(AppliedCalendarPlan.workouts)
             )
-            .where(AppliedCalendarPlan.is_active.is_(True))
+            .where(
+                AppliedCalendarPlan.is_active.is_(True),
+                AppliedCalendarPlan.user_id == user_id,
+            )
         )
         result = await self.db.execute(stmt)
         return result.scalars().first()

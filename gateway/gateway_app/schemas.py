@@ -44,3 +44,24 @@ class CalendarPlanCreate(BaseModel):
     name: str
     duration_weeks: int
     mesocycles: List[MesocycleCreate]
+
+class DayActivity(BaseModel):
+    session_count: int
+    volume: float
+
+class SessionLite(BaseModel):
+    id: int
+    workout_id: int
+    started_at: datetime
+    finished_at: Optional[datetime] = None
+    status: str
+
+class ProfileAggregatesResponse(BaseModel):
+    generated_at: datetime
+    weeks: int
+    total_workouts: int
+    total_volume: float
+    active_days: int
+    max_day_volume: float
+    activity_map: Dict[str, DayActivity]
+    completed_sessions: List[SessionLite]

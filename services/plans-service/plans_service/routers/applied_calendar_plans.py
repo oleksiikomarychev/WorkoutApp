@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from ..dependencies import get_db
+from ..dependencies import get_db, get_current_user_id
 from ..services.applied_calendar_plan_service import AppliedCalendarPlanService
 from ..schemas.calendar_plan import (
     AppliedCalendarPlanResponse,
@@ -13,12 +13,13 @@ router = APIRouter(prefix="/applied-plans")
 
 
 @router.get("/active", response_model=Optional[AppliedCalendarPlanResponse])
-async def get_active_plan(
-    db: Session = Depends(get_db)
+async def get_active_plan_workouts(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
 ):
     """Получение активного плана пользователя"""
     try:
-        service = AppliedCalendarPlanService(db)
+        service = AppliedCalendarPlanService(db, user_id)
         return await service.get_active_plan()
     except Exception as e:
         raise HTTPException(
@@ -29,11 +30,13 @@ async def get_active_plan(
 
 @router.get("/{plan_id}", response_model=AppliedCalendarPlanResponse)
 async def get_applied_plan_details(
-    plan_id: int, db: Session = Depends(get_db)
+    plan_id: int,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
 ):
     """Получение полной информации о примененном плане"""
     try:
-        service = AppliedCalendarPlanService(db)
+        service = AppliedCalendarPlanService(db, user_id)
         plan = await service.get_applied_plan_by_id(plan_id)
         if not plan:
             raise HTTPException(status_code=404, detail="Applied plan not found")
@@ -47,11 +50,12 @@ async def get_applied_plan_details(
 
 @router.get("/user", response_model=List[AppliedCalendarPlanSummaryResponse])
 async def get_user_applied_plans(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
     """Получение всех примененных планов пользователя"""
     try:
-        service = AppliedCalendarPlanService(db)
+        service = AppliedCalendarPlanService(db, user_id)
         return await service.get_user_applied_plans()
     except Exception as e:
         raise HTTPException(
@@ -61,9 +65,12 @@ async def get_user_applied_plans(
 
 
 @router.get("", response_model=List[AppliedCalendarPlanResponse])
-async def get_applied_plans(db: Session = Depends(get_db)):
+async def get_applied_plans(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
     try:
-        service = AppliedCalendarPlanService(db)
+        service = AppliedCalendarPlanService(db, user_id)
         return await service.get_user_applied_plans()
     except Exception as e:
         raise HTTPException(
@@ -74,11 +81,12 @@ async def get_applied_plans(db: Session = Depends(get_db)):
 
 @router.get("/active/workouts", response_model=List[Dict[str, Any]])
 async def get_active_plan_workouts(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
 ):
     """Get ordered workouts for user's active plan"""
     try:
-        service = AppliedCalendarPlanService(db)
+        service = AppliedCalendarPlanService(db, user_id)
         active_plan = await service.get_active_plan()
         if not active_plan:
             raise HTTPException(status_code=404, detail="No active plan found")
@@ -107,6 +115,7 @@ async def apply_plan(
     compute: ApplyPlanComputeSettings,
     user_max_ids: str = Query(..., description="Comma-separated list of user_max IDs"),
     db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
     """Применение плана пользователем с настройками вычислений"""
     try:
@@ -114,7 +123,7 @@ async def apply_plan(
         user_max_ids_list = [int(id.strip()) for id in user_max_ids.split(",") if id.strip()]
         if not user_max_ids_list:
             raise HTTPException(status_code=400, detail="At least one user_max_id is required")
-        service = AppliedCalendarPlanService(db)
+        service = AppliedCalendarPlanService(db, user_id)
         return await service.apply_plan(plan_id, compute, user_max_ids_list)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

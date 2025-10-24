@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../config/api_config.dart';
 import 'logger_service.dart';
 import 'base_api_service.dart';
@@ -40,6 +41,30 @@ class ApiClient {
         body: json.encode(data),
       ).timeout(const Duration(seconds: 10));
       
+      if (response.statusCode == 401) {
+        try {
+          await FirebaseAuth.instance.currentUser?.getIdToken(true);
+          final retryHeaders = {
+            ..._defaultHeaders,
+            ...await _getHeaders(forceRefresh: true),
+          };
+          final retryResponse = await _httpClient
+              .patch(
+                uri,
+                headers: retryHeaders,
+                body: json.encode(data),
+              )
+              .timeout(const Duration(seconds: 10));
+          _logResponse(retryResponse, context: context);
+          if (retryResponse.statusCode == 401) {
+            try { await FirebaseAuth.instance.signOut(); } catch (_) {}
+          }
+          return _handleResponse(retryResponse);
+        } catch (e) {
+          _logError('PATCH(retry)', uri, e, context: context);
+        }
+      }
+
       _logResponse(response, context: context);
       return _handleResponse(response);
     } catch (e) {
@@ -47,9 +72,20 @@ class ApiClient {
       rethrow;
     }
   }
-  Future<Map<String, String>> _getHeaders() async {
+  Future<Map<String, String>> _getHeaders({bool forceRefresh = false}) async {
+    String? idToken;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        idToken = await user.getIdToken(forceRefresh);
+      }
+    } catch (e) {
+      // Non-fatal: proceed without token
+    }
+
     return {
       'Content-Type': 'application/json',
+      if (idToken != null) 'Authorization': 'Bearer $idToken',
     };
   }
 
@@ -72,6 +108,27 @@ class ApiClient {
       print('Response status: ${response.statusCode}');
       print('Response body: ${response.body}');
       
+      if (response.statusCode == 401) {
+        // Retry once with forced token refresh
+        try {
+          await FirebaseAuth.instance.currentUser?.getIdToken(true);
+          final retryHeaders = {
+            ..._defaultHeaders,
+            ...await _getHeaders(forceRefresh: true),
+          };
+          final retryResponse = await _httpClient
+              .get(uri, headers: retryHeaders)
+              .timeout(const Duration(seconds: 10));
+          _logResponse(retryResponse, context: context);
+          if (retryResponse.statusCode == 401) {
+            try { await FirebaseAuth.instance.signOut(); } catch (_) {}
+          }
+          return _handleResponse(retryResponse);
+        } catch (e) {
+          _logError('GET(retry)', uri, e, context: context);
+        }
+      }
+
       _logResponse(response, context: context);
       return _handleResponse(response);
     } catch (e) {
@@ -103,6 +160,30 @@ class ApiClient {
       print('Response status: ${response.statusCode}');
       print('Response body: ${response.body}');
       
+      if (response.statusCode == 401) {
+        try {
+          await FirebaseAuth.instance.currentUser?.getIdToken(true);
+          final retryHeaders = {
+            ..._defaultHeaders,
+            ...await _getHeaders(forceRefresh: true),
+          };
+          final retryResponse = await _httpClient
+              .post(
+                uri,
+                headers: retryHeaders,
+                body: json.encode(data),
+              )
+              .timeout(const Duration(seconds: 10));
+          _logResponse(retryResponse, context: context);
+          if (retryResponse.statusCode == 401) {
+            try { await FirebaseAuth.instance.signOut(); } catch (_) {}
+          }
+          return _handleResponse(retryResponse);
+        } catch (e) {
+          _logError('POST(retry)', uri, e, context: context);
+        }
+      }
+
       _logResponse(response, context: context);
       return _handleResponse(response);
     } catch (e) {
@@ -127,6 +208,30 @@ class ApiClient {
         body: json.encode(data),
       ).timeout(const Duration(seconds: 10));
       
+      if (response.statusCode == 401) {
+        try {
+          await FirebaseAuth.instance.currentUser?.getIdToken(true);
+          final retryHeaders = {
+            ..._defaultHeaders,
+            ...await _getHeaders(forceRefresh: true),
+          };
+          final retryResponse = await _httpClient
+              .put(
+                uri,
+                headers: retryHeaders,
+                body: json.encode(data),
+              )
+              .timeout(const Duration(seconds: 10));
+          _logResponse(retryResponse, context: context);
+          if (retryResponse.statusCode == 401) {
+            try { await FirebaseAuth.instance.signOut(); } catch (_) {}
+          }
+          return _handleResponse(retryResponse);
+        } catch (e) {
+          _logError('PUT(retry)', uri, e, context: context);
+        }
+      }
+
       _logResponse(response, context: context);
       return _handleResponse(response);
     } catch (e) {
@@ -155,6 +260,30 @@ class ApiClient {
       print('DELETE response status: ${response.statusCode}');
       print('Response body: ${response.body}');
       
+      if (response.statusCode == 401) {
+        try {
+          await FirebaseAuth.instance.currentUser?.getIdToken(true);
+          final retryHeaders = {
+            ..._defaultHeaders,
+            ...await _getHeaders(forceRefresh: true),
+          };
+          final retryResponse = await _httpClient
+              .delete(
+                uri,
+                headers: retryHeaders,
+              )
+              .timeout(const Duration(seconds: 10));
+          _logResponse(retryResponse, context: context);
+          if (retryResponse.statusCode == 401) {
+            try { await FirebaseAuth.instance.signOut(); } catch (_) {}
+          }
+          return _handleResponse(retryResponse);
+        } catch (e, stackTrace) {
+          print('Error in DELETE(retry) request to $uri: $e');
+          _logError('DELETE(retry)', uri, e, context: context);
+        }
+      }
+
       _logResponse(response, context: context);
       return _handleResponse(response);
     } catch (e, stackTrace) {

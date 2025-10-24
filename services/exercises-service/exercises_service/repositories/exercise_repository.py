@@ -1,4 +1,4 @@
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, and_
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
 from exercises_service.models import ExerciseList, ExerciseInstance
@@ -13,8 +13,13 @@ class ExerciseRepository:
         return result.scalars().all()
 
     @staticmethod
-    async def get_exercise_instance(db, instance_id: int):
-        query = select(ExerciseInstance).where(ExerciseInstance.id == instance_id)
+    async def get_exercise_instance(db: AsyncSession, instance_id: int, user_id: str):
+        query = select(ExerciseInstance).where(
+            and_(
+                ExerciseInstance.id == instance_id,
+                ExerciseInstance.user_id == user_id,
+            )
+        )
         result = await db.execute(query)
         return result.scalars().first()
 
@@ -31,7 +36,7 @@ class ExerciseRepository:
         return db_exercise
 
     @staticmethod
-    async def create_exercise_instance(db, instance_data: dict):
+    async def create_exercise_instance(db: AsyncSession, instance_data: dict):
         db_instance = ExerciseInstance(**instance_data)
         db.add(db_instance)
         await db.commit()
@@ -39,7 +44,7 @@ class ExerciseRepository:
         return db_instance
 
     @staticmethod
-    async def update_exercise_instance(db, db_instance: ExerciseInstance, update_data: dict):
+    async def update_exercise_instance(db: AsyncSession, db_instance: ExerciseInstance, update_data: dict):
         for key, value in update_data.items():
             setattr(db_instance, key, value)
         await db.commit()
@@ -47,8 +52,15 @@ class ExerciseRepository:
         return db_instance
 
     @staticmethod
-    async def delete_exercise_instance(db, instance_id: int):
-        db_instance = await db.get(ExerciseInstance, instance_id)
+    async def delete_exercise_instance(db: AsyncSession, instance_id: int, user_id: str):
+        query = select(ExerciseInstance).where(
+            and_(
+                ExerciseInstance.id == instance_id,
+                ExerciseInstance.user_id == user_id,
+            )
+        )
+        result = await db.execute(query)
+        db_instance = result.scalars().first()
         if db_instance:
             db.delete(db_instance)
             await db.commit()
@@ -80,17 +92,27 @@ class ExerciseRepository:
         return db_exercise
 
     @classmethod
-    async def get_instances_by_workout(cls, db: Session, workout_id: int):
+    async def get_instances_by_workout(cls, db: Session, workout_id: int, user_id: str):
         """Retrieve all exercise instances for a specific workout"""
         result = await db.execute(
-            select(ExerciseInstance).filter(ExerciseInstance.workout_id == workout_id)
+            select(ExerciseInstance).filter(
+                and_(
+                    ExerciseInstance.workout_id == workout_id,
+                    ExerciseInstance.user_id == user_id,
+                )
+            )
         )
         return result.scalars().all()
 
     @staticmethod
-    async def get_instances_by_workout(db: AsyncSession, workout_id: int):
+    async def get_instances_by_workout(db: AsyncSession, workout_id: int, user_id: str):
         result = await db.execute(
-            select(ExerciseInstance).filter(ExerciseInstance.workout_id == workout_id)
+            select(ExerciseInstance).filter(
+                and_(
+                    ExerciseInstance.workout_id == workout_id,
+                    ExerciseInstance.user_id == user_id,
+                )
+            )
         )
         return result.scalars().all()
 
@@ -113,7 +135,7 @@ class ExerciseRepository:
         return {"updated_instances": updated}
 
     @staticmethod
-    async def create_exercise_instances_batch(db, instances_data: list):
+    async def create_exercise_instances_batch(db: AsyncSession, instances_data: list, user_id: str):
         from exercises_service.services.exercise_service import ExerciseService
         
         created_instances = []
@@ -121,6 +143,7 @@ class ExerciseRepository:
             instance_dict = dict(data)
             if 'sets' in instance_dict:
                 instance_dict['sets'] = ExerciseService.ensure_set_ids(instance_dict['sets'])
+            instance_dict['user_id'] = user_id
             db_instance = ExerciseInstance(**instance_dict)
             db.add(db_instance)
             await db.flush()
@@ -131,7 +154,8 @@ class ExerciseRepository:
                 "notes": db_instance.notes,
                 "order": db_instance.order,
                 "workout_id": db_instance.workout_id,
-                "user_max_id": db_instance.user_max_id
+                "user_max_id": db_instance.user_max_id,
+                "user_id": db_instance.user_id,
             })
         await db.commit()
         return created_instances

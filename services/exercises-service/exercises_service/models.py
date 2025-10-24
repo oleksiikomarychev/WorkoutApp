@@ -33,6 +33,7 @@ class ExerciseInstance(Base):
     workout_id = Column(Integer, nullable=False)  # Removed ForeignKey to avoid cross-service dependency
     exercise_list_id = Column(Integer, ForeignKey('exercise_list.id'), nullable=False)
     user_max_id = Column(Integer, nullable=True)
+    user_id = Column(String(255), nullable=False)
     sets = Column(JSON, nullable=False, default=list)
     notes = Column(Text, nullable=True)
     order = Column("order", Integer, nullable=True)

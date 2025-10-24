@@ -3,7 +3,7 @@ from typing import List, Optional
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..dependencies import get_db
+from ..dependencies import get_db, get_current_user_id
 from ..services.workout_service import WorkoutService
 from ..services.rpc_client import PlansServiceRPC, get_exercise_by_id
 from .. import schemas
@@ -12,10 +12,13 @@ PLANS_SERVICE_URL = "http://plans-service:8005"  # URL plans-service Ð² docker-Ñ
 
 logger = logging.getLogger(__name__)
 
-def get_workout_service(db: AsyncSession = Depends(get_db)) -> WorkoutService:
+def get_workout_service(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+) -> WorkoutService:
     plans_rpc = PlansServiceRPC(base_url=PLANS_SERVICE_URL)
     exercises_rpc = get_exercise_by_id
-    return WorkoutService(db, plans_rpc, exercises_rpc)
+    return WorkoutService(db, plans_rpc, exercises_rpc, user_id)
 
 router = APIRouter(prefix="")
 

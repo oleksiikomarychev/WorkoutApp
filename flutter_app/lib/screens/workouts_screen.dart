@@ -8,6 +8,7 @@ import 'package:workout_app/widgets/empty_state.dart';
 import 'package:workout_app/models/workout.dart';
 import 'package:workout_app/services/service_locator.dart';
 import 'package:workout_app/screens/workout_detail_screen.dart';
+import 'package:workout_app/screens/user_profile_screen.dart';
 import 'package:workout_app/services/base_api_service.dart';
 import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
@@ -248,6 +249,21 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        elevation: 0,
+        title: const Text('Workouts'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.account_circle_outlined),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+              );
+            },
+          ),
+        ],
+      ),
       body: SafeArea(
         bottom: false,
         child: Consumer(

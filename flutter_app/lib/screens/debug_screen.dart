@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'exercise_list_screen.dart';
 import 'exercise_selection_screen.dart';
 import 'user_max_screen.dart';
+import 'user_profile_screen.dart';
 import 'workout_detail_screen.dart';
 import 'workout_list_screen.dart';
 import 'workouts_screen.dart';
@@ -21,6 +22,7 @@ class DebugScreen extends StatelessWidget {
       'Exercise List': (context) => ExerciseListScreen(),
       'User Maxes': (context) => const UserMaxScreen(),
       'Session History': (context) => const SessionHistoryScreen(),
+      'User Profile': (context) => const UserProfileScreen(),
     };
 
     return Scaffold(
