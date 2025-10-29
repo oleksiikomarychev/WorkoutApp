@@ -172,6 +172,67 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     }
   }
 
+  Future<void> _maybeShowMacroSuggestion() async {
+    if (!mounted || _workout?.id == null) return;
+    try {
+      final api = ApiClient.create();
+      final endpoint = ApiConfig.getSessionHistoryEndpoint(_workout!.id!.toString());
+      final resp = await api.get(endpoint, context: 'MacroSuggestion');
+      if (resp is List && resp.isNotEmpty) {
+        final Map<String, dynamic>? latest = resp.first is Map<String, dynamic> ? resp.first as Map<String, dynamic> : null;
+        final Map<String, dynamic>? suggestion = latest != null && latest['macro_suggestion'] is Map<String, dynamic>
+            ? Map<String, dynamic>.from(latest['macro_suggestion'] as Map)
+            : null;
+        if (suggestion == null) return;
+        final summary = suggestion['summary'] as Map?;
+        final injectCount = summary != null ? (summary['inject_mesocycles'] ?? 0) : 0;
+        final hasPatches = summary != null ? (summary['has_patches'] == true) : false;
+        final appliedPlanId = suggestion['applied_plan_id']?.toString();
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) {
+            return AlertDialog(
+              title: const Text('Найдены изменения по макросам'),
+              content: Text('Вставок мезоциклов: $injectCount\nПатчи на тренировки: ${hasPatches ? 'да' : 'нет'}'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Отмена'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    Navigator.of(ctx).pop();
+                    if (appliedPlanId != null) {
+                      final applyEndpoint = ApiConfig.applyMacrosEndpoint(appliedPlanId);
+                      try {
+                        await api.post(applyEndpoint, <String, dynamic>{}, context: 'ApplyMacros');
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Макросы применены')),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Не удалось применить макросы: $e')),
+                          );
+                        }
+                      }
+                    }
+                  },
+                  child: const Text('Применить'),
+                ),
+              ],
+            );
+          },
+        );
+      }
+    } catch (_) {
+      return;
+    }
+  }
+
   // --- Readiness scaling helpers ---
   double _roundToStep(double value, double step) {
     if (step <= 0) return value;
@@ -918,6 +979,8 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(cancelled ? 'Session cancelled' : 'Workout finished')),
       );
+
+      await _maybeShowMacroSuggestion();
 
       // Do not auto-advance to the next workout here.
       // Next workout will be presented in the list screen widget.

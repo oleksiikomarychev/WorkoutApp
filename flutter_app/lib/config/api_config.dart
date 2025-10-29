@@ -110,7 +110,16 @@ class ApiConfig {
   static String getCalendarPlanEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId');
   static String updateCalendarPlanEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId');
   static String deleteCalendarPlanEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId');
+  // Plan Macros (plans-service)
+  static String listMacrosEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/macros');
+  static String createMacroEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/macros');
+  static String updateMacroEndpoint(String planId, String macroId) => buildEndpoint('/plans/calendar-plans/$planId/macros/$macroId');
+  static String deleteMacroEndpoint(String planId, String macroId) => buildEndpoint('/plans/calendar-plans/$planId/macros/$macroId');
+  static String runMacrosEndpoint(String appliedPlanId) => buildEndpoint('/plans/applied-plans/$appliedPlanId/run-macros');
+  static String applyMacrosEndpoint(String appliedPlanId) => buildEndpoint('/plans/applied-plans/$appliedPlanId/apply-macros');
   static String getPlanWorkoutsEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/workouts');
+  static String listPlanVariantsEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/variants');
+  static String createPlanVariantEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/variants');
   static String addFavoritePlanEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/favorite');
   static String removeFavoritePlanEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/favorite');
   static String listMesocyclesEndpoint(String planId) => buildEndpoint('/plans/mesocycles/$planId/mesocycles');
@@ -122,6 +131,7 @@ class ApiConfig {
   static String getMicrocycleEndpoint(String mesocycleId, String microcycleId) => buildEndpoint('/plans/mesocycles/$mesocycleId/microcycles/$microcycleId');
   static String updateMicrocycleEndpoint(String microcycleId) => buildEndpoint('/plans/mesocycles/microcycles/$microcycleId');
   static String deleteMicrocycleEndpoint(String microcycleId) => buildEndpoint('/plans/mesocycles/microcycles/$microcycleId');
+  static String validateMicrocyclesEndpoint() => buildEndpoint('/plans/mesocycles/validate');
   static String userMaxesByExerciseEndpoint(String exerciseId) => getByExerciseEndpoint(exerciseId);
   static String sessionSetCompletionEndpoint(String sessionId, String instanceId, String setId) => buildEndpoint('/workouts/sessions/$sessionId/instances/$instanceId/sets/$setId/completion');
   static String workoutsEndpointWithPagination(int skip, int limit) => "${buildEndpoint('/workouts/')}?skip=$skip&limit=$limit";
@@ -138,6 +148,8 @@ class ApiConfig {
   static String get activePlanWorkoutsEndpoint => buildEndpoint('$activePlanEndpoint/workouts');
   static String nextWorkoutInActivePlanEndpoint(String planId) => 
       buildEndpoint('/plans/$planId/next-workout');
+  static String appliedPlanAnalyticsEndpoint(String planId) =>
+      buildEndpoint('/plans/applied-plans/$planId/analytics');
 
   // Chat endpoint
   static String get chatEndpoint => buildEndpoint('/chat');
@@ -149,6 +161,13 @@ class ApiConfig {
   // Analytics endpoint
   static String get workoutMetricsEndpoint => buildEndpoint('/workout-metrics');
   static String get profileAggregatesEndpoint => buildEndpoint('/profile/aggregates');
+  // Avatars
+  static String get avatarsGenerateEndpoint => buildEndpoint('/avatars/generate');
+  static String get applyProfilePhotoEndpoint => buildEndpoint('/profile/photo/apply');
+
+  // Mesocycle Templates (plans-service)
+  static String get mesocycleTemplatesEndpoint => buildEndpoint('/plans/mesocycle-templates');
+  static String mesocycleTemplateByIdEndpoint(String id) => buildEndpoint('/plans/mesocycle-templates/$id');
 
   static void logApiError(http.Response response) {
     print('API Error: ${response.statusCode}');

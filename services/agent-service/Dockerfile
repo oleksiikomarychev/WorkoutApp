@@ -26,7 +26,9 @@ RUN pip install --no-cache-dir \
     "alembic>=1.15.0,<2.0.0" \
     "pydantic-ai>=0.0.15,<0.1.0" \
     "google-genai==1.42.0" \
-    "json5>=0.9.25,<0.10.0"
+    "json5>=0.9.25,<0.10.0" \
+    "huggingface_hub>=0.25.0,<1.0.0" \
+    "pillow>=10.0.0,<11.0.0"
 # Copy application code
 COPY agent_service /app/agent_service
 COPY alembic /app/alembic

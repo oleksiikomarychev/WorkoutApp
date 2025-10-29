@@ -21,9 +21,9 @@ async def generate_workouts(
     plans_rpc = PlansServiceRPC()  # Create RPC client instance
     service = WorkoutService(db, plans_rpc, user_id=user_id)  # Pass user_id
     try:
-        workout_ids = await service.generate_workouts(request)
-        logger.info(f"[GENERATE_WORKOUTS] Successfully generated {len(workout_ids)} workouts: {workout_ids}")
-        return {"workout_ids": workout_ids}
+        workout_ids, created_count, existing_count = await service.generate_workouts(request)
+        logger.info(f"[GENERATE_WORKOUTS] Successfully generated {created_count} new workouts; existing_count={existing_count}")
+        return {"workout_ids": workout_ids, "created_count": created_count, "existing_count": existing_count}
     except Exception as e:
         logger.error(f"[GENERATE_WORKOUTS] Failed to generate workouts: {e}")
         logger.error(f"[GENERATE_WORKOUTS] Traceback: {traceback.format_exc()}")

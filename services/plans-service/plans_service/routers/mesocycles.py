@@ -7,6 +7,7 @@ from ..dependencies import get_db, get_current_user_id
 from ..models import Microcycle
 from ..services.calendar_plan_service import CalendarPlanService
 from ..services.mesocycle_service import MesocycleService
+from ..services.template_service import TemplateService
 from ..schemas.calendar_plan import MesocycleResponse
 from ..schemas.calendar_plan import MicrocycleResponse
 from ..schemas.mesocycle import (
@@ -16,6 +17,7 @@ from ..schemas.mesocycle import (
     MicrocycleUpdate,
     MicrocycleCreate
 )
+from ..schemas.templates import InstantiateFromExistingRequest
 
 router = APIRouter(prefix="/mesocycles")
 
@@ -166,3 +168,14 @@ async def get_microcycle(
     if not microcycle:
         raise HTTPException(status_code=404, detail="Microcycle not found")
     return microcycle
+
+
+@router.post("/calendar-plans/{plan_id}/from-existing", response_model=int)
+async def clone_mesocycle_from_existing(
+    plan_id: int,
+    body: InstantiateFromExistingRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    tpl = TemplateService(db, user_id)
+    return await tpl.instantiate_from_existing(plan_id, body)

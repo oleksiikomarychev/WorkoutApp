@@ -24,6 +24,7 @@ EXERCISES_SERVICE_URL = os.getenv("EXERCISES_SERVICE_URL")
 USER_MAX_SERVICE_URL = os.getenv("USER_MAX_SERVICE_URL")
 WORKOUTS_SERVICE_URL = os.getenv("WORKOUTS_SERVICE_URL")
 PLANS_SERVICE_URL = os.getenv("PLANS_SERVICE_URL")
+AGENT_SERVICE_URL = os.getenv("AGENT_SERVICE_URL", "http://agent-service:8006")
 
 try:
     import firebase_admin
@@ -118,8 +119,12 @@ def _initialize_firebase_app() -> None:
 
 
 def _is_public_route(method: str, path: str) -> bool:
-    if method in ("GET", "HEAD") and path in _PUBLIC_PATHS:
-        return True
+    if method in ("GET", "HEAD"):
+        if path in _PUBLIC_PATHS:
+            return True
+        # Public avatar images do not require auth
+        if path.startswith("/api/v1/avatars/") and path.endswith(".png"):
+            return True
     return False
 
 
@@ -293,6 +298,69 @@ async def aggregate_openapi():
             print(f"Failed to fetch OpenAPI spec for {service_name}")
     app.openapi_schema = merged_spec
 
+@app.post("/api/v1/profile/photo/apply")
+async def apply_profile_photo(request: Request) -> JSONResponse:
+    user = getattr(request.state, "user", None)
+    if not user or not isinstance(user, dict) or not user.get("uid"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    uid: str = str(user["uid"])
+
+    # Read raw body bytes (expecting image/png)
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty body")
+
+    # Forward to agent-service to store in Postgres
+    headers = _forward_headers(request)
+    headers["Content-Type"] = "image/png"
+    # Ensure user id is forwarded for agent-service dependency
+    if isinstance(user, dict) and user.get("uid"):
+        headers["X-User-Id"] = str(user["uid"])  
+    target_url = f"{AGENT_SERVICE_URL}/avatars/apply"
+    try:
+        timeout = httpx.Timeout(
+            connect=_DEFAULT_CONNECT_TIMEOUT,
+            read=_DEFAULT_PROXY_TIMEOUT,
+            write=_DEFAULT_PROXY_TIMEOUT,
+            pool=_DEFAULT_PROXY_TIMEOUT,
+        )
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            r = await client.post(target_url, headers=headers, content=data, follow_redirects=True)
+    except Exception:
+        raise HTTPException(status_code=502, detail="Failed to store avatar")
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=r.text)
+
+    # Public URL proxied via gateway (add cache-busting param)
+    # Use forwarded headers to construct external URL (works behind proxies/CF)
+    xf_proto = request.headers.get("x-forwarded-proto")
+    xf_host = request.headers.get("x-forwarded-host")
+    host = xf_host or request.headers.get("host")
+    scheme = (xf_proto or request.url.scheme or "http").split(",")[0].strip()
+    public_path = f"/api/v1/avatars/{uid}.png"
+    version = int(datetime.utcnow().timestamp())
+    if host:
+        photo_url = f"{scheme}://{host}{public_path}?v={version}"
+    else:
+        base_url = str(request.base_url).rstrip("/")
+        photo_url = f"{base_url}{public_path}?v={version}"
+
+    # Update Firebase user photoURL if admin SDK is available
+    try:
+        if auth is not None:
+            auth.update_user(uid, photo_url=photo_url, app=_FIREBASE_APP)
+    except Exception:
+        # Non-fatal; still return the URL we saved
+        pass
+
+    return JSONResponse({"photo_url": photo_url})
+
+@app.get("/api/v1/avatars/{uid}.png")
+async def proxy_avatar(uid: str, request: Request) -> Response:
+    headers = _forward_headers(request)
+    target_url = f"{AGENT_SERVICE_URL}/avatars/{uid}.png"
+    return await _proxy_request(request, target_url, headers)
+
 # Create routers for each service
 rpe_router = APIRouter(prefix="/api/v1/rpe")
 exercises_core_router = APIRouter(prefix="/api/v1/exercises")
@@ -305,6 +373,7 @@ plans_applied_router = APIRouter(prefix="/api/v1/plans/applied-plans")
 plans_calendar_router = APIRouter(prefix="/api/v1/plans/calendar-plans")
 plans_instances_router = APIRouter(prefix="/api/v1/plans/calendar-plan-instances")
 plans_mesocycles_router = APIRouter(prefix="/api/v1/plans/mesocycles")
+plans_templates_router = APIRouter(prefix="/api/v1/plans/mesocycle-templates")
 analytics_router = APIRouter(prefix="/api/v1")
 
 def _date_key_from_iso(iso_str: str) -> str:
@@ -556,6 +625,16 @@ async def get_profile_aggregates(request: Request, weeks: int = Query(48, ge=1, 
     if inm and inm == etag:
         return Response(status_code=304)
     return JSONResponse(content=content, headers={"ETag": etag})
+
+# Avatars proxy to agent-service
+@app.post("/api/v1/avatars/generate")
+async def avatars_generate(request: Request) -> Response:
+    headers = _forward_headers(request)
+    user = getattr(request.state, "user", None)
+    if isinstance(user, dict) and user.get("uid"):
+        headers["X-User-Id"] = str(user["uid"])  # needed by agent-service
+    target_url = f"{AGENT_SERVICE_URL}/avatars/generate"
+    return await _proxy_request(request, target_url, headers)
 async def _proxy_request(request: Request, target_url: str, headers: dict) -> Response:
     method = request.method
     params = dict(request.query_params)
@@ -637,6 +716,8 @@ async def _proxy_request(request: Request, target_url: str, headers: dict) -> Re
             return JSONResponse(status_code=r.status_code, content=r.json())
         except Exception:
             return Response(content=r.content, status_code=r.status_code, media_type=ct)
+    # Non-JSON: pass through raw content (e.g., image/png)
+    return Response(content=r.content, status_code=r.status_code, media_type=ct)
 
 
 async def _derive_exercise_instances_from_plan(
@@ -1647,7 +1728,8 @@ async def proxy_plans_applied(request: Request, path: str = "") -> Response:
 # Plans calendar routes
 @plans_calendar_router.api_route("{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_plans_calendar(request: Request, path: str = "") -> Response:
-    target_url = f"{PLANS_SERVICE_URL}/plans/calendar-plans{path}"
+    suffix = "" if not path else (path if path.startswith("/") else f"/{path}")
+    target_url = f"{PLANS_SERVICE_URL}/plans/calendar-plans{suffix}"
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
 
@@ -1671,6 +1753,14 @@ async def proxy_plans_mesocycles(request: Request, path: str = "") -> Response:
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
 
+# Plans mesocycle templates routes
+@plans_templates_router.api_route("{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_plans_templates(request: Request, path: str = "") -> Response:
+    suffix = "" if not path else (path if path.startswith("/") else f"/{path}")
+    target_url = f"{PLANS_SERVICE_URL}/plans/mesocycle-templates{suffix}"
+    headers = _forward_headers(request)
+    return await _proxy_request(request, target_url, headers)
+
 # Include routers in the app
 app.include_router(rpe_router)
 app.include_router(exercises_core_router)
@@ -1683,4 +1773,5 @@ app.include_router(plans_applied_router)
 app.include_router(plans_calendar_router)
 app.include_router(plans_instances_router)
 app.include_router(plans_mesocycles_router)
+app.include_router(plans_templates_router)
 app.include_router(analytics_router)

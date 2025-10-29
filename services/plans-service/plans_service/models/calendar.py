@@ -22,6 +22,7 @@ class CalendarPlan(Base):
     duration_weeks = Column(Integer, nullable=False)
     is_active = Column(Boolean, default=True, server_default=text('true'))
     user_id = Column(String(255), nullable=False, index=True)
+    root_plan_id = Column(Integer, ForeignKey("calendar_plans.id", ondelete="RESTRICT"), nullable=False, index=True)
 
     applied_instances = relationship("AppliedCalendarPlan", back_populates="calendar_plan", cascade="all, delete-orphan")
     mesocycles = relationship(
@@ -31,6 +32,10 @@ class CalendarPlan(Base):
         order_by="Mesocycle.order_index",
         lazy="selectin"
     )
+    root_plan = relationship("CalendarPlan", remote_side=[id], back_populates="variants", uselist=False)
+    variants = relationship("CalendarPlan", back_populates="root_plan", cascade="all, delete-orphan")
+    # New: macros attached to this plan
+    macros = relationship("PlanMacro", back_populates="calendar_plan", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<CalendarPlan(id={self.id}, name='{self.name}')>"
@@ -87,7 +92,7 @@ class AppliedMesocycle(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     applied_plan_id = Column(Integer, ForeignKey("applied_calendar_plans.id"), nullable=False)
-    mesocycle_id = Column(Integer, ForeignKey("mesocycles.id"), nullable=False)
+    mesocycle_id = Column(Integer, ForeignKey("mesocycles.id"), nullable=True)
     order_index = Column(Integer, nullable=False)
     
     applied_plan = relationship("AppliedCalendarPlan", back_populates="mesocycles")
@@ -99,7 +104,7 @@ class AppliedMicrocycle(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     applied_mesocycle_id = Column(Integer, ForeignKey("applied_mesocycles.id"), nullable=False)
-    microcycle_id = Column(Integer, ForeignKey("microcycles.id"), nullable=False)
+    microcycle_id = Column(Integer, ForeignKey("microcycles.id"), nullable=True)
     order_index = Column(Integer, nullable=False)
     
     applied_mesocycle = relationship("AppliedMesocycle", back_populates="microcycles")

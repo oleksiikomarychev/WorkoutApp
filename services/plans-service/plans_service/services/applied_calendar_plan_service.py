@@ -20,6 +20,7 @@ from .. import workout_calculation
 from ..rpc import get_intensity, get_volume, get_effort
 from collections import defaultdict
 from sqlalchemy import select
+from .template_service import TemplateService
 
 
 class AppliedCalendarPlanService:
@@ -140,8 +141,15 @@ class AppliedCalendarPlanService:
                             headers=headers,
                         )
                         response.raise_for_status()
-                        workout_ids = response.json().get("workout_ids")
-                        logger.info(f"[APPLY_PLAN] Successfully generated workout_ids: {workout_ids}")
+                        body = response.json()
+                        workout_ids = body.get("workout_ids") if isinstance(body, dict) else None
+                        if isinstance(workout_ids, list) and len(workout_ids) != len(workouts):
+                            logger.warning(
+                                "[APPLY_PLAN] Returned existing workouts (no new created) due to unique index conflict: %s",
+                                workout_ids,
+                            )
+                        else:
+                            logger.info(f"[APPLY_PLAN] Successfully generated workout_ids: {workout_ids}")
                         return workout_ids
                     except httpx.HTTPStatusError as e:
                         logger.error(f"[APPLY_PLAN] HTTP error from {url}: status={e.response.status_code}, body={e.response.text}")
@@ -623,6 +631,46 @@ class AppliedCalendarPlanService:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    async def advance_current_index(self, applied_plan_id: int, by: int = 1) -> Optional[int]:
+        """Advance current_workout_index for the applied plan by N (default 1).
+        Caps at last workout index + 1. Returns new index or None if plan not found.
+        """
+        try:
+            user_id = self._require_user_id()
+            stmt = (
+                select(AppliedCalendarPlan)
+                .options(selectinload(AppliedCalendarPlan.workouts))
+                .where(
+                    AppliedCalendarPlan.id == applied_plan_id,
+                    AppliedCalendarPlan.user_id == user_id,
+                )
+            )
+            res = await self.db.execute(stmt)
+            plan = res.scalars().first()
+            if not plan:
+                return None
+            current = int(getattr(plan, "current_workout_index", 0) or 0)
+            try:
+                step = int(by)
+            except Exception:
+                step = 1
+            max_idx = 0
+            try:
+                if plan.workouts:
+                    max_idx = max((int(w.order_index) for w in plan.workouts if w.order_index is not None), default=0)
+            except Exception:
+                max_idx = 0
+            new_val = current + (step if step > 0 else 1)
+            # allow pointer to move just past the last workout
+            cap = max_idx + 1
+            if new_val > cap:
+                new_val = cap
+            plan.current_workout_index = new_val
+            await self.db.commit()
+            return new_val
+        except Exception:
+            return None
+
     def _apply_normalization(self, effective_1rms: dict[int, float], value: Optional[float], unit: Optional[str]):
         """Apply normalization to the effective 1RMs."""
         if value is None or unit is None:
@@ -635,3 +683,493 @@ class AppliedCalendarPlanService:
             # Apply an absolute increase or decrease
             for exercise_id, current_1rm in effective_1rms.items():
                 effective_1rms[exercise_id] = current_1rm + value
+
+    async def inject_mesocycle_into_applied_plan(
+        self,
+        applied_plan_id: int,
+        *,
+        mode: str,
+        template_id: Optional[int] = None,
+        source_mesocycle_id: Optional[int] = None,
+        placement: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        try:
+            stmt = (
+                select(AppliedCalendarPlan)
+                .options(selectinload(AppliedCalendarPlan.workouts))
+                .where(
+                    AppliedCalendarPlan.id == applied_plan_id,
+                    AppliedCalendarPlan.user_id == self.user_id,
+                )
+            )
+            res = await self.db.execute(stmt)
+            plan = res.scalars().first()
+            if not plan:
+                return {"applied": False, "reason": "applied_plan_not_found"}
+
+            workouts_to_generate: List[Dict[str, Any]] = []
+            eff_mode = mode or ""
+            if not eff_mode:
+                eff_mode = "by_Template" if template_id is not None else ("by_Existing" if source_mesocycle_id is not None else "")
+            if eff_mode == "by_Template" and template_id is not None:
+                tpl_svc = TemplateService(self.db, self.user_id)
+                tpl = await tpl_svc.get_template(int(template_id))
+                workouts_to_generate = self._build_workouts_from_template_response(tpl)
+            elif eff_mode == "by_Existing" and source_mesocycle_id is not None:
+                workouts_to_generate = await self._build_workouts_from_existing_mesocycle(int(source_mesocycle_id))
+            else:
+                return {"applied": False, "reason": "invalid_params"}
+
+            if not workouts_to_generate:
+                return {"applied": False, "reason": "empty_schedule"}
+
+            anchor_index = -1
+            if isinstance(placement, dict):
+                # 1) Explicit workout anchor has priority
+                wid = placement.get("workout_id")
+                if wid is not None:
+                    try:
+                        tgt = next((w for w in sorted(plan.workouts, key=lambda x: x.order_index) if int(w.workout_id) == int(wid)), None)
+                        if tgt:
+                            anchor_index = int(tgt.order_index)
+                    except Exception:
+                        anchor_index = -1
+                # 2) Insert_After_Mesocycle by mesocycle_index
+                mode_str = str(placement.get("mode") or "").strip()
+                if anchor_index < 0 and mode_str == "Insert_After_Mesocycle":
+                    try:
+                        m_idx = int(placement.get("mesocycle_index"))
+                    except Exception:
+                        m_idx = None
+                    if m_idx is not None and m_idx >= 0:
+                        try:
+                            # Compute cumulative workout counts per mesocycle from base CalendarPlan
+                            from ..models.calendar import CalendarPlan as _CP, Mesocycle as _M, Microcycle as _MC, PlanWorkout as _PW
+                            stmt_cp = (
+                                select(_CP)
+                                .options(
+                                    selectinload(_CP.mesocycles)
+                                        .selectinload(_M.microcycles)
+                                        .selectinload(_MC.plan_workouts)
+                                )
+                                .where(_CP.id == plan.calendar_plan_id)
+                            )
+                            res_cp = await self.db.execute(stmt_cp)
+                            cp = res_cp.scalars().first()
+                            cum = []  # cumulative workout counts end index for each meso (exclusive)
+                            total = 0
+                            if cp and cp.mesocycles:
+                                for ms in sorted(cp.mesocycles, key=lambda x: (x.order_index or 0, x.id)):
+                                    w_count = 0
+                                    for mc in sorted(ms.microcycles or [], key=lambda x: (x.order_index or 0, x.id)):
+                                        w_count += len(getattr(mc, 'plan_workouts', []) or [])
+                                    total += w_count
+                                    cum.append(total)
+                            if cum:
+                                # After mesocycle m_idx means before the first workout of m_idx+1 -> insert_pos = cum[m_idx]
+                                if m_idx < len(cum):
+                                    anchor_index = cum[m_idx] - 1  # after last workout of this meso
+                                else:
+                                    # out of range -> append to end
+                                    anchor_index = -1
+                        except Exception:
+                            anchor_index = -1
+            ordered = sorted(plan.workouts or [], key=lambda w: w.order_index)
+            insert_pos = anchor_index + 1 if anchor_index >= 0 else (ordered[-1].order_index + 1 if ordered else 0)
+
+            compute = ApplyPlanComputeSettings(
+                compute_weights=False,
+                rounding_step=2.5,
+                rounding_mode=RoundingMode.nearest,
+                generate_workouts=True,
+                start_date=None,
+            )
+            # Determine baseline_date for scheduling inserted workouts and shifting subsequent ones
+            baseline_date: Optional[datetime] = None
+            try:
+                # fetch existing workouts from workouts-service to inspect scheduled_for
+                existing_ws = await self._fetch_workouts_for_applied_plan(plan.id)
+                # Partition by order index relative to insert_pos
+                fut = [w for w in existing_ws if (w.get("plan_order_index") is not None and int(w.get("plan_order_index")) >= insert_pos and w.get("scheduled_for") is not None)]
+                prev = [w for w in existing_ws if (w.get("plan_order_index") is not None and int(w.get("plan_order_index")) < insert_pos and w.get("scheduled_for") is not None)]
+                def _parse(dt: str) -> Optional[datetime]:
+                    try:
+                        return datetime.fromisoformat(dt)
+                    except Exception:
+                        return None
+                if fut:
+                    # minimal future date at/after insert_pos
+                    fds = sorted([_parse(w.get("scheduled_for")) for w in fut if _parse(w.get("scheduled_for")) is not None])
+                    if fds:
+                        baseline_date = fds[0]
+                if baseline_date is None and prev:
+                    pds = sorted([_parse(w.get("scheduled_for")) for w in prev if _parse(w.get("scheduled_for")) is not None])
+                    if pds:
+                        baseline_date = pds[-1] + timedelta(days=1)
+                if baseline_date is None and plan.start_date is not None:
+                    baseline_date = plan.start_date
+                if baseline_date is None:
+                    baseline_date = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
+            except Exception:
+                baseline_date = None
+
+            # Populate plan_order_index and scheduled_for for inserted workouts
+            try:
+                if baseline_date is None:
+                    # fall back to today at 9am to make them visible in UI
+                    baseline_date = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
+                for i, w in enumerate(workouts_to_generate):
+                    w["plan_order_index"] = insert_pos + i
+                    # preserve time of baseline across all inserted
+                    dt = (baseline_date + timedelta(days=i))
+                    w["scheduled_for"] = dt.isoformat()
+            except Exception:
+                pass
+
+            # Shift existing workouts remotely before creating new ones to avoid conflicts
+            shift_count = len(workouts_to_generate)
+            shift_summary = None
+            if shift_count:
+                try:
+                    shift_summary = await self._shift_schedule_via_rpc(
+                        applied_plan_id=plan.id,
+                        from_order_index=insert_pos,
+                        delta_days=shift_count,
+                        delta_index=shift_count,
+                        exclude_ids=[],
+                        only_future=True,
+                        baseline_date=baseline_date,
+                    )
+                except Exception:
+                    shift_summary = None
+                # Block on shift failure: do not proceed to generation if shift did not succeed
+                ok = False
+                try:
+                    if isinstance(shift_summary, dict):
+                        ac = int(shift_summary.get("affected_count") or 0)
+                        # we allow zero if реально нет будущих записей, но если в плане есть хвост, это ошибка
+                        ok = ac >= 0
+                    else:
+                        ok = False
+                except Exception:
+                    ok = False
+                if not ok:
+                    logger.warning(
+                        f"[APPLY_PLAN] Shift failed or returned invalid summary; aborting generation | applied_plan_id={plan.id} insert_pos={insert_pos} count={shift_count} summary={shift_summary}"
+                    )
+                    return {"applied": False, "reason": "shift_failed", "shift_summary": shift_summary}
+
+            workout_ids = await self._generate_workouts_via_rpc(applied_plan_id, workouts_to_generate, compute)
+            if not workout_ids:
+                return {"applied": False, "reason": "workout_generation_failed"}
+
+            # Shift linear list to make room in applied plan representation
+            for w in sorted(plan.workouts or [], key=lambda w: w.order_index, reverse=True):
+                if w.order_index >= insert_pos:
+                    w.order_index = w.order_index + len(workout_ids)
+            await self.db.flush()
+
+            # Create hierarchy: one AppliedMesocycle and one AppliedMicrocycle to contain inserted workouts
+            from ..models.calendar import AppliedPlanWorkout, AppliedMesocycle, AppliedMicrocycle, AppliedWorkout
+
+            # Compute new meso order_index: append as last
+            meso_order = 0
+            try:
+                stmt_m = (
+                    select(AppliedMesocycle)
+                    .where(AppliedMesocycle.applied_plan_id == plan.id)
+                    .order_by(AppliedMesocycle.order_index.desc(), AppliedMesocycle.id.desc())
+                )
+                r_m = await self.db.execute(stmt_m)
+                last_m = r_m.scalars().first()
+                meso_order = int(getattr(last_m, "order_index", -1) or -1) + 1 if last_m else 0
+            except Exception:
+                meso_order = 0
+            a_meso = AppliedMesocycle(
+                applied_plan_id=plan.id,
+                mesocycle_id=None,
+                order_index=meso_order,
+            )
+            self.db.add(a_meso)
+            await self.db.flush()
+
+            a_micro = AppliedMicrocycle(
+                applied_mesocycle_id=a_meso.id,
+                microcycle_id=None,
+                order_index=0,
+            )
+            self.db.add(a_micro)
+            await self.db.flush()
+
+            for i, wid in enumerate(workout_ids):
+                apw = AppliedPlanWorkout(
+                    applied_plan_id=plan.id,
+                    workout_id=wid,
+                    order_index=insert_pos + i,
+                )
+                self.db.add(apw)
+                aw = AppliedWorkout(
+                    applied_microcycle_id=a_micro.id,
+                    workout_id=wid,
+                    order_index=i,
+                )
+                self.db.add(aw)
+            await self.db.flush()
+            try:
+                await self._create_instances_for_workouts(workout_ids, workouts_to_generate)
+            except Exception:
+                pass
+
+            # Adjust current_workout_index if insertion is before current pointer
+            try:
+                cur = int(getattr(plan, "current_workout_index", 0) or 0)
+                if insert_pos <= cur:
+                    plan.current_workout_index = cur + len(workout_ids)
+            except Exception:
+                pass
+            await self.db.commit()
+            # Recalculate end_date to reflect extended plan length
+            try:
+                # Reload plan to ensure we have current state
+                await self.db.refresh(plan)
+                total_days = 0
+                # Prefer using the base calendar plan structure if available to estimate days per microcycle
+                try:
+                    from ..models.calendar import CalendarPlan, Mesocycle as _M, Microcycle as _MC
+                    stmt_cp = (
+                        select(CalendarPlan)
+                        .options(
+                            selectinload(CalendarPlan.mesocycles)
+                                .selectinload(_M.microcycles)
+                        )
+                        .where(CalendarPlan.id == plan.calendar_plan_id)
+                    )
+                    res_cp = await self.db.execute(stmt_cp)
+                    cp = res_cp.scalars().first()
+                    if cp and cp.mesocycles:
+                        for m in cp.mesocycles:
+                            for mc in m.microcycles or []:
+                                if mc.days_count is not None:
+                                    total_days += int(mc.days_count)
+                                else:
+                                    # Fallback: assume 1 day per planned workout entry if unspecified
+                                    total_days += max(1, len(getattr(mc, 'plan_workouts', []) or []))
+                except Exception:
+                    pass
+                if total_days <= 0:
+                    # Fallback approximation: one workout per day over all applied workouts
+                    try:
+                        applied_workouts_count = len(plan.workouts or [])
+                    except Exception:
+                        applied_workouts_count = 0
+                    total_days = max(1, applied_workouts_count)
+                if plan.start_date is not None:
+                    plan.end_date = plan.start_date + timedelta(days=total_days)
+                    # Ensure naive datetime to match existing convention
+                    plan.end_date = plan.end_date.replace(tzinfo=None)
+                    await self.db.commit()
+            except Exception:
+                # Non-fatal if we fail to recalc end_date
+                pass
+            return {"applied": True, "inserted": len(workout_ids), "start_index": insert_pos, "workout_ids": workout_ids}
+        except Exception:
+            return {"applied": False, "reason": "exception"}
+
+    def _build_workouts_from_template_response(self, tpl_resp) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
+        try:
+            for mc in sorted((tpl_resp.microcycles or []), key=lambda m: (m.order_index or 0)):
+                schedule = mc.schedule or {}
+                items = list(schedule.items())
+                def _key(x):
+                    try:
+                        return int(str(x[0]).strip().split()[-1])
+                    except Exception:
+                        return 0
+                for _, day_items in sorted(items, key=_key):
+                    workout_exercises: List[Dict[str, Any]] = []
+                    for item in day_items or []:
+                        ex_id = item.get("exercise_id") or item.get("exercise_list_id")
+                        if ex_id is None:
+                            continue
+                        sets = []
+                        for s in item.get("sets") or []:
+                            sets.append({
+                                "exercise_id": int(ex_id),
+                                "intensity": s.get("intensity"),
+                                "effort": s.get("effort"),
+                                "volume": s.get("volume"),
+                                "working_weight": s.get("working_weight"),
+                            })
+                        workout_exercises.append({
+                            "exercise_id": int(ex_id),
+                            "sets": sets,
+                        })
+                    if workout_exercises:
+                        out.append({
+                            "name": tpl_resp.name,
+                            "scheduled_for": None,
+                            "plan_order_index": None,
+                            "exercises": workout_exercises,
+                        })
+        except Exception:
+            return []
+        return out
+
+    async def _fetch_workouts_for_applied_plan(self, applied_plan_id: int) -> List[Dict[str, Any]]:
+        """Fetch workouts list from workouts-service for the given applied plan.
+        Returns list of dicts with at least id, plan_order_index, scheduled_for.
+        """
+        base = os.getenv("WORKOUTS_SERVICE_URL", "http://localhost:8004")
+        headers = self._auth_headers()
+        url = urllib.parse.urljoin(base + "/", f"workouts/?applied_plan_id={applied_plan_id}")
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.get(url, headers=headers)
+                if res.status_code == 200:
+                    data = res.json()
+                    if isinstance(data, list):
+                        return data
+        except Exception:
+            pass
+        return []
+
+    async def _shift_schedule_via_rpc(
+        self,
+        *,
+        applied_plan_id: int,
+        from_order_index: int,
+        delta_days: int,
+        delta_index: int,
+        exclude_ids: List[int],
+        only_future: bool,
+        baseline_date: Optional[datetime],
+    ) -> Optional[Dict[str, Any]]:
+        base = os.getenv("WORKOUTS_SERVICE_URL", "http://localhost:8004")
+        headers = self._auth_headers()
+        path = "workouts/schedule/shift-in-plan"
+        url = urllib.parse.urljoin(base + "/", path)
+        payload = {
+            "applied_plan_id": applied_plan_id,
+            "from_order_index": from_order_index,
+            "delta_days": delta_days,
+            "delta_index": delta_index,
+            "exclude_ids": exclude_ids,
+            "only_future": only_future,
+            "baseline_date": baseline_date.isoformat() if baseline_date is not None else None,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                res = await client.post(url, json=payload, headers=headers)
+                if res.status_code == 200:
+                    return res.json()
+        except Exception:
+            pass
+        return None
+
+    async def get_plan_analytics(
+        self,
+        applied_plan_id: int,
+        *,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
+        group_by: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        base = os.getenv("WORKOUTS_SERVICE_URL", "http://localhost:8004")
+        headers = self._auth_headers()
+        path = "workouts/analytics/in-plan"
+        url = urllib.parse.urljoin(base + "/", path)
+        params = {"applied_plan_id": applied_plan_id}
+        if from_date:
+            params["from"] = from_date
+        if to_date:
+            params["to"] = to_date
+        if group_by:
+            params["group_by"] = group_by
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                res = await client.get(url, params=params, headers=headers)
+                res.raise_for_status()
+                data = res.json()
+        except Exception as exc:
+            raise ValueError(f"Failed to fetch analytics: {exc}") from exc
+
+        items = data.get("items") if isinstance(data, dict) else None
+        if not isinstance(items, list):
+            return {"items": []}
+
+        def _safe_float(value: Any) -> float:
+            try:
+                if value is None:
+                    return 0.0
+                return float(value)
+            except Exception:
+                return 0.0
+
+        effort_values = []
+        intensity_values = []
+        volume_sum = 0.0
+        sets_sum = 0.0
+        for item in items:
+            metrics = item.get("metrics") if isinstance(item, dict) else None
+            if not isinstance(metrics, dict):
+                continue
+            ev = metrics.get("effort_avg")
+            if ev is not None:
+                effort_values.append(_safe_float(ev))
+            iv = metrics.get("intensity_avg")
+            if iv is not None:
+                intensity_values.append(_safe_float(iv))
+            volume_sum += _safe_float(metrics.get("volume_sum"))
+            sets_sum += _safe_float(metrics.get("sets_count"))
+
+        def _avg(values: List[float]) -> float:
+            return sum(values) / len(values) if values else 0.0
+
+        totals = {
+            "effort_avg": _avg(effort_values),
+            "intensity_avg": _avg(intensity_values),
+            "volume_sum": volume_sum,
+            "sets_count": sets_sum,
+        }
+        data["totals"] = totals
+        return data
+
+    async def _build_workouts_from_existing_mesocycle(self, mesocycle_id: int) -> List[Dict[str, Any]]:
+        stmt = (
+            select(Mesocycle)
+            .options(
+                selectinload(Mesocycle.microcycles)
+                .selectinload(Microcycle.plan_workouts)
+                .selectinload(PlanWorkout.exercises)
+                .selectinload(PlanExercise.sets)
+            )
+            .where(Mesocycle.id == mesocycle_id)
+        )
+        res = await self.db.execute(stmt)
+        src = res.scalars().first()
+        if not src:
+            return []
+        out: List[Dict[str, Any]] = []
+        for mc in sorted(src.microcycles or [], key=lambda m: (m.order_index or 0, m.id)):
+            for pw in sorted(mc.plan_workouts or [], key=lambda w: (w.order_index or 0, w.id)):
+                workout_exercises: List[Dict[str, Any]] = []
+                for ex in sorted(pw.exercises or [], key=lambda e: (e.order_index or 0, e.id)):
+                    sets: List[Dict[str, Any]] = []
+                    for s in sorted(ex.sets or [], key=lambda z: (z.order_index or 0, z.id)):
+                        sets.append({
+                            "exercise_id": int(ex.exercise_definition_id) if ex.exercise_definition_id is not None else None,
+                            "intensity": s.intensity,
+                            "effort": s.effort,
+                            "volume": s.volume,
+                            "working_weight": s.working_weight,
+                        })
+                    workout_exercises.append({"exercise_id": ex.exercise_definition_id, "sets": sets})
+                if workout_exercises:
+                    out.append({
+                        "name": src.name,
+                        "scheduled_for": None,
+                        "plan_order_index": None,
+                        "exercises": workout_exercises,
+                    })
+        return out

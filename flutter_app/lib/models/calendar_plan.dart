@@ -7,6 +7,8 @@ class CalendarPlan {
   final Map<String, dynamic> schedule;
   final int durationWeeks;
   final bool isActive;
+  final int? rootPlanId;
+  final bool isOriginal;
   final DateTime? startDate;
   final DateTime? endDate;
   // New nested structure
@@ -18,6 +20,8 @@ class CalendarPlan {
     required this.schedule,
     required this.durationWeeks,
     this.isActive = false,
+    this.rootPlanId,
+    this.isOriginal = true,
     this.startDate,
     this.endDate,
     this.mesocycles = const [],
@@ -30,6 +34,8 @@ class CalendarPlan {
       schedule: Map<String, dynamic>.from(json['schedule'] ?? {}),
       durationWeeks: (json['duration_weeks'] as int?) ?? 0,
       isActive: json['is_active'] ?? false,
+      rootPlanId: json['root_plan_id'] as int?,
+      isOriginal: (json['is_original'] as bool?) ?? (json['root_plan_id'] == null || json['root_plan_id'] == json['id']),
       startDate: json['start_date'] != null ? DateTime.parse(json['start_date']) : null,
       endDate: json['end_date'] != null ? DateTime.parse(json['end_date']) : null,
       mesocycles: (json['mesocycles'] as List<dynamic>? ?? [])
@@ -45,6 +51,8 @@ class CalendarPlan {
       'schedule': schedule,
       'duration_weeks': durationWeeks,
       'is_active': isActive,
+      'root_plan_id': rootPlanId,
+      'is_original': isOriginal,
       'start_date': startDate?.toIso8601String(),
       'end_date': endDate?.toIso8601String(),
       'mesocycles': mesocycles.map((e) => e.toJson()).toList(),

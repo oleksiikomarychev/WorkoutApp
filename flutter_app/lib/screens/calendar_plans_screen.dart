@@ -33,7 +33,8 @@ class _CalendarPlansScreenState extends State<CalendarPlansScreen> {
         _errorMessage = null;
       });
 
-      final response = await _apiClient.get(ApiConfig.getAllPlansEndpoint());
+      final endpoint = ApiConfig.getAllPlansEndpoint();
+      final response = await _apiClient.get('$endpoint?roots_only=true');
 
       if (response is List) {
         setState(() {

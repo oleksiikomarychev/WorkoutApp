@@ -12,6 +12,8 @@ import 'package:workout_app/services/api_client.dart';
 import 'package:workout_app/services/exercise_service.dart';
 import 'package:workout_app/src/api/plan_api.dart';
 import 'package:workout_app/src/widgets/apply_plan_widget.dart' show ApplyPlanWidget;
+import 'package:workout_app/models/calendar_plan_summary.dart';
+import 'package:workout_app/screens/plan_editor_screen.dart';
 
 class CalendarPlanDetail extends StatefulWidget {
   final CalendarPlan plan;
@@ -241,11 +243,22 @@ class _SingleSelectSheetState<T> extends State<_SingleSelectSheet<T>> {
 }
 
 class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
+  // Current/Original plan state for inline variant switching
+  late final CalendarPlan _originalPlan;
+  late CalendarPlan _currentPlan;
+  late final int _rootPlanId;
+  final Map<int, CalendarPlan> _variantCache = {};
+  bool _prefetchingVariants = false;
+  bool _changingVariant = false;
   List<UserMax> _userMaxList = [];
   Map<int, List<UserMax>> _userMaxesByExerciseId = {};
   Map<String, List<UserMax>> _userMaxesByName = {};
-  late final Set<int> _planExerciseDefinitionIds;
-  late final Set<String> _planExerciseNames;
+  Set<int> _planExerciseDefinitionIds = {};
+  Set<String> _planExerciseNames = {};
+  // Variants state
+  List<CalendarPlanSummary> _variants = const [];
+  bool _variantsLoading = false;
+  String? _variantsError;
 
   // Analytics state (plan-derived)
   final List<String> _metrics = const ['sets', 'volume', 'intensity', 'effort'];
@@ -325,6 +338,24 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       _indexUserMaxes(userMaxes);
     } catch (e) {
       print('Failed to fetch user maxes: $e');
+    }
+  }
+
+  Future<void> _prefetchAllVariants() async {
+    if (_prefetchingVariants) return;
+    _prefetchingVariants = true;
+    try {
+      for (final v in _variants) {
+        if (_variantCache.containsKey(v.id)) continue;
+        try {
+          final full = await PlanApi.getCalendarPlan(v.id);
+          _variantCache[v.id] = full;
+        } catch (_) {
+          // ignore individual prefetch errors
+        }
+      }
+    } finally {
+      _prefetchingVariants = false;
     }
   }
 
@@ -456,12 +487,125 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     super.initState();
     _apiClient = ApiClient();
     _exerciseService = ExerciseService(_apiClient);
-    final exerciseData = _collectPlanExerciseData(widget.plan);
+    _originalPlan = widget.plan;
+    _currentPlan = widget.plan;
+    _rootPlanId = _originalPlan.rootPlanId ?? _originalPlan.id;
+    _variantCache[_originalPlan.id] = _originalPlan;
+    final exerciseData = _collectPlanExerciseData(_currentPlan);
     _planExerciseDefinitionIds = exerciseData.$1;
     _planExerciseNames = exerciseData.$2;
     _fetchUserMaxes();
-    _planAnalytics = _computePlanAnalytics(widget.plan);
+    _planAnalytics = _computePlanAnalytics(_currentPlan);
     _loadExerciseMeta();
+    _fetchVariants();
+  }
+
+  Future<void> _fetchVariants() async {
+    setState(() {
+      _variantsLoading = true;
+      _variantsError = null;
+    });
+    try {
+      final list = await PlanApi.getVariants(_rootPlanId);
+      if (!mounted) return;
+      setState(() {
+        _variants = list;
+        _variantsLoading = false;
+        // If we opened on дочернем варианте, найдём и зафиксируем оригинал
+        final orig = _variants.where((v) => v.isOriginal).cast<CalendarPlanSummary?>().firstWhere(
+              (v) => v != null,
+              orElse: () => null,
+            );
+        if (orig != null && _originalPlan.id != orig.id) {
+          _originalPlan = _variantCache[orig.id] ?? _originalPlan;
+        }
+      });
+      // Prefetch full variant payloads in background for faster switching (optional)
+      // ignore: unawaited_futures
+      _prefetchAllVariants();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _variantsError = 'Не удалось загрузить варианты: $e';
+        _variantsLoading = false;
+      });
+    }
+  }
+
+  void _createVariantDialog() {
+    final controller = TextEditingController();
+    bool submitting = false;
+    String? error;
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              title: const Text('Новый вариант плана'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: controller,
+                    decoration: const InputDecoration(labelText: 'Название варианта'),
+                    autofocus: true,
+                  ),
+                  if (error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Text(
+                        error!,
+                        style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                      ),
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: submitting ? null : () => Navigator.of(context).pop(),
+                  child: const Text('Отмена'),
+                ),
+                FilledButton(
+                  onPressed: submitting
+                      ? null
+                      : () async {
+                          final name = controller.text.trim();
+                          if (name.isEmpty) {
+                            setModalState(() => error = 'Введите название');
+                            return;
+                          }
+                          setModalState(() {
+                            submitting = true;
+                            error = null;
+                          });
+                          try {
+                            await PlanApi.createVariant(planId: _rootPlanId, name: name);
+                            if (!mounted) return;
+                            Navigator.of(context).pop();
+                            await _fetchVariants();
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Вариант создан')),
+                            );
+                          } catch (e) {
+                            setModalState(() {
+                              submitting = false;
+                              error = 'Ошибка: $e';
+                            });
+                          }
+                        },
+                  child: submitting
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Создать'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    ).then((_) => controller.dispose());
   }
 
   Future<void> _applyPlan(BuildContext context) async {
@@ -470,15 +614,15 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
         context: context,
         isScrollControlled: true,
         builder: (context) => ApplyPlanWidget(
-          plan: widget.plan,
+          plan: _currentPlan,
           userMaxList: _userMaxList,
           allowedExerciseIds: _planExerciseDefinitionIds,
           allowedExerciseNames: _planExerciseNames,
-          planId: widget.plan.id,
+          planId: _currentPlan.id,
           onApply: (settings) async {
             try {
               await PlanApi.applyPlan(
-                planId: widget.plan.id,
+                planId: _currentPlan.id,
                 userMaxIds: settings['user_max_ids'],
                 computeWeights: settings['compute_weights'],
                 roundingStep: settings['rounding_step'],
@@ -510,9 +654,30 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.plan.name),
+        title: Text(_currentPlan.name),
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            tooltip: 'Редактировать план',
+            onPressed: () async {
+              final res = await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => PlanEditorScreen(plan: _currentPlan),
+                ),
+              );
+              try {
+                final refreshed = await PlanApi.getCalendarPlan(_currentPlan.id);
+                if (!mounted) return;
+                _setPlan(refreshed);
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Не удалось обновить план: $e')),
+                );
+              }
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.check),
             onPressed: () => _applyPlan(context),
@@ -528,16 +693,126 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
             children: [
               _buildPlanInfo(context),
               const SizedBox(height: 12),
+              Card(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Варианты', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        if (_variantsLoading || _changingVariant)
+                          const LinearProgressIndicator(minHeight: 2)
+                        else if (_variantsError != null)
+                          Text(_variantsError!, style: const TextStyle(color: Colors.redAccent))
+                        else
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: [
+                              InputChip(
+                                avatar: const Icon(Icons.star, size: 18, color: Colors.orange),
+                                label: const Text('Оригинал'),
+                                selected: (() {
+                                  final origId = _variants.firstWhere((v) => v.isOriginal, orElse: () => CalendarPlanSummary(id: _rootPlanId, name: '', durationWeeks: 0, isActive: true, rootPlanId: _rootPlanId, isOriginal: true)).id;
+                                  return _currentPlan.id == origId;
+                                })(),
+                                onPressed: () async {
+                                  final orig = _variants.firstWhere(
+                                    (v) => v.isOriginal,
+                                    orElse: () => CalendarPlanSummary(
+                                      id: _rootPlanId,
+                                      name: '',
+                                      durationWeeks: 0,
+                                      isActive: true,
+                                      rootPlanId: _rootPlanId,
+                                      isOriginal: true,
+                                    ),
+                                  );
+                                  if (_currentPlan.id == orig.id) return;
+                                  setState(() => _changingVariant = true);
+                                  try {
+                                    final cached = _variantCache[orig.id];
+                                    final full = cached ?? await PlanApi.getCalendarPlan(orig.id);
+                                    if (!mounted) return;
+                                    _setPlan(full);
+                                    _variantCache[orig.id] = full;
+                                  } catch (e) {
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Не удалось загрузить план: $e')),
+                                    );
+                                  } finally {
+                                    if (mounted) setState(() => _changingVariant = false);
+                                  }
+                                },
+                              ),
+                              ..._variants
+                                  .where((v) => !v.isOriginal)
+                                  .map(
+                                    (v) => InputChip(
+                                      avatar: const Icon(Icons.fork_right, size: 18),
+                                      label: Text(v.name),
+                                      selected: v.id == _currentPlan.id,
+                                      onPressed: v.id == _currentPlan.id
+                                          ? null
+                                          : () => _switchToVariant(v),
+                                    ),
+                                  ),
+                              ActionChip(
+                                avatar: const Icon(Icons.add, size: 18),
+                                label: const Text('Добавить вариант+'),
+                                onPressed: _createVariantDialog,
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 12),
               _buildAnalyticsSection(context),
               const SizedBox(height: 12),
               const Text('Mesocycles', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              ...widget.plan.mesocycles.map((mesocycle) => _buildMesocycleExpansionTile(mesocycle)),
+              ..._currentPlan.mesocycles.map((mesocycle) => _buildMesocycleExpansionTile(mesocycle)),
             ],
           ),
         ),
       ),
     );
+  }
+
+  void _setPlan(CalendarPlan plan) {
+    final exerciseData = _collectPlanExerciseData(plan);
+    setState(() {
+      _currentPlan = plan;
+      _planExerciseDefinitionIds = exerciseData.$1;
+      _planExerciseNames = exerciseData.$2;
+      _selectedExerciseIds.clear();
+      _selectedMuscles.clear();
+      _planAnalytics = _computePlanAnalytics(plan);
+    });
+    _loadExerciseMeta();
+  }
+
+  Future<void> _switchToVariant(CalendarPlanSummary v) async {
+    if (v.id == _currentPlan.id) return;
+    setState(() => _changingVariant = true);
+    try {
+      final cached = _variantCache[v.id];
+      final full = cached ?? await PlanApi.getCalendarPlan(v.id);
+      if (!mounted) return;
+      _setPlan(full);
+      _variantCache[v.id] = full;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось загрузить план: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _changingVariant = false);
+    }
   }
 
   List<_PlanAnalyticsPoint> _computePlanAnalytics(
@@ -801,7 +1076,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     final onlyMuscles = _selectedMuscles.isEmpty ? null : _selectedMuscles;
     setState(() {
       _planAnalytics = _computePlanAnalytics(
-        widget.plan,
+        _currentPlan,
         onlyExerciseIds: onlyIds,
         onlyMuscles: onlyMuscles,
       );
@@ -1728,17 +2003,17 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                 Icon(Icons.calendar_today, size: 18, color: Theme.of(context).primaryColor),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(widget.plan.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  child: Text(_currentPlan.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
             const SizedBox(height: 8),
-            _buildInfoRow('Duration', '${widget.plan.durationWeeks} weeks'),
-            _buildInfoRow('Active', widget.plan.isActive ? 'Yes' : 'No'),
-            if (widget.plan.startDate != null)
-              _buildInfoRow('Start Date', widget.plan.startDate!.toLocal().toString().split(' ')[0]),
-            if (widget.plan.endDate != null)
-              _buildInfoRow('End Date', widget.plan.endDate!.toLocal().toString().split(' ')[0]),
+            _buildInfoRow('Duration', '${_currentPlan.durationWeeks} weeks'),
+            _buildInfoRow('Active', _currentPlan.isActive ? 'Yes' : 'No'),
+            if (_currentPlan.startDate != null)
+              _buildInfoRow('Start Date', _currentPlan.startDate!.toLocal().toString().split(' ')[0]),
+            if (_currentPlan.endDate != null)
+              _buildInfoRow('End Date', _currentPlan.endDate!.toLocal().toString().split(' ')[0]),
           ],
         ),
       ),

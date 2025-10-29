@@ -4,7 +4,7 @@ from .database import Base
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import JSON
-
+from sqlalchemy import select
 
 # Define enum type
 workout_type_enum = Enum('manual', 'generated', name='workouttypeenum')
@@ -85,6 +85,8 @@ class WorkoutSession(Base):
     # Derived at finish; seconds
     duration_seconds = Column(Integer, nullable=True)
     progress = Column(JSON, nullable=False, default=dict)
+    # Persisted suggestion built on finish; used by client to prompt applying macros
+    macro_suggestion = Column(JSON, nullable=True)
 
     workout = relationship("Workout", back_populates="sessions")
 

@@ -15,6 +15,7 @@ import 'package:workout_app/config/constants/theme_constants.dart';
 import '../models/applied_calendar_plan.dart';
 import '../services/plan_service.dart';
 import '../services/api_client.dart';
+import 'active_plan_screen.dart';
 
 // Provider for PlanService
 final planServiceProvider = Provider<PlanService>((ref) => PlanService(apiClient: ref.watch(apiClientProvider)));
@@ -450,10 +451,19 @@ class _PlansSection extends StatelessWidget {
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: const [
-            _SectionTitle(
+          children: [
+            const _SectionTitle(
               icon: Icons.calendar_today,
               title: 'Plans Workouts',
+            ),
+            IconButton(
+              tooltip: 'Open Calendar',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ActivePlanScreen()),
+                );
+              },
+              icon: const Icon(Icons.calendar_today_outlined, color: AppColors.primary),
             ),
           ],
         ),

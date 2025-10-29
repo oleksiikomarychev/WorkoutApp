@@ -165,6 +165,10 @@ class CalendarPlanCreate(CalendarPlanBase):
     duration_weeks: int = Field(..., ge=1, le=104, description="Duration must be between 1 and 104 weeks")
 
 
+class CalendarPlanVariantCreate(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=255, description="Optional name for the plan variant")
+
+
 class CalendarPlanUpdate(BaseModel):
     """Схема для частичного обновления плана"""
 
@@ -219,6 +223,8 @@ class CalendarPlanSummaryResponse(BaseModel):
     duration_weeks: int
     is_active: bool
     is_favorite: bool = False
+    root_plan_id: int
+    is_original: bool = True
 
     class Config:
         from_attributes = True
@@ -244,6 +250,8 @@ class CalendarPlanResponse(BaseModel):
     name: str
     duration_weeks: int
     is_active: bool
+    root_plan_id: int
+    is_original: bool = True
     mesocycles: Optional[List[MesocycleResponse]] = Field(default_factory=list)
 
     class Config:

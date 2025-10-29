@@ -3,7 +3,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload, joinedload
 from ..models.calendar import CalendarPlan, Mesocycle, Microcycle, AppliedCalendarPlan, AppliedMesocycle, AppliedMicrocycle, AppliedWorkout, PlanWorkout, PlanExercise, PlanSet
-from ..schemas.calendar_plan import CalendarPlanCreate, CalendarPlanUpdate, CalendarPlanResponse, PlanWorkoutCreate
+from ..schemas.calendar_plan import (
+    CalendarPlanCreate,
+    CalendarPlanUpdate,
+    CalendarPlanResponse,
+    CalendarPlanSummaryResponse,
+    CalendarPlanVariantCreate,
+    PlanWorkoutCreate,
+)
 from ..schemas.mesocycle import MicrocycleCreate
 from ..schemas.schedule_item import ExerciseScheduleItem, ParamsSets
 from fastapi import HTTPException, status
@@ -61,7 +68,7 @@ class CalendarPlanService:
                         for ex_idx, exercise_data in enumerate(workout_data.exercises):
                             # Validate exercise existence and get name
                             exercise_details = await CalendarPlanService._get_exercise_details(exercise_data.exercise_definition_id)
-                            
+
                             plan_exercise = PlanExercise(
                                 exercise_definition_id=exercise_data.exercise_definition_id,
                                 exercise_name=exercise_details["name"],  # Store exercise name
@@ -81,24 +88,165 @@ class CalendarPlanService:
                                     plan_exercise_id=plan_exercise.id
                                 )
                                 db.add(plan_set)
-                        await db.flush()
+                            await db.flush()
 
             await db.commit()
-            
+
             # Refresh the plan and load relationships
             stmt = select(CalendarPlan).options(
                 selectinload(CalendarPlan.mesocycles).selectinload(Mesocycle.microcycles).selectinload(Microcycle.plan_workouts).selectinload(PlanWorkout.exercises).selectinload(PlanExercise.sets)
             ).where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
             result = await db.execute(stmt)
             plan = result.scalars().first()
-            
+
             if not plan:
                 raise HTTPException(status_code=500, detail="Failed to load created plan")
-            
+
             return CalendarPlanService._get_plan_response(plan)
         except Exception as e:
             await db.rollback()
             raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+    async def create_variant(
+        db: AsyncSession,
+        plan_id: int,
+        user_id: str,
+        variant_data: CalendarPlanVariantCreate,
+    ) -> CalendarPlanResponse:
+        # Load source plan with hierarchy
+        stmt = (
+            select(CalendarPlan)
+            .options(
+                selectinload(CalendarPlan.mesocycles)
+                .selectinload(Mesocycle.microcycles)
+                .selectinload(Microcycle.plan_workouts)
+                .selectinload(PlanWorkout.exercises)
+                .selectinload(PlanExercise.sets)
+            )
+            .where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
+        )
+        result = await db.execute(stmt)
+        source = result.scalars().first()
+        if not source:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found or permission denied")
+        # Allow variants only from original
+        if source.root_plan_id != source.id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Variants can be created only from the original plan")
+
+        # Create variant plan
+        variant_name = variant_data.name or f"{source.name} (вариант)"
+        variant = CalendarPlan(
+            name=variant_name,
+            duration_weeks=source.duration_weeks,
+            is_active=True,
+            user_id=user_id,
+            root_plan_id=source.id,
+        )
+        db.add(variant)
+        await db.flush()
+
+        # Deep copy hierarchy
+        for meso_idx, src_meso in enumerate(source.mesocycles or []):
+            meso = Mesocycle(
+                name=src_meso.name,
+                order_index=src_meso.order_index,
+                duration_weeks=src_meso.duration_weeks,
+                calendar_plan_id=variant.id,
+            )
+            db.add(meso)
+            await db.flush()
+
+            for micro_idx, src_micro in enumerate(src_meso.microcycles or []):
+                micro = Microcycle(
+                    name=src_micro.name,
+                    order_index=src_micro.order_index,
+                    days_count=src_micro.days_count,
+                    normalization_value=src_micro.normalization_value,
+                    normalization_unit=src_micro.normalization_unit,
+                    mesocycle_id=meso.id,
+                )
+                db.add(micro)
+                await db.flush()
+
+                for w_idx, src_pw in enumerate(src_micro.plan_workouts or []):
+                    pw = PlanWorkout(
+                        day_label=src_pw.day_label,
+                        order_index=src_pw.order_index,
+                        microcycle_id=micro.id,
+                    )
+                    db.add(pw)
+                    await db.flush()
+
+                    for ex_idx, src_ex in enumerate(src_pw.exercises or []):
+                        pe = PlanExercise(
+                            exercise_definition_id=src_ex.exercise_definition_id,
+                            exercise_name=src_ex.exercise_name,
+                            order_index=src_ex.order_index,
+                            plan_workout_id=pw.id,
+                        )
+                        db.add(pe)
+                        await db.flush()
+
+                        for set_idx, src_set in enumerate(src_ex.sets or []):
+                            ps = PlanSet(
+                                order_index=src_set.order_index,
+                                intensity=src_set.intensity,
+                                effort=src_set.effort,
+                                volume=src_set.volume,
+                                plan_exercise_id=pe.id,
+                            )
+                            db.add(ps)
+
+        await db.commit()
+
+        # Reload and return response
+        stmt2 = (
+            select(CalendarPlan)
+            .options(
+                selectinload(CalendarPlan.mesocycles)
+                .selectinload(Mesocycle.microcycles)
+                .selectinload(Microcycle.plan_workouts)
+                .selectinload(PlanWorkout.exercises)
+                .selectinload(PlanExercise.sets)
+            )
+            .where(CalendarPlan.id == variant.id)
+        )
+        result2 = await db.execute(stmt2)
+        created_variant = result2.scalars().first()
+        return CalendarPlanService._get_plan_response(created_variant)
+
+    async def list_variants(
+        db: AsyncSession, plan_id: int, user_id: str
+    ) -> List[CalendarPlanSummaryResponse]:
+        # Ensure plan exists and belongs to user; retrieve its root
+        stmt = select(CalendarPlan).where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
+        res = await db.execute(stmt)
+        base = res.scalars().first()
+        if not base:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found or permission denied")
+        root_id = base.root_plan_id
+        # Fetch all in group (including original)
+        stmt2 = (
+            select(CalendarPlan)
+            .where(CalendarPlan.root_plan_id == root_id)
+            .order_by(CalendarPlan.id.asc())
+        )
+        res2 = await db.execute(stmt2)
+        items = res2.scalars().all()
+        summaries: List[CalendarPlanSummaryResponse] = []
+        for p in items:
+            summaries.append(
+                CalendarPlanSummaryResponse(
+                    id=p.id,
+                    name=p.name,
+                    duration_weeks=p.duration_weeks,
+                    is_active=p.is_active,
+                    is_favorite=False,
+                    root_plan_id=p.root_plan_id,
+                    is_original=(p.id == p.root_plan_id),
+                )
+            )
+        return summaries
 
     async def get_plan(db: AsyncSession, plan_id: int, user_id: str) -> Optional[CalendarPlanResponse]:
         try:
@@ -109,7 +257,7 @@ class CalendarPlanService:
                 .selectinload(Microcycle.plan_workouts)
                 .selectinload(PlanWorkout.exercises)
                 .selectinload(PlanExercise.sets)
-            ).where(CalendarPlan.id == plan_id)
+            ).where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
             result = await db.execute(stmt)
             plan = result.scalars().first()
             
@@ -123,7 +271,7 @@ class CalendarPlanService:
                 detail=f"Failed to get plan: {str(e)}"
             )
 
-    async def get_all_plans(db: AsyncSession, user_id: str) -> List[CalendarPlanResponse]:
+    async def get_all_plans(db: AsyncSession, user_id: str, roots_only: bool = True) -> List[CalendarPlanResponse]:
         try:
             stmt = (
                 select(CalendarPlan)
@@ -134,7 +282,10 @@ class CalendarPlanService:
                     .selectinload(PlanWorkout.exercises)
                     .selectinload(PlanExercise.sets)
                 )
+                .where(CalendarPlan.user_id == user_id)
             )
+            if roots_only:
+                stmt = stmt.where(CalendarPlan.id == CalendarPlan.root_plan_id)
             result = await db.execute(stmt)
             plans = result.scalars().unique().all()
 
@@ -400,6 +551,8 @@ class CalendarPlanService:
                 "name": getattr(plan, 'name', ''),
                 "duration_weeks": getattr(plan, 'duration_weeks', 0),
                 "is_active": getattr(plan, 'is_active', True),
+                "root_plan_id": getattr(plan, 'root_plan_id', getattr(plan, 'id', 0)),
+                "is_original": getattr(plan, 'id', None) == getattr(plan, 'root_plan_id', None),
                 "mesocycles": mesocycles_list
             }
             
@@ -432,5 +585,7 @@ class CalendarPlanService:
                 name=getattr(plan, 'name', ''),
                 duration_weeks=getattr(plan, 'duration_weeks', 0),
                 is_active=getattr(plan, 'is_active', True),
+                root_plan_id=getattr(plan, 'root_plan_id', getattr(plan, 'id', 0)),
+                is_original=getattr(plan, 'id', None) == getattr(plan, 'root_plan_id', None),
                 mesocycles=mesocycles_list
             )

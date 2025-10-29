@@ -1,11 +1,12 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from uuid import uuid4
 from .services.conversation_graph import ConversationGraph
-from .routers import training_plans
+from .routers import training_plans, avatars
 
 app = FastAPI()
 
 app.include_router(training_plans.router, prefix="/training-plans")
+app.include_router(avatars.router, prefix="/avatars")
 
 @app.get("/")
 def read_root():

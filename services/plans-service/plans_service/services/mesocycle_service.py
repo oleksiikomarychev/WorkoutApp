@@ -10,6 +10,7 @@ from ..models.calendar import (
     Microcycle,
     PlanWorkout,
     PlanExercise,
+    PlanSet,
 )
 from ..schemas.mesocycle import (
     MesocycleCreate,
@@ -162,7 +163,7 @@ class MesocycleService:
 
     async def delete_mesocycle(self, mesocycle_id: int) -> None:
         m = await self._check_mesocycle_permission(mesocycle_id)
-        self.db.delete(m)
+        await self.db.delete(m)
         await self.db.commit()
 
     async def get_mesocycle_by_id(self, mesocycle_id: int) -> Optional[Mesocycle]:
@@ -234,8 +235,95 @@ class MesocycleService:
             mc.notes = data.notes
         if data.order_index is not None:
             mc.order_index = data.order_index
+        # Apply schedule into relational structure (plan_workouts/exercises/sets)
         if data.schedule is not None:
-            mc.schedule = await self._serialize_schedule(data.schedule)
+            # Eager-load existing workouts/exercises/sets to avoid async lazy-load (MissingGreenlet)
+            stmt_pw = (
+                select(PlanWorkout)
+                .options(selectinload(PlanWorkout.exercises).selectinload(PlanExercise.sets))
+                .where(PlanWorkout.microcycle_id == mc.id)
+            )
+            result_pw = await self.db.execute(stmt_pw)
+            existing_workouts = list(result_pw.scalars().all())
+
+            # Build lookup existing workouts by day index (1-based) and by label
+            existing_by_day: dict[int, PlanWorkout] = {}
+            for pw in existing_workouts:
+                # Try parse "Day X" to int, else fallback to order_index + 1
+                day_idx: Optional[int] = None
+                label = (pw.day_label or "").strip().lower()
+                if label.startswith("day "):
+                    try:
+                        day_idx = int(label[4:].strip())
+                    except Exception:
+                        day_idx = None
+                if day_idx is None:
+                    day_idx = (pw.order_index or 0) + 1
+                existing_by_day[day_idx] = pw
+
+            # Iterate incoming schedule per day
+            for raw_day, items in (data.schedule or {}).items():
+                # Accept keys like "1" or "Day 1"
+                day_idx: int | None = None
+                try:
+                    day_idx = int(str(raw_day).strip().split()[-1])
+                except Exception:
+                    day_idx = None
+                if day_idx is None or day_idx < 1:
+                    # Skip invalid keys
+                    continue
+
+                pw = existing_by_day.get(day_idx)
+                if pw is None:
+                    # Create a new workout for this day
+                    pw = PlanWorkout(
+                        microcycle_id=mc.id,
+                        day_label=f"Day {day_idx}",
+                        order_index=day_idx - 1,
+                    )
+                    self.db.add(pw)
+                    await self.db.flush()
+                    existing_by_day[day_idx] = pw
+
+                # Replace exercises for this day
+                new_exercises: list[PlanExercise] = []
+                for item in (items or []):
+                    if not isinstance(item, dict):
+                        continue
+                    ex_id = item.get("exercise_id") or item.get("exercise_list_id")
+                    try:
+                        ex_id = int(ex_id) if ex_id is not None else None
+                    except Exception:
+                        ex_id = None
+                    if ex_id is None:
+                        continue
+                    name = item.get("name") or ""
+                    sets_payload = item.get("sets") or []
+                    new_sets: list[PlanSet] = []
+                    for s in sets_payload:
+                        if not isinstance(s, dict):
+                            continue
+                        new_sets.append(
+                            PlanSet(
+                                order_index=len(new_sets),
+                                intensity=s.get("intensity"),
+                                effort=s.get("effort"),
+                                volume=s.get("volume"),
+                                working_weight=s.get("working_weight"),
+                            )
+                        )
+                    new_exercises.append(
+                        PlanExercise(
+                            plan_workout_id=pw.id,
+                            exercise_definition_id=ex_id,
+                            exercise_name=name,
+                            order_index=len(new_exercises),
+                            sets=new_sets,
+                        )
+                    )
+
+                # Assign, old ones are deleted via cascade orphan
+                pw.exercises = new_exercises
         if data.normalization_value is not None:
             mc.normalization_value = data.normalization_value
         if data.normalization_unit is not None:
@@ -248,7 +336,7 @@ class MesocycleService:
 
     async def delete_microcycle(self, microcycle_id: int) -> None:
         mc = await self._check_microcycle_permission(microcycle_id)
-        self.db.delete(mc)
+        await self.db.delete(mc)
         await self.db.commit()
 
     async def get_microcycle_by_id(self, microcycle_id: int) -> Optional[Microcycle]:

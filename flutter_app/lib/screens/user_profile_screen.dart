@@ -8,10 +8,17 @@ import 'package:workout_app/models/workout_session.dart';
 import 'package:workout_app/providers/providers.dart';
 import 'package:workout_app/services/service_locator.dart' as sl;
 import 'package:workout_app/services/workout_service.dart';
+import 'package:workout_app/services/avatar_service.dart';
 import 'package:workout_app/screens/workout_session_history_screen.dart';
 import 'package:workout_app/screens/session_log_screen.dart';
+import 'dart:typed_data';
 
 const int kActivityWeeks = 48;
+
+// Avatar generator state
+final avatarPromptProvider = StateProvider<String>((ref) => '');
+final avatarImageProvider = StateProvider<Uint8List?>((ref) => null);
+final avatarLoadingProvider = StateProvider<bool>((ref) => false);
 
 final profileAggregatesProvider = FutureProvider<UserStats>((ref) async {
   final analytics = ref.watch(sl.analyticsServiceProvider);
@@ -298,10 +305,148 @@ class UserProfileScreen extends ConsumerWidget {
           const SizedBox(height: 24),
           _buildProfileHeader(user, stats),
           const SizedBox(height: 32),
+          _buildAvatarGenerator(context, ref),
+          const SizedBox(height: 32),
           _buildActivitySection(stats),
           const SizedBox(height: 32),
           _buildCompletedWorkouts(context, ref),
           const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvatarGenerator(BuildContext context, WidgetRef ref) {
+    final loading = ref.watch(avatarLoadingProvider);
+    final imageBytes = ref.watch(avatarImageProvider);
+    final prompt = ref.watch(avatarPromptProvider);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.edit, color: AppColors.primary, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Generate your Avatar',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Use fofr/sdxl-emoji to create something unique.',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          if (imageBytes != null)
+            Center(
+              child: Container(
+                width: 96,
+                height: 96,
+                decoration: const BoxDecoration(shape: BoxShape.circle),
+                clipBehavior: Clip.antiAlias,
+                child: Image.memory(imageBytes, fit: BoxFit.cover),
+              ),
+            ),
+          if (imageBytes != null) const SizedBox(height: 8),
+          if (imageBytes != null)
+            Center(
+              child: TextButton.icon(
+                onPressed: loading
+                    ? null
+                    : () async {
+                        try {
+                          final svc = ref.read(sl.avatarServiceProvider);
+                          final url = await svc.applyAsProfile(pngBytes: imageBytes);
+                          try { await FirebaseAuth.instance.currentUser?.reload(); } catch (_) {}
+                          ref.invalidate(profileAggregatesProvider);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(url.isNotEmpty ? 'Profile photo updated' : 'Saved avatar')),
+                            );
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Failed to apply: $e')),
+                            );
+                          }
+                        }
+                      },
+                icon: const Icon(Icons.check_circle_outline),
+                label: const Text('Use as profile picture'),
+              ),
+            ),
+          if (imageBytes != null) const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  initialValue: prompt,
+                  onChanged: (v) => ref.read(avatarPromptProvider.notifier).state = v,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.casino_outlined),
+                    hintText: 'Describe your avatar',
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    filled: true,
+                    fillColor: AppColors.surface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 44,
+                child: ElevatedButton(
+                  onPressed: loading
+                      ? null
+                      : () async {
+                          final text = ref.read(avatarPromptProvider);
+                          if (text.trim().isEmpty) return;
+                          ref.read(avatarLoadingProvider.notifier).state = true;
+                          try {
+                            final svc = ref.read(sl.avatarServiceProvider);
+                            final bytes = await svc.generateAvatar(prompt: text);
+                            ref.read(avatarImageProvider.notifier).state = bytes;
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Failed: $e')),
+                              );
+                            }
+                          } finally {
+                            ref.read(avatarLoadingProvider.notifier).state = false;
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.textPrimary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
+                  child: loading
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Generate'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Randomize or write your own prompt! Your avatar will be displayed on your public profile.',
+            style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          ),
         ],
       ),
     );

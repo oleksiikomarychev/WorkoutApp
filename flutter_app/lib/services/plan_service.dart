@@ -2,6 +2,7 @@ import 'dart:convert';
 import '../config/api_config.dart';
 import '../models/applied_calendar_plan.dart';
 import '../models/workout.dart';
+import '../models/plan_analytics.dart';
 import 'api_client.dart';
 import 'base_api_service.dart';
 import 'logger_service.dart';
@@ -67,6 +68,33 @@ class PlanService extends BaseApiService {
       return null;
     } catch (e, stackTrace) {
       handleError('Failed to get next workout in active plan', e, stackTrace);
+      return null;
+    }
+  }
+
+  Future<PlanAnalyticsResponse?> getAppliedPlanAnalytics(
+    int appliedPlanId, {
+    DateTime? from,
+    DateTime? to,
+    String? groupBy,
+  }) async {
+    try {
+      final endpoint = ApiConfig.appliedPlanAnalyticsEndpoint(appliedPlanId.toString());
+      final query = <String, String>{};
+      if (from != null) query['from'] = from.toUtc().toIso8601String();
+      if (to != null) query['to'] = to.toUtc().toIso8601String();
+      if (groupBy != null) query['group_by'] = groupBy;
+      final response = await apiClient.get(
+        endpoint,
+        queryParams: query.isEmpty ? null : query,
+        context: 'PlanService.getAppliedPlanAnalytics',
+      );
+      if (response is Map<String, dynamic>) {
+        return PlanAnalyticsResponse.fromJson(response);
+      }
+      return null;
+    } catch (e, stackTrace) {
+      handleError('Failed to get applied plan analytics', e, stackTrace);
       return null;
     }
   }

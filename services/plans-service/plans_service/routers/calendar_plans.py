@@ -9,7 +9,8 @@ from ..schemas.calendar_plan import (
     CalendarPlanCreate,
     CalendarPlanUpdate,
     CalendarPlanResponse,
-    FullCalendarPlanCreate
+    CalendarPlanSummaryResponse,
+    CalendarPlanVariantCreate,
 )
 from ..services.calendar_plan_service import CalendarPlanService
 from ..models.calendar import CalendarPlan, Mesocycle, Microcycle
@@ -34,13 +35,33 @@ async def create_calendar_plan(
         raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
+@router.post("/{plan_id}/variants", response_model=CalendarPlanResponse, status_code=status.HTTP_201_CREATED)
+async def create_plan_variant(
+    plan_id: int,
+    variant_data: CalendarPlanVariantCreate = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    return await CalendarPlanService.create_variant(db, plan_id, user_id, variant_data)
+
+
+@router.get("/{plan_id}/variants", response_model=List[CalendarPlanSummaryResponse])
+async def list_plan_variants(
+    plan_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> List[CalendarPlanSummaryResponse]:
+    return await CalendarPlanService.list_variants(db, plan_id, user_id)
+
+
 @router.get("/", response_model=List[CalendarPlanResponse])
 async def get_all_plans(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
+    roots_only: bool = Query(True, description="Return only original plans (id == root_plan_id)"),
 ) -> List[CalendarPlanResponse]:
     try:
-        return await CalendarPlanService.get_all_plans(db, user_id)
+        return await CalendarPlanService.get_all_plans(db, user_id, roots_only=roots_only)
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error") from e
 

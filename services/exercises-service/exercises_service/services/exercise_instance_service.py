@@ -57,7 +57,17 @@ class ExerciseInstanceService:
             raise ValueError("Exercise instance not found")
         if not isinstance(db_instance.sets, list):
             raise ValueError("No sets to update")
-            
+
+        # Синхронизация полей усилия: если приходит только одно из полей, зеркалим во второе
+        try:
+            if "rpe" in update_data and "effort" not in update_data:
+                update_data["effort"] = update_data.get("rpe")
+            if "effort" in update_data and "rpe" not in update_data:
+                update_data["rpe"] = update_data.get("effort")
+        except Exception:
+            # best-effort only
+            pass
+
         # Обновляем сет
         new_sets = self.set_service.update_set(db_instance.sets, set_id, update_data)
         

@@ -151,6 +151,7 @@ services:
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
       - PLANS_SERVICE_URL=http://plans-service:8005
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
     ports:
       - "8006:8006"
     depends_on:

@@ -107,6 +107,9 @@ class SessionService:
             .filter(Workout.id == session.workout_id)
         )
         workout = result.scalars().first()
+        # Cache primitive attributes before commit to avoid async lazy loads after commit expiration
+        workout_id_cached: Optional[int] = workout.id if workout else None
+        applied_plan_id_cached: Optional[int] = workout.applied_plan_id if workout else None
 
         sync_payload = None
         if workout:
@@ -123,6 +126,46 @@ class SessionService:
 
         if sync_payload:
             await self.user_max_client.push_entries(sync_payload, user_id=self.user_id)
+
+        # Build macro suggestion first (best-effort) using current plan index, then advance index
+        try:
+            # Need applied_plan_id to compute macros
+            if applied_plan_id_cached:
+                # 1) Compute suggestion preview while current_workout_index still points to current workout
+                suggestion = await self._compute_macro_suggestion(int(applied_plan_id_cached))
+                # Persist on the session row so history endpoint can read it later
+                session.macro_suggestion = suggestion
+                await self.db.commit()
+                await self.db.refresh(session)
+                # 2) Advance current_workout_index for the applied plan (best-effort)
+                try:
+                    base_url = os.getenv("PLANS_SERVICE_URL", "http://plans-service:8005").rstrip("/")
+                    adv_url = f"{base_url}/plans/applied-plans/{int(applied_plan_id_cached)}/advance-index?by=1"
+                    headers = {"X-User-Id": self.user_id}
+                    async with httpx.AsyncClient(timeout=4.0) as client:
+                        resp = await client.post(adv_url, headers=headers)
+                        if resp.status_code >= 400:
+                            logger.warning(
+                                "advance-index non-2xx | applied_plan_id=%s status=%s",
+                                applied_plan_id_cached,
+                                resp.status_code,
+                            )
+                except Exception:
+                    logger.exception(
+                        "SessionService.finish_session advance-index failed | applied_plan_id=%s session_id=%s",
+                        applied_plan_id_cached,
+                        session.id,
+                    )
+                    pass
+        except Exception:
+            # best-effort only
+            logger.exception(
+                "SessionService.finish_session macro suggestion compute/persist failed | session_id=%s workout_id=%s applied_plan_id=%s",
+                session.id,
+                workout_id_cached,
+                applied_plan_id_cached,
+            )
+            pass
 
         return session
 
@@ -257,6 +300,49 @@ class SessionService:
             workout.id, session.id, len(payload)
         )
         return payload
+
+    async def _compute_macro_suggestion(self, applied_plan_id: int) -> Optional[dict]:
+        """Call plans-service run-macros and return a compact suggestion payload for the client UI."""
+        base_url = os.getenv("PLANS_SERVICE_URL", "http://plans-service:8005").rstrip("/")
+        url = f"{base_url}/plans/applied-plans/{applied_plan_id}/run-macros"
+        headers = {"X-User-Id": self.user_id}
+        try:
+            async with httpx.AsyncClient(timeout=6.0) as client:
+                res = await client.post(url, headers=headers)
+                if res.status_code != 200:
+                    logger.warning(
+                        "SessionService.run-macros non-200 | applied_plan_id=%s status=%s body=%s",
+                        applied_plan_id,
+                        res.status_code,
+                        res.text,
+                    )
+                    return None
+                data = res.json() or {}
+                preview = data.get("preview") or []
+                # Summarize planned plan-level changes and patches
+                inject_count = 0
+                for item in preview:
+                    for ch in (item.get("plan_changes") or []):
+                        if ch.get("type") == "Inject_Mesocycle":
+                            inject_count += 1
+                has_patches = any((item.get("patches") for item in preview))
+                if inject_count == 0 and not has_patches:
+                    return None
+                return {
+                    "applied_plan_id": applied_plan_id,
+                    "summary": {
+                        "inject_mesocycles": inject_count,
+                        "has_patches": bool(has_patches),
+                    },
+                    "apply_url": f"/api/v1/plans/applied-plans/{applied_plan_id}/apply-macros",
+                    "method": "POST",
+                }
+        except Exception:
+            logger.exception(
+                "SessionService._compute_macro_suggestion failed | applied_plan_id=%s",
+                applied_plan_id,
+            )
+            return None
 
     def _extract_completed_sets(self, session: WorkoutSession) -> Dict[int, Set[int]]:
         raw_progress = session.progress if isinstance(session.progress, dict) else {}
