@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -209,8 +209,30 @@ class MacroEngine:
             return []
         trigger = rule.get("trigger") if isinstance(rule.get("trigger"), dict) else {}
         condition = rule.get("condition") if isinstance(rule.get("condition"), dict) else {}
+        # Persist context for subsequent history/trend helpers
+        try:
+            self._last_ctx = ctx or {}
+        except Exception:
+            self._last_ctx = {}
 
         metric = str(trigger.get("metric") or "").strip()
+        if not metric:
+            return []
+
+        logger = logging.getLogger(__name__)
+
+        supported_metrics = {
+            "e1RM",
+            "Performance_Trend",
+            "Readiness_Score",
+            "RPE_Session",
+            "Total_Reps",
+            "RPE_Delta_From_Plan",
+            "Reps_Delta_From_Plan",
+        }
+        if metric not in supported_metrics:
+            logger.info("MacroEngine._filter_by_trigger unsupported metric=%s", metric)
+            return []
 
         op = str(condition.get("op") or "").strip()
         value = condition.get("value")
@@ -228,7 +250,30 @@ class MacroEngine:
                 if op == "holds_for":
                     rel = str(condition.get("relation") or "<=").strip()
                     n = int(condition.get("n") or 3)
-                    if await self._holds_for_metric(metric, rel, float(value), n, ctx):
+                    rng_param: Optional[List[float]] = None
+                    thr: Optional[float] = None
+                    cond_range = condition.get("range") if isinstance(condition.get("range"), list) else None
+                    if rel in {"in_range", "not_in_range"}:
+                        if cond_range and len(cond_range) >= 2:
+                            try:
+                                a = float(cond_range[0])
+                                b = float(cond_range[1])
+                                rng_param = [a, b]
+                            except Exception:
+                                rng_param = None
+                    else:
+                        try:
+                            thr = float(value)
+                        except Exception:
+                            thr = None
+
+                    if metric == "Readiness_Score" and thr is None and rng_param is None:
+                        try:
+                            thr = float(os.getenv("READINESS_SCORE_HOLDS_FOR_THRESHOLD", 8))
+                        except Exception:
+                            thr = 8.0
+
+                    if await self._holds_for_metric(metric, rel, thr, n, ctx, rng=rng_param):
                         return workout_ids
                     return []
                 else:
@@ -238,6 +283,56 @@ class MacroEngine:
                     except Exception:
                         continue
             return matched
+
+        # New metric: e1RM (estimated 1RM from actual performance)
+        if metric == "e1RM":
+            ex_id = trigger.get("exercise_id")
+            ex_ids = trigger.get("exercise_ids") if isinstance(trigger.get("exercise_ids"), list) else None
+            if ex_id is not None and not ex_ids:
+                ex_ids = [ex_id]
+            # If no exercises specified, we cannot compute meaningful e1RM
+            if not ex_ids:
+                logger.info("MacroEngine._filter_by_trigger e1RM requires exercise_id(s)")
+                return []
+            for wid in workout_ids:
+                v = await self._e1rm_for_wid(wid, ex_ids)
+                try:
+                    if self._compare(op, v, value, rng):
+                        matched.append(wid)
+                except Exception:
+                    continue
+            return matched
+
+        # New metric: Performance_Trend over previous windows using e1RM aggregation
+        if metric == "Performance_Trend":
+            # Requires previous window context
+            relation_op = str(condition.get("op") or "").strip()
+            n = int(condition.get("n") or 5)
+            if relation_op not in {"stagnates_for", "deviates_from_avg"}:
+                return []
+            ex_id = trigger.get("exercise_id")
+            ex_ids = trigger.get("exercise_ids") if isinstance(trigger.get("exercise_ids"), list) else None
+            if ex_id is not None and not ex_ids:
+                ex_ids = [ex_id]
+            if not ex_ids:
+                logger.info("MacroEngine.Performance_Trend requires exercise_id(s)")
+                return []
+            # Build series from previous windows (before current_index)
+            series = await self._trend_series_e1rm_prev_windows(ex_ids, n)
+            if not series or len(series) < n:
+                return []
+            values = [v for (_, v) in series[-n:]]
+            if relation_op == "stagnates_for":
+                eps = float(condition.get("epsilon_percent") or 1.0)
+                ok = self._trend_stagnates(values, eps)
+                logger.info("Trend.stagnates_for | n=%d eps=%.4f series=%s result=%s", n, eps, values, ok)
+                return workout_ids if ok else []
+            else:  # deviates_from_avg
+                val_pct = float(condition.get("value_percent") or 1.0)
+                direction = (condition.get("direction") or "").strip() or None
+                ok = self._trend_deviates(values, val_pct, direction)
+                logger.info("Trend.deviates_from_avg | n=%d value_percent=%.4f dir=%s series=%s result=%s", n, val_pct, direction, values, ok)
+                return workout_ids if ok else []
 
         if metric == "Total_Reps":
             # Optional narrowing by exercise_id(s)
@@ -273,106 +368,6 @@ class MacroEngine:
                             matched.append(wid)
                     except Exception:
                         continue
-            return matched
-
-        if metric == "e1RM" or metric == "Performance_Trend":
-            # Expect exercise_id or exercise_ids
-            ex_id = trigger.get("exercise_id")
-            ex_ids = trigger.get("exercise_ids") if isinstance(trigger.get("exercise_ids"), list) else None
-            if ex_id is not None and not ex_ids:
-                ex_ids = [ex_id]
-            if not ex_ids:
-                # No exercise specified -> cannot evaluate
-                return workout_ids
-            # Fetch user-max histories per exercise
-            um_hist = await self._fetch_user_max_histories(ex_ids)
-            # Compute sequences of true e1RM
-            e1rm_series: Dict[int, List[float]] = {}
-            for eid, items in um_hist.items():
-                seq: List[float] = []
-                for it in items or []:
-                    try:
-                        mw = float(it.get("max_weight")) if it.get("max_weight") is not None else None
-                        rm = int(it.get("rep_max")) if it.get("rep_max") is not None else None
-                    except Exception:
-                        mw = None; rm = None
-                    if mw is None:
-                        continue
-                    # Epley fallback if rep_max available; else take weight as 1RM
-                    if rm and rm > 0:
-                        val = mw * (1.0 + rm / 30.0)
-                    else:
-                        val = mw
-                    seq.append(float(val))
-                if seq:
-                    e1rm_series[eid] = seq
-
-            # Decide per exercise if condition holds
-            affected_ex_ids: set[int] = set()
-            if metric == "e1RM":
-                # Compare last value against value/range
-                for eid, seq in e1rm_series.items():
-                    last_v = seq[-1]
-                    try:
-                        if self._compare(op, last_v, value, rng):
-                            affected_ex_ids.add(eid)
-                    except Exception:
-                        continue
-            else:
-                # Performance_Trend: handle custom ops stagnates_for, deviates_from_avg
-                op_norm = op.lower()
-                if op_norm.startswith("stagnates_for"):
-                    n = int(condition.get("n") or 3)
-                    eps = float(condition.get("epsilon_percent") or 1.0)
-                    for eid, seq in e1rm_series.items():
-                        sub = seq[-n:] if len(seq) >= n else seq
-                        if not sub:
-                            continue
-                        lo, hi = min(sub), max(sub)
-                        base = max(1e-6, sum(sub) / len(sub))
-                        span_pct = ((hi - lo) / base) * 100.0
-                        if span_pct <= eps:
-                            affected_ex_ids.add(eid)
-                elif op_norm.startswith("deviates_from_avg"):
-                    n = int(condition.get("n") or 5)
-                    thr = float(condition.get("value_percent") or 5.0)
-                    direction = str(condition.get("direction") or "").lower()  # positive|negative|''
-                    for eid, seq in e1rm_series.items():
-                        sub = seq[-n:] if len(seq) >= n else seq
-                        if not sub:
-                            continue
-                        avg = sum(sub) / len(sub)
-                        last_v = sub[-1]
-                        if avg == 0:
-                            continue
-                        delta_pct = ((last_v - avg) / avg) * 100.0
-                        ok = abs(delta_pct) >= thr
-                        if ok:
-                            if direction == "positive" and delta_pct < 0:
-                                ok = False
-                            if direction == "negative" and delta_pct > 0:
-                                ok = False
-                        if ok:
-                            affected_ex_ids.add(eid)
-                else:
-                    # Unknown trend operator -> no filtering
-                    return workout_ids
-
-            if not affected_ex_ids:
-                return []
-
-            # Retain only workouts that include any affected exercise
-            details = await self._fetch_workout_details(workout_ids)
-            for wid in workout_ids:
-                payload = details.get(wid) or {}
-                has = False
-                for ex in payload.get("exercises", []) or []:
-                    eid = ex.get("exercise_id")
-                    if eid in affected_ex_ids:
-                        has = True
-                        break
-                if has:
-                    matched.append(wid)
             return matched
 
         # New delta metrics: compare planned vs actual (per-set)
@@ -531,6 +526,10 @@ class MacroEngine:
             return fv > float(target)
         if op in ("<", "lt"):
             return fv < float(target)
+        if op in (">=", "ge"):
+            return fv >= float(target)
+        if op in ("<=", "le"):
+            return fv <= float(target)
         if op in ("=", "==", "eq"):
             return abs(fv - float(target)) < 1e-6
         if op in ("!=", "ne"):
@@ -548,7 +547,15 @@ class MacroEngine:
                 return not ((fv >= lo) and (fv <= hi))
             return True
 
-    async def _holds_for_metric(self, metric: str, relation: str, threshold: float, n: int, ctx: Optional[Dict[str, Any]]) -> bool:
+    async def _holds_for_metric(
+        self,
+        metric: str,
+        relation: str,
+        threshold: Optional[float],
+        n: int,
+        ctx: Optional[Dict[str, Any]],
+        rng: Optional[List[float]] = None,
+    ) -> bool:
         """Generic holds_for for simple workout-level metrics from _fetch_workout_metrics.
         Uses previous N workouts in the applied plan pipeline (before current_index)."""
         if not ctx:
@@ -559,6 +566,8 @@ class MacroEngine:
         if not prev:
             return False
         window = prev[-n:]
+        if len(window) < n:
+            return False
         metrics = await self._fetch_workout_metrics(window)
         def _val(wid: int) -> Optional[float]:
             d = metrics.get(wid) or {}
@@ -571,7 +580,12 @@ class MacroEngine:
             v = _val(wid)
             if v is None:
                 return False
-            if not self._compare(relation, v, threshold, None):
+            target = threshold
+            if relation in {"in_range", "not_in_range"}:
+                target = threshold if threshold is not None else (rng[0] if rng else None)
+            if target is None and relation not in {"in_range", "not_in_range"}:
+                return False
+            if not self._compare(relation, v, target, rng):
                 return False
         return True
 
@@ -689,7 +703,10 @@ class MacroEngine:
         out: Dict[int, List[Dict[str, Any]]] = {}
         if not workout_ids or not httpx:
             return out
-        base = os.getenv("EXERCISES_SERVICE_URL", "http://exercises-service:8002").rstrip("/")
+        base = os.getenv("EXERCISES_SERVICE_URL")
+        if not base:
+            return out
+        base = base.rstrip("/")
         async with httpx.AsyncClient(timeout=6.0) as client:
             for wid in workout_ids:
                 try:
@@ -701,14 +718,188 @@ class MacroEngine:
                 except Exception:
                     continue
         return out
-        # default: if op unknown, do not filter out
-        return True
+
+    async def _fetch_user_max_histories(self, exercise_ids: List[int]) -> Dict[int, List[Dict[str, Any]]]:
+        """Return per exercise a chronological history of per-workout performance maxima for prev windows.
+        Uses previous workouts in the applied plan (before current index) as windows.
+        Each item: {date: iso, max_weight: float, rep_max: int, e1rm: float}
+        """
+        histories: Dict[int, List[Dict[str, Any]]] = {eid: [] for eid in (exercise_ids or [])}
+        # Determine previous windows from last evaluation context
+        try:
+            ordered = getattr(self, "_last_ctx", {}).get("ordered_workouts") or []
+            current_index = int(getattr(self, "_last_ctx", {}).get("current_index") or 0)
+            prev_wids = [w.get("workout_id") for w in ordered if int(w.get("order_index", 0)) < current_index]
+        except Exception:
+            prev_wids = []
+        if not prev_wids or not exercise_ids:
+            return histories
+        # Fetch details and instances
+        details = await self._fetch_workout_details(prev_wids)
+        instances = await self._fetch_exercise_instances(prev_wids)
+        for wid in prev_wids:
+            payload = details.get(wid) or {}
+            ex_list = payload.get("exercises") or []
+            date = payload.get("date")
+            inst_list = instances.get(wid) or []
+            inst_by_eid: Dict[int, dict] = {}
+            for inst in inst_list:
+                try:
+                    eid = int(inst.get("exercise_list_id"))
+                    inst_by_eid[eid] = inst
+                except Exception:
+                    continue
+            for ex in ex_list:
+                eid = ex.get("exercise_id")
+                if eid not in histories:
+                    continue
+                inst = inst_by_eid.get(eid)
+                if not inst:
+                    continue
+                best_e1rm = None
+                best_weight = None
+                best_reps = None
+                for s in (inst.get("sets") or []):
+                    try:
+                        w = s.get("weight") if s.get("weight") is not None else s.get("working_weight")
+                        r = s.get("reps") or s.get("volume")
+                        if w is None or r is None:
+                            continue
+                        w = float(w)
+                        r = int(r)
+                        if r <= 0 or w <= 0:
+                            continue
+                        e = self._e1rm_from_weight_reps(w, r)
+                        if best_e1rm is None or e > best_e1rm:
+                            best_e1rm = e
+                            best_weight = w
+                            best_reps = r
+                    except Exception:
+                        continue
+                if best_e1rm is not None and date is not None:
+                    histories[eid].append({
+                        "date": date,
+                        "max_weight": best_weight,
+                        "rep_max": best_reps,
+                        "e1rm": best_e1rm,
+                    })
+        # Ensure chronological order
+        for eid, items in histories.items():
+            try:
+                items.sort(key=lambda x: x.get("date") or "")
+            except Exception:
+                pass
+        return histories
+
+    async def _e1rm_for_wid(self, wid: int, filter_ex_ids: List[int]) -> Optional[float]:
+        details = await self._fetch_workout_details([wid])
+        instances = await self._fetch_exercise_instances([wid])
+        ex_list = (details.get(wid) or {}).get("exercises") or []
+        inst_list = instances.get(wid) or []
+        inst_by_eid: Dict[int, dict] = {}
+        for inst in inst_list:
+            try:
+                eid = int(inst.get("exercise_list_id"))
+                inst_by_eid[eid] = inst
+            except Exception:
+                continue
+        best = None
+        for ex in ex_list:
+            eid = ex.get("exercise_id")
+            if filter_ex_ids and eid not in filter_ex_ids:
+                continue
+            inst = inst_by_eid.get(eid)
+            if not inst:
+                continue
+            for s in (inst.get("sets") or []):
+                try:
+                    w = s.get("weight") if s.get("weight") is not None else s.get("working_weight")
+                    r = s.get("reps") or s.get("volume")
+                    if w is None or r is None:
+                        continue
+                    w = float(w)
+                    r = int(r)
+                    if r <= 0 or w <= 0:
+                        continue
+                    e = self._e1rm_from_weight_reps(w, r)
+                    best = e if (best is None or e > best) else best
+                except Exception:
+                    continue
+        return best
+
+    async def _trend_series_e1rm_prev_windows(self, filter_ex_ids: List[int], window_n: int) -> List[Tuple[str, float]]:
+        # Build aggregated e1RM per previous workout date
+        try:
+            ordered = getattr(self, "_last_ctx", {}).get("ordered_workouts") or []
+            current_index = int(getattr(self, "_last_ctx", {}).get("current_index") or 0)
+            prev = [w.get("workout_id") for w in ordered if int(w.get("order_index", 0)) < current_index]
+        except Exception:
+            prev = []
+        if not prev:
+            return []
+        details = await self._fetch_workout_details(prev)
+        instances = await self._fetch_exercise_instances(prev)
+        series: List[Tuple[str, float]] = []
+        for wid in prev:
+            date = (details.get(wid) or {}).get("date")
+            val = await self._e1rm_for_wid(wid, filter_ex_ids)
+            if date is not None and val is not None:
+                series.append((date, float(val)))
+        series.sort(key=lambda x: x[0])
+        return series[-max(1, int(window_n * 2)):]  # keep a reasonable cap (2x window)
+
+    @staticmethod
+    def _e1rm_from_weight_reps(weight: float, reps: int) -> float:
+        # Epley formula; for reps==1 return weight
+        if reps <= 1:
+            return float(weight)
+        return float(weight) * (1.0 + (float(reps) / 30.0))
+
+    @staticmethod
+    def _trend_stagnates(values: List[float], epsilon_percent: float) -> bool:
+        if not values or len(values) < 2:
+            return False
+        vals = [float(v) for v in values if v is not None]
+        if len(vals) < 2:
+            return False
+        lo = min(vals)
+        hi = max(vals)
+        mu = sum(vals) / len(vals)
+        if mu <= 0:
+            return False
+        width_pct = (hi - lo) / mu * 100.0
+        return width_pct <= float(epsilon_percent)
+
+    @staticmethod
+    def _trend_deviates(values: List[float], value_percent: float, direction: Optional[str]) -> bool:
+        # Compare last value vs average of prior (n-1) values
+        if not values or len(values) < 2:
+            return False
+        vals = [float(v) for v in values if v is not None]
+        if len(vals) < 2:
+            return False
+        last = vals[-1]
+        prior = vals[:-1]
+        mu = sum(prior) / len(prior)
+        if mu == 0:
+            return False
+        delta_pct = (last - mu) / abs(mu) * 100.0
+        thr = float(value_percent)
+        if direction == "positive":
+            return delta_pct >= thr
+        if direction == "negative":
+            return (-delta_pct) >= thr
+        return abs(delta_pct) >= thr
+
 
     async def _fetch_workout_metrics(self, workout_ids: List[int]) -> Dict[int, Dict[str, Any]]:
         out: Dict[int, Dict[str, Any]] = {}
         if not workout_ids:
             return out
-        base = os.getenv("WORKOUTS_SERVICE_URL", "http://workouts-service:8004").rstrip("/")
+        base = os.getenv("WORKOUTS_SERVICE_URL")
+        if not base:
+            return out
+        base = base.rstrip("/")
         if not httpx:
             return out
         # Fetch sequentially (small N per macro). Keep failures non-fatal.
@@ -728,8 +919,6 @@ class MacroEngine:
                     continue
         return out
 
-    # -----------------
-    # Patch generation
     # -----------------
     async def _build_patches(self, rule: Dict[str, Any], workout_ids: List[int]) -> List[Dict[str, Any]]:
         """Return preview patches for supported actions on provided workouts.
@@ -941,7 +1130,7 @@ class MacroEngine:
         if not selector:
             return None
         if str(selector.get("type") or "").lower() != "tags":
-            return None
+            return set()
         val = selector.get("value") if isinstance(selector.get("value"), dict) else {}
         mv = val.get("movement_type")
         rg = val.get("region")
@@ -1002,7 +1191,10 @@ class MacroEngine:
         out: Dict[int, Dict[str, Any]] = {}
         if not workout_ids:
             return out
-        base = os.getenv("WORKOUTS_SERVICE_URL", "http://workouts-service:8004").rstrip("/")
+        base = os.getenv("WORKOUTS_SERVICE_URL")
+        if not base:
+            return out
+        base = base.rstrip("/")
         if not httpx:
             return out
         # Details should include exercises and sets (id, intensity, effort, volume, working_weight)
@@ -1016,7 +1208,8 @@ class MacroEngine:
                         data = res.json() or {}
                         # Expect 'exercises': [{id, exercise_id, sets: [{id, intensity, effort, volume, working_weight}]}]
                         out[wid] = {
-                            "exercises": data.get("exercises") or []
+                            "exercises": data.get("exercises") or [],
+                            "date": data.get("scheduled_for") or data.get("completed_at"),
                         }
                 except Exception:
                     continue

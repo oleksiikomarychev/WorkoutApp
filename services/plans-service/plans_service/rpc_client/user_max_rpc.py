@@ -2,7 +2,11 @@ import httpx
 import os
 from fastapi import APIRouter, HTTPException
 
-USER_MAX_SERVICE_URL = os.getenv("USER_MAX_SERVICE_URL", "http://user-max-service:8000")
+USER_MAX_SERVICE_URL = os.getenv("USER_MAX_SERVICE_URL") or os.getenv("GATEWAY_URL")
+if not USER_MAX_SERVICE_URL:
+    raise RuntimeError("USER_MAX_SERVICE_URL or GATEWAY_URL must be set")
+if not USER_MAX_SERVICE_URL.startswith(("http://", "https://")):
+    USER_MAX_SERVICE_URL = f"https://{USER_MAX_SERVICE_URL}"
 
 router = APIRouter()
 

@@ -139,7 +139,10 @@ class SessionService:
                 await self.db.refresh(session)
                 # 2) Advance current_workout_index for the applied plan (best-effort)
                 try:
-                    base_url = os.getenv("PLANS_SERVICE_URL", "http://plans-service:8005").rstrip("/")
+                    base_url = os.getenv("PLANS_SERVICE_URL")
+                    if not base_url:
+                        raise RuntimeError("PLANS_SERVICE_URL is not set")
+                    base_url = base_url.rstrip("/")
                     adv_url = f"{base_url}/plans/applied-plans/{int(applied_plan_id_cached)}/advance-index?by=1"
                     headers = {"X-User-Id": self.user_id}
                     async with httpx.AsyncClient(timeout=4.0) as client:
@@ -443,7 +446,11 @@ class SessionService:
             return None
 
     async def _fetch_instances_from_exercises_service(self, workout_id: int) -> list[dict]:
-        base_url = os.getenv("EXERCISES_SERVICE_URL", "http://exercises-service:8002").rstrip("/")
+        base_url = os.getenv("EXERCISES_SERVICE_URL")
+        if not base_url:
+            logger.warning("EXERCISES_SERVICE_URL is not set; cannot fetch instances")
+            return []
+        base_url = base_url.rstrip("/")
         url = f"{base_url}/exercises/instances/workouts/{workout_id}/instances"
         headers = {"X-User-Id": self.user_id}
         try:

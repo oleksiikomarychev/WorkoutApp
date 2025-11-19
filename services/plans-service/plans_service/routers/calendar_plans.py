@@ -11,6 +11,7 @@ from ..schemas.calendar_plan import (
     CalendarPlanResponse,
     CalendarPlanSummaryResponse,
     CalendarPlanVariantCreate,
+    PlanMassEditCommand,
 )
 from ..services.calendar_plan_service import CalendarPlanService
 from ..models.calendar import CalendarPlan, Mesocycle, Microcycle
@@ -131,5 +132,21 @@ async def delete_calendar_plan(
 ):
     try:
         await CalendarPlanService.delete_plan(db, plan_id, user_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+
+
+@router.post("/{plan_id}/mass-edit", response_model=CalendarPlanResponse)
+async def mass_edit_calendar_plan(
+    plan_id: int,
+    cmd: PlanMassEditCommand,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Применить LLM mass-edit/replace операции к упражнениям плана"""
+    try:
+        return await CalendarPlanService.apply_mass_edit(db, plan_id, user_id, cmd)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error") from e

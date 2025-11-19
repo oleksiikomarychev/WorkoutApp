@@ -91,7 +91,7 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
       case 'deviates_from_avg':
         return 'Отклонение от среднего за n окон. value_percent — порог отклонения в %, direction — направление (опционально).';
       case 'holds_for':
-        return 'Подряд N тренировок: сравнение relation (>, <, >=, <=, ==, !=) с порогом value выполняется N раз подряд.';
+        return 'Подряд N тренировок: relation (>, <, >=, <=, ==, !=, в диапазоне, вне диапазона) применяется N раз подряд. Для диапазона укажите границы «от» и «до».';
       case 'holds_for_sets':
         return 'Подряд N подходов внутри тренировки: для каждой пары план/факт по сету применяется relation к дельте (например, Δповторов).';
       default:
@@ -165,20 +165,29 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
       final a = double.tryParse(_rangeFrom);
       final b = double.tryParse(_rangeTo);
       if (a != null && b != null) map['range'] = [a, b];
-    } else {
-      // Only include 'value' for ops that actually use it
-      const opsWithValue = {'>', '<', '=', '!=', 'holds_for', 'holds_for_sets'};
-      if (opsWithValue.contains(_op) && _value.isNotEmpty) {
+    } else if (_op == 'holds_for') {
+      if (_relation.isNotEmpty) map['relation'] = _relation;
+      final isRangeRelation = _relation == 'in_range' || _relation == 'not_in_range';
+      if (isRangeRelation) {
+        final a = double.tryParse(_rangeFrom);
+        final b = double.tryParse(_rangeTo);
+        if (a != null && b != null) map['range'] = [a, b];
+      } else if (_value.isNotEmpty) {
         final numVal = double.tryParse(_value);
         map['value'] = numVal ?? _value;
       }
-    }
-    if (_op == 'holds_for' || _op == 'holds_for_sets') {
+      if (_n.isNotEmpty) map['n'] = int.tryParse(_n) ?? _n;
+    } else if (_op == 'holds_for_sets') {
       if (_relation.isNotEmpty) map['relation'] = _relation;
-      if (_op == 'holds_for') {
-        if (_n.isNotEmpty) map['n'] = int.tryParse(_n) ?? _n;
-      } else {
-        if (_nSets.isNotEmpty) map['n_sets'] = int.tryParse(_nSets) ?? _nSets;
+      if (_value.isNotEmpty) {
+        final numVal = double.tryParse(_value);
+        map['value'] = numVal ?? _value;
+      }
+      if (_nSets.isNotEmpty) map['n_sets'] = int.tryParse(_nSets) ?? _nSets;
+    } else {
+      if (_value.isNotEmpty) {
+        final numVal = double.tryParse(_value);
+        map['value'] = numVal ?? _value;
       }
     }
     if (_op.startsWith('stagnates_for')) {
@@ -287,17 +296,48 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
               DropdownMenuItem(value: '!=', child: Text('не равно ≠')),
               DropdownMenuItem(value: '>', child: Text('больше >')),
               DropdownMenuItem(value: '<', child: Text('меньше <')),
+              DropdownMenuItem(value: 'in_range', child: Text('в диапазоне')),
+              DropdownMenuItem(value: 'not_in_range', child: Text('вне диапазона')),
             ],
             decoration: const InputDecoration(labelText: 'сравнение', border: OutlineInputBorder()),
-            onChanged: (v) { setState(() => _relation = v ?? ''); _emit(); },
+            onChanged: (v) {
+              setState(() {
+                _relation = v ?? '';
+                if (_relation == 'in_range' || _relation == 'not_in_range') {
+                  _value = '';
+                }
+              });
+              _emit();
+            },
           ),
           const SizedBox(height: 8),
-          TextFormField(
-            initialValue: _value,
-            decoration: const InputDecoration(labelText: 'значение', hintText: 'порог, например -2', border: OutlineInputBorder()),
-            keyboardType: TextInputType.number,
-            onChanged: (v) { _value = v; _emit(); },
-          ),
+          if (_relation == 'in_range' || _relation == 'not_in_range')
+            Row(children: [
+              Expanded(
+                child: TextFormField(
+                  initialValue: _rangeFrom,
+                  decoration: const InputDecoration(labelText: 'от', hintText: 'число', border: OutlineInputBorder()),
+                  keyboardType: TextInputType.number,
+                  onChanged: (v) { _rangeFrom = v; _emit(); },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextFormField(
+                  initialValue: _rangeTo,
+                  decoration: const InputDecoration(labelText: 'до', hintText: 'число', border: OutlineInputBorder()),
+                  keyboardType: TextInputType.number,
+                  onChanged: (v) { _rangeTo = v; _emit(); },
+                ),
+              ),
+            ])
+          else
+            TextFormField(
+              initialValue: _value,
+              decoration: const InputDecoration(labelText: 'значение', hintText: 'порог, например -2', border: OutlineInputBorder()),
+              keyboardType: TextInputType.number,
+              onChanged: (v) { _value = v; _emit(); },
+            ),
           const SizedBox(height: 8),
           TextFormField(
             initialValue: _n,

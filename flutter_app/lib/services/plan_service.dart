@@ -98,4 +98,27 @@ class PlanService extends BaseApiService {
       return null;
     }
   }
+
+  Future<bool> cancelAppliedPlan(int appliedPlanId, {String? dropoutReason}) async {
+    try {
+      final endpoint = ApiConfig.cancelAppliedPlanEndpoint(appliedPlanId.toString());
+      _logger.d('POST Cancel Applied Plan: $endpoint');
+      final response = await apiClient.post(
+        endpoint,
+        {
+          if (dropoutReason != null && dropoutReason.trim().isNotEmpty)
+            'dropout_reason': dropoutReason.trim(),
+        },
+        context: 'PlanService.cancelAppliedPlan',
+      );
+      final ok = response != null;
+      if (!ok) {
+        _logger.w('Cancel applied plan returned null response');
+      }
+      return ok;
+    } catch (e, stackTrace) {
+      handleError('Failed to cancel applied plan', e, stackTrace);
+      return false;
+    }
+  }
 }

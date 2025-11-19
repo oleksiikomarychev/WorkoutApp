@@ -12,6 +12,7 @@ class UserMaxBase(BaseModel):
     date: date
     true_1rm: Optional[float] = None
     verified_1rm: Optional[float] = None
+    source: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -25,6 +26,7 @@ class UserMaxCreate(BaseModel):
     date: date
     true_1rm: Optional[float] = None
     verified_1rm: Optional[float] = None
+    source: Optional[str] = None
 
 
 class UserMaxResponse(UserMaxBase):

@@ -39,6 +39,15 @@ class ExerciseListBase(BaseModel):
         None, description="compound or isolation"
     )
     region: Optional[Region] = Field(None, description="upper or lower")
+    category: Optional[str] = Field(
+        None, description="Logical category, e.g. main_lift/accessory/isolation/conditioning"
+    )
+    movement_pattern: Optional[str] = Field(
+        None, description="Movement pattern, e.g. horizontal_press/hinge/squat/row"
+    )
+    is_competition_lift: Optional[bool] = Field(
+        None, description="Whether this exercise is a competition lift variant"
+    )
 
 
 class ExerciseListCreate(ExerciseListBase):

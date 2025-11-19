@@ -16,6 +16,7 @@ class UserMax(Base):
     date = Column(Date, default=datetime.date.today, nullable=False)
     true_1rm = Column(Float) #Теоретический максимум
     verified_1rm = Column(Float) #Подтвержденный максимум
+    source = Column(String(64))
 
     # exercise_instances = relationship("ExerciseInstance", back_populates="user_max")
     # applied_plans = relationship("AppliedCalendarPlan", back_populates="user_maxes", secondary="applied_calendar_plan_user_maxes")

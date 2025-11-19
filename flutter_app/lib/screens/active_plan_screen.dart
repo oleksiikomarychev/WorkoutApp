@@ -13,12 +13,18 @@ import 'package:workout_app/models/plan_analytics.dart';
 import 'package:workout_app/models/exercise_definition.dart';
 import 'package:workout_app/screens/workout_detail_screen.dart';
 import 'package:workout_app/screens/exercise_selection_screen.dart';
+import 'package:workout_app/screens/chat_screen.dart';
 import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/services/plan_service.dart';
 import 'package:workout_app/services/service_locator.dart';
 import 'package:workout_app/services/logger_service.dart';
 import 'package:workout_app/services/rpe_service.dart';
 import 'package:workout_app/models/exercise_set_dto.dart';
+import 'package:workout_app/providers/chat_provider.dart';
+import 'package:workout_app/widgets/assistant_chat_overlay.dart';
+import 'package:workout_app/widgets/floating_header_bar.dart';
+import 'package:workout_app/widgets/plan_analytics_chart.dart';
+import 'package:workout_app/screens/user_profile_screen.dart';
 
 final _planServiceProvider = Provider<PlanService>((ref) => PlanService(apiClient: ref.watch(apiClientProvider)));
 
@@ -73,6 +79,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
   final _logger = LoggerService('ActivePlanScreen');
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
+  bool _showChatOverlay = false;
   final TextEditingController _intensityCtrl = TextEditingController();
   final TextEditingController _rpeCtrl = TextEditingController();
   final TextEditingController _repsCtrl = TextEditingController();
@@ -219,6 +226,51 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
       } catch (_) {
         // ignore errors in warm-up; they'll be retried on demand
       }
+    }
+  }
+
+  Future<void> _openChatMassEditDialog(AppliedCalendarPlan plan) async {
+    final controller = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('AI mass edit (chat)'),
+          content: TextField(
+            controller: controller,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              hintText: 'Например: Увеличь RPE на 1 и добавь по 1 подходу во всех жимах по понедельникам',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(null),
+              child: const Text('Отмена'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+              child: const Text('Отправить'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    if (text == null || text.isEmpty) {
+      return;
+    }
+    final cmd = '/mass_edit ${plan.calendarPlanId} apply: $text';
+    try {
+      await ref.read(chatControllerProvider.notifier).sendMessage(cmd);
+      if (!mounted) return;
+      setState(() {
+        _showChatOverlay = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(context, 'Failed to send AI mass edit command: $e');
     }
   }
 
@@ -1151,62 +1203,466 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     }
   }
 
+  Future<void> _openLlmMassEditDialog(BuildContext context) async {
+    final plan = await ref.read(activePlanProvider.future);
+    if (plan == null) {
+      if (mounted) {
+        _showSnack(context, 'No active plan');
+      }
+      return;
+    }
+
+    final promptController = TextEditingController();
+    bool isLoading = false;
+    String? summary;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            return AlertDialog(
+              title: const Text('AI mass edit'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Опиши, что нужно изменить в плане. ЛЛМ подготовит массовые правки.'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: promptController,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: 'Например: Увеличь RPE на 1 и добавь по 1 подходу во всех жимах по понедельникам',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (isLoading) ...[
+                    const Center(child: CircularProgressIndicator()),
+                  ] else if (summary != null) ...[
+                    const Text('Предлагаемые изменения:', style: TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 4),
+                    Text(summary!),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(false),
+                  child: const Text('Отмена'),
+                ),
+                TextButton(
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          final text = promptController.text.trim();
+                          if (text.isEmpty) return;
+                          setState(() {
+                            isLoading = true;
+                            summary = null;
+                          });
+
+                          try {
+                            final agentSvc = ref.read(agentMassEditServiceProvider);
+                            final resp = await agentSvc.planMassEdit(
+                              planId: plan.calendarPlanId,
+                              prompt: text,
+                              mode: 'preview',
+                            );
+
+                            final cmd = resp.massEditCommand;
+                            final operation = cmd['operation'];
+                            final filter = cmd['filter'] as Map<String, dynamic>?;
+                            final actions = cmd['actions'] as Map<String, dynamic>?;
+
+                            final parts = <String>[];
+                            if (operation != null) {
+                              parts.add('operation: $operation');
+                            }
+                            if (filter != null && filter.isNotEmpty) {
+                              parts.add('filter: ${filter.keys.join(', ')}');
+                            }
+                            if (actions != null && actions.isNotEmpty) {
+                              parts.add('actions: ${actions.keys.join(', ')}');
+                            }
+
+                            setState(() {
+                              summary = parts.isEmpty
+                                  ? 'Команда сформирована, но не удалось построить краткое описание.'
+                                  : parts.join(' · ');
+                              isLoading = false;
+                            });
+                          } catch (e) {
+                            setState(() {
+                              isLoading = false;
+                              summary = 'Ошибка: $e';
+                            });
+                          }
+                        },
+                  child: const Text('Сгенерировать'),
+                ),
+                FilledButton(
+                  onPressed: (isLoading || summary == null)
+                      ? null
+                      : () => Navigator.of(ctx).pop(true),
+                  child: const Text('Применить'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      try {
+        final agentSvc = ref.read(agentMassEditServiceProvider);
+        await agentSvc.planMassEdit(
+          planId: plan.calendarPlanId,
+          prompt: promptController.text.trim(),
+          mode: 'apply',
+        );
+
+        ref.invalidate(activePlanProvider);
+        ref.invalidate(activePlanWorkoutsProvider);
+        ref.invalidate(activePlanAnalyticsProvider);
+
+        if (mounted) {
+          _showSnack(context, 'AI mass edit applied');
+        }
+      } catch (e) {
+        if (mounted) {
+          _showSnack(context, 'Ошибка применения AI mass edit: $e');
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final eventsByDay = ref.watch(workoutsByDayProvider);
     final planAsync = ref.watch(activePlanProvider);
+    final currentPlan = planAsync.value;
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Active Plan'),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          IconButton(
-            tooltip: 'Mass edit',
-            icon: const Icon(Icons.tune, color: AppColors.textPrimary),
-            onPressed: _openMassEditDialog,
+      body: Stack(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Stack(
+              children: [
+                planAsync.when(
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (e, st) => Center(child: Text('Error: $e')),
+                  data: (plan) {
+                    if (plan == null) {
+                      return const Center(child: Text('No active plan'));
+                    }
+                    final analyticsAsync = ref.watch(activePlanAnalyticsProvider);
+                    return Column(
+                      children: [
+                        const SizedBox(height: 72),
+                        _buildPlanSummary(context, plan),
+                        const SizedBox(height: 8),
+                        _buildCalendar(eventsByDay),
+                        const SizedBox(height: 8),
+                        _buildAnalyticsAsyncSection(analyticsAsync),
+                        const SizedBox(height: 8),
+                        _buildDayHeader(),
+                        Expanded(child: _buildDayList(eventsByDay)),
+                      ],
+                    );
+                  },
+                ),
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: FloatingHeaderBar(
+                    title: 'Active Plan',
+                    leading: IconButton(
+                      icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                    onTitleTap: () {
+                      setState(() {
+                        _showChatOverlay = true;
+                      });
+                    },
+                    actions: [
+                      PopupMenuButton<String>(
+                        tooltip: 'Show menu',
+                        icon: const Icon(Icons.more_vert),
+                        onSelected: (value) async {
+                          if (value == 'mass_edit') {
+                            await _openMassEditDialog();
+                          } else if (value == 'ai_mass_edit') {
+                            await _openLlmMassEditDialog(context);
+                          } else if (value == 'replace_exercises') {
+                            await _openReplaceDialog();
+                          } else if (value == 'shift_plus_1') {
+                            await _shiftScheduleFromSelectedWeek(days: 1);
+                          }
+                        },
+                        itemBuilder: (ctx) => [
+                          const PopupMenuItem(
+                            value: 'mass_edit',
+                            child: Text('Mass edit'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'ai_mass_edit',
+                            child: Text('AI mass edit'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'replace_exercises',
+                            child: Text('Replace exercises'),
+                          ),
+                          const PopupMenuDivider(),
+                          const PopupMenuItem(
+                            value: 'shift_plus_1',
+                            child: Text('Shift future +1 day (week→end)'),
+                          ),
+                        ],
+                      ),
+                    ],
+                    onProfileTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
-          IconButton(
-            tooltip: 'Replace exercises',
-            icon: const Icon(Icons.swap_horiz, color: AppColors.textPrimary),
-            onPressed: _openReplaceDialog,
-          ),
-          PopupMenuButton<String>(
-            onSelected: (value) async {
-              if (value == 'shift_plus_1') {
-                await _shiftScheduleFromSelectedWeek(days: 1);
-              }
+          AssistantChatOverlay(
+            visible: _showChatOverlay,
+            onClose: () {
+              setState(() {
+                _showChatOverlay = false;
+              });
             },
-            itemBuilder: (ctx) => const [
-              PopupMenuItem(
-                value: 'shift_plus_1',
-                child: Text('Shift future +1 day (week→end)'),
-              ),
-            ],
+            initialMessage: 'You are editing the active training plan. Ask for changes or explanations.',
+            contextBuilder: () async {
+              final plan = await ref.read(activePlanProvider.future);
+              return {
+                'type': 'active_plan',
+                'plan_id': plan?.id,
+              };
+            },
           ),
         ],
       ),
-      body: planAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => Center(child: Text('Error: $e')),
-        data: (plan) {
-          if (plan == null) {
-            return const Center(child: Text('No active plan'));
-          }
-          final analyticsAsync = ref.watch(activePlanAnalyticsProvider);
-          return Column(
+    );
+  }
+
+  Widget _buildPlanSummary(BuildContext context, AppliedCalendarPlan plan) {
+    final status = plan.status ?? 'active';
+    final planned = plan.plannedSessionsTotal ?? 0;
+    final completed = plan.actualSessionsCompleted ?? 0;
+    final adherence = plan.adherencePct;
+    final droppedAt = plan.droppedAt;
+    final dropoutReason = plan.dropoutReason;
+
+    Color statusColor;
+    switch (status.toLowerCase()) {
+      case 'completed':
+        statusColor = Colors.green;
+        break;
+      case 'dropped':
+      case 'cancelled':
+        statusColor = Colors.redAccent;
+        break;
+      default:
+        statusColor = AppColors.primary;
+    }
+
+    String statusLabel = status.isNotEmpty
+        ? status[0].toUpperCase() + status.substring(1)
+        : 'Active';
+
+    return Container(
+      width: double.infinity,
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildCalendar(eventsByDay),
-              const SizedBox(height: 8),
-              _buildAnalyticsAsyncSection(analyticsAsync),
-              const SizedBox(height: 8),
-              _buildDayHeader(),
-              Expanded(child: _buildDayList(eventsByDay)),
+              Row(
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: statusColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    statusLabel,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              if (planned > 0)
+                Text(
+                  '$completed / $planned sessions',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
             ],
-          );
-        },
+          ),
+          const SizedBox(height: 4),
+          if (planned > 0)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                minHeight: 6,
+                value: (completed / planned).clamp(0, 1).toDouble(),
+                backgroundColor: Colors.grey.shade200,
+                valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+              ),
+            ),
+          if (adherence != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Adherence: ${adherence.toStringAsFixed(1)}%',
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+          ],
+          if (dropoutReason != null && dropoutReason.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Dropped: $dropoutReason'
+                  '${droppedAt != null ? ' (${DateFormat('yyyy-MM-dd').format(droppedAt)})' : ''}',
+              style: const TextStyle(fontSize: 12, color: Colors.redAccent),
+            ),
+          ],
+          if (status.toLowerCase() != 'completed' &&
+              status.toLowerCase() != 'dropped' &&
+              status.toLowerCase() != 'cancelled') ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                icon: const Icon(Icons.cancel, size: 18, color: Colors.redAccent),
+                label: const Text(
+                  'Cancel plan',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
+                onPressed: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Cancel active plan?'),
+                      content: const Text('This will stop tracking this applied plan. Existing workouts will remain.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(false),
+                          child: const Text('Keep'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(true),
+                          child: const Text('Cancel plan'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed != true) return;
+                  // Ask for dropout reason (optional)
+                  final reason = await showDialog<String?>(
+                    context: context,
+                    builder: (ctx) {
+                      String? selected = 'no_time';
+                      return AlertDialog(
+                        title: const Text('Why are you cancelling?'),
+                        content: StatefulBuilder(
+                          builder: (ctx, setState) {
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                RadioListTile<String>(
+                                  title: const Text('Not enough time'),
+                                  value: 'no_time',
+                                  groupValue: selected,
+                                  onChanged: (v) => setState(() => selected = v),
+                                ),
+                                RadioListTile<String>(
+                                  title: const Text('Injury / pain'),
+                                  value: 'injury',
+                                  groupValue: selected,
+                                  onChanged: (v) => setState(() => selected = v),
+                                ),
+                                RadioListTile<String>(
+                                  title: const Text('Too hard'),
+                                  value: 'too_hard',
+                                  groupValue: selected,
+                                  onChanged: (v) => setState(() => selected = v),
+                                ),
+                                RadioListTile<String>(
+                                  title: const Text('Not enjoyable'),
+                                  value: 'not_enjoyable',
+                                  groupValue: selected,
+                                  onChanged: (v) => setState(() => selected = v),
+                                ),
+                                RadioListTile<String>(
+                                  title: const Text('Other / prefer not to say'),
+                                  value: 'other',
+                                  groupValue: selected,
+                                  onChanged: (v) => setState(() => selected = v),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(ctx).pop(null),
+                            child: const Text('Skip'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.of(ctx).pop(selected),
+                            child: const Text('Confirm'),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+
+                  final svc = ref.read(_planServiceProvider);
+                  final ok = await svc.cancelAppliedPlan(plan.id, dropoutReason: reason);
+                  if (ok) {
+                    ref.invalidate(activePlanProvider);
+                    ref.invalidate(activePlanWorkoutsProvider);
+                    ref.invalidate(activePlanAnalyticsProvider);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Plan cancelled')),
+                      );
+                    }
+                  } else {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Failed to cancel plan')),
+                      );
+                    }
+                  }
+                },
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1442,13 +1898,6 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
   }
 }
 
-class _APPlanAnalyticsPoint {
-  final int order;
-  final String label;
-  final Map<String, double> values;
-  const _APPlanAnalyticsPoint({required this.order, required this.label, required this.values});
-}
-
 extension _APMetricLabels on _ActivePlanScreenState {
   String _metricLabel(String m) {
     switch (m) {
@@ -1467,7 +1916,7 @@ extension _APMetricLabels on _ActivePlanScreenState {
 }
 
 extension _APAnalytics on _ActivePlanScreenState {
-  List<_APPlanAnalyticsPoint> _mapAnalyticsResponse(PlanAnalyticsResponse? resp) {
+  List<PlanAnalyticsPoint> _mapAnalyticsResponse(PlanAnalyticsResponse? resp) {
     if (resp == null) return const [];
     final items = List.of(resp.items);
     items.sort((a, b) {
@@ -1481,11 +1930,11 @@ extension _APAnalytics on _ActivePlanScreenState {
       final label = item.date != null
           ? DateFormat('MMM d').format(item.date!.toLocal())
           : (item.orderIndex != null ? 'Day ${item.orderIndex}' : '#${order + 1}');
-      return _APPlanAnalyticsPoint(order: order++, label: label, values: item.metrics);
+      return PlanAnalyticsPoint(order: order++, label: label, values: item.metrics);
     }).toList(growable: false);
   }
 
-  Widget _buildActiveAnalyticsSection(List<_APPlanAnalyticsPoint> analytics, {Map<String, double>? totals}) {
+  Widget _buildActiveAnalyticsSection(List<PlanAnalyticsPoint> analytics, {Map<String, double>? totals}) {
     return Card(
       elevation: 1,
       color: Colors.white,
@@ -1539,133 +1988,15 @@ extension _APAnalytics on _ActivePlanScreenState {
               ),
             SizedBox(
               height: 240,
-              child: _buildActiveAnalyticsChart(analytics),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActiveAnalyticsChart(List<_APPlanAnalyticsPoint> analytics) {
-    if (analytics.isEmpty) {
-      return const Center(child: Text('Нет данных для плана'));
-    }
-    final mx = _metricX;
-    final my = _metricY;
-    if (mx == my) {
-      final points = <FlSpot>[];
-      final labels = <String>[];
-      for (var i = 0; i < analytics.length; i++) {
-        final p = analytics[i];
-        final val = p.values[mx] ?? 0;
-        points.add(FlSpot(i.toDouble(), val));
-        labels.add(p.label);
-      }
-      if (points.isEmpty) return const Center(child: Text('Нет данных для выбранных метрик'));
-      final yValues = points.map((p) => p.y).toList();
-      final minY = yValues.reduce(math.min);
-      final maxY = yValues.reduce(math.max);
-      final span = maxY - minY;
-      double computeNiceInterval(double target) {
-        if (target <= 0) return 1.0;
-        final exponent = (math.log(target) / math.ln10).floor();
-        final magnitude = math.pow(10, exponent).toDouble();
-        final normalized = target / magnitude;
-        double niceNormalized;
-        if (normalized <= 1) {
-          niceNormalized = 1;
-        } else if (normalized <= 2) {
-          niceNormalized = 2;
-        } else if (normalized <= 5) {
-          niceNormalized = 5;
-        } else {
-          niceNormalized = 10;
-        }
-        return niceNormalized * magnitude;
-      }
-      double yInterval;
-      if (span == 0) {
-        yInterval = 1.0;
-      } else {
-        final rawInterval = span / 5;
-        yInterval = rawInterval < 1 ? 1.0 : computeNiceInterval(rawInterval);
-      }
-      double chartMinY;
-      double chartMaxY;
-      if (span == 0) {
-        chartMinY = minY - yInterval;
-        chartMaxY = maxY + yInterval;
-      } else {
-        chartMinY = (minY / yInterval).floor() * yInterval - yInterval;
-        chartMaxY = (maxY / yInterval).ceil() * yInterval + yInterval;
-      }
-      if (chartMinY == chartMaxY) {
-        chartMaxY = chartMinY + yInterval;
-      }
-      const showEvery = 2;
-      return LineChart(
-        LineChartData(
-          minY: chartMinY,
-          maxY: chartMaxY,
-          titlesData: FlTitlesData(
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: 1,
-                getTitlesWidget: (value, meta) {
-                  final idx = value.toInt();
-                  if (idx < 0 || idx >= labels.length) return const SizedBox.shrink();
-                  if (idx % showEvery != 0) return const SizedBox.shrink();
-                  return SideTitleWidget(meta: meta, child: Text(labels[idx], style: const TextStyle(fontSize: 10)));
-                },
+              child: PlanAnalyticsChart(
+                points: analytics,
+                metricX: _metricX,
+                metricY: _metricY,
+                emptyText: 'Нет данных для плана',
+                showScatterAxisTitles: false,
               ),
             ),
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: yInterval,
-                reservedSize: 44,
-                getTitlesWidget: (value, meta) {
-                  return SideTitleWidget(meta: meta, child: Text(value.toStringAsFixed(0), style: const TextStyle(fontSize: 10)));
-                },
-              ),
-            ),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          ),
-          lineTouchData: LineTouchData(
-            touchTooltipData: LineTouchTooltipData(
-              getTooltipColor: (touchedSpot) => Colors.black.withOpacity(0.75),
-              getTooltipItems: (touchedSpots) => touchedSpots
-                  .map((spot) => LineTooltipItem(spot.y.toStringAsFixed(2), const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)))
-                  .toList(),
-            ),
-          ),
-          lineBarsData: [
-            LineChartBarData(
-              spots: points,
-              isCurved: true,
-              color: Colors.blue,
-              dotData: const FlDotData(show: false),
-            ),
           ],
-        ),
-      );
-    }
-    final scatters = <ScatterSpot>[];
-    for (final p in analytics) {
-      final vx = p.values[mx];
-      final vy = p.values[my];
-      if (vx != null && vy != null) scatters.add(ScatterSpot(vx, vy));
-    }
-    if (scatters.isEmpty) return const Center(child: Text('Нет данных для выбранных метрик'));
-    return ScatterChart(
-      ScatterChartData(
-        scatterSpots: scatters,
-        titlesData: const FlTitlesData(
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
         ),
       ),
     );

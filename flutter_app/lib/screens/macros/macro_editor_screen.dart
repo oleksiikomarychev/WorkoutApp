@@ -129,6 +129,9 @@ class _MacroEditorScreenState extends ConsumerState<MacroEditorScreen> {
         // ignore parse errors, fallback to visual state
       }
     }
+    final actionType = (_action['type'] ?? '').toString();
+    final showDuration = actionType != 'Inject_Mesocycle';
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.initial.id == null ? 'Создать макрос' : 'Редактировать макрос'),
@@ -214,16 +217,18 @@ class _MacroEditorScreenState extends ConsumerState<MacroEditorScreen> {
                 _syncRulePreview();
               },
             ),
-            const SizedBox(height: 16),
-            Text('Длительность', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            DurationSelector(
-              initial: _duration,
-              onChanged: (v) {
-                setState(() => _duration = v);
-                _syncRulePreview();
-              },
-            ),
+            if (showDuration) ...[
+              const SizedBox(height: 16),
+              Text('Длительность', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              DurationSelector(
+                initial: _duration,
+                onChanged: (v) {
+                  setState(() => _duration = v);
+                  _syncRulePreview();
+                },
+              ),
+            ],
             const SizedBox(height: 16),
             Text('Естественное описание', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),

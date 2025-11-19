@@ -83,6 +83,10 @@ class MacroHumanPreview extends ConsumerWidget {
         return 'больше';
       case '<':
         return 'меньше';
+      case 'in_range':
+        return 'в диапазоне';
+      case 'not_in_range':
+        return 'вне диапазона';
     }
     return r;
   }
@@ -123,7 +127,10 @@ class MacroHumanPreview extends ConsumerWidget {
     }
     if (op == 'holds_for') {
       final rel = _relationWord((condition['relation'] ?? '').toString());
-      final val = (condition['value'] ?? '').toString();
+      final values = (condition['range'] as List?) ?? (condition['values'] as List?) ?? const [];
+      final val = values.length >= 2
+          ? '${values[0]}–${values[1]}'
+          : (condition['value'] ?? '').toString();
       final su = unit.isEmpty ? '' : ' $unit';
       final n = (condition['n'] ?? '').toString();
       if (rel.isNotEmpty && val.isNotEmpty && n.isNotEmpty) return 'выполняется $n тренировок подряд: значение $rel $val$su';

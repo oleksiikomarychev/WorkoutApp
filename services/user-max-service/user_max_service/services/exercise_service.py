@@ -6,7 +6,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-EXERCISES_SERVICE_URL = os.getenv("EXERCISES_SERVICE_URL", "http://exercises-service:8002")
+EXERCISES_SERVICE_URL = os.getenv("EXERCISES_SERVICE_URL") or os.getenv("GATEWAY_URL")
+if not EXERCISES_SERVICE_URL:
+    raise RuntimeError("EXERCISES_SERVICE_URL or GATEWAY_URL must be set")
+if not EXERCISES_SERVICE_URL.startswith(("http://", "https://")):
+    EXERCISES_SERVICE_URL = f"https://{EXERCISES_SERVICE_URL}"
 
 
 def get_exercise_name_by_id(exercise_id: int, max_retries: int = 3, retry_delay: float = 1.0) -> str:

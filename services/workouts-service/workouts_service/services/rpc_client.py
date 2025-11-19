@@ -7,9 +7,12 @@ logger = logging.getLogger(__name__)
 
 async def get_exercise_by_id(exercise_id: int):
     """Fetch an exercise by ID from the exercises service"""
-    base_url = os.getenv("EXERCISES_SERVICE_URL", "http://exercises-service:8002")
+    base_url = os.getenv("EXERCISES_SERVICE_URL") or os.getenv("GATEWAY_URL")
+    if not base_url:
+        logger.error("EXERCISES_SERVICE_URL or GATEWAY_URL must be set")
+        raise HTTPException(status_code=503, detail="Exercises service URL not configured")
     if not base_url.startswith("http"):
-        base_url = "http://" + base_url
+        base_url = "https://" + base_url
     url = f"{base_url}/exercises/{exercise_id}"
     try:
         async with httpx.AsyncClient() as client:
@@ -26,10 +29,13 @@ async def get_exercise_by_id(exercise_id: int):
 class PlansServiceRPC:
     def __init__(self, base_url: str = ""):
         if not base_url:
-            base_url = os.getenv("PLANS_SERVICE_URL", "http://plans-service:8005")  # Default to service name in Docker network
+            base_url = os.getenv("PLANS_SERVICE_URL") or os.getenv("GATEWAY_URL")
+        if not base_url:
+            logger.error("PLANS_SERVICE_URL or GATEWAY_URL must be set")
+            raise HTTPException(status_code=503, detail="Plans service URL not configured")
         # Ensure base_url has a protocol
         if not base_url.startswith("http"):
-            base_url = "http://" + base_url
+            base_url = "https://" + base_url
         self.base_url = base_url
 
     async def get_calendar_plan(self, calendar_plan_id: int):
@@ -68,3 +74,76 @@ class PlansServiceRPC:
             {"params_workout_id": params_workout_id}
         )
         return response
+
+class RpeServiceRPC:
+    def __init__(self, base_url: str = ""):
+        if not base_url:
+            # default to RPE service; we may override to gateway in compute() when auth is present
+            base_url = os.getenv("RPE_SERVICE_URL") or os.getenv("GATEWAY_URL")
+        if not base_url:
+            logger.error("RPE_SERVICE_URL or GATEWAY_URL must be set")
+            raise HTTPException(status_code=503, detail="RPE service URL not configured")
+        if not base_url.startswith("http"):
+            base_url = "https://" + base_url
+        self.base_url = base_url.rstrip("/")
+
+    async def compute(
+        self,
+        *,
+        intensity: float | None = None,
+        effort: float | None = None,
+        volume: int | None = None,
+        max_weight: float | None = None,
+        user_max_id: int | None = None,
+        rounding_step: float = 2.5,
+        rounding_mode: str = "nearest",
+        headers: dict[str, str] | None = None,
+        user_id: str | None = None,
+    ) -> dict:
+        payload = {
+            "intensity": intensity,
+            "effort": effort,
+            "volume": volume,
+            "max_weight": max_weight,
+            "user_max_id": user_max_id,
+            "rounding_step": rounding_step,
+            "rounding_mode": rounding_mode,
+        }
+        try:
+            # If Authorization header is present, prefer routing through gateway to validate user token
+            target_base = self.base_url
+            if headers and headers.get("Authorization"):
+                gw = os.getenv("GATEWAY_URL")
+                if gw:
+                    if not gw.startswith("http"):
+                        gw = "https://" + gw
+                    target_base = gw.rstrip("/")
+            # Ensure Authorization header exists (rpe-service enforces auth via dependency)
+            send_headers = dict(headers or {})
+            if not send_headers.get("Authorization"):
+                svc_token = os.getenv("SERVICE_TOKEN") or os.getenv("RPE_SERVICE_TOKEN")
+                if svc_token:
+                    send_headers["Authorization"] = f"Bearer {svc_token}"
+            # Add X-User-Id when available (rpe-service may require it)
+            if user_id and not send_headers.get("X-User-Id"):
+                send_headers["X-User-Id"] = user_id
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    f"{target_base}/rpe/compute",
+                    json=payload,
+                    headers=send_headers,
+                    timeout=10.0,
+                )
+                resp.raise_for_status()
+                return resp.json()
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"HTTP error from rpe-service: {e.response.status_code} {e.response.text}"
+            )
+            raise HTTPException(
+                status_code=e.response.status_code,
+                detail=f"RPE service error: {e.response.text}",
+            )
+        except httpx.RequestError as e:
+            logger.error(f"Request to rpe-service failed: {str(e)}")
+            raise HTTPException(status_code=503, detail="RPE service unavailable")

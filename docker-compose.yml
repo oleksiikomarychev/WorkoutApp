@@ -1,6 +1,7 @@
 services:
   rpe-service:
     build: ./services/rpe-service
+    image: docker.io/oleksiikomarychev/workoutapp-rpe-service:latest
     container_name: rpe-service
     env_file:
       - .env
@@ -20,6 +21,7 @@ services:
 
   plans-service:
     build: ./services/plans-service
+    image: docker.io/oleksiikomarychev/workoutapp-plans-service:latest
     container_name: plans-service
     env_file:
       - .env
@@ -27,6 +29,8 @@ services:
       - DATABASE_URL=${PLANS_DATABASE_URL}
       - ENABLE_EXERCISES_ROUTER=true
       - WORKOUTS_SERVICE_URL=http://workouts-service:8004
+      - EXERCISES_SERVICE_URL=http://exercises-service:8002
+      - CORS_ORIGINS=*
     volumes:
       - plans_data:/app/data
       - ./services/plans-service/alembic:/app/alembic
@@ -45,6 +49,7 @@ services:
   exercises-service:
     build:
       context: ./services/exercises-service
+    image: docker.io/oleksiikomarychev/workoutapp-exercises-service:latest
     container_name: exercises-service
     env_file:
       - .env
@@ -68,6 +73,7 @@ services:
 
   gateway:
     build: ./gateway
+    image: docker.io/oleksiikomarychev/workoutapp-gateway:latest
     container_name: api-gateway
     env_file:
       - .env
@@ -77,8 +83,12 @@ services:
       USER_MAX_SERVICE_URL: "http://user-max-service:8003"
       WORKOUTS_SERVICE_URL: "http://workouts-service:8004"
       PLANS_SERVICE_URL: "http://plans-service:8005"
+      AGENT_SERVICE_URL: "http://agent-service:8006"
+      ACCOUNTS_SERVICE_URL: "http://accounts-service:8007"
       MONO_WORKOUTS: "true"
       FIREBASE_CREDENTIALS_BASE64: "${FIREBASE_CREDENTIALS_BASE64}"
+      FIREBASE_PROJECT_ID: "${FIREBASE_PROJECT_ID}"
+      FIREBASE_AUTH_EMULATOR_HOST: "host.docker.internal:9099"
     ports:
       - "8000:8000"
     depends_on:
@@ -92,6 +102,8 @@ services:
         condition: service_healthy
       workouts-service:
         condition: service_healthy
+      accounts-service:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - workout-net
@@ -99,11 +111,13 @@ services:
 
   user-max-service:
     build: ./services/user-max-service
+    image: docker.io/oleksiikomarychev/workoutapp-user-max-service:latest
     container_name: user-max-service
     env_file:
       - .env
     environment:
       - DATABASE_URL=${USER_MAX_DATABASE_URL}
+      - EXERCISES_SERVICE_URL=http://exercises-service:8002
     volumes:
       - user_max_data:/app/data
       - ./services/user-max-service/alembic:/app/alembic
@@ -121,11 +135,16 @@ services:
 
   workouts-service:
     build: ./services/workouts-service
+    image: docker.io/oleksiikomarychev/workoutapp-workouts-service:latest
     container_name: workouts-service
     env_file:
       - .env
     environment:
       - WORKOUTS_DATABASE_URL=${WORKOUTS_DATABASE_URL}
+      - PLANS_SERVICE_URL=http://plans-service:8005
+      - EXERCISES_SERVICE_URL=http://exercises-service:8002
+      - RPE_SERVICE_URL=http://rpe-service:8001
+      - USER_MAX_SERVICE_URL=http://user-max-service:8003
     volumes:
       - workouts_data:/app/data
       - ./services/workouts-service/alembic/versions:/app/alembic/versions
@@ -144,6 +163,7 @@ services:
   agent-service:
     build:
       context: ./services/agent-service
+    image: docker.io/oleksiikomarychev/workoutapp-agent-service:latest
     environment:
       - LLM_SPLIT_GENERATION=1
       - AGENT_DATABASE_URL=${AGENT_DATABASE_URL}
@@ -161,6 +181,27 @@ services:
     restart: unless-stopped
     networks:
       - workout-net
+
+  accounts-service:
+    build: ./services/accounts-service
+    image: docker.io/oleksiikomarychev/workoutapp-accounts-service:latest
+    container_name: accounts-service
+    env_file:
+      - .env
+    environment:
+      - ACCOUNTS_DATABASE_URL=${ACCOUNTS_DATABASE_URL}
+    ports:
+      - "8007:8007"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    networks:
+      - workout-net
+
 
 volumes:
   exercises_data:

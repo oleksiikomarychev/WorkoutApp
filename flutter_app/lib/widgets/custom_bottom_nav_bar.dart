@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
 class BottomNavBarItem {
@@ -47,47 +48,71 @@ class CustomBottomNavBar extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final mediaQuery = MediaQuery.of(context);
     final bottomPadding = mediaQuery.padding.bottom;
-    
-    // Calculate available width for each item
-    final screenWidth = mediaQuery.size.width;
-    final itemCount = items.length.toDouble();
-    const itemSpacing = 8.0; // Reduced spacing between items
-    const horizontalPadding = 16.0; // Padding on the sides
-    final availableWidth = screenWidth - (horizontalPadding * 2) - (itemSpacing * (itemCount - 1));
-    final itemWidth = availableWidth / itemCount;
+    const double outerHorizontalPadding = 24.0;
+    const double islandOffset = 16.0; // расстояние "подъёма" островка от безопасного низа
+    final Color panelColor = backgroundColor ?? theme.scaffoldBackgroundColor;
+    const List<Color> gradientColors = [
+      Color(0xFF0D47A1),
+      Color(0xFF1976D2),
+      Color(0xFF5E35B1),
+    ];
 
     return Material(
-      color: backgroundColor ?? theme.scaffoldBackgroundColor,
-      elevation: elevation,
-      child: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            if (elevation > 0)
-              BoxShadow(
-                color: isDark ? Colors.black26 : Colors.grey.withOpacity(0.2),
-                blurRadius: 8,
-                offset: const Offset(0, -2),
-              ),
-          ],
-        ),
+      color: Colors.transparent,
+      elevation: 0,
+      child: SizedBox(
+        // Общая высота навбара: высота островка + безопасная зона + отступ "подъёма"
+        height: height + bottomPadding + islandOffset,
         child: SafeArea(
           top: false,
-          minimum: EdgeInsets.only(bottom: bottomPadding > 0 ? bottomPadding : 0),
-          child: SizedBox(
-            height: kBottomNavigationBarHeight,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: horizontalPadding),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: List.generate(
-                  items.length,
-                  (index) => SizedBox(
-                    width: itemWidth,
-                    child: _buildNavItem(
-                      context: context,
-                      item: items[index],
-                      isSelected: index == currentIndex,
-                      onTap: () => onTap(index),
+          bottom: true,
+          child: Padding(
+            padding: const EdgeInsets.only(
+              left: outerHorizontalPadding,
+              right: outerHorizontalPadding,
+              bottom: islandOffset,
+            ),
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: gradientColors,
+                      ),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(isDark ? 0.18 : 0.30),
+                        width: 1.0,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(isDark ? 0.35 : 0.18),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: SizedBox(
+                      height: height,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: List.generate(
+                          items.length,
+                          (index) => Expanded(
+                            child: _buildNavItem(
+                              context: context,
+                              item: items[index],
+                              isSelected: index == currentIndex,
+                              onTap: () => onTap(index),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -106,49 +131,50 @@ class CustomBottomNavBar extends StatelessWidget {
     required VoidCallback onTap,
   }) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
     final label = isSelected ? (item.activeLabel ?? item.label) : item.label;
-    final color = isSelected ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.6);
+    final Color iconColor = isSelected
+        ? Colors.white
+        : Colors.white.withOpacity(0.85);
+    final Color textColor = iconColor;
+
+    const borderRadius = BorderRadius.all(Radius.circular(999));
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8.0),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 2.0), // Reduced vertical padding
+        borderRadius: borderRadius,
+        child: AnimatedContainer(
+          duration: animationDuration,
+          curve: animationCurve,
+          padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 12.0),
+          decoration: BoxDecoration(
+            borderRadius: borderRadius,
+            color: isSelected
+                ? Colors.white.withOpacity(0.18)
+                : Colors.white.withOpacity(0.08),
+            border: Border.all(
+              color: Colors.white.withOpacity(isSelected ? 0.85 : 0.35),
+              width: 1.0,
+            ),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Icon with animation - made more compact
-              AnimatedContainer(
-                duration: animationDuration,
-                curve: animationCurve,
-                padding: const EdgeInsets.all(4.0), // Reduced padding
-                decoration: BoxDecoration(
-                  color: isSelected 
-                      ? colorScheme.primary.withOpacity(0.1) 
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8.0), // Slightly smaller border radius
-                ),
-                child: Icon(
-                  item.icon,
-                  size: 20.0, // Slightly smaller icon
-                  color: color,
-                ),
+              Icon(
+                item.icon,
+                size: 20.0,
+                color: iconColor,
               ),
-              
-              const SizedBox(height: 2.0), // Reduced spacing
-              
-              // Label with animation - made more compact
+              const SizedBox(height: 4.0),
               AnimatedDefaultTextStyle(
                 duration: animationDuration,
                 curve: animationCurve,
                 style: textTheme.labelSmall!.copyWith(
-                  fontSize: isSelected ? 11.0 : 10.0, // Slightly smaller font
-                  color: color,
+                  fontSize: isSelected ? 11.0 : 10.0,
+                  color: textColor,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                   height: 1.1,
                 ),
@@ -156,19 +182,6 @@ class CustomBottomNavBar extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              
-              // Active indicator - made more subtle
-              AnimatedContainer(
-                duration: animationDuration,
-                curve: animationCurve,
-                margin: const EdgeInsets.only(top: 2.0),
-                height: 2.0,
-                width: isSelected ? 16.0 : 0.0, // Shorter indicator
-                decoration: BoxDecoration(
-                  color: colorScheme.primary,
-                  borderRadius: BorderRadius.circular(1.0),
                 ),
               ),
             ],

@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload, joinedload
+from sqlalchemy.exc import CircularDependencyError
 from ..models.calendar import CalendarPlan, Mesocycle, Microcycle, AppliedCalendarPlan, AppliedMesocycle, AppliedMicrocycle, AppliedWorkout, PlanWorkout, PlanExercise, PlanSet
 from ..schemas.calendar_plan import (
     CalendarPlanCreate,
@@ -10,6 +11,7 @@ from ..schemas.calendar_plan import (
     CalendarPlanSummaryResponse,
     CalendarPlanVariantCreate,
     PlanWorkoutCreate,
+    PlanMassEditCommand,
 )
 from ..schemas.mesocycle import MicrocycleCreate
 from ..schemas.schedule_item import ExerciseScheduleItem, ParamsSets
@@ -24,6 +26,13 @@ class CalendarPlanService:
                 duration_weeks=plan_data.duration_weeks,
                 is_active=True,
                 user_id=user_id,
+                # Plan metadata
+                primary_goal=plan_data.primary_goal,
+                intended_experience_level=plan_data.intended_experience_level,
+                intended_frequency_per_week=plan_data.intended_frequency_per_week,
+                session_duration_target_min=plan_data.session_duration_target_min,
+                primary_focus_lifts=plan_data.primary_focus_lifts,
+                required_equipment=plan_data.required_equipment,
             )
             db.add(plan)
             await db.flush()
@@ -244,6 +253,10 @@ class CalendarPlanService:
                     is_favorite=False,
                     root_plan_id=p.root_plan_id,
                     is_original=(p.id == p.root_plan_id),
+                    primary_goal=getattr(p, "primary_goal", None),
+                    intended_experience_level=getattr(p, "intended_experience_level", None),
+                    intended_frequency_per_week=getattr(p, "intended_frequency_per_week", None),
+                    session_duration_target_min=getattr(p, "session_duration_target_min", None),
                 )
             )
         return summaries
@@ -344,6 +357,14 @@ class CalendarPlanService:
             if not plan:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found or permission denied")
 
+            # Prevent circular dependency when attempting to delete the root
+            # calendar plan that still has variants attached.
+            if plan.root_plan_id == plan.id and plan.variants:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot delete the original plan while variants exist. Delete variants first.",
+                )
+
             workouts: List[Dict[str, Any]] = []
             for mesocycle in plan.mesocycles or []:
                 for microcycle in mesocycle.microcycles or []:
@@ -401,6 +422,163 @@ class CalendarPlanService:
                 detail=f"Failed to generate workouts: {str(e)}",
             )
 
+    async def apply_mass_edit(
+        db: AsyncSession,
+        plan_id: int,
+        user_id: str,
+        cmd: PlanMassEditCommand,
+    ) -> CalendarPlanResponse:
+        try:
+            stmt = (
+                select(CalendarPlan)
+                .options(
+                    selectinload(CalendarPlan.mesocycles)
+                    .selectinload(Mesocycle.microcycles)
+                    .selectinload(Microcycle.plan_workouts)
+                    .selectinload(PlanWorkout.exercises)
+                    .selectinload(PlanExercise.sets)
+                )
+                .where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
+            )
+            result = await db.execute(stmt)
+            plan = result.scalars().first()
+
+            if not plan:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Plan not found or permission denied",
+                )
+
+            is_apply_mode = cmd.mode == "apply"
+            changed = False
+
+            # Traverse full hierarchy with positional indices for filters
+            for meso_idx, mesocycle in enumerate(plan.mesocycles or []):
+                if cmd.filter.mesocycle_indices is not None and meso_idx not in cmd.filter.mesocycle_indices:
+                    continue
+
+                for micro_idx, microcycle in enumerate(mesocycle.microcycles or []):
+                    if cmd.filter.microcycle_indices is not None and micro_idx not in cmd.filter.microcycle_indices:
+                        continue
+
+                    for workout in microcycle.plan_workouts or []:
+                        if (
+                            cmd.filter.workout_day_labels is not None
+                            and workout.day_label not in cmd.filter.workout_day_labels
+                        ):
+                            continue
+
+                        for exercise in workout.exercises or []:
+                            # Exercise-level filters
+                            name = exercise.exercise_name or ""
+                            if cmd.filter.exercise_name_exact is not None and name != cmd.filter.exercise_name_exact:
+                                continue
+                            if cmd.filter.exercise_name_contains is not None and cmd.filter.exercise_name_contains.lower() not in name.lower():
+                                continue
+
+                            # Decide which sets are affected by intensity/volume filters
+                            target_sets = []
+                            for plan_set in exercise.sets or []:
+                                intensity = plan_set.intensity
+                                volume = plan_set.volume
+
+                                if cmd.filter.intensity_lt is not None and not (
+                                    intensity is not None and intensity < cmd.filter.intensity_lt
+                                ):
+                                    continue
+                                if cmd.filter.intensity_lte is not None and not (
+                                    intensity is not None and intensity <= cmd.filter.intensity_lte
+                                ):
+                                    continue
+                                if cmd.filter.intensity_gt is not None and not (
+                                    intensity is not None and intensity > cmd.filter.intensity_gt
+                                ):
+                                    continue
+                                if cmd.filter.intensity_gte is not None and not (
+                                    intensity is not None and intensity >= cmd.filter.intensity_gte
+                                ):
+                                    continue
+
+                                if cmd.filter.volume_lt is not None and not (
+                                    volume is not None and volume < cmd.filter.volume_lt
+                                ):
+                                    continue
+                                if cmd.filter.volume_gt is not None and not (
+                                    volume is not None and volume > cmd.filter.volume_gt
+                                ):
+                                    continue
+
+                                target_sets.append(plan_set)
+
+                            if not target_sets and any(
+                                [
+                                    cmd.filter.intensity_lt,
+                                    cmd.filter.intensity_lte,
+                                    cmd.filter.intensity_gt,
+                                    cmd.filter.intensity_gte,
+                                    cmd.filter.volume_lt,
+                                    cmd.filter.volume_gt,
+                                ]
+                            ):
+                                # If there are set-level filters but no sets matched, skip actions
+                                continue
+
+                            # If we are in preview mode, do not modify objects – just skip applying actions
+                            if not is_apply_mode:
+                                continue
+
+                            # Exercise-level actions
+                            if cmd.actions.replace_exercise_definition_id_to is not None:
+                                exercise.exercise_definition_id = cmd.actions.replace_exercise_definition_id_to
+                                changed = True
+
+                            if cmd.actions.replace_exercise_name_to is not None:
+                                exercise.exercise_name = cmd.actions.replace_exercise_name_to
+                                changed = True
+
+                            # Set-level actions
+                            target_iter = target_sets if target_sets else (exercise.sets or [])
+                            for plan_set in target_iter:
+                                # Intensity
+                                if cmd.actions.set_intensity is not None:
+                                    plan_set.intensity = cmd.actions.set_intensity
+                                    changed = True
+                                if cmd.actions.increase_intensity_by is not None:
+                                    base = plan_set.intensity or 0
+                                    plan_set.intensity = base + cmd.actions.increase_intensity_by
+                                    changed = True
+                                if cmd.actions.decrease_intensity_by is not None:
+                                    base = plan_set.intensity or 0
+                                    plan_set.intensity = base - cmd.actions.decrease_intensity_by
+                                    changed = True
+
+                                # Volume
+                                if cmd.actions.set_volume is not None:
+                                    plan_set.volume = cmd.actions.set_volume
+                                    changed = True
+                                if cmd.actions.increase_volume_by is not None:
+                                    base = plan_set.volume or 0
+                                    plan_set.volume = base + cmd.actions.increase_volume_by
+                                    changed = True
+                                if cmd.actions.decrease_volume_by is not None:
+                                    base = plan_set.volume or 0
+                                    plan_set.volume = base - cmd.actions.decrease_volume_by
+                                    changed = True
+
+            if is_apply_mode and changed:
+                await db.commit()
+                await db.refresh(plan)
+
+            # For now both preview/apply return the (possibly updated) plan structure
+            return CalendarPlanService._get_plan_response(plan)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to apply mass edit: {str(e)}",
+            )
+
     async def update_plan(db: AsyncSession, plan_id: int, plan_data: CalendarPlanUpdate, user_id: str) -> CalendarPlanResponse:
         stmt = select(CalendarPlan).where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
         result = await db.execute(stmt)
@@ -428,8 +606,10 @@ class CalendarPlanService:
                     selectinload(CalendarPlan.applied_instances)
                     .selectinload(AppliedCalendarPlan.workouts),
                     selectinload(CalendarPlan.applied_instances)
+                    .selectinload(AppliedCalendarPlan.mesocycles)
                     .selectinload(AppliedMesocycle.microcycles)
-                    .selectinload(AppliedMicrocycle.workouts)
+                    .selectinload(AppliedMicrocycle.workouts),
+                    selectinload(CalendarPlan.variants)
                 )
                 .where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
             )
@@ -438,6 +618,14 @@ class CalendarPlanService:
             
             if not plan:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found or permission denied")
+            
+            # Prevent circular dependency when attempting to delete the root
+            # calendar plan that still has variants attached.
+            if plan.root_plan_id == plan.id and plan.variants:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot delete the original plan while variants exist. Delete variants first.",
+                )
             
             for mesocycle in plan.mesocycles:
                 for micro_cycle in mesocycle.microcycles:
@@ -467,8 +655,17 @@ class CalendarPlanService:
             await db.commit()
         except Exception as e:
             await db.rollback()
+            if isinstance(e, HTTPException):
+                # Preserve explicit HTTP errors raised above (e.g., 404/400)
+                raise e
+            if isinstance(e, CircularDependencyError):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot delete calendar plan due to circular dependency in related objects. Delete dependent variants or applied instances first.",
+                )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to delete plan: {str(e)}",
             )
 
     @staticmethod
@@ -553,6 +750,12 @@ class CalendarPlanService:
                 "is_active": getattr(plan, 'is_active', True),
                 "root_plan_id": getattr(plan, 'root_plan_id', getattr(plan, 'id', 0)),
                 "is_original": getattr(plan, 'id', None) == getattr(plan, 'root_plan_id', None),
+                "primary_goal": getattr(plan, 'primary_goal', None),
+                "intended_experience_level": getattr(plan, 'intended_experience_level', None),
+                "intended_frequency_per_week": getattr(plan, 'intended_frequency_per_week', None),
+                "session_duration_target_min": getattr(plan, 'session_duration_target_min', None),
+                "primary_focus_lifts": getattr(plan, 'primary_focus_lifts', None),
+                "required_equipment": getattr(plan, 'required_equipment', None),
                 "mesocycles": mesocycles_list
             }
             
@@ -587,5 +790,11 @@ class CalendarPlanService:
                 is_active=getattr(plan, 'is_active', True),
                 root_plan_id=getattr(plan, 'root_plan_id', getattr(plan, 'id', 0)),
                 is_original=getattr(plan, 'id', None) == getattr(plan, 'root_plan_id', None),
+                primary_goal=getattr(plan, 'primary_goal', None),
+                intended_experience_level=getattr(plan, 'intended_experience_level', None),
+                intended_frequency_per_week=getattr(plan, 'intended_frequency_per_week', None),
+                session_duration_target_min=getattr(plan, 'session_duration_target_min', None),
+                primary_focus_lifts=getattr(plan, 'primary_focus_lifts', None),
+                required_equipment=getattr(plan, 'required_equipment', None),
                 mesocycles=mesocycles_list
             )

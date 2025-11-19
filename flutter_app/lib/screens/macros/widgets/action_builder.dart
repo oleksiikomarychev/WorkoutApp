@@ -34,6 +34,7 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
   String _placement = 'Append_To_End';
   int? _anchorWorkoutId;
   String? _anchorWorkoutName;
+  int? _anchorPlanOrderIndex;
   String _mesocycleIndex = '1';
   String _conflict = 'Shift_Forward';
 
@@ -72,13 +73,16 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
     fill(_eq, focus['equipment']);
     final placement = (params['placement'] as Map?)?.cast<String, dynamic>() ?? const {};
     _placement = (placement['mode'] ?? _placement).toString();
-    if (placement['workout_id'] != null) {
-      final id = int.tryParse(placement['workout_id'].toString());
-      if (id != null) _anchorWorkoutId = id;
+    if (placement['plan_order_index'] != null) {
+      try {
+        _anchorPlanOrderIndex = placement['plan_order_index'] is int
+            ? placement['plan_order_index'] as int
+            : int.tryParse(placement['plan_order_index'].toString());
+      } catch (_) {}
     }
     if (placement['mesocycle_index'] != null) {
-      final idx = int.tryParse(placement['mesocycle_index'].toString());
-      if (idx != null) _mesocycleIndex = idx.toString();
+      final idx0 = int.tryParse(placement['mesocycle_index'].toString());
+      if (idx0 != null) _mesocycleIndex = (idx0 + 1).toString(); // convert 0-based -> 1-based for UI
     }
     _conflict = (params['on_conflict'] ?? _conflict).toString();
   }
@@ -108,8 +112,17 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
         if (_eq.isNotEmpty) focus['equipment'] = _eq.toList();
         if (focus.isNotEmpty) map['params']['default_focus_tags'] = focus;
       }
-      map['params']['placement'] = {'mode': _placement, if (_placement == 'Insert_After_Workout' && _anchorWorkoutId != null) 'workout_id': _anchorWorkoutId, if (_placement == 'Insert_After_Mesocycle') 'mesocycle_index': int.tryParse(_mesocycleIndex) ?? 1};
-      map['params']['on_conflict'] = _conflict;
+      // Emit placement; mesocycle_index must be 0-based in JSON
+      final uiIdx = int.tryParse(_mesocycleIndex) ?? 1; // 1-based in UI
+      final zeroIdx = (uiIdx - 1).clamp(0, 1000000);
+      map['params']['placement'] = {
+        'mode': _placement,
+        if (_placement == 'Insert_After_Workout' && _anchorPlanOrderIndex != null) 'plan_order_index': _anchorPlanOrderIndex,
+        if (_placement == 'Insert_After_Mesocycle') 'mesocycle_index': zeroIdx,
+      };
+      if (_placement != 'Append_To_End') {
+        map['params']['on_conflict'] = _conflict;
+      }
     } else {
       if (_mode.isNotEmpty) map['params']['mode'] = _mode;
       if (_value.isNotEmpty) {
@@ -269,16 +282,63 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
               );
             }),
           ] else if (_type == 'Inject_Mesocycle' && _mesoMode == 'by_Existing') ...[
-            TextFormField(
-              initialValue: _sourceMesocycleId,
-              decoration: const InputDecoration(labelText: 'ID существующего мезоцикла', border: OutlineInputBorder()),
-              keyboardType: TextInputType.number,
-              onChanged: (v) {
-                setState(() => _sourceMesocycleId = v);
-                _emit();
-              },
-              validator: (v) => (v == null || v.trim().isEmpty || int.tryParse(v) == null) ? 'Введите число' : null,
-            ),
+            Builder(builder: (context) {
+              final activePlan = ref.watch(activeAppliedPlanProvider);
+              return activePlan.maybeWhen(
+                data: (plan) {
+                  final meso = plan?.calendarPlan.mesocycles ?? const [];
+                  final items = <DropdownMenuItem<String>>[];
+                  for (int i = 0; i < meso.length; i++) {
+                    final m = meso[i];
+                    final label = m.name.isNotEmpty ? m.name : 'Мезоцикл ${(i + 1)}';
+                    items.add(DropdownMenuItem(value: m.id.toString(), child: Text('$label (ID ${m.id})')));
+                  }
+                  // add manual option always
+                  items.add(const DropdownMenuItem(value: 'manual', child: Text('Другой (ввести ID)')));
+                  final current = _sourceMesocycleId.isEmpty ? null : _sourceMesocycleId;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        value: current == null ? null : (items.any((e) => e.value == current) ? current : 'manual'),
+                        items: items,
+                        decoration: const InputDecoration(labelText: 'Выбрать мезоцикл', border: OutlineInputBorder()),
+                        onChanged: (v) {
+                          setState(() {
+                            if (v == 'manual') {
+                              // keep current manual value
+                            } else {
+                              _sourceMesocycleId = (v ?? '').trim();
+                            }
+                          });
+                          _emit();
+                        },
+                        validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                      ),
+                      const SizedBox(height: 8),
+                      if (_sourceMesocycleId.isEmpty || _sourceMesocycleId == 'manual')
+                        TextFormField(
+                          initialValue: _sourceMesocycleId == 'manual' ? '' : _sourceMesocycleId,
+                          decoration: const InputDecoration(labelText: 'ID существующего мезоцикла', border: OutlineInputBorder()),
+                          keyboardType: TextInputType.number,
+                          onChanged: (v) {
+                            setState(() => _sourceMesocycleId = v);
+                            _emit();
+                          },
+                          validator: (v) => (v == null || v.trim().isEmpty || int.tryParse(v) == null) ? 'Введите число' : null,
+                        ),
+                    ],
+                  );
+                },
+                orElse: () => TextFormField(
+                  initialValue: _sourceMesocycleId,
+                  decoration: const InputDecoration(labelText: 'ID существующего мезоцикла', border: OutlineInputBorder()),
+                  keyboardType: TextInputType.number,
+                  onChanged: (v) { setState(() => _sourceMesocycleId = v); _emit(); },
+                  validator: (v) => (v == null || v.trim().isEmpty || int.tryParse(v) == null) ? 'Введите число' : null,
+                ),
+              );
+            }),
           ] else if (_type == 'Inject_Mesocycle' && _mesoMode == 'Create_Inline') ...[
             Row(children: [
               Expanded(
@@ -367,7 +427,7 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
               );
             }),
           ],
-          if (_type == 'Inject_Mesocycle' && (_mesoMode == 'by_Template' || _mesoMode == 'Create_Inline')) ...[
+          if (_type == 'Inject_Mesocycle' && (_mesoMode == 'by_Template' || _mesoMode == 'Create_Inline' || _mesoMode == 'by_Existing')) ...[
             const SizedBox(height: 12),
             Text('Размещение', style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 6),
@@ -380,8 +440,22 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
               ],
               decoration: const InputDecoration(border: OutlineInputBorder()),
               onChanged: (v) {
-                setState(() { _placement = v ?? 'Append_To_End'; });
+                setState(() {
+                  _placement = v ?? 'Append_To_End';
+                  if (_placement != 'Insert_After_Workout') {
+                    _anchorWorkoutId = null;
+                    _anchorWorkoutName = null;
+                    _anchorPlanOrderIndex = null;
+                  }
+                });
                 _emit();
+              },
+              validator: (v) {
+                final mode = v ?? _placement;
+                if (mode == 'Insert_After_Workout' && _anchorPlanOrderIndex == null) {
+                  return 'Нужно выбрать тренировку-якорь';
+                }
+                return null;
               },
             ),
             const SizedBox(height: 8),
@@ -391,7 +465,11 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
                   onPressed: () async {
                     final picked = await showWorkoutPickerBottomSheet(context, ref);
                     if (picked != null) {
-                      setState(() { _anchorWorkoutId = picked.id; _anchorWorkoutName = picked.name; });
+                      setState(() {
+                        _anchorWorkoutId = picked.id;
+                        _anchorWorkoutName = picked.name;
+                        _anchorPlanOrderIndex = picked.planOrderIndex;
+                      });
                       _emit();
                     }
                   },
@@ -447,18 +525,20 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
               },
             ),
             const SizedBox(height: 12),
-            Text('Конфликты', style: Theme.of(context).textTheme.labelLarge),
-            const SizedBox(height: 6),
-            DropdownButtonFormField<String>(
-              value: _conflict,
-              items: const [
-                DropdownMenuItem(value: 'Replace_Planned', child: Text('Заменять запланированное')),
-                DropdownMenuItem(value: 'Shift_Forward', child: Text('Сдвигать вперёд')),
-                DropdownMenuItem(value: 'Skip_On_Conflict', child: Text('Пропускать конфликтующие')),
-              ],
-              decoration: const InputDecoration(border: OutlineInputBorder()),
-              onChanged: (v) { setState(() => _conflict = v ?? 'Shift_Forward'); _emit(); },
-            ),
+            if (_placement != 'Append_To_End') ...[
+              Text('Конфликты', style: Theme.of(context).textTheme.labelLarge),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                value: _conflict,
+                items: const [
+                  DropdownMenuItem(value: 'Replace_Planned', child: Text('Заменять запланированное')),
+                  DropdownMenuItem(value: 'Shift_Forward', child: Text('Сдвигать вперёд')),
+                  DropdownMenuItem(value: 'Skip_On_Conflict', child: Text('Пропускать конфликтующие')),
+                ],
+                decoration: const InputDecoration(border: OutlineInputBorder()),
+                onChanged: (v) { setState(() => _conflict = v ?? 'Shift_Forward'); _emit(); },
+              ),
+            ],
           ],
           const SizedBox(height: 16),
           if (_type != 'Inject_Mesocycle') ...[

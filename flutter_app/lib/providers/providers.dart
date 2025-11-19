@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/services/api_client.dart';
+import 'package:workout_app/models/user_profile.dart';
+import 'package:workout_app/services/service_locator.dart' as sl;
 import 'package:workout_app/services/workout_session_service.dart';
 import 'package:workout_app/models/workout_session.dart';
 
@@ -28,4 +30,9 @@ final completedSessionsProviderFamily = FutureProvider.family<List<WorkoutSessio
 
 final completedSessionsProvider = FutureProvider<List<WorkoutSession>>((ref) async {
   return ref.watch(completedSessionsProviderFamily(null).future);
+});
+
+final userProfileProvider = FutureProvider<UserProfile>((ref) async {
+  final svc = ref.watch(sl.profileServiceProvider);
+  return svc.fetchProfile();
 });

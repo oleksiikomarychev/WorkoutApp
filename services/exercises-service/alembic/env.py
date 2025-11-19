@@ -22,9 +22,26 @@ target_metadata = Base.metadata
 # Default SQLite database URL
 default_db_url = os.getenv("EXERCISES_DATABASE_URL")
 
+def _to_sync_url(url: str | None) -> str:
+    """Normalize async SQLAlchemy URL to sync driver for Alembic runtime.
+
+    Alembic's sync engine cannot connect using async drivers like
+    'sqlite+aiosqlite' or 'postgresql+asyncpg'. Convert them to their
+    sync equivalents for migrations.
+    """
+    if not url:
+        raise ValueError("EXERCISES_DATABASE_URL environment variable is not set")
+    # Normalize Postgres async -> sync
+    if url.startswith("postgresql+asyncpg://"):
+        return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
+    # Normalize SQLite async -> sync
+    if url.startswith("sqlite+aiosqlite:"):
+        return url.replace("sqlite+aiosqlite:", "sqlite:", 1)
+    return url
+
 def run_migrations_offline():
     """Run migrations in 'offline' mode."""
-    url = os.getenv("EXERCISES_DATABASE_URL", default_db_url)
+    url = _to_sync_url(os.getenv("EXERCISES_DATABASE_URL", default_db_url))
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -38,11 +55,34 @@ def run_migrations_offline():
 
 def run_migrations_online():
     """Run migrations in 'online' mode."""
-    url = os.getenv("EXERCISES_DATABASE_URL", default_db_url)
-    
-    if not url:
-        raise ValueError("EXERCISES_DATABASE_URL environment variable is not set")
-        
+    url = _to_sync_url(os.getenv("EXERCISES_DATABASE_URL", default_db_url))
+
+    # Normalize query params for psycopg2: it doesn't accept 'ssl=true', expects 'sslmode=require'
+    try:
+        from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+        parsed = urlparse(url)
+        q = dict(parse_qsl(parsed.query, keep_blank_values=True))
+        ssl_val = (q.get("ssl") or "").strip().lower()
+        sslmode = (q.get("sslmode") or "").strip().lower()
+        changed = False
+        # Drop unsupported channel_binding for psycopg2
+        if "channel_binding" in q:
+            q.pop("channel_binding", None)
+            changed = True
+        # Map asyncpg-style 'ssl' to psycopg2 'sslmode'
+        if ssl_val:
+            if ssl_val in {"true", "1", "require"} and not sslmode:
+                q["sslmode"] = "require"
+                changed = True
+            # Remove 'ssl' param entirely for psycopg2
+            q.pop("ssl", None)
+            changed = True
+        if changed:
+            url = urlunparse(parsed._replace(query=urlencode(q, doseq=True)))
+    except Exception:
+        # Best effort; if parsing fails, proceed with original url
+        pass
+
     connectable = create_engine(url)
 
     with connectable.connect() as connection:

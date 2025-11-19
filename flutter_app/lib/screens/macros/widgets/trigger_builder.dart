@@ -44,7 +44,7 @@ class _TriggerBuilderState extends ConsumerState<TriggerBuilder> {
   String? _metricTooltip(String metric) {
     switch (metric) {
       case 'Readiness_Score':
-        return 'Интегральная оценка готовности к тренировке на основе сна, нагрузки и т.п.';
+        return 'Оценка готовности 1–10 (опционально). По умолчанию null; пользователь может указывать её после тренировки для применения коэффициентов к весам и правил.';
       case 'RPE_Session':
         return 'Оценка воспринимаемой нагрузки всей сессии (Session RPE). Полезно для авто-коррекции нагрузки.';
       case 'Total_Reps':
@@ -64,7 +64,7 @@ class _TriggerBuilderState extends ConsumerState<TriggerBuilder> {
   String _metricHelp(String metric) {
     switch (metric) {
       case 'Readiness_Score':
-        return 'Числовая оценка состояния. Используйте условие сравнения (>, <, =) и введите число.';
+        return 'Числовая оценка готовности (1–10). По умолчанию отсутствует (null); заполняется пользователем после тренировки. Кейс: значение < 6 держится 5 тренировок подряд — делоад мезоцикл. Для правил “подряд” используйте оператор holds_for.';
       case 'RPE_Session':
         return 'RPE сессии: число 1–10. Для правил “подряд” используйте оператор holds_for.';
       case 'Total_Reps':
@@ -159,7 +159,7 @@ class _TriggerBuilderState extends ConsumerState<TriggerBuilder> {
         DropdownButtonFormField<String>(
           value: _metric.isEmpty ? null : _metric,
           items: const [
-            DropdownMenuItem(value: 'Readiness_Score', child: Text('Готовность (оценка)')),
+            DropdownMenuItem(value: 'Readiness_Score', child: Text('Готовность (тренировка)')),
             DropdownMenuItem(value: 'RPE_Session', child: Text('RPE сессии')),
             DropdownMenuItem(value: 'Total_Reps', child: Text('Количество повторений')),
             DropdownMenuItem(value: 'e1RM', child: Text('Оценка 1ПМ (e1RM)')),

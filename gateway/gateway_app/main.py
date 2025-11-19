@@ -19,12 +19,22 @@ from gateway_app import schemas
 
 logger = logging.getLogger(__name__)
 
-RPE_SERVICE_URL = os.getenv("RPE_SERVICE_URL")
-EXERCISES_SERVICE_URL = os.getenv("EXERCISES_SERVICE_URL")
-USER_MAX_SERVICE_URL = os.getenv("USER_MAX_SERVICE_URL")
-WORKOUTS_SERVICE_URL = os.getenv("WORKOUTS_SERVICE_URL")
-PLANS_SERVICE_URL = os.getenv("PLANS_SERVICE_URL")
-AGENT_SERVICE_URL = os.getenv("AGENT_SERVICE_URL", "http://agent-service:8006")
+def _normalize_env_url(var_name: str) -> Optional[str]:
+    raw = (os.getenv(var_name) or "").strip()
+    if not raw:
+        logger.error("ENV %s is not set", var_name)
+        return None
+    if not raw.startswith(("http://", "https://")):
+        raw = f"https://{raw}"
+    return raw.rstrip("/")
+
+RPE_SERVICE_URL = _normalize_env_url("RPE_SERVICE_URL")
+EXERCISES_SERVICE_URL = _normalize_env_url("EXERCISES_SERVICE_URL")
+USER_MAX_SERVICE_URL = _normalize_env_url("USER_MAX_SERVICE_URL")
+WORKOUTS_SERVICE_URL = _normalize_env_url("WORKOUTS_SERVICE_URL")
+PLANS_SERVICE_URL = _normalize_env_url("PLANS_SERVICE_URL")
+AGENT_SERVICE_URL = _normalize_env_url("AGENT_SERVICE_URL")
+ACCOUNTS_SERVICE_URL = _normalize_env_url("ACCOUNTS_SERVICE_URL")
 
 try:
     import firebase_admin
@@ -35,9 +45,11 @@ except Exception:  # pragma: no cover
     credentials = None  # type: ignore
     firebase_exceptions = None  # type: ignore
 
-_DEFAULT_PROXY_TIMEOUT = float(os.getenv("PROXY_REQUEST_TIMEOUT_SECONDS", "30"))
-_DEFAULT_CONNECT_TIMEOUT = float(os.getenv("PROXY_CONNECT_TIMEOUT_SECONDS", "5"))
+_DEFAULT_PROXY_TIMEOUT = float(os.getenv("PROXY_REQUEST_TIMEOUT_SECONDS", "45"))
+_DEFAULT_CONNECT_TIMEOUT = float(os.getenv("PROXY_CONNECT_TIMEOUT_SECONDS", "10"))
 _PLANS_APPLY_TIMEOUT = float(os.getenv("PLANS_APPLY_TIMEOUT_SECONDS", str(max(_DEFAULT_PROXY_TIMEOUT, 90.0))))
+_GET_RETRIES = int(os.getenv("PROXY_GET_RETRIES", "3"))
+_GET_RETRY_BASE_DELAY = float(os.getenv("PROXY_GET_RETRY_BASE_DELAY_SECONDS", "0.3"))
 
 app = FastAPI(
     title="WorkoutApp Gateway",
@@ -102,9 +114,10 @@ def _initialize_firebase_app() -> None:
         credential_data = json.loads(decoded)
     except Exception as exc:
         raise RuntimeError("FIREBASE_CREDENTIALS_BASE64 is invalid") from exc
-    project_id = os.getenv("FIREBASE_PROJECT_ID")
-    if project_id and not credential_data.get("project_id"):
-        credential_data["project_id"] = project_id
+    # Always prefer explicit env project id to avoid mismatches with service account JSON
+    env_pid = os.getenv("FIREBASE_PROJECT_ID")
+    if env_pid:
+        credential_data["project_id"] = env_pid
     project_id = credential_data.get("project_id")
     if project_id:
         global _FIREBASE_AUDIENCE, _FIREBASE_ISSUER
@@ -206,6 +219,41 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/api/v1/upstreams/health")
+async def upstreams_health(request: Request) -> dict:
+    """Ping /health of all configured upstream services and return their statuses."""
+    headers = _forward_headers(request)
+    services = {
+        "rpe": RPE_SERVICE_URL,
+        "exercises": EXERCISES_SERVICE_URL,
+        "user_max": USER_MAX_SERVICE_URL,
+        "workouts": WORKOUTS_SERVICE_URL,
+        "plans": PLANS_SERVICE_URL,
+        "agent": AGENT_SERVICE_URL,
+        "accounts": ACCOUNTS_SERVICE_URL,
+    }
+    timeout = httpx.Timeout(connect=5.0, read=5.0, write=5.0, pool=5.0)
+    results: dict[str, dict] = {}
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        for name, base in services.items():
+            if not base:
+                results[name] = {"ok": False, "error": "not_configured"}
+                continue
+            url = f"{base}/health"
+            try:
+                r = await client.get(url, headers=headers, follow_redirects=True)
+                ok = 200 <= r.status_code < 300
+                results[name] = {
+                    "ok": ok,
+                    "status": r.status_code,
+                    "body": (r.text[:200] if not ok else "ok"),
+                    "url": url,
+                }
+            except Exception as exc:
+                results[name] = {"ok": False, "error": type(exc).__name__, "url": url}
+    return {"services": results}
+
+
 @app.get("/api/v1/auth/me")
 async def get_authenticated_user(request: Request) -> dict:
     user = getattr(request.state, "user", None)
@@ -220,15 +268,19 @@ async def get_authenticated_user(request: Request) -> dict:
     }
 
 async def fetch_service_spec(url: str) -> dict:
-    async with httpx.AsyncClient() as client:
+    timeout = httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=10.0)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         for attempt in range(10):
             try:
-                r = await client.get(f"{url}/openapi.json", timeout=5.0)
+                r = await client.get(f"{url}/openapi.json", headers={"Accept": "application/json"})
                 if r.status_code == 200:
                     return r.json()
+                # Log non-200 statuses to aid diagnostics
+                body_preview = r.text[:200] if r.text else ""
+                print(f"Attempt {attempt+1}: {url}/openapi.json -> {r.status_code} {body_preview}")
             except Exception as e:
                 print(f"Attempt {attempt+1} failed to fetch spec from {url}: {e}")
-            await asyncio.sleep(5)
+            await asyncio.sleep(2)
         print(f"Failed to fetch spec from {url} after 10 attempts")
         return {}
 
@@ -276,6 +328,14 @@ def merge_openapi_schemas(specs: list[dict], services: dict) -> dict:
 
 @app.on_event("startup")
 async def aggregate_openapi():
+    # Allow disabling spec fetch on startup via ENV
+    fetch_on_start = (os.getenv("FETCH_OPENAPI_ON_STARTUP", "false").strip().lower() in {"1", "true", "yes"})
+    if not fetch_on_start:
+        try:
+            logger.info("Skipping OpenAPI aggregation on startup (FETCH_OPENAPI_ON_STARTUP=false)")
+        except Exception:
+            pass
+        return
     services = {
         "rpe": RPE_SERVICE_URL,
         "exercises": EXERCISES_SERVICE_URL,
@@ -283,6 +343,13 @@ async def aggregate_openapi():
         "workouts": WORKOUTS_SERVICE_URL,
         "plans": PLANS_SERVICE_URL
     }
+    try:
+        logger.info(
+            "Upstream URLs | rpe=%s exercises=%s user_max=%s workouts=%s plans=%s agent=%s",
+            RPE_SERVICE_URL, EXERCISES_SERVICE_URL, USER_MAX_SERVICE_URL, WORKOUTS_SERVICE_URL, PLANS_SERVICE_URL, AGENT_SERVICE_URL,
+        )
+    except Exception:
+        pass
     
     # Fetch OpenAPI specs from all services
     specs = await asyncio.gather(*[
@@ -298,6 +365,24 @@ async def aggregate_openapi():
             print(f"Failed to fetch OpenAPI spec for {service_name}")
     app.openapi_schema = merged_spec
 
+# On-demand OpenAPI aggregation endpoint
+@app.post("/api/v1/openapi/refresh")
+async def refresh_openapi(request: Request) -> JSONResponse:
+    """Trigger OpenAPI aggregation on-demand.
+    If query param background=true (default), runs in background.
+    """
+    bg = str(request.query_params.get("background", "true")).strip().lower() in {"1", "true", "yes"}
+    if bg:
+        try:
+            asyncio.create_task(aggregate_openapi())
+        except Exception:
+            # Fallback to inline if scheduling fails
+            await aggregate_openapi()
+        return JSONResponse({"status": "scheduled"})
+    else:
+        await aggregate_openapi()
+        return JSONResponse({"status": "ok"})
+
 @app.post("/api/v1/profile/photo/apply")
 async def apply_profile_photo(request: Request) -> JSONResponse:
     user = getattr(request.state, "user", None)
@@ -310,13 +395,13 @@ async def apply_profile_photo(request: Request) -> JSONResponse:
     if not data:
         raise HTTPException(status_code=400, detail="Empty body")
 
-    # Forward to agent-service to store in Postgres
+    # Forward to accounts-service to store in Postgres
     headers = _forward_headers(request)
     headers["Content-Type"] = "image/png"
-    # Ensure user id is forwarded for agent-service dependency
+    # Ensure user id is forwarded for accounts-service dependency
     if isinstance(user, dict) and user.get("uid"):
-        headers["X-User-Id"] = str(user["uid"])  
-    target_url = f"{AGENT_SERVICE_URL}/avatars/apply"
+        headers["X-User-Id"] = str(user["uid"])
+    target_url = f"{ACCOUNTS_SERVICE_URL}/avatars/apply"
     try:
         timeout = httpx.Timeout(
             connect=_DEFAULT_CONNECT_TIMEOUT,
@@ -358,7 +443,7 @@ async def apply_profile_photo(request: Request) -> JSONResponse:
 @app.get("/api/v1/avatars/{uid}.png")
 async def proxy_avatar(uid: str, request: Request) -> Response:
     headers = _forward_headers(request)
-    target_url = f"{AGENT_SERVICE_URL}/avatars/{uid}.png"
+    target_url = f"{ACCOUNTS_SERVICE_URL}/avatars/{uid}.png"
     return await _proxy_request(request, target_url, headers)
 
 # Create routers for each service
@@ -626,6 +711,25 @@ async def get_profile_aggregates(request: Request, weeks: int = Query(48, ge=1, 
         return Response(status_code=304)
     return JSONResponse(content=content, headers={"ETag": etag})
 
+
+# Agent-service proxies
+@app.post("/api/v1/agent/plan-mass-edit")
+async def agent_plan_mass_edit(request: Request) -> Response:
+    """Proxy LLM-driven plan mass edit to agent-service.
+
+    Gateway path:   /api/v1/agent/plan-mass-edit
+    Upstream path:  {AGENT_SERVICE_URL}/agent/plan-mass-edit
+    """
+
+    headers = _forward_headers(request)
+    user = getattr(request.state, "user", None)
+    if isinstance(user, dict) and user.get("uid"):
+        # agent-service relies on this header in some endpoints
+        headers["X-User-Id"] = str(user["uid"])
+    target_url = f"{AGENT_SERVICE_URL}/agent/plan-mass-edit"
+    return await _proxy_request(request, target_url, headers)
+
+
 # Avatars proxy to agent-service
 @app.post("/api/v1/avatars/generate")
 async def avatars_generate(request: Request) -> Response:
@@ -650,48 +754,64 @@ async def _proxy_request(request: Request, target_url: str, headers: dict) -> Re
         pool=timeout_seconds,
     )
 
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            if method in ("POST", "PUT", "PATCH"):
-                body = await request.body()
-                r = await client.request(
-                    method,
-                    target_url,
-                    params=params,
-                    headers=headers,
-                    content=body,
-                    follow_redirects=True,
+    # Retry only for idempotent methods (GET/HEAD) on connection/timeout errors
+    attempts = 1
+    max_attempts = _GET_RETRIES if method in ("GET", "HEAD") else 1
+    last_exc: Exception | None = None
+    while attempts <= max_attempts:
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                if method in ("POST", "PUT", "PATCH"):
+                    body = await request.body()
+                    r = await client.request(
+                        method,
+                        target_url,
+                        params=params,
+                        headers=headers,
+                        content=body,
+                        follow_redirects=True,
+                    )
+                else:
+                    r = await client.request(
+                        method,
+                        target_url,
+                        params=params,
+                        headers=headers,
+                        follow_redirects=True,
+                    )
+            break
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            last_exc = exc
+            if attempts >= max_attempts:
+                if isinstance(exc, httpx.TimeoutException):
+                    logger.error(
+                        "Proxy request timed out",
+                        extra={"target_url": target_url, "method": method, "params": params, "attempt": attempts},
+                        exc_info=True,
+                    )
+                    raise HTTPException(status_code=504, detail="Upstream service timeout") from exc
+                logger.error(
+                    "Proxy request failed before receiving response",
+                    extra={"target_url": target_url, "method": method, "params": params, "attempt": attempts},
+                    exc_info=True,
                 )
-            else:
-                r = await client.request(
-                    method,
-                    target_url,
-                    params=params,
-                    headers=headers,
-                    follow_redirects=True,
-                )
-    except httpx.TimeoutException as exc:
-        logger.error(
-            "Proxy request timed out",
-            extra={
-                "target_url": target_url,
-                "method": method,
-                "params": params,
-            },
-            exc_info=True,
-        )
-        raise HTTPException(status_code=504, detail="Upstream service timeout") from exc
-    except httpx.HTTPError as exc:
-        logger.error(
-            "Proxy request failed before receiving response",
-            extra={
-                "target_url": target_url,
-                "method": method,
-                "params": params,
-            },
-            exc_info=True,
-        )
-        raise HTTPException(status_code=502, detail="Upstream service error") from exc
+                raise HTTPException(status_code=502, detail="Upstream service error") from exc
+            # backoff and retry
+            delay = _GET_RETRY_BASE_DELAY * (2 ** (attempts - 1))
+            try:
+                await asyncio.sleep(delay)
+            except Exception:
+                pass
+            attempts += 1
+            continue
+        except httpx.HTTPError as exc:
+            # Non-retryable httpx errors
+            logger.error(
+                "Proxy request failed before receiving response",
+                extra={"target_url": target_url, "method": method, "params": params},
+                exc_info=True,
+            )
+            raise HTTPException(status_code=502, detail="Upstream service error") from exc
 
     if r.status_code >= 400:
         body_preview = r.text
@@ -1185,6 +1305,34 @@ async def get_all_workouts_sessions_history(request: Request) -> Response:
     headers = _forward_headers(request)
     target_url = f"{WORKOUTS_SERVICE_URL}/workouts/sessions/history/all"
     return await _proxy_request(request, target_url, headers)
+
+@analytics_router.get("/profile/me")
+async def proxy_profile_me(request: Request) -> Response:
+    headers = _forward_headers(request)
+    target_url = f"{ACCOUNTS_SERVICE_URL}/profile/me"
+    return await _proxy_request(request, target_url, headers)
+
+
+@analytics_router.patch("/profile/me")
+async def proxy_update_profile_me(request: Request) -> Response:
+    headers = _forward_headers(request)
+    target_url = f"{ACCOUNTS_SERVICE_URL}/profile/me"
+    return await _proxy_request(request, target_url, headers)
+
+
+@analytics_router.get("/profile/settings")
+async def proxy_profile_settings(request: Request) -> Response:
+    headers = _forward_headers(request)
+    target_url = f"{ACCOUNTS_SERVICE_URL}/profile/settings"
+    return await _proxy_request(request, target_url, headers)
+
+
+@analytics_router.patch("/profile/settings")
+async def proxy_update_profile_settings(request: Request) -> Response:
+    headers = _forward_headers(request)
+    target_url = f"{ACCOUNTS_SERVICE_URL}/profile/settings"
+    return await _proxy_request(request, target_url, headers)
+
 
 @analytics_router.get("/workout-metrics")
 async def get_workout_metrics(

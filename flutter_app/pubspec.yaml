@@ -48,3 +48,4 @@ flutter:
   assets:
     - assets/env/app.env
     - assets/images/image.png
+    - assets/images/image1.png

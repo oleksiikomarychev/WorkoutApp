@@ -1,12 +1,11 @@
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform, kReleaseMode;
 import 'package:http/http.dart' as http;
 
 class ApiConfig {
   // Base URLs (ensure no trailing slashes)
   static const String androidEmulatorBaseUrl = 'http://10.0.2.2:8000';
   static const String localBaseUrl = 'http://localhost:8000';
-  static const String productionBaseUrl = 'https://yourproductionapi.com';
-  
+  static const String productionBaseUrl = 'https://workoutapp-gateway-latest.onrender.com';  
   // Timeouts
   static const int connectionTimeout = 30;
   static const int receiveTimeout = 30;
@@ -19,6 +18,7 @@ class ApiConfig {
   
   /// Returns the base URL for API requests (platform-aware)
   static String getBaseUrl() {
+    if (kReleaseMode) return productionBaseUrl; // release builds use production gateway
     if (kIsWeb) return localBaseUrl; // web runs in host browser
 
     // Android emulator cannot reach host via localhost; use 10.0.2.2
@@ -117,6 +117,7 @@ class ApiConfig {
   static String deleteMacroEndpoint(String planId, String macroId) => buildEndpoint('/plans/calendar-plans/$planId/macros/$macroId');
   static String runMacrosEndpoint(String appliedPlanId) => buildEndpoint('/plans/applied-plans/$appliedPlanId/run-macros');
   static String applyMacrosEndpoint(String appliedPlanId) => buildEndpoint('/plans/applied-plans/$appliedPlanId/apply-macros');
+  static String cancelAppliedPlanEndpoint(String appliedPlanId) => buildEndpoint('/plans/applied-plans/$appliedPlanId/cancel');
   static String getPlanWorkoutsEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/workouts');
   static String listPlanVariantsEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/variants');
   static String createPlanVariantEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/variants');
@@ -151,8 +152,9 @@ class ApiConfig {
   static String appliedPlanAnalyticsEndpoint(String planId) =>
       buildEndpoint('/plans/applied-plans/$planId/analytics');
 
-  // Chat endpoint
+  // Chat / Agent endpoints
   static String get chatEndpoint => buildEndpoint('/chat');
+  static String get agentPlanMassEditEndpoint => buildEndpoint('/agent/plan-mass-edit');
 
   // Progression Templates endpoints
   static String get progressionTemplatesEndpoint => buildEndpoint('/progressions/templates');
@@ -161,6 +163,8 @@ class ApiConfig {
   // Analytics endpoint
   static String get workoutMetricsEndpoint => buildEndpoint('/workout-metrics');
   static String get profileAggregatesEndpoint => buildEndpoint('/profile/aggregates');
+  static String get profileMeEndpoint => buildEndpoint('/profile/me');
+  static String get profileSettingsEndpoint => buildEndpoint('/profile/settings');
   // Avatars
   static String get avatarsGenerateEndpoint => buildEndpoint('/avatars/generate');
   static String get applyProfilePhotoEndpoint => buildEndpoint('/profile/photo/apply');

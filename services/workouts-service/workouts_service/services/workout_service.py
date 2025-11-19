@@ -18,17 +18,19 @@ from datetime import datetime, timedelta
 import logging
 import pytz
 from datetime import datetime, timedelta, timezone
-from .rpc_client import PlansServiceRPC
+from .rpc_client import PlansServiceRPC, RpeServiceRPC
 import json
 
 logger = logging.getLogger(__name__)
 
 class WorkoutService:
-    def __init__(self, db: AsyncSession, plans_rpc: PlansServiceRPC, exercises_rpc: Any = None, user_id: str = None):
+    def __init__(self, db: AsyncSession, plans_rpc: PlansServiceRPC, exercises_rpc: Any = None, user_id: str = None, rpe_rpc: RpeServiceRPC | None = None, request_headers: dict[str, str] | None = None):
         self.db = db
         self.plans_rpc = plans_rpc
         self.exercises_rpc = exercises_rpc
         self.user_id = user_id
+        self.rpe_rpc = rpe_rpc
+        self.request_headers = request_headers or {}
 
     def _convert_to_naive_utc(self, dt: datetime) -> datetime:
         """Convert aware datetime to naive UTC datetime"""
@@ -124,6 +126,7 @@ class WorkoutService:
                             "effort": s.effort,
                             "volume": s.volume,
                             "working_weight": s.working_weight,
+                            "set_type": s.set_type,
                         }
                         for s in ex.sets
                     ],
@@ -229,6 +232,7 @@ class WorkoutService:
                             "effort": s.effort,
                             "volume": s.volume,
                             "working_weight": s.working_weight,
+                            "set_type": s.set_type,
                         }
                         for s in ex.sets
                     ],
@@ -335,6 +339,20 @@ class WorkoutService:
         # Allow generating additional workouts for an existing applied_plan_id (no early idempotent return)
         
         try:
+            # Pre-fetch user-max ids per exercise to enable weight computation
+            calculator = WorkoutCalculator()
+            all_exercise_ids: set[int] = set()
+            for w in request.workouts:
+                for ex in w.exercises:
+                    all_exercise_ids.add(int(ex.exercise_id))
+            user_max_list = await calculator._fetch_user_maxes(list(all_exercise_ids))
+            # Build maps: exercise_id -> user_max_id
+            user_max_by_ex: dict[int, dict] = {}
+            for um in user_max_list or []:
+                try:
+                    user_max_by_ex[int(um.get("exercise_id"))] = um
+                except Exception:
+                    continue
             for idx, workout_item in enumerate(request.workouts):
                 # Create workout
                 scheduled_for = workout_item.scheduled_for
@@ -367,12 +385,47 @@ class WorkoutService:
                     logger.debug(f"[WORKOUT_SERVICE] Created workout_exercise id={workout_exercise.id} for exercise_id={exercise.exercise_id}")
                     
                     for set_idx, set_data in enumerate(exercise.sets):
+                        intensity = set_data.intensity
+                        effort = set_data.effort
+                        volume = set_data.volume
+                        working_weight = set_data.working_weight
+
+                        # Determine if we need to call RPE compute:
+                        need_core_fill = sum(v is not None for v in (intensity, effort, volume)) >= 2 and (
+                            intensity is None or effort is None or volume is None
+                        )
+                        need_weight = bool(getattr(request, 'compute_weights', False)) and (working_weight is None)
+
+                        if self.rpe_rpc and (need_core_fill or need_weight):
+                            try:
+                                um = user_max_by_ex.get(int(exercise.exercise_id))
+                                user_max_id = int(um.get("id")) if um and um.get("id") is not None else None
+                                compute_res = await self.rpe_rpc.compute(
+                                    intensity=intensity,
+                                    effort=effort,
+                                    volume=volume,
+                                    user_max_id=user_max_id,
+                                    rounding_step=getattr(request, 'rounding_step', 2.5),
+                                    rounding_mode=getattr(request, 'rounding_mode', 'nearest'),
+                                    headers=self.request_headers,
+                                    user_id=self.user_id,
+                                )
+                                intensity = compute_res.get('intensity', intensity)
+                                effort = compute_res.get('effort', effort)
+                                volume = compute_res.get('volume', volume)
+                                if need_weight:
+                                    ww = compute_res.get('weight')
+                                    if ww is not None:
+                                        working_weight = ww
+                            except Exception as e:
+                                logger.warning(f"[WORKOUT_SERVICE] RPE compute failed, proceeding with provided values: {e}")
+
                         workout_set = models.WorkoutSet(
                             exercise_id=workout_exercise.id,
-                            intensity=set_data.intensity,
-                            effort=set_data.effort,
-                            volume=set_data.volume,
-                            working_weight=set_data.working_weight
+                            intensity=intensity,
+                            effort=effort,
+                            volume=volume,
+                            working_weight=working_weight
                         )
                         self.db.add(workout_set)
                         await self.db.flush()

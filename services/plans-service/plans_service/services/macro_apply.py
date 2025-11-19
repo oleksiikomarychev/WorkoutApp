@@ -26,8 +26,14 @@ class MacroApplier:
 
     def __init__(self, user_id: str) -> None:
         self.user_id = user_id
-        self.exercises_base = os.getenv("EXERCISES_SERVICE_URL", "http://exercises-service:8002").rstrip("/")
-        self.workouts_base = os.getenv("WORKOUTS_SERVICE_URL", "http://workouts-service:8004").rstrip("/")
+        self.exercises_base = os.getenv("EXERCISES_SERVICE_URL")
+        if not self.exercises_base:
+            raise RuntimeError("EXERCISES_SERVICE_URL must be set")
+        self.exercises_base = self.exercises_base.rstrip("/")
+        self.workouts_base = os.getenv("WORKOUTS_SERVICE_URL")
+        if not self.workouts_base:
+            raise RuntimeError("WORKOUTS_SERVICE_URL must be set")
+        self.workouts_base = self.workouts_base.rstrip("/")
 
     async def apply(self, preview: Dict[str, Any]) -> Dict[str, Any]:
         logger = logging.getLogger(__name__)

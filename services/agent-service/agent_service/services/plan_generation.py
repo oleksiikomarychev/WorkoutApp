@@ -123,15 +123,11 @@ def _load_rpe_table() -> Dict[str, Dict[str, int]]:
         except Exception as exc:  # pragma: no cover - best effort logging
             logger.warning("Failed to load RPE table from %s: %s", candidate, exc)
 
-    # HTTP fallback: try environment URL, then common service URLs
+    # HTTP fallback: only environment URL (production)
     http_urls: List[str] = []
     env_url = os.getenv("RPE_TABLE_URL")
     if env_url:
         http_urls.append(env_url)
-    # Docker compose service name (in-network)
-    http_urls.append("http://rpe-service:8001/rpe/table")
-    # Host-local fallback (useful during local dev without compose networking)
-    http_urls.append("http://localhost:8001/rpe/table")
 
     for url in http_urls:
         try:
@@ -289,7 +285,7 @@ async def _genai_generate_json(
     *,
     prompt: str,
     response_schema: Dict[str, Any],
-    temperature: float = 0.4,
+    temperature: float = 0.3,
     model: Optional[str] = None,
     max_output_tokens: int = 100000,
 ) -> Dict[str, Any]:
@@ -607,6 +603,28 @@ async def _generate_sets_staged(
     for ex in plan_exercises:
         exercises_by_workout[ex.plan_workout_id].append(ex)
 
+    try:
+        debug_workout_map = {
+            workout_id: [
+                {
+                    "exercise_definition_id": pe.exercise_definition_id,
+                    "exercise_name": pe.exercise_name,
+                    "order_index": pe.order_index,
+                }
+                for pe in sorted(ex_list, key=lambda e: e.order_index)
+            ]
+            for workout_id, ex_list in exercises_by_workout.items()
+        }
+        logger.info("SETS_STAGE_INPUT | workouts=%d", len(debug_workout_map))
+        for wid, items in debug_workout_map.items():
+            logger.debug(
+                "SETS_STAGE_INPUT_WORKOUT | workout_id=%s exercises=%s",
+                wid,
+                items,
+            )
+    except Exception:
+        logger.exception("Failed to log sets stage input map")
+
     # Common schema reused for each chunk
     schema = {
         "type": "object",
@@ -688,10 +706,39 @@ async def _generate_sets_staged(
             temperature=0.35,
         )
         batch = WorkoutSetsBatch.model_validate(payload)
+
+        try:
+            for workout_sets in batch.workouts:
+                per_ex_counts = {
+                    ex.exercise_definition_id: len(ex.sets or [])
+                    for ex in workout_sets.exercises or []
+                }
+                logger.info(
+                    "SETS_STAGE_LLM_OUTPUT | workout_id=%s exercises=%s",
+                    workout_sets.workout_id,
+                    per_ex_counts,
+                )
+        except Exception:
+            logger.exception("Failed to log LLM sets batch output")
+
         aggregated_sets.extend(batch.workouts)
 
     constraints = _collect_workout_constraints(skeleton)
     adjusted_workouts, adjustments = _apply_set_constraints(aggregated_sets, constraints)
+
+    try:
+        for workout_sets in adjusted_workouts:
+            per_ex_counts = {
+                ex.exercise_definition_id: len(ex.sets or [])
+                for ex in workout_sets.exercises or []
+            }
+            logger.info(
+                "SETS_STAGE_AFTER_CONSTRAINTS | workout_id=%s exercises=%s",
+                workout_sets.workout_id,
+                per_ex_counts,
+            )
+    except Exception:
+        logger.exception("Failed to log adjusted workouts after constraints")
     if adjustments:
         for msg in adjustments:
             logger.info("Set constraint adjustment | %s", msg)

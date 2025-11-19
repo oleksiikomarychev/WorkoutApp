@@ -68,12 +68,14 @@ async def create_macro(
     user_id: str = Depends(get_current_user_id),
 ) -> PlanMacroResponse:
     await _require_plan(db, plan_id, user_id)
+    rule_payload = payload.rule.model_dump()
+
     data = PlanMacro(
         calendar_plan_id=plan_id,
         name=payload.name,
         is_active=payload.is_active,
         priority=payload.priority,
-        rule_json=_safe_dump_json(payload.rule),
+        rule_json=_safe_dump_json(rule_payload),
     )
     db.add(data)
     await db.flush()
@@ -113,7 +115,7 @@ async def update_macro(
     if payload.priority is not None:
         obj.priority = payload.priority
     if payload.rule is not None:
-        obj.rule_json = _safe_dump_json(payload.rule)
+        obj.rule_json = _safe_dump_json(payload.rule.model_dump())
     await db.flush()
     await db.commit()
     await db.refresh(obj)
@@ -159,6 +161,8 @@ def _safe_parse_json(s: str | None):
 
 def _safe_dump_json(obj: dict) -> str:
     try:
+        if hasattr(obj, "model_dump"):
+            obj = obj.model_dump()
         return json.dumps(obj, ensure_ascii=False)
     except Exception:
         # store empty object on failure

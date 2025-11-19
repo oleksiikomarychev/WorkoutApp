@@ -69,6 +69,7 @@ class WorkoutSet(Base):
     effort = Column(Float, nullable=True)
     volume = Column(Integer, nullable=True)
     working_weight = Column(Float, nullable=True)
+    set_type = Column(String(32), nullable=True)
 
     exercise = relationship("WorkoutExercise", back_populates="sets")
 

@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/progression_template.dart';
 import '../services/progression_service.dart';
-import '../models/user_max.dart';
-import '../services/user_max_service.dart';
 import 'package:intl/intl.dart';
+import 'package:workout_app/widgets/floating_header_bar.dart';
+import 'package:workout_app/screens/user_profile_screen.dart';
 
 class ProgressionDetailScreen extends StatefulWidget {
   final int templateId;
@@ -16,7 +16,6 @@ class ProgressionDetailScreen extends StatefulWidget {
 
 class _ProgressionDetailScreenState extends State<ProgressionDetailScreen> {
   late Future<ProgressionTemplate> _templateFuture;
-  late Future<UserMax?> _userMaxFuture;
   bool _isLoading = true;
 
   @override
@@ -32,8 +31,6 @@ class _ProgressionDetailScreenState extends State<ProgressionDetailScreen> {
       if (mounted) {
         setState(() {
           _templateFuture = Future.value(template);
-          _userMaxFuture = Provider.of<UserMaxService>(context, listen: false)
-              .getUserMax(template.user_max_id);
           _isLoading = false;
         });
       }
@@ -47,37 +44,18 @@ class _ProgressionDetailScreenState extends State<ProgressionDetailScreen> {
     }
   }
 
-  double? _calculateWeight(ProgressionTemplate template, UserMax? userMax) {
-    if (userMax == null || template.intensity == 0) return null;
-    return (template.intensity / 100) * userMax.maxWeight;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
-              child: Row(
-                children: [
-                  const BackButton(),
-                  Expanded(
-                    child: Text(
-                      'Детали шаблона',
-                      style: Theme.of(context).textTheme.titleLarge,
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.refresh),
-                    onPressed: _isLoading ? null : _loadTemplate,
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
+      body: Stack(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Stack(
+              children: [
+                Column(
+                  children: [
+                    Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : FutureBuilder<ProgressionTemplate>(
@@ -93,22 +71,13 @@ class _ProgressionDetailScreenState extends State<ProgressionDetailScreen> {
 
                         final template = templateSnapshot.data!;
 
-                        return FutureBuilder<UserMax?>(
-                          future: _userMaxFuture,
-                          builder: (context, userMaxSnapshot) {
-                            if (userMaxSnapshot.connectionState == ConnectionState.waiting) {
-                              return const Center(child: CircularProgressIndicator());
-                            }
-
-                            if (userMaxSnapshot.hasError) {
-                              return Center(child: Text('Ошибка: ${userMaxSnapshot.error}'));
-                            }
-
-                            final userMax = userMaxSnapshot.data;
-                            final calculatedWeight = _calculateWeight(template, userMax);
-
-                            return SingleChildScrollView(
-                              padding: const EdgeInsets.all(16.0),
+                        return SingleChildScrollView(
+                              padding: const EdgeInsets.only(
+                                top: kToolbarHeight + 16,
+                                left: 16,
+                                right: 16,
+                                bottom: 16,
+                              ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -138,17 +107,6 @@ class _ProgressionDetailScreenState extends State<ProgressionDetailScreen> {
                                     ),
 
                                   // Exercise
-                                  Text(
-                                    'Упражнение:',
-                                    style: Theme.of(context).textTheme.titleMedium,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    userMax?.exerciseId.toString() ?? 'Не указано',
-                                    style: Theme.of(context).textTheme.bodyLarge,
-                                  ),
-                                  const SizedBox(height: 16),
-
                                   // Parameters
                                   Text(
                                     'Параметры:',
@@ -158,22 +116,40 @@ class _ProgressionDetailScreenState extends State<ProgressionDetailScreen> {
                                   _buildParameterRow('Интенсивность', '${template.intensity}%'),
                                   _buildParameterRow('Усилие (RPE)', template.effort.toString()),
                                   _buildParameterRow('Объем (повторения)', template.volume?.toString() ?? 'Не указано'),
-                                  _buildParameterRow('Рассчитанный вес',
-                                    calculatedWeight != null ?
-                                    '${calculatedWeight.toStringAsFixed(1)} кг' :
-                                    'Не рассчитано'
-                                  ),
                                   const SizedBox(height: 16),
                                 ],
                               ),
                             );
-                          },
-                        );
                       },
                     ),
             ),
           ],
         ),
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: FloatingHeaderBar(
+                    title: 'Детали шаблона',
+                    leading: IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                    actions: [
+                      IconButton(
+                        icon: const Icon(Icons.refresh),
+                        onPressed: _isLoading ? null : _loadTemplate,
+                      ),
+                    ],
+                    onProfileTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

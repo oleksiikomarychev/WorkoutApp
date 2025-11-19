@@ -12,7 +12,6 @@ import '../models/workout_session.dart';
 import '../services/workout_session_service.dart';
 import 'dart:convert';
 import 'dart:async';
-import 'package:http/http.dart' as http;
 import 'exercise_form_screen.dart';
 import 'exercise_selection_screen.dart';
 import 'package:flutter/foundation.dart';
@@ -20,6 +19,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/providers/workout_provider.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
+import 'package:workout_app/widgets/floating_header_bar.dart';
+import 'package:workout_app/screens/user_profile_screen.dart';
 
 // Top-level editor to manage TextEditingControllers for inline set editing
 class _SetEditor {
@@ -27,15 +28,29 @@ class _SetEditor {
   final TextEditingController repsCtrl;
   final TextEditingController rpeCtrl;
   final List<String> editedFields = [];
+  Timer? debounce;
+
   _SetEditor({
     required this.weightCtrl,
     required this.repsCtrl,
     required this.rpeCtrl,
   });
+
   void dispose() {
+    debounce?.cancel();
     weightCtrl.dispose();
     repsCtrl.dispose();
     rpeCtrl.dispose();
+  }
+
+  void scheduleDebounce(VoidCallback action, {Duration delay = const Duration(milliseconds: 500)}) {
+    debounce?.cancel();
+    debounce = Timer(delay, action);
+  }
+
+  void cancelDebounce() {
+    debounce?.cancel();
+    debounce = null;
   }
 }
 
@@ -58,13 +73,7 @@ class WorkoutDetailScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Workout Details'),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: AppColors.textPrimary),
-        titleTextStyle: AppTextStyles.headlineSmall.copyWith(color: AppColors.textPrimary),
-      ),
+      appBar: null,
       body: workoutAsync.when(
         data: (workout) => _WorkoutDetailContent(workout: workout),
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -289,6 +298,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         }
       }
       _reconcileEditors();
+      await _saveWorkoutMetadata();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -443,45 +453,30 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     if (_workout?.id == null) return;
     
     try {
-      final url = ApiConfig.buildFullUrl(
+      final api = ApiClient.create();
+      final data = await api.get(
         ApiConfig.getWorkoutEndpoint(_workout!.id!.toString()),
+        context: 'RawWorkoutDebug',
       );
-      print('Fetching raw workout data from: $url');
-      
-      final response = await http
-          .get(
-            Uri.parse(url),
-            headers: {'Content-Type': 'application/json'},
-          )
-          .timeout(const Duration(seconds: 5));
-      
-      print('Response status: ${response.statusCode}');
-      print('Response headers: ${response.headers}');
-      
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        print('\nRAW WORKOUT DATA:'); 
-        print(jsonEncode(data));
-        
-        if (data is Map && data['exercise_instances'] is List) {
-          print('\nEXERCISE INSTANCES (${data['exercise_instances'].length}):');
-          for (var instance in data['exercise_instances']) {
-            print('Instance ID: ${instance['id']}');
-            print('Exercise Definition ID: ${instance['exercise_list_id']}');
-            print('Workout ID: ${instance['workout_id']}');
-            print('Sets: ${instance['sets']}');
-            print('Exercise Definition: ${instance['exercise_definition'] != null}');
-            if (instance['exercise_definition'] != null) {
-              print('  Exercise Name: ${instance['exercise_definition']['name']}');
-            }
-            print('---');
+
+      print('\nRAW WORKOUT DATA:');
+      print(jsonEncode(data));
+
+      if (data is Map && data['exercise_instances'] is List) {
+        print('\nEXERCISE INSTANCES (${data['exercise_instances'].length}):');
+        for (var instance in data['exercise_instances']) {
+          print('Instance ID: ${instance['id']}');
+          print('Exercise Definition ID: ${instance['exercise_list_id']}');
+          print('Workout ID: ${instance['workout_id']}');
+          print('Sets: ${instance['sets']}');
+          print('Exercise Definition: ${instance['exercise_definition'] != null}');
+          if (instance['exercise_definition'] != null) {
+            print('  Exercise Name: ${instance['exercise_definition']['name']}');
           }
-        } else {
-          print('No exercise instances found or invalid format');
+          print('---');
         }
       } else {
-        print('Failed to fetch raw workout data: ${response.statusCode}');
-        print('Response body: ${response.body}');
+        print('No exercise instances found or invalid format');
       }
     } catch (e, stackTrace) {
       print('Error fetching raw workout data: $e');
@@ -1210,28 +1205,31 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     final eRaw = parseDouble(editor.rpeCtrl.text);
     final e = eRaw?.round(); // RPE table uses ints
 
-    if (editor.editedFields.length < 2) return;
-    final a = editor.editedFields[0];
-    final b = editor.editedFields[1];
-    final third = {'weight', 'reps', 'rpe'}.difference({a, b}).first;
+    final bool hasTwo = editor.editedFields.length >= 2;
+    String? third;
+    if (hasTwo) {
+      final a = editor.editedFields[0];
+      final b = editor.editedFields[1];
+      third = {'weight', 'reps', 'rpe'}.difference({a, b}).first;
+    }
 
     String fmtWeight(double v) => (v % 1 == 0) ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 
     int exerciseId = instance.exerciseListId;
     _isSyncingFields = true;
     try {
-      if (third == 'weight' && r != null && e != null) {
+      if (hasTwo && third == 'weight' && r != null && e != null) {
         final intensity = _intensityFromEffortReps(e.clamp(1, 10), r.clamp(1, 1000));
         final max = _exerciseMaxByExerciseId[exerciseId];
         if (intensity != null && max != null) {
           final newWeight = max * (intensity / 100.0);
           editor.weightCtrl.text = fmtWeight(newWeight);
         }
-      } else if (third == 'reps' && w != null && e != null) {
+      } else if (hasTwo && third == 'reps' && w != null && e != null) {
         final intensity = _intensityFromWeight(exerciseId, w);
         final reps = (intensity != null) ? _repsFromIntensityEffort(intensity, e.clamp(1, 10)) : null;
         if (reps != null) editor.repsCtrl.text = reps.toString();
-      } else if (third == 'rpe' && w != null && r != null) {
+      } else if (hasTwo && third == 'rpe' && w != null && r != null) {
         final intensity = _intensityFromWeight(exerciseId, w);
         final eff = (intensity != null) ? _effortFromIntensityReps(intensity, r.clamp(1, 1000)) : null;
         if (eff != null) editor.rpeCtrl.text = eff.toString();
@@ -1240,6 +1238,12 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       _isSyncingFields = false;
     }
     if (mounted) setState(() {});
+
+    editor.scheduleDebounce(() {
+      if (!mounted) return;
+      editor.cancelDebounce();
+      unawaited(_onInlineFieldSubmitted(instance, setIndex, set));
+    });
   }
 
   Future<void> _onInlineFieldSubmitted(
@@ -1248,6 +1252,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     ExerciseSetDto set,
   ) async {
     final editor = _getSetEditor(instance, setIndex, set);
+    editor.cancelDebounce();
     double? parseDouble(String s) => double.tryParse(s.replaceAll(',', '.').trim());
     int? parseInt(String s) => int.tryParse(s.trim());
 
@@ -1750,21 +1755,36 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
         return Scaffold(
           backgroundColor: AppColors.background,
-          appBar: AppBar(
-            title: Text(_workout?.name ?? 'Workout Details'),
-            backgroundColor: Colors.white,
-            elevation: 0,
-            iconTheme: const IconThemeData(color: AppColors.textPrimary),
-            titleTextStyle: AppTextStyles.headlineSmall.copyWith(color: AppColors.textPrimary),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: _loadExercises,
-                color: AppColors.primary,
+          body: Stack(
+            children: [
+              SafeArea(
+                bottom: false,
+                child: _buildBody(),
+              ),
+              Align(
+                alignment: Alignment.topCenter,
+                child: FloatingHeaderBar(
+                  title: _workout?.name ?? 'Workout Details',
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+                    onPressed: () => Navigator.of(context).maybePop(),
+                  ),
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      onPressed: _loadExercises,
+                      color: AppColors.primary,
+                    ),
+                  ],
+                  onProfileTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+                    );
+                  },
+                ),
               ),
             ],
           ),
-          body: _buildBody(),
           floatingActionButton: FloatingActionButton.extended(
             onPressed: _showAddExerciseDialog,
             backgroundColor: AppColors.primary,
@@ -1831,6 +1851,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
     return Column(
       children: [
+        const SizedBox(height: 72),
         _buildMetadataCard(),
         _buildSessionBanner(),
         Expanded(child: content),
@@ -2368,7 +2389,11 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                             ),
                             enabled: !isCompleted,
                             onChanged: (v) => _onInlineFieldChanged(instance, entry.key, set, 'weight', v),
-                            onSubmitted: (_) => _onInlineFieldSubmitted(instance, entry.key, set),
+                            onSubmitted: (_) {
+                              final editor = _getSetEditor(instance, entry.key, set);
+                              editor.cancelDebounce();
+                              _onInlineFieldSubmitted(instance, entry.key, set);
+                            },
                           ),
                         ),
                         // Inline reps editor
@@ -2402,7 +2427,11 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                             ),
                             enabled: !isCompleted,
                             onChanged: (v) => _onInlineFieldChanged(instance, entry.key, set, 'reps', v),
-                            onSubmitted: (_) => _onInlineFieldSubmitted(instance, entry.key, set),
+                            onSubmitted: (_) {
+                              final editor = _getSetEditor(instance, entry.key, set);
+                              editor.cancelDebounce();
+                              _onInlineFieldSubmitted(instance, entry.key, set);
+                            },
                           ),
                         ),
                         // Inline RPE editor
@@ -2436,7 +2465,11 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                             ),
                             enabled: !isCompleted,
                             onChanged: (v) => _onInlineFieldChanged(instance, entry.key, set, 'rpe', v),
-                            onSubmitted: (_) => _onInlineFieldSubmitted(instance, entry.key, set),
+                            onSubmitted: (_) {
+                              final editor = _getSetEditor(instance, entry.key, set);
+                              editor.cancelDebounce();
+                              _onInlineFieldSubmitted(instance, entry.key, set);
+                            },
                           ),
                         ),
                         IconButton(

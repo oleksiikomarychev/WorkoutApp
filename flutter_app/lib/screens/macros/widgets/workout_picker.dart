@@ -9,7 +9,8 @@ import 'package:workout_app/services/workout_service.dart';
 class PickedWorkout {
   final int id;
   final String name;
-  const PickedWorkout({required this.id, required this.name});
+  final int? planOrderIndex;
+  const PickedWorkout({required this.id, required this.name, this.planOrderIndex});
 }
 
 Future<PickedWorkout?> showWorkoutPickerBottomSheet(BuildContext context, WidgetRef ref) async {
@@ -36,6 +37,7 @@ class _WorkoutPickerSheetState extends ConsumerState<_WorkoutPickerSheet> {
   String? _error;
   int? _selectedWorkoutId;
   String? _selectedWorkoutName;
+  int? _selectedPlanOrderIndex;
 
   @override
   void initState() {
@@ -65,6 +67,7 @@ class _WorkoutPickerSheetState extends ConsumerState<_WorkoutPickerSheet> {
         _selectedDay = items.firstWhere((w) => w.scheduledFor != null, orElse: () => items.isNotEmpty ? items.first : Workout(name: 'Workout', id: null)).scheduledFor ?? DateTime.now();
         _selectedWorkoutId = null;
         _selectedWorkoutName = null;
+        _selectedPlanOrderIndex = null;
       });
     } catch (e) {
       setState(() { _loading = false; _error = e.toString(); });
@@ -153,6 +156,7 @@ class _WorkoutPickerSheetState extends ConsumerState<_WorkoutPickerSheet> {
                                       setState(() {
                                         _selectedWorkoutId = w.id;
                                         _selectedWorkoutName = w.name;
+                                        _selectedPlanOrderIndex = w.planOrderIndex;
                                         if (w.scheduledFor != null) _selectedDay = DateTime(w.scheduledFor!.year, w.scheduledFor!.month, w.scheduledFor!.day);
                                       });
                                     }
@@ -180,6 +184,7 @@ class _WorkoutPickerSheetState extends ConsumerState<_WorkoutPickerSheet> {
                                   setState(() {
                                     _selectedWorkoutId = res.id;
                                     _selectedWorkoutName = res.name;
+                                    _selectedPlanOrderIndex = res.planOrderIndex;
                                     final w = _workouts.firstWhere((e) => e.id == res.id, orElse: () => const Workout(name: 'Workout'));
                                     if (w.scheduledFor != null) _selectedDay = DateTime(w.scheduledFor!.year, w.scheduledFor!.month, w.scheduledFor!.day);
                                   });
@@ -198,7 +203,7 @@ class _WorkoutPickerSheetState extends ConsumerState<_WorkoutPickerSheet> {
                                 onPressed: (_selectedWorkoutId == null)
                                     ? null
                                     : () {
-                                        Navigator.of(context).pop(PickedWorkout(id: _selectedWorkoutId!, name: _selectedWorkoutName ?? ''));
+                                        Navigator.of(context).pop(PickedWorkout(id: _selectedWorkoutId!, name: _selectedWorkoutName ?? '', planOrderIndex: _selectedPlanOrderIndex));
                                       },
                                 child: const Text('Готово'),
                               ),
@@ -234,7 +239,7 @@ class _WorkoutListDialog extends StatelessWidget {
               title: Text(w.name),
               subtitle: Text(when),
               onTap: () {
-                if (w.id != null) Navigator.of(context).pop(PickedWorkout(id: w.id!, name: w.name));
+                if (w.id != null) Navigator.of(context).pop(PickedWorkout(id: w.id!, name: w.name, planOrderIndex: w.planOrderIndex));
               },
             );
           },

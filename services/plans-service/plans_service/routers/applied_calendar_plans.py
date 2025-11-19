@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from ..dependencies import get_db, get_current_user_id
 from ..services.applied_calendar_plan_service import AppliedCalendarPlanService
@@ -60,7 +61,7 @@ async def get_applied_plan_analytics(
 @router.post("/{applied_plan_id}/apply-macros", response_model=Dict[str, Any])
 async def apply_plan_macros(
     applied_plan_id: int,
-    index_offset: int = Query(-1, description="Offset to apply to current_workout_index when evaluating macros"),
+    index_offset: int = Query(0, description="Offset to apply to current_workout_index when evaluating macros"),
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -166,6 +167,44 @@ async def advance_applied_plan_index(
         )
 
 
+class CancelAppliedPlanRequest(BaseModel):
+    dropout_reason: Optional[str] = None
+
+
+@router.post("/{applied_plan_id}/cancel", response_model=AppliedCalendarPlanResponse)
+async def cancel_applied_plan(
+    applied_plan_id: int,
+    payload: CancelAppliedPlanRequest,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Отменить (отказаться от) применённый план пользователя.
+
+    Помечает план как неактивный, выставляет статус cancelled (если он ещё не задан),
+    фиксирует время отмены и, при необходимости, причину отказа.
+    """
+    try:
+      svc = AppliedCalendarPlanService(db, user_id)
+      plan = await svc.cancel_applied_plan(
+          applied_plan_id,
+          dropout_reason=payload.dropout_reason,
+      )
+      if not plan:
+          raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Applied plan not found")
+      # Преобразуем ORM-объект в response-схему, используя уже существующий метод get_applied_plan_by_id
+      full = await svc.get_applied_plan_by_id(applied_plan_id)
+      if not full:
+          raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Applied plan not found")
+      return full
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cancel applied plan: {str(e)}",
+        )
+
+
 @router.get("", response_model=List[AppliedCalendarPlanResponse])
 async def get_applied_plans(
     db: Session = Depends(get_db),
@@ -239,6 +278,7 @@ async def apply_plan(
 @router.post("/{applied_plan_id}/run-macros", response_model=Dict[str, Any])
 async def run_plan_macros(
     applied_plan_id: int,
+    index_offset: int = Query(1, description="Offset to apply to current_workout_index when evaluating macros"),
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -249,7 +289,7 @@ async def run_plan_macros(
     """
     try:
         engine = MacroEngine(db, user_id)
-        result = await engine.run_for_applied_plan(applied_plan_id)
+        result = await engine.run_for_applied_plan(applied_plan_id, anchor="current", index_offset=index_offset)
         return result
     except Exception as e:
         raise HTTPException(
