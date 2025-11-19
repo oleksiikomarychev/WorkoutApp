@@ -16,6 +16,12 @@ db_url = os.getenv("AGENT_DATABASE_URL")
 if not db_url:
     raise ValueError("AGENT_DATABASE_URL environment variable not set")
 
+# Ensure synchronous driver for Alembic
+if db_url.startswith("postgresql+asyncpg://"):
+    db_url = db_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
+elif db_url.startswith("postgresql://") and "+psycopg2" not in db_url:
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
 config.set_main_option("sqlalchemy.url", db_url)
 
 # Import all models to ensure they are attached to the Base.metadata

@@ -22,6 +22,15 @@ class CalendarPlan(Base):
     duration_weeks = Column(Integer, nullable=False)
     is_active = Column(Boolean, default=True, server_default=text('true'))
     user_id = Column(String(255), nullable=False, index=True)
+    root_plan_id = Column(Integer, ForeignKey("calendar_plans.id", ondelete="RESTRICT"), nullable=False, index=True)
+    # Plan metadata
+    notes = Column(String(512), nullable=True)
+    primary_goal = Column(String(32), nullable=True)
+    intended_experience_level = Column(String(32), nullable=True)
+    intended_frequency_per_week = Column(Integer, nullable=True)
+    session_duration_target_min = Column(Integer, nullable=True)
+    primary_focus_lifts = Column(JSON, nullable=True)  # e.g. list of exercise_definition_ids
+    required_equipment = Column(JSON, nullable=True)   # e.g. list of strings
 
     applied_instances = relationship("AppliedCalendarPlan", back_populates="calendar_plan", cascade="all, delete-orphan")
     mesocycles = relationship(
@@ -31,6 +40,10 @@ class CalendarPlan(Base):
         order_by="Mesocycle.order_index",
         lazy="selectin"
     )
+    root_plan = relationship("CalendarPlan", remote_side=[id], back_populates="variants", uselist=False)
+    variants = relationship("CalendarPlan", back_populates="root_plan", cascade="all, delete-orphan")
+    # New: macros attached to this plan
+    macros = relationship("PlanMacro", back_populates="calendar_plan", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<CalendarPlan(id={self.id}, name='{self.name}')>"
@@ -50,6 +63,15 @@ class AppliedCalendarPlan(Base):
     user_max_ids = Column(JSON, nullable=True)
     current_workout_index = Column(Integer, default=0)
     user_id = Column(String(255), nullable=False, index=True)
+    # User plan progress metadata (USER_PLANS core)
+    status = Column(String(32), nullable=True)  # active/completed/dropped/etc.
+    planned_sessions_total = Column(Integer, nullable=True)
+    actual_sessions_completed = Column(Integer, nullable=True)
+    adherence_pct = Column(Float, nullable=True)
+    notes = Column(String(512), nullable=True)
+    # Dropout analytics
+    dropout_reason = Column(String(64), nullable=True)  # e.g. injury/no_time/too_hard/not_enjoyable
+    dropped_at = Column(DateTime, nullable=True)
 
     calendar_plan = relationship("CalendarPlan", back_populates="applied_instances")
     workouts = relationship(
@@ -87,7 +109,7 @@ class AppliedMesocycle(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     applied_plan_id = Column(Integer, ForeignKey("applied_calendar_plans.id"), nullable=False)
-    mesocycle_id = Column(Integer, ForeignKey("mesocycles.id"), nullable=False)
+    mesocycle_id = Column(Integer, ForeignKey("mesocycles.id"), nullable=True)
     order_index = Column(Integer, nullable=False)
     
     applied_plan = relationship("AppliedCalendarPlan", back_populates="mesocycles")
@@ -99,7 +121,7 @@ class AppliedMicrocycle(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     applied_mesocycle_id = Column(Integer, ForeignKey("applied_mesocycles.id"), nullable=False)
-    microcycle_id = Column(Integer, ForeignKey("microcycles.id"), nullable=False)
+    microcycle_id = Column(Integer, ForeignKey("microcycles.id"), nullable=True)
     order_index = Column(Integer, nullable=False)
     
     applied_mesocycle = relationship("AppliedMesocycle", back_populates="microcycles")

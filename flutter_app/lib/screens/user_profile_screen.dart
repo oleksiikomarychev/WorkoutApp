@@ -5,13 +5,22 @@ import 'package:intl/intl.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
 import 'package:workout_app/models/workout.dart';
 import 'package:workout_app/models/workout_session.dart';
+import 'package:workout_app/models/user_profile.dart';
 import 'package:workout_app/providers/providers.dart';
 import 'package:workout_app/services/service_locator.dart' as sl;
 import 'package:workout_app/services/workout_service.dart';
+import 'package:workout_app/services/avatar_service.dart';
 import 'package:workout_app/screens/workout_session_history_screen.dart';
 import 'package:workout_app/screens/session_log_screen.dart';
+import 'dart:typed_data';
+import 'package:workout_app/widgets/floating_header_bar.dart';
 
 const int kActivityWeeks = 48;
+
+// Avatar generator state
+final avatarPromptProvider = StateProvider<String>((ref) => '');
+final avatarImageProvider = StateProvider<Uint8List?>((ref) => null);
+final avatarLoadingProvider = StateProvider<bool>((ref) => false);
 
 final profileAggregatesProvider = FutureProvider<UserStats>((ref) async {
   final analytics = ref.watch(sl.analyticsServiceProvider);
@@ -231,42 +240,320 @@ class UserProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = FirebaseAuth.instance.currentUser;
+    final profileAsync = ref.watch(userProfileProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        title: const Text(
-          'Account',
-          style: TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
+      body: Stack(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Stack(
+              children: [
+                RefreshIndicator(
+                  onRefresh: () async {
+                    ref.invalidate(userProfileProvider);
+                    ref.invalidate(profileAggregatesProvider);
+                    ref.invalidate(completedSessionsProvider);
+                    await Future.wait([
+                      ref.read(userProfileProvider.future),
+                      ref.read(profileAggregatesProvider.future),
+                      ref.read(completedSessionsProvider.future),
+                    ]);
+                  },
+                  child: profileAsync.when(
+                    loading: () => const Center(child: CircularProgressIndicator()),
+                    error: (error, _) => _buildErrorState(ref, error),
+                    data: (profile) {
+                      return ref.watch(profileAggregatesProvider).when(
+                        loading: () => const Center(child: CircularProgressIndicator()),
+                        error: (error, _) => _buildErrorState(ref, error),
+                        data: (stats) => _buildContent(context, ref, stats, user, profile),
+                      );
+                    },
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: FloatingHeaderBar(
+                    title: 'Account',
+                    leading: IconButton(
+                      icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                    onProfileTap: null,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        centerTitle: true,
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(profileAggregatesProvider);
-          ref.invalidate(completedSessionsProvider);
-          await Future.wait([
-            ref.read(profileAggregatesProvider.future),
-            ref.read(completedSessionsProvider.future),
-          ]);
-        },
-        child: ref.watch(profileAggregatesProvider).when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => _buildErrorState(ref, error),
-          data: (stats) => _buildContent(context, ref, stats, user),
-        ),
+        ],
       ),
     );
+  }
+
+  Future<void> _showEditProfileDialog(BuildContext context, WidgetRef ref, User? user, UserProfile profile) async {
+    final nameController = TextEditingController(text: profile.displayName ?? user?.displayName ?? '');
+    final bioController = TextEditingController(text: profile.bio ?? '');
+
+    bool isPublic = profile.isPublic;
+    String unitSystem = profile.settings.unitSystem;
+    String locale = profile.settings.locale;
+    String timezone = profile.settings.timezone ?? '';
+    bool notificationsEnabled = profile.settings.notificationsEnabled;
+
+    // New profile fields
+    final bodyweightController = TextEditingController(
+      text: profile.bodyweightKg != null ? profile.bodyweightKg!.toStringAsFixed(1) : '',
+    );
+    final heightController = TextEditingController(
+      text: profile.heightCm != null ? profile.heightCm!.toStringAsFixed(0) : '',
+    );
+    final ageController = TextEditingController(
+      text: profile.age != null ? profile.age!.toString() : '',
+    );
+    final experienceYearsController = TextEditingController(
+      text: profile.trainingExperienceYears != null
+          ? profile.trainingExperienceYears!.toStringAsFixed(1)
+          : '',
+    );
+
+    String? sex = profile.sex;
+    String? experienceLevel = profile.trainingExperienceLevel;
+    String? primaryGoal = profile.primaryDefaultGoal;
+    String? trainingEnvironment = profile.trainingEnvironment;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            return AlertDialog(
+              title: const Text('Edit profile'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(labelText: 'Display name'),
+                    ),
+                    TextField(
+                      controller: bioController,
+                      decoration: const InputDecoration(labelText: 'Bio'),
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 12),
+                    // New core profile fields
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: bodyweightController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            decoration: const InputDecoration(labelText: 'Bodyweight (kg)'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: heightController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: false),
+                            decoration: const InputDecoration(labelText: 'Height (cm)'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: ageController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: false),
+                            decoration: const InputDecoration(labelText: 'Age'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: experienceYearsController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            decoration: const InputDecoration(labelText: 'Training years'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: sex,
+                            decoration: const InputDecoration(labelText: 'Sex'),
+                            items: const [
+                              DropdownMenuItem(value: 'male', child: Text('Male')),
+                              DropdownMenuItem(value: 'female', child: Text('Female')),
+                            ],
+                            onChanged: (value) {
+                              setState(() => sex = value);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: experienceLevel,
+                            decoration: const InputDecoration(labelText: 'Experience level'),
+                            items: const [
+                              DropdownMenuItem(value: 'beginner', child: Text('Beginner')),
+                              DropdownMenuItem(value: 'intermediate', child: Text('Intermediate')),
+                              DropdownMenuItem(value: 'advanced', child: Text('Advanced')),
+                            ],
+                            onChanged: (value) {
+                              setState(() => experienceLevel = value);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: primaryGoal,
+                      decoration: const InputDecoration(labelText: 'Primary goal'),
+                      items: const [
+                        DropdownMenuItem(value: 'strength', child: Text('Strength')),
+                        DropdownMenuItem(value: 'hypertrophy', child: Text('Hypertrophy')),
+                        DropdownMenuItem(value: 'fat_loss', child: Text('Fat loss')),
+                        DropdownMenuItem(value: 'general_fitness', child: Text('General fitness')),
+                      ],
+                      onChanged: (value) {
+                        setState(() => primaryGoal = value);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: trainingEnvironment,
+                      decoration: const InputDecoration(labelText: 'Training environment'),
+                      items: const [
+                        DropdownMenuItem(value: 'commercial_gym', child: Text('Commercial gym')),
+                        DropdownMenuItem(value: 'home', child: Text('Home')),
+                        DropdownMenuItem(value: 'garage', child: Text('Garage')),
+                      ],
+                      onChanged: (value) {
+                        setState(() => trainingEnvironment = value);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Public profile'),
+                      value: isPublic,
+                      onChanged: (value) => setState(() => isPublic = value),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Text('Units'),
+                        const SizedBox(width: 16),
+                        DropdownButton<String>(
+                          value: unitSystem,
+                          items: const [
+                            DropdownMenuItem(value: 'metric', child: Text('Metric')),
+                            DropdownMenuItem(value: 'imperial', child: Text('Imperial')),
+                          ],
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() => unitSystem = value);
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    TextField(
+                      decoration: const InputDecoration(labelText: 'Locale'),
+                      controller: TextEditingController(text: locale),
+                      onChanged: (value) => locale = value,
+                    ),
+                    TextField(
+                      decoration: const InputDecoration(labelText: 'Timezone'),
+                      controller: TextEditingController(text: timezone),
+                      onChanged: (value) => timezone = value,
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Notifications'),
+                      value: notificationsEnabled,
+                      onChanged: (value) => setState(() => notificationsEnabled = value),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(ctx).pop(true),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result != true) return;
+
+    final displayName = nameController.text.trim();
+    final bio = bioController.text.trim();
+
+    double? _parseDouble(String text) {
+      if (text.trim().isEmpty) return null;
+      return double.tryParse(text.replaceAll(',', '.'));
+    }
+
+    int? _parseInt(String text) {
+      if (text.trim().isEmpty) return null;
+      return int.tryParse(text);
+    }
+
+    try {
+      final svc = ref.read(sl.profileServiceProvider);
+      await svc.updateProfile(
+        displayName: displayName.isEmpty ? null : displayName,
+        bio: bio.isEmpty ? null : bio,
+        isPublic: isPublic,
+        bodyweightKg: _parseDouble(bodyweightController.text),
+        heightCm: _parseDouble(heightController.text),
+        age: _parseInt(ageController.text),
+        sex: sex,
+        trainingExperienceYears: _parseDouble(experienceYearsController.text),
+        trainingExperienceLevel: experienceLevel,
+        primaryDefaultGoal: primaryGoal,
+        trainingEnvironment: trainingEnvironment,
+      );
+      await svc.updateSettings(
+        unitSystem: unitSystem,
+        locale: locale.isEmpty ? null : locale,
+        timezone: timezone.isEmpty ? null : timezone,
+        notificationsEnabled: notificationsEnabled,
+      );
+      ref.invalidate(userProfileProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile updated')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update profile: $e')),
+        );
+      }
+    }
   }
 
   Widget _buildErrorState(WidgetRef ref, Object error) {
@@ -290,13 +577,15 @@ class UserProfileScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildContent(BuildContext context, WidgetRef ref, UserStats stats, User? user) {
+  Widget _buildContent(BuildContext context, WidgetRef ref, UserStats stats, User? user, UserProfile profile) {
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       child: Column(
         children: [
-          const SizedBox(height: 24),
-          _buildProfileHeader(user, stats),
+          const SizedBox(height: kToolbarHeight + 24),
+          _buildProfileHeader(context, ref, user, profile, stats),
+          const SizedBox(height: 32),
+          _buildAvatarGenerator(context, ref),
           const SizedBox(height: 32),
           _buildActivitySection(stats),
           const SizedBox(height: 32),
@@ -307,7 +596,143 @@ class UserProfileScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildProfileHeader(User? user, UserStats stats) {
+  Widget _buildAvatarGenerator(BuildContext context, WidgetRef ref) {
+    final loading = ref.watch(avatarLoadingProvider);
+    final imageBytes = ref.watch(avatarImageProvider);
+    final prompt = ref.watch(avatarPromptProvider);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.edit, color: AppColors.primary, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Generate your Avatar',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Use fofr/sdxl-emoji to create something unique.',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          if (imageBytes != null)
+            Center(
+              child: Container(
+                width: 96,
+                height: 96,
+                decoration: const BoxDecoration(shape: BoxShape.circle),
+                clipBehavior: Clip.antiAlias,
+                child: Image.memory(imageBytes, fit: BoxFit.cover),
+              ),
+            ),
+          if (imageBytes != null) const SizedBox(height: 8),
+          if (imageBytes != null)
+            Center(
+              child: TextButton.icon(
+                onPressed: loading
+                    ? null
+                    : () async {
+                        try {
+                          final svc = ref.read(sl.avatarServiceProvider);
+                          final url = await svc.applyAsProfile(pngBytes: imageBytes);
+                          try { await FirebaseAuth.instance.currentUser?.reload(); } catch (_) {}
+                          ref.invalidate(profileAggregatesProvider);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(url.isNotEmpty ? 'Profile photo updated' : 'Saved avatar')),
+                            );
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Failed to apply: $e')),
+                            );
+                          }
+                        }
+                      },
+                icon: const Icon(Icons.check_circle_outline),
+                label: const Text('Use as profile picture'),
+              ),
+            ),
+          if (imageBytes != null) const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  initialValue: prompt,
+                  onChanged: (v) => ref.read(avatarPromptProvider.notifier).state = v,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.casino_outlined),
+                    hintText: 'Describe your avatar',
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    filled: true,
+                    fillColor: AppColors.surface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 44,
+                child: ElevatedButton(
+                  onPressed: loading
+                      ? null
+                      : () async {
+                          final text = ref.read(avatarPromptProvider);
+                          if (text.trim().isEmpty) return;
+                          ref.read(avatarLoadingProvider.notifier).state = true;
+                          try {
+                            final svc = ref.read(sl.avatarServiceProvider);
+                            final bytes = await svc.generateAvatar(prompt: text);
+                            ref.read(avatarImageProvider.notifier).state = bytes;
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Failed: $e')),
+                              );
+                            }
+                          } finally {
+                            ref.read(avatarLoadingProvider.notifier).state = false;
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.textPrimary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
+                  child: loading
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Generate'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Randomize or write your own prompt! Your avatar will be displayed on your public profile.',
+            style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileHeader(BuildContext context, WidgetRef ref, User? user, UserProfile profile, UserStats stats) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -341,13 +766,49 @@ class UserProfileScreen extends ConsumerWidget {
                 : null,
           ),
           const SizedBox(height: 16),
-          Text(
-            user?.displayName ?? 'User',
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(
+                      profile.displayName ?? user?.displayName ?? 'User',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    if (profile.bio != null && profile.bio!.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        profile.bio!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Text(
+                      'Units: ${profile.settings.unitSystem} • Locale: ${profile.settings.locale}${profile.settings.timezone != null && profile.settings.timezone!.isNotEmpty ? ' • TZ: ${profile.settings.timezone}' : ''}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.edit, size: 20, color: AppColors.textSecondary),
+                onPressed: () => _showEditProfileDialog(context, ref, user, profile),
+              ),
+            ],
           ),
           const SizedBox(height: 4),
           Text(

@@ -25,4 +25,4 @@ ENV EXERCISES_DATABASE_URL=sqlite+aiosqlite:////app/data/exercises.db
 
 EXPOSE 8002
 
-CMD ["/app/entrypoint.sh", "uvicorn", "exercises_service.main:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["/app/entrypoint.sh", "sh", "-c", "uvicorn exercises_service.main:app --host 0.0.0.0 --port ${PORT:-8002} --log-level ${LOG_LEVEL:-info}"]

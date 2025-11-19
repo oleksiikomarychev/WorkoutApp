@@ -40,3 +40,5 @@ class WorkoutGenerationRequest(BaseModel):
 
 class WorkoutGenerationResponse(BaseModel):
     workout_ids: List[int]
+    created_count: int | None = None
+    existing_count: int | None = None

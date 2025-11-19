@@ -27,6 +27,11 @@ app = FastAPI(title="rpe-service", version="0.1.0")
 router = APIRouter(prefix="/rpe")
 
 
+@app.get("/health")
+def health() -> Dict[str, str]:
+    return {"status": "ok"}
+
+
 def get_current_user_id(x_user_id: str | None = Header(default=None, alias="X-User-Id")) -> str:
     if not x_user_id:
         raise HTTPException(status_code=401, detail="X-User-Id header required")

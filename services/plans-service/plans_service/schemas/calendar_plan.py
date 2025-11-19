@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, model_validator, validator, field_validator
-from typing import Optional, List, Dict, TYPE_CHECKING
+from typing import Optional, List, Dict, TYPE_CHECKING, Literal
 from datetime import datetime
 from enum import Enum
 from .mesocycle import MesocycleResponse
@@ -26,6 +26,27 @@ class CalendarPlanBase(BaseModel):
 
     name: str = Field(..., max_length=255, description="Plan name must be 1-255 characters")
     #duration_weeks: int = Field(..., ge=1, le=104, description="Duration must be between 1 and 104 weeks")
+    primary_goal: Optional[str] = Field(
+        default=None, description="Primary goal of the plan (e.g. strength, hypertrophy, recomposition)"
+    )
+    intended_experience_level: Optional[str] = Field(
+        default=None, description="Intended lifter level (novice/intermediate/advanced)"
+    )
+    intended_frequency_per_week: Optional[int] = Field(
+        default=None, ge=1, le=14, description="Intended training frequency per week"
+    )
+    session_duration_target_min: Optional[int] = Field(
+        default=None, ge=1, le=300, description="Target session duration in minutes"
+    )
+    primary_focus_lifts: Optional[List[int]] = Field(
+        default=None, description="List of primary focus exercise_definition_ids"
+    )
+    required_equipment: Optional[List[str]] = Field(
+        default=None, description="List of required equipment tags (e.g. barbell, rack, bench)"
+    )
+    supported_constraints: Optional[List[str]] = Field(
+        default=None, description="List of supported constraint codes (e.g. shoulder_overhead_limit)"
+    )
 
     class Config:
         from_attributes = True
@@ -165,11 +186,22 @@ class CalendarPlanCreate(CalendarPlanBase):
     duration_weeks: int = Field(..., ge=1, le=104, description="Duration must be between 1 and 104 weeks")
 
 
+class CalendarPlanVariantCreate(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=255, description="Optional name for the plan variant")
+
+
 class CalendarPlanUpdate(BaseModel):
     """Схема для частичного обновления плана"""
 
     name: Optional[str] = Field(None, max_length=255, description="Plan name must be 1-255 characters")
     duration_weeks: Optional[int] = Field(default=None, ge=1, le=104, description="Duration must be between 1 and 104 weeks")
+    primary_goal: Optional[str] = None
+    intended_experience_level: Optional[str] = None
+    intended_frequency_per_week: Optional[int] = Field(default=None, ge=1, le=14)
+    session_duration_target_min: Optional[int] = Field(default=None, ge=1, le=300)
+    primary_focus_lifts: Optional[List[int]] = None
+    required_equipment: Optional[List[str]] = None
+    supported_constraints: Optional[List[str]] = None
 
 
 class AppliedCalendarPlanBase(BaseModel):
@@ -177,6 +209,20 @@ class AppliedCalendarPlanBase(BaseModel):
 
     start_date: Optional[datetime] = None
     is_active: bool = True
+    status: Optional[str] = Field(default=None, description="User plan status: active/completed/dropped/etc.")
+    planned_sessions_total: Optional[int] = Field(default=None, ge=0)
+    actual_sessions_completed: Optional[int] = Field(default=None, ge=0)
+    adherence_pct: Optional[float] = Field(default=None, ge=0, le=100)
+    notes: Optional[str] = Field(default=None, max_length=512)
+    dropout_reason: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description="Dropout reason code or short description (e.g. injury/no_time/too_hard)",
+    )
+    dropped_at: Optional[datetime] = Field(
+        default=None,
+        description="Timestamp when plan was considered dropped",
+    )
 
     class Config:
         from_attributes = True
@@ -219,6 +265,12 @@ class CalendarPlanSummaryResponse(BaseModel):
     duration_weeks: int
     is_active: bool
     is_favorite: bool = False
+    root_plan_id: int
+    is_original: bool = True
+    primary_goal: Optional[str] = None
+    intended_experience_level: Optional[str] = None
+    intended_frequency_per_week: Optional[int] = None
+    session_duration_target_min: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -244,6 +296,15 @@ class CalendarPlanResponse(BaseModel):
     name: str
     duration_weeks: int
     is_active: bool
+    root_plan_id: int
+    is_original: bool = True
+    primary_goal: Optional[str] = None
+    intended_experience_level: Optional[str] = None
+    intended_frequency_per_week: Optional[int] = None
+    session_duration_target_min: Optional[int] = None
+    primary_focus_lifts: Optional[List[int]] = None
+    required_equipment: Optional[List[str]] = None
+    supported_constraints: Optional[List[str]] = None
     mesocycles: Optional[List[MesocycleResponse]] = Field(default_factory=list)
 
     class Config:
@@ -363,3 +424,45 @@ class FullCalendarPlanCreate(BaseModel):
     name: str
     mesocycles: List[MesocycleCreate]
     duration_weeks: int
+
+class PlanExerciseFilter(BaseModel):
+    """Фильтры для выборки упражнений в плане для mass edit/replace"""
+
+    exercise_name_exact: Optional[str] = None
+    exercise_name_contains: Optional[str] = None
+
+    intensity_lt: Optional[int] = Field(default=None, ge=0, le=100)
+    intensity_lte: Optional[int] = Field(default=None, ge=0, le=100)
+    intensity_gt: Optional[int] = Field(default=None, ge=0, le=100)
+    intensity_gte: Optional[int] = Field(default=None, ge=0, le=100)
+
+    volume_lt: Optional[int] = Field(default=None, ge=1)
+    volume_gt: Optional[int] = Field(default=None, ge=1)
+
+    mesocycle_indices: Optional[List[int]] = None
+    microcycle_indices: Optional[List[int]] = None
+    workout_day_labels: Optional[List[str]] = None
+
+
+class PlanExerciseActions(BaseModel):
+    """Действия, которые нужно применить к выбранным упражнениям/сетам"""
+
+    set_intensity: Optional[int] = Field(default=None, ge=0, le=100)
+    increase_intensity_by: Optional[int] = None
+    decrease_intensity_by: Optional[int] = None
+
+    set_volume: Optional[int] = Field(default=None, ge=1)
+    increase_volume_by: Optional[int] = None
+    decrease_volume_by: Optional[int] = None
+
+    replace_exercise_definition_id_to: Optional[int] = None
+    replace_exercise_name_to: Optional[str] = None
+
+
+class PlanMassEditCommand(BaseModel):
+    """Команда для mass edit/replace упражнений в плане (используется ЛЛМ)"""
+
+    operation: Literal["mass_edit", "replace_exercises"]
+    mode: Literal["preview", "apply"] = "preview"
+    filter: PlanExerciseFilter
+    actions: PlanExerciseActions

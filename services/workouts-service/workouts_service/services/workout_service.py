@@ -18,17 +18,19 @@ from datetime import datetime, timedelta
 import logging
 import pytz
 from datetime import datetime, timedelta, timezone
-from .rpc_client import PlansServiceRPC
+from .rpc_client import PlansServiceRPC, RpeServiceRPC
 import json
 
 logger = logging.getLogger(__name__)
 
 class WorkoutService:
-    def __init__(self, db: AsyncSession, plans_rpc: PlansServiceRPC, exercises_rpc: Any = None, user_id: str = None):
+    def __init__(self, db: AsyncSession, plans_rpc: PlansServiceRPC, exercises_rpc: Any = None, user_id: str = None, rpe_rpc: RpeServiceRPC | None = None, request_headers: dict[str, str] | None = None):
         self.db = db
         self.plans_rpc = plans_rpc
         self.exercises_rpc = exercises_rpc
         self.user_id = user_id
+        self.rpe_rpc = rpe_rpc
+        self.request_headers = request_headers or {}
 
     def _convert_to_naive_utc(self, dt: datetime) -> datetime:
         """Convert aware datetime to naive UTC datetime"""
@@ -124,6 +126,7 @@ class WorkoutService:
                             "effort": s.effort,
                             "volume": s.volume,
                             "working_weight": s.working_weight,
+                            "set_type": s.set_type,
                         }
                         for s in ex.sets
                     ],
@@ -229,6 +232,7 @@ class WorkoutService:
                             "effort": s.effort,
                             "volume": s.volume,
                             "working_weight": s.working_weight,
+                            "set_type": s.set_type,
                         }
                         for s in ex.sets
                     ],
@@ -327,28 +331,28 @@ class WorkoutService:
             working_weight=working_weight
         )
 
-    async def generate_workouts(self, request: WorkoutGenerationRequest) -> List[int]:
-        workout_ids = []
+    async def generate_workouts(self, request: WorkoutGenerationRequest) -> tuple[list[int], int, int]:
+        workout_ids: list[int] = []
         
         logger.info(f"[WORKOUT_SERVICE] Generating {len(request.workouts)} workouts for applied_plan_id={request.applied_plan_id}, user_id={self.user_id}")
         
-        # Check if workouts already exist for this applied_plan (idempotency check)
-        if request.applied_plan_id:
-            existing_result = await self.db.execute(
-                select(models.Workout)
-                .where(
-                    models.Workout.user_id == self.user_id,
-                    models.Workout.applied_plan_id == request.applied_plan_id
-                )
-                .order_by(models.Workout.plan_order_index)
-            )
-            existing_workouts = existing_result.scalars().all()
-            if existing_workouts:
-                existing_ids = [w.id for w in existing_workouts]
-                logger.warning(f"[WORKOUT_SERVICE] Workouts already exist for applied_plan_id={request.applied_plan_id}: {existing_ids}. Returning existing IDs (idempotent).")
-                return existing_ids
+        # Allow generating additional workouts for an existing applied_plan_id (no early idempotent return)
         
         try:
+            # Pre-fetch user-max ids per exercise to enable weight computation
+            calculator = WorkoutCalculator()
+            all_exercise_ids: set[int] = set()
+            for w in request.workouts:
+                for ex in w.exercises:
+                    all_exercise_ids.add(int(ex.exercise_id))
+            user_max_list = await calculator._fetch_user_maxes(list(all_exercise_ids))
+            # Build maps: exercise_id -> user_max_id
+            user_max_by_ex: dict[int, dict] = {}
+            for um in user_max_list or []:
+                try:
+                    user_max_by_ex[int(um.get("exercise_id"))] = um
+                except Exception:
+                    continue
             for idx, workout_item in enumerate(request.workouts):
                 # Create workout
                 scheduled_for = workout_item.scheduled_for
@@ -381,12 +385,47 @@ class WorkoutService:
                     logger.debug(f"[WORKOUT_SERVICE] Created workout_exercise id={workout_exercise.id} for exercise_id={exercise.exercise_id}")
                     
                     for set_idx, set_data in enumerate(exercise.sets):
+                        intensity = set_data.intensity
+                        effort = set_data.effort
+                        volume = set_data.volume
+                        working_weight = set_data.working_weight
+
+                        # Determine if we need to call RPE compute:
+                        need_core_fill = sum(v is not None for v in (intensity, effort, volume)) >= 2 and (
+                            intensity is None or effort is None or volume is None
+                        )
+                        need_weight = bool(getattr(request, 'compute_weights', False)) and (working_weight is None)
+
+                        if self.rpe_rpc and (need_core_fill or need_weight):
+                            try:
+                                um = user_max_by_ex.get(int(exercise.exercise_id))
+                                user_max_id = int(um.get("id")) if um and um.get("id") is not None else None
+                                compute_res = await self.rpe_rpc.compute(
+                                    intensity=intensity,
+                                    effort=effort,
+                                    volume=volume,
+                                    user_max_id=user_max_id,
+                                    rounding_step=getattr(request, 'rounding_step', 2.5),
+                                    rounding_mode=getattr(request, 'rounding_mode', 'nearest'),
+                                    headers=self.request_headers,
+                                    user_id=self.user_id,
+                                )
+                                intensity = compute_res.get('intensity', intensity)
+                                effort = compute_res.get('effort', effort)
+                                volume = compute_res.get('volume', volume)
+                                if need_weight:
+                                    ww = compute_res.get('weight')
+                                    if ww is not None:
+                                        working_weight = ww
+                            except Exception as e:
+                                logger.warning(f"[WORKOUT_SERVICE] RPE compute failed, proceeding with provided values: {e}")
+
                         workout_set = models.WorkoutSet(
                             exercise_id=workout_exercise.id,
-                            intensity=set_data.intensity,
-                            effort=set_data.effort,
-                            volume=set_data.volume,
-                            working_weight=set_data.working_weight
+                            intensity=intensity,
+                            effort=effort,
+                            volume=volume,
+                            working_weight=working_weight
                         )
                         self.db.add(workout_set)
                         await self.db.flush()
@@ -396,7 +435,7 @@ class WorkoutService:
             logger.info(f"[WORKOUT_SERVICE] Committing transaction with {len(workout_ids)} workouts")
             await self.db.commit()
             logger.info(f"[WORKOUT_SERVICE] Successfully committed workout_ids: {workout_ids}")
-            return workout_ids
+            return workout_ids, len(workout_ids), 0
         except IntegrityError as e:
             logger.error(f"[WORKOUT_SERVICE] IntegrityError during workout generation (likely duplicate): {e}")
             await self.db.rollback()
@@ -415,7 +454,7 @@ class WorkoutService:
                 if existing_workouts:
                     existing_ids = [w.id for w in existing_workouts]
                     logger.info(f"[WORKOUT_SERVICE] Returning existing workout_ids: {existing_ids}")
-                    return existing_ids
+                    return existing_ids, 0, len(existing_ids)
             raise
         except Exception as e:
             logger.error(f"[WORKOUT_SERVICE] Error during workout generation: {e}")
@@ -595,3 +634,80 @@ class WorkoutService:
         workouts = result.scalars().all()
         logger.debug(f"Found {len(workouts)} workouts for microcycle IDs {microcycle_ids}")
         return workouts
+
+    async def shift_schedule_in_plan(
+        self,
+        *,
+        applied_plan_id: int,
+        from_order_index: int,
+        delta_days: int,
+        delta_index: int,
+        exclude_ids: list[int] | None = None,
+        only_future: bool = True,
+        baseline_date: datetime | None = None,
+    ) -> dict:
+        """Shift plan_order_index and scheduled_for for workouts in a plan.
+
+        - Select workouts for this user and applied_plan_id with plan_order_index >= from_order_index
+          and not in exclude_ids.
+        - plan_order_index += delta_index for all selected.
+        - scheduled_for += delta_days for rows where scheduled_for is not null and
+          (not only_future or scheduled_for >= baseline_date).
+        Returns a summary with affected_count and details.
+        """
+        try:
+            exclude_ids = exclude_ids or []
+            affected = 0
+            logger.info(
+                f"[SHIFT_SCHEDULE] user_id={self.user_id} applied_plan_id={applied_plan_id} from_index={from_order_index} "
+                f"delta_days={delta_days} delta_index={delta_index} exclude={len(exclude_ids)} only_future={only_future} baseline={baseline_date}"
+            )
+            # Select target rows with deterministic order
+            stmt = (
+                select(models.Workout)
+                .where(models.Workout.user_id == self.user_id)
+                .where(models.Workout.applied_plan_id == applied_plan_id)
+                .where(models.Workout.plan_order_index >= from_order_index)
+                .order_by(models.Workout.plan_order_index.asc())
+            )
+            if exclude_ids:
+                stmt = stmt.where(~models.Workout.id.in_(exclude_ids))
+
+            # Apply row-level locking to prevent concurrent shifts touching same rows
+            result = await self.db.execute(stmt.with_for_update())
+            items: list[models.Workout] = list(result.scalars().all())
+
+            if not items:
+                logger.info("[SHIFT_SCHEDULE] affected_count=0 (no rows matched)")
+                return {"affected_count": 0, "shifted_ids": []}
+
+            # Two-phase bump to avoid UNIQUE (user_id, applied_plan_id, plan_order_index) violation
+            TEMP_OFFSET = 1_000_000
+            # Phase 1: bump indices far away
+            for w in items:
+                if w.plan_order_index is None:
+                    # should not happen due to filter, but guard anyway
+                    w.plan_order_index = int(from_order_index) + TEMP_OFFSET
+                else:
+                    w.plan_order_index = int(w.plan_order_index) + TEMP_OFFSET
+            await self.db.flush()
+
+            # Phase 2: place to final positions and adjust dates
+            for w in items:
+                # final index
+                w.plan_order_index = int(w.plan_order_index) - TEMP_OFFSET + int(delta_index)
+                # shift date if allowed
+                if w.scheduled_for is not None:
+                    if (not only_future) or (baseline_date is None) or (w.scheduled_for >= baseline_date):
+                        w.scheduled_for = w.scheduled_for + timedelta(days=int(delta_days))
+                affected += 1
+
+            # Collect ids before commit to avoid attribute access on expired instances
+            shifted_ids = [int(w.id) for w in items]
+            await self.db.commit()
+            logger.info(f"[SHIFT_SCHEDULE] affected_count={affected}")
+            return {"affected_count": affected, "shifted_ids": shifted_ids}
+        except Exception as e:
+            logger.error(f"[SHIFT_SCHEDULE] error: {e}")
+            await self.db.rollback()
+            raise

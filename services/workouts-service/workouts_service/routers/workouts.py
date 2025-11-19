@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, status, Request, Query, HTTPException, B
 from typing import List, Optional
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime
 
 from ..dependencies import get_db, get_current_user_id
 from ..services.workout_service import WorkoutService
@@ -172,4 +173,41 @@ async def get_workouts_by_microcycles(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch workouts: {str(e)}"
+        )
+
+
+@router.post("/schedule/shift-in-plan")
+async def shift_schedule_in_plan(
+    applied_plan_id: int = Body(...),
+    from_order_index: int = Body(...),
+    delta_days: int = Body(...),
+    delta_index: int = Body(...),
+    exclude_ids: Optional[List[int]] = Body(default=None),
+    only_future: bool = Body(default=True),
+    baseline_date: Optional[str] = Body(default=None),
+    workout_service: WorkoutService = Depends(get_workout_service)
+):
+    """Batch shift scheduled_for and plan_order_index for workouts in a plan."""
+    try:
+        parsed_baseline = None
+        if baseline_date:
+            try:
+                parsed_baseline = datetime.fromisoformat(baseline_date)
+            except Exception:
+                parsed_baseline = None
+        summary = await workout_service.shift_schedule_in_plan(
+            applied_plan_id=applied_plan_id,
+            from_order_index=from_order_index,
+            delta_days=delta_days,
+            delta_index=delta_index,
+            exclude_ids=exclude_ids or [],
+            only_future=only_future,
+            baseline_date=parsed_baseline,
+        )
+        return summary
+    except Exception as e:
+        logger.error(f"Error shifting schedule in plan: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to shift schedule: {str(e)}"
         )

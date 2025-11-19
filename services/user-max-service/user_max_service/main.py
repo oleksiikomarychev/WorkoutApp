@@ -81,6 +81,8 @@ async def create_user_max(user_max: schemas.UserMaxCreate, user_id: str = Depend
             existing.true_1rm = user_max.true_1rm
         if user_max.verified_1rm is not None:
             existing.verified_1rm = user_max.verified_1rm
+        if user_max.source is not None:
+            existing.source = user_max.source
         db.commit()
         db.refresh(existing)
         return existing
@@ -94,6 +96,7 @@ async def create_user_max(user_max: schemas.UserMaxCreate, user_id: str = Depend
         date=user_max.date,
         true_1rm=user_max.true_1rm,
         verified_1rm=user_max.verified_1rm,
+        source=user_max.source,
     )
     db.add(db_user_max)
     db.commit()
@@ -251,6 +254,8 @@ async def create_bulk_user_max(user_maxes: List[schemas.UserMaxCreate], user_id:
                 existing.true_1rm = um.true_1rm
             if um.verified_1rm is not None:
                 existing.verified_1rm = um.verified_1rm
+            if um.source is not None:
+                existing.source = um.source
             results.append(existing)
         else:
             db_um = UserMax(
@@ -262,6 +267,7 @@ async def create_bulk_user_max(user_maxes: List[schemas.UserMaxCreate], user_id:
                 date=dt,
                 true_1rm=um.true_1rm,
                 verified_1rm=um.verified_1rm,
+                source=um.source,
             )
             db.add(db_um)
             results.append(db_um)

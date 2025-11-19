@@ -1,10 +1,25 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import time
+import logging
+import sys
 from .routers import calendar_plans, applied_calendar_plans
 from .routers import (
     mesocycles,
+    macros,
+    templates,
 )
+
+# Ensure INFO logs are emitted from application modules
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    stream=sys.stdout,
+)
+# Reduce uvicorn access log noise if needed, but keep uvicorn/error at INFO
+logging.getLogger("uvicorn").setLevel(logging.INFO)
+logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+logging.getLogger("uvicorn.access").setLevel(logging.INFO)
 from .dependencies import engine
 from .models.calendar import Base
 
@@ -25,6 +40,10 @@ tags_metadata = [
     {
         "name": "Mesocycles",
         "description": "Manage mesocycles which are blocks of training within a calendar plan.",
+    },
+    {
+        "name": "Plan Macros",
+        "description": "Store and manage macro rules attached to calendar plans.",
     },
 ]
 
@@ -61,6 +80,8 @@ app.add_middleware(
 app.include_router(applied_calendar_plans.router,prefix="/plans",tags=["Applied Plans"])
 app.include_router(calendar_plans.router, prefix="/plans", tags=["Calendar Plans"])
 app.include_router(mesocycles.router, prefix="/plans", tags=["Mesocycles"])
+app.include_router(macros.router, prefix="/plans", tags=["Plan Macros"])
+app.include_router(templates.router, prefix="/plans", tags=["Mesocycle Templates"])
 
 
 @app.get("/health")

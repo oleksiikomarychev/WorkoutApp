@@ -2,6 +2,7 @@ import 'dart:convert';
 import '../config/api_config.dart';
 import '../models/applied_calendar_plan.dart';
 import '../models/workout.dart';
+import '../models/plan_analytics.dart';
 import 'api_client.dart';
 import 'base_api_service.dart';
 import 'logger_service.dart';
@@ -68,6 +69,56 @@ class PlanService extends BaseApiService {
     } catch (e, stackTrace) {
       handleError('Failed to get next workout in active plan', e, stackTrace);
       return null;
+    }
+  }
+
+  Future<PlanAnalyticsResponse?> getAppliedPlanAnalytics(
+    int appliedPlanId, {
+    DateTime? from,
+    DateTime? to,
+    String? groupBy,
+  }) async {
+    try {
+      final endpoint = ApiConfig.appliedPlanAnalyticsEndpoint(appliedPlanId.toString());
+      final query = <String, String>{};
+      if (from != null) query['from'] = from.toUtc().toIso8601String();
+      if (to != null) query['to'] = to.toUtc().toIso8601String();
+      if (groupBy != null) query['group_by'] = groupBy;
+      final response = await apiClient.get(
+        endpoint,
+        queryParams: query.isEmpty ? null : query,
+        context: 'PlanService.getAppliedPlanAnalytics',
+      );
+      if (response is Map<String, dynamic>) {
+        return PlanAnalyticsResponse.fromJson(response);
+      }
+      return null;
+    } catch (e, stackTrace) {
+      handleError('Failed to get applied plan analytics', e, stackTrace);
+      return null;
+    }
+  }
+
+  Future<bool> cancelAppliedPlan(int appliedPlanId, {String? dropoutReason}) async {
+    try {
+      final endpoint = ApiConfig.cancelAppliedPlanEndpoint(appliedPlanId.toString());
+      _logger.d('POST Cancel Applied Plan: $endpoint');
+      final response = await apiClient.post(
+        endpoint,
+        {
+          if (dropoutReason != null && dropoutReason.trim().isNotEmpty)
+            'dropout_reason': dropoutReason.trim(),
+        },
+        context: 'PlanService.cancelAppliedPlan',
+      );
+      final ok = response != null;
+      if (!ok) {
+        _logger.w('Cancel applied plan returned null response');
+      }
+      return ok;
+    } catch (e, stackTrace) {
+      handleError('Failed to cancel applied plan', e, stackTrace);
+      return false;
     }
   }
 }

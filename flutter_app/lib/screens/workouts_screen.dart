@@ -12,9 +12,12 @@ import 'package:workout_app/screens/user_profile_screen.dart';
 import 'package:workout_app/services/base_api_service.dart';
 import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
+import 'package:workout_app/widgets/floating_header_bar.dart';
 import '../models/applied_calendar_plan.dart';
 import '../services/plan_service.dart';
 import '../services/api_client.dart';
+import 'active_plan_screen.dart';
+import 'package:workout_app/widgets/assistant_chat_overlay.dart';
 
 // Provider for PlanService
 final planServiceProvider = Provider<PlanService>((ref) => PlanService(apiClient: ref.watch(apiClientProvider)));
@@ -129,6 +132,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
   final ScrollController _scrollController = ScrollController();
   final PageController _bannerController = PageController();
   int _bannerIndex = 0;
+  bool _showChatOverlay = false;
   
   Future<List<Map<String, dynamic>>> _fetchActivePlanWorkouts() async {
     final apiClient = ref.read(apiClientProvider);
@@ -249,24 +253,13 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        elevation: 0,
-        title: const Text('Workouts'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.account_circle_outlined),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const UserProfileScreen()),
-              );
-            },
-          ),
-        ],
-      ),
-      body: SafeArea(
-        bottom: false,
-        child: Consumer(
+      body: Stack(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Stack(
+              children: [
+                Consumer(
           builder: (context, ref, child) {
             final manualWorkoutsState = ref.watch(manualWorkoutsNotifierProvider);
 
@@ -293,7 +286,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 72),
                   _HeroCarousel(
                     controller: _bannerController,
                     currentIndex: _bannerIndex,
@@ -331,6 +324,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                             },
                             readNotifier: () => ref.read(manualWorkoutsNotifierProvider.notifier),
                             buildError: buildError,
+                            onCreateWorkout: _showCreateWorkoutDialog,
                           ),
                         ],
                       ),
@@ -340,15 +334,36 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
               ),
             );
           },
-        ),
+            ),
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: FloatingHeaderBar(
+                    title: 'Workouts',
+                    onTitleTap: () {
+                      setState(() {
+                        _showChatOverlay = true;
+                      });
+                    },
+                    onProfileTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          AssistantChatOverlay(
+            visible: _showChatOverlay,
+            onClose: () {
+              setState(() {
+                _showChatOverlay = false;
+              });
+            },
+          ),
+        ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showCreateWorkoutDialog,
-        backgroundColor: AppColors.primary,
-        icon: const Icon(Icons.play_arrow),
-        label: const Text('Start Workout'),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 }
@@ -368,8 +383,10 @@ class _HeroCarousel extends StatelessWidget {
   Widget build(BuildContext context) {
     const items = [
       'assets/images/image.png',
+      'assets/images/image1.png',
     ];
     final gradients = const [
+      LinearGradient(colors: [Color(0xFFFFC37F), Color(0xFFFF9472)], begin: Alignment.centerLeft, end: Alignment.centerRight),
       LinearGradient(colors: [Color(0xFFFFC37F), Color(0xFFFF9472)], begin: Alignment.centerLeft, end: Alignment.centerRight),
     ];
 
@@ -450,10 +467,19 @@ class _PlansSection extends StatelessWidget {
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: const [
-            _SectionTitle(
+          children: [
+            const _SectionTitle(
               icon: Icons.calendar_today,
               title: 'Plans Workouts',
+            ),
+            IconButton(
+              tooltip: 'Open Calendar',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ActivePlanScreen()),
+                );
+              },
+              icon: const Icon(Icons.calendar_today_outlined, color: AppColors.primary),
             ),
           ],
         ),
@@ -480,8 +506,10 @@ class _PlansSection extends StatelessWidget {
           data: (nextWorkout) {
             final isCompleted = nextWorkout == null;
             final statusLabel = isCompleted ? 'Completed' : 'In Progress';
-            final statusBackground = isCompleted ? const Color(0xFFEFF8F2) : const Color(0xFFEAEFFF);
-            final statusTextColor = isCompleted ? const Color(0xFF2E7D32) : AppColors.primary;
+            final statusBackground = isCompleted
+                ? Colors.white.withOpacity(0.16)
+                : Colors.white.withOpacity(0.24);
+            final statusTextColor = isCompleted ? const Color(0xFFB2FF59) : Colors.white;
             final subtitle = nextWorkout?.name ?? 'No upcoming workouts';
             final scheduleText = isCompleted
                 ? 'All workouts completed or no active plan'
@@ -490,7 +518,15 @@ class _PlansSection extends StatelessWidget {
             final card = Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
               decoration: BoxDecoration(
-                color: Colors.white,
+                gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFF0D47A1),
+                    Color(0xFF1976D2),
+                    Color(0xFF5E35B1),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: AppShadows.sm,
               ),
@@ -506,10 +542,10 @@ class _PlansSection extends StatelessWidget {
                         width: 44,
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFE8ECFF),
+                          color: Colors.white.withOpacity(0.16),
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: const Icon(Icons.auto_graph, color: AppColors.primary, size: 20),
+                        child: const Icon(Icons.auto_graph, color: Colors.white, size: 20),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -518,13 +554,16 @@ class _PlansSection extends StatelessWidget {
                           children: [
                             Text(
                               isCompleted ? 'Nice work!' : 'Current Workout',
-                              style: AppTextStyles.titleLarge.copyWith(fontWeight: FontWeight.w700),
+                              style: AppTextStyles.titleLarge.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
                             ),
                             const SizedBox(height: 4),
                             Text(
                               subtitle,
                               style: AppTextStyles.bodyMedium.copyWith(
-                                color: AppColors.textSecondary,
+                                color: Colors.white.withOpacity(0.85),
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -557,13 +596,13 @@ class _PlansSection extends StatelessWidget {
                           height: 28,
                           width: 28,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFE8ECFF),
+                            color: Colors.white.withOpacity(0.18),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(
                             Icons.chevron_right,
                             size: 18,
-                            color: AppColors.primary,
+                            color: Colors.white,
                           ),
                         ),
                       ],
@@ -572,7 +611,9 @@ class _PlansSection extends StatelessWidget {
                   const SizedBox(height: 12),
                   Text(
                     scheduleText,
-                    style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary),
+                    style: AppTextStyles.bodySmall.copyWith(
+                      color: Colors.white.withOpacity(0.8),
+                    ),
                   ),
                 ],
               ),
@@ -610,6 +651,7 @@ class _LibrarySection extends StatelessWidget {
   final Future<void> Function(int workoutId) onOpenWorkout;
   final ManualWorkoutsNotifier Function() readNotifier;
   final Widget Function(String, Object, StackTrace?, VoidCallback) buildError;
+  final VoidCallback onCreateWorkout;
 
   const _LibrarySection({
     required this.manualWorkoutsState,
@@ -617,6 +659,7 @@ class _LibrarySection extends StatelessWidget {
     required this.onOpenWorkout,
     required this.readNotifier,
     required this.buildError,
+    required this.onCreateWorkout,
   });
 
   @override
@@ -656,9 +699,9 @@ class _LibrarySection extends StatelessWidget {
                 title: 'No Manual Workouts',
                 description: 'Create a manual workout',
                 action: ElevatedButton.icon(
-                  onPressed: onRetry,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Refresh'),
+                  onPressed: onCreateWorkout,
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Start Workout'),
                 ),
               );
             }

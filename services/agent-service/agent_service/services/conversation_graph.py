@@ -22,6 +22,7 @@ from google.api_core.exceptions import ResourceExhausted
 from ..config import Settings
 from ..schemas.user_data import UserDataInput
 from ..schemas.training_plans import TrainingPlan
+from ..services.plans_service import save_plan_to_plans_service
 from .plan_generation import generate_training_plan, generate_training_plan_with_rationale, generate_training_plan_with_summary
 from ..prompts.conversation import (
     EXTRACT_USER_DATA_SYSTEM_PROMPT,
@@ -89,7 +90,7 @@ class AutonomyManager:
 
     def __init__(self):
         # Prefer GOOGLE_API_KEY, but accept GEMINI_API_KEY as an alias
-        self.llm = _initialize_chat_llm(temperature=0.7)
+        self.llm = _initialize_chat_llm(temperature=0.9)
         # Will keep track of what data is still missing after CoT analysis
         self.last_missing_requirements: List[str] = []
         self.last_followup_question: Optional[str] = None
@@ -386,6 +387,45 @@ class ConversationGraph:
         ConversationState.COLLECT_PREFERENCES,
         ConversationState.GENERATE
     ]
+    
+    def _add_user_message(self, text: str) -> None:
+        if not text:
+            return
+        self.context.append({"role": "user", "content": text})
+
+    def _add_assistant_message(self, text: str) -> None:
+        if not text:
+            return
+        self.context.append({"role": "assistant", "content": text})
+
+    def _build_extractor_input(self, user_input: str) -> str:
+        last_assistant = ""
+        for turn in reversed(self.context):
+            if turn.get("role") == "assistant":
+                last_assistant = str(turn.get("content", ""))
+                break
+        parts: List[str] = []
+        if last_assistant:
+            parts.append(f"Assistant: {last_assistant}")
+        parts.append(f"User: {user_input}")
+        return "\n".join(parts)
+
+    def _build_dialog_context(self, max_turns: int = 40) -> List[str]:
+        selected = list(self.context)[-max_turns:]
+        lines: List[str] = []
+        for turn in selected:
+            role = turn.get("role")
+            content = str(turn.get("content", ""))
+            if not content:
+                continue
+            if role == "user":
+                prefix = "Пользователь"
+            elif role == "assistant":
+                prefix = "Ассистент"
+            else:
+                prefix = "Сообщение"
+            lines.append(f"{prefix}: {content}")
+        return lines
     async def _build_user_input(self) -> UserDataInput:
         goals = self.collected_data.get("goals")
         # Do not inject defaults for cycles/frequency; let LLM choose if not provided by user
@@ -414,96 +454,30 @@ class ConversationGraph:
         )
 
     async def _save_plan(self, plan: TrainingPlan) -> str:
-        # Build payload according to plans-service CalendarPlanCreate schema
-        # See: services/plans-service/plans_service/schemas/calendar_plan.py
-        # - root: { name, duration_weeks, mesocycles }
-        # - mesocycles: { name, order_index, duration_weeks, microcycles }
-        # - microcycles: { name, order_index, days_count, plan_workouts }
-        # - plan_workouts: { day_label, order_index, exercises }
-        # - exercises: { exercise_definition_id, sets }
-        # - sets: { intensity, effort, volume }
+        if not self.user_id:
+            temp_id = f"TEMP_PLAN_{int(time.time())}"
+            logging.warning("No user_id available; returning temporary plan ID %s", temp_id)
+            return temp_id
 
-        # Index helpers for quick lookups
-        microcycles_by_meso = {}
-        for mc in plan.microcycles:
-            microcycles_by_meso.setdefault(mc.mesocycle_id, []).append(mc)
-
-        workouts_by_micro = {}
-        for w in plan.workouts:
-            workouts_by_micro.setdefault(w.microcycle_id, []).append(w)
-
-        exercises_by_workout = {}
-        for ex in plan.exercises:
-            exercises_by_workout.setdefault(ex.plan_workout_id, []).append(ex)
-
-        sets_by_exercise = {}
-        for s in plan.sets:
-            sets_by_exercise.setdefault(s.plan_exercise_id, []).append(s)
-
-        mesocycles_payload = []
-        for m in plan.mesocycles:
-            microcycles_payload = []
-            for mc in microcycles_by_meso.get(m.id, []):
-                workouts_payload = []
-                for w in workouts_by_micro.get(mc.id, []):
-                    exercises_payload = []
-                    for ex in exercises_by_workout.get(w.id, []):
-                        sets_payload = []
-                        for s in sets_by_exercise.get(ex.id, []):
-                            sets_payload.append({
-                                "intensity": s.intensity,
-                                "effort": s.effort,
-                                "volume": s.volume,
-                            })
-                        exercises_payload.append({
-                            "exercise_definition_id": ex.exercise_definition_id,
-                            "sets": sets_payload,
-                        })
-                    workouts_payload.append({
-                        "day_label": w.day_label,
-                        "order_index": w.order_index,
-                        "exercises": exercises_payload,
-                    })
-                microcycles_payload.append({
-                    "name": mc.name,
-                    "order_index": mc.order_index,
-                    "days_count": mc.days_count,
-                    "plan_workouts": workouts_payload,
-                })
-            mesocycles_payload.append({
-                "name": m.name,
-                "order_index": m.order_index,
-                "duration_weeks": m.weeks_count,
-                "microcycles": microcycles_payload,
-            })
-
-        plan_data = {
-            "name": plan.calendar_plan.name,
-            "duration_weeks": plan.calendar_plan.duration_weeks,
-            "mesocycles": mesocycles_payload,
-        }
-
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    f"{settings.plans_service_url}/plans/calendar-plans/",
-                    json=plan_data,
-                    timeout=20.0,
-                )
-                response.raise_for_status()
-                plan_id = response.json().get("id")
-                logging.info(f"Successfully saved plan with ID: {plan_id}")
-                return str(plan_id)
-            except (httpx.RequestError, httpx.HTTPStatusError) as e:
-                logging.error(f"Failed to save plan: {e}")
-                # Fallback to a temporary ID if saving fails
-                return f"TEMP_PLAN_{int(time.time())}"
+        try:
+            response = await save_plan_to_plans_service(plan, self.user_id)
+            if isinstance(response, dict) and response.get("id"):
+                plan_id = str(response["id"])
+                logging.info("Successfully saved plan to plans-service with ID: %s", plan_id)
+                return plan_id
+            temp_id = f"TEMP_PLAN_{int(time.time())}"
+            logging.error("Unexpected response from plans-service; using temporary ID %s", temp_id)
+            return temp_id
+        except Exception as e:
+            logging.error("Failed to save plan via plans-service: %s", e)
+            return f"TEMP_PLAN_{int(time.time())}"
 
     async def process_response(self, user_input: str) -> tuple[str, bool]:
-        self.context.append(user_input)
+        self._add_user_message(user_input)
 
         # Extract structured info from user reply and update collected_data
-        extracted = self.autonomy.extract_user_data(user_input)
+        extractor_input = self._build_extractor_input(user_input)
+        extracted = self.autonomy.extract_user_data(extractor_input)
         if extracted:
             self.collected_data.update(extracted)
 
@@ -522,11 +496,13 @@ class ConversationGraph:
             if warnings and user_tok not in confirm_tokens:
                 self.autonomy.validation_warnings = warnings
                 warnings_text = "\n• " + "\n• ".join(warnings)
-                return (
+                message = (
                     f"Обнаружены следующие моменты, требующие внимания:{warnings_text}\n\n"
                     f"Хотите продолжить генерацию плана или внести изменения? "
                     f"Напишите 'continue' для генерации или опишите, что хотите изменить."
-                ), False
+                )
+                self._add_assistant_message(message)
+                return message, False
 
             # If the user confirmed, or no warnings — proceed with generation
             self.autonomy.validation_warnings = []
@@ -537,10 +513,14 @@ class ConversationGraph:
                 plan, plan_summary = await generate_training_plan_with_summary(user_data)
             except ResourceExhausted:
                 logging.warning("Gemini quota exceeded during plan generation; please try later")
-                return "Извините, лимит генерации плана исчерпан. Пожалуйста, попробуйте позже.", True
+                message = "Извините, лимит генерации плана исчерпан. Пожалуйста, попробуйте позже."
+                self._add_assistant_message(message)
+                return message, True
             except Exception as e:
                 logging.exception("Plan generation failed: %s", e)
-                return "Произошла ошибка при генерации плана. Попробуйте позже.", True
+                message = "Произошла ошибка при генерации плана. Попробуйте позже."
+                self._add_assistant_message(message)
+                return message, True
             plan_id = await self._save_plan(plan)
             # Use the in-model summary from the same LLM call, if present
             summary_text = (plan_summary or "").strip() if 'plan_summary' in locals() else ""
@@ -551,10 +531,12 @@ class ConversationGraph:
                 )
             else:
                 message = f"Ваш план тренировок готов! ID: {plan_id}"
+            self._add_assistant_message(message)
             return message, True
 
         # Update completion status for current state (uses CoT under the hood)
-        is_complete = self.autonomy.is_state_complete(current_state, list(self.context))
+        dialog_context = self._build_dialog_context()
+        is_complete = self.autonomy.is_state_complete(current_state, dialog_context)
         self.state_completed[current_state] = is_complete
 
         if is_complete:
@@ -570,26 +552,32 @@ class ConversationGraph:
 
         current_state = self.current_state()
         if current_state == ConversationState.GENERATE:
-            return "Вся информация собрана! Проверяю корректность данных...", False
+            message = "Вся информация собрана! Проверяю корректность данных..."
+            self._add_assistant_message(message)
+            return message, False
 
         # Ask a targeted question for the current stage
         followup = self.autonomy.last_followup_question
         if followup:
+            self._add_assistant_message(followup)
             return followup, False
-        return self.autonomy.generate_question(current_state, list(self.context), self.collected_data), False
+        question = self.autonomy.generate_question(current_state, dialog_context, self.collected_data)
+        self._add_assistant_message(question)
+        return question, False
 
 
     def current_state(self) -> ConversationState:
         return self.STATE_FLOW[self.state_index]
 
 
-    def __init__(self):
+    def __init__(self, user_id: Optional[str] = None):
         self.state_index = 0
-        self.context: Deque[str] = deque(maxlen=30)
+        self.context: Deque[Dict[str, Any]] = deque(maxlen=60)
         self.autonomy = AutonomyManager()
         self.collected_data = {}
         # FSM 2.0: track completion status for each conversation stage
         self.state_completed: Dict[ConversationState, bool] = {s: False for s in self.STATE_FLOW}
+        self.user_id: Optional[str] = user_id
 
     def next_state(self):
         for idx in range(self.state_index + 1, len(self.STATE_FLOW)):

@@ -154,10 +154,10 @@ abstract class BaseApiService {
     }
   }
 
-  /// Generic POST request handler
+  /// Generic POST request handler (accepts Map or List body)
   Future<T> post<T>(
-    String endpoint, 
-    Map<String, dynamic> data, 
+    String endpoint,
+    dynamic data,
     T Function(Map<String, dynamic>) fromJson, {
     Map<String, dynamic>? queryParams,
   }) async {

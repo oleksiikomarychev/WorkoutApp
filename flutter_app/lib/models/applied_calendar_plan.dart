@@ -22,6 +22,13 @@ class AppliedCalendarPlanSummary {
   final DateTime endDate;
   final CalendarPlanSummary calendarPlan;
   final NextWorkoutSummary? nextWorkout;
+  final String? status;
+  final int? plannedSessionsTotal;
+  final int? actualSessionsCompleted;
+  final double? adherencePct;
+  final String? notes;
+  final String? dropoutReason;
+  final DateTime? droppedAt;
 
   AppliedCalendarPlanSummary({
     required this.id,
@@ -30,6 +37,13 @@ class AppliedCalendarPlanSummary {
     required this.endDate,
     required this.calendarPlan,
     this.nextWorkout,
+    this.status,
+    this.plannedSessionsTotal,
+    this.actualSessionsCompleted,
+    this.adherencePct,
+    this.notes,
+    this.dropoutReason,
+    this.droppedAt,
   });
 
   factory AppliedCalendarPlanSummary.fromJson(Map<String, dynamic> json) {
@@ -41,6 +55,15 @@ class AppliedCalendarPlanSummary {
       calendarPlan: CalendarPlanSummary.fromJson(json['calendar_plan'] as Map<String, dynamic>),
       nextWorkout: json['next_workout'] != null
           ? NextWorkoutSummary.fromJson(Map<String, dynamic>.from(json['next_workout'] as Map))
+          : null,
+      status: json['status'] as String?,
+      plannedSessionsTotal: json['planned_sessions_total'] as int?,
+      actualSessionsCompleted: json['actual_sessions_completed'] as int?,
+      adherencePct: (json['adherence_pct'] as num?)?.toDouble(),
+      notes: json['notes'] as String?,
+      dropoutReason: json['dropout_reason'] as String?,
+      droppedAt: json['dropped_at'] != null
+          ? DateTime.parse(json['dropped_at'] as String)
           : null,
     );
   }
@@ -89,6 +112,14 @@ class AppliedCalendarPlan {
   final CalendarPlan calendarPlan;
   final List<UserMax> userMaxes;
   final NextWorkoutSummary? nextWorkout;
+   // Progress and dropout
+  final String? status;
+  final int? plannedSessionsTotal;
+  final int? actualSessionsCompleted;
+  final double? adherencePct;
+  final String? notes;
+  final String? dropoutReason;
+  final DateTime? droppedAt;
 
   AppliedCalendarPlan({
     required this.id,
@@ -99,6 +130,13 @@ class AppliedCalendarPlan {
     required this.calendarPlan,
     required this.userMaxes,
     required this.nextWorkout,
+    this.status,
+    this.plannedSessionsTotal,
+    this.actualSessionsCompleted,
+    this.adherencePct,
+    this.notes,
+    this.dropoutReason,
+    this.droppedAt,
   });
 
   factory AppliedCalendarPlan.fromJson(Map<String, dynamic> json) {
@@ -142,6 +180,15 @@ class AppliedCalendarPlan {
               Map<String, dynamic>.from(json['next_workout'] as Map),
             )
           : null,
+      status: json['status'] as String?,
+      plannedSessionsTotal: json['planned_sessions_total'] as int?,
+      actualSessionsCompleted: json['actual_sessions_completed'] as int?,
+      adherencePct: (json['adherence_pct'] as num?)?.toDouble(),
+      notes: json['notes'] as String?,
+      dropoutReason: json['dropout_reason'] as String?,
+      droppedAt: json['dropped_at'] != null
+          ? DateTime.parse(json['dropped_at'] as String)
+          : null,
     );
   }
 
@@ -155,6 +202,13 @@ class AppliedCalendarPlan {
       'calendar_plan': calendarPlan.toJson(),
       'user_maxes': userMaxes.map((e) => e.toJson()).toList(),
       'next_workout': nextWorkout?.toJson(),
+      'status': status,
+      'planned_sessions_total': plannedSessionsTotal,
+      'actual_sessions_completed': actualSessionsCompleted,
+      'adherence_pct': adherencePct,
+      'notes': notes,
+      'dropout_reason': dropoutReason,
+      'dropped_at': droppedAt?.toIso8601String(),
     };
   }
 }

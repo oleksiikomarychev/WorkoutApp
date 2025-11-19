@@ -6,11 +6,15 @@ import '../providers/chat_provider.dart';
 import '../services/chat_service.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
-  const ChatScreen({super.key, this.embedded = false});
+  const ChatScreen({super.key, this.embedded = false, this.transparentBackground = false});
 
   /// When true, renders the chat content without its own Scaffold/AppBar
   /// so it can be embedded inside a parent Scaffold (e.g., tab).
   final bool embedded;
+
+  /// When true, avoids drawing an extra card background so the parent can
+  /// provide its own blur/overlay styling.
+  final bool transparentBackground;
 
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
@@ -64,7 +68,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (widget.embedded)
+        if (widget.embedded && !widget.transparentBackground)
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: _ConnectionBanner(
@@ -75,10 +79,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         Expanded(
           child: Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.4),
-              borderRadius: BorderRadius.circular(12),
-            ),
+            decoration: widget.transparentBackground
+                ? null
+                : BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceVariant
+                        .withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
             child: _buildMessageList(chatState.messages),
           ),
         ),
@@ -129,17 +138,18 @@ Widget _buildMessageList(List<ChatMessage> messages) {
     return const Center(
       child: Padding(
         padding: EdgeInsets.all(24.0),
-        child: Text(
-          'Начните диалог, чтобы ассистент собрал ваши цели и предпочтения.',
-          textAlign: TextAlign.center,
         ),
-      ),
-    );
-  }
+      );
+    }
+
+  final bool transparent = widget.transparentBackground;
 
   return ListView.builder(
     controller: _scrollController,
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+    padding: EdgeInsets.symmetric(
+      horizontal: 16,
+      vertical: transparent ? 24 : 16,
+    ),
     itemCount: messages.length,
     itemBuilder: (context, index) {
       final message = messages[index];
@@ -151,29 +161,44 @@ Widget _buildMessageList(List<ChatMessage> messages) {
           alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.75,
+              maxWidth: MediaQuery.of(context).size.width * 0.8,
             ),
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: isUser
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(16).copyWith(
-                  bottomLeft: const Radius.circular(4),
-                  bottomRight: const Radius.circular(4),
-                  topLeft: Radius.circular(isUser ? 16 : 4),
-                  topRight: Radius.circular(isUser ? 4 : 16),
+                    ? (transparent
+                        ? Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withOpacity(0.9)
+                        : Theme.of(context).colorScheme.primary)
+                    : (transparent
+                        ? Colors.white.withOpacity(0.92)
+                        : Theme.of(context).colorScheme.surface),
+                borderRadius: BorderRadius.circular(22).copyWith(
+                  bottomLeft: const Radius.circular(10),
+                  bottomRight: const Radius.circular(10),
+                  topLeft: Radius.circular(isUser ? 22 : 10),
+                  topRight: Radius.circular(isUser ? 10 : 22),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+                boxShadow: transparent
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.10),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
+                      ]
+                    : [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Column(
                   crossAxisAlignment:
                       isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -208,32 +233,81 @@ Widget _buildMessageList(List<ChatMessage> messages) {
 }
 
   Widget _buildInputArea(bool canSend) {
+    final transparent = widget.transparentBackground;
+
+    if (!transparent) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _inputController,
+              minLines: 1,
+              maxLines: 5,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _handleSend(),
+              decoration: InputDecoration(
+                hintText: 'Введите сообщение...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.send_rounded),
+            onPressed: canSend ? _handleSend : null,
+            color: Theme.of(context).colorScheme.primary,
+            tooltip: canSend ? 'Отправить' : 'Нет соединения',
+          ),
+        ],
+      );
+    }
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Expanded(
-          child: TextField(
-            controller: _inputController,
-            minLines: 1,
-            maxLines: 5,
-            textInputAction: TextInputAction.send,
-            onSubmitted: (_) => _handleSend(),
-            decoration: InputDecoration(
-              hintText: 'Введите сообщение...',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.9),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.12),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: TextField(
+              controller: _inputController,
+              minLines: 1,
+              maxLines: 4,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _handleSend(),
+              decoration: const InputDecoration(
+                hintText: 'Введите сообщение...',
+                border: InputBorder.none,
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             ),
           ),
         ),
-        const SizedBox(width: 8),
-        IconButton(
-          icon: const Icon(Icons.send_rounded),
-          onPressed: canSend ? _handleSend : null,
+        const SizedBox(width: 12),
+        Material(
           color: Theme.of(context).colorScheme.primary,
-          tooltip: canSend ? 'Отправить' : 'Нет соединения',
+          shape: const CircleBorder(),
+          elevation: 6,
+          child: IconButton(
+            icon: const Icon(Icons.send_rounded, color: Colors.white),
+            onPressed: canSend ? _handleSend : null,
+            tooltip: canSend ? 'Отправить' : 'Нет соединения',
+          ),
         ),
       ],
     );

@@ -30,10 +30,6 @@ class WorkoutCalculator:
         gw_env = os.getenv("GATEWAY_URL")
         if gw_env:
             candidates.append(gw_env.rstrip("/"))
-        candidates.extend([
-            "http://user-max-service:8003",
-            "http://gateway:8000/api/v1",
-        ])
         seen = set()
         unique: list[str] = []
         for c in candidates:
@@ -46,6 +42,10 @@ class WorkoutCalculator:
         if not exercise_ids:
             return []
         headers = {"Content-Type": "application/json"}
+        # Inject service auth if available
+        svc_token = os.getenv("SERVICE_TOKEN") or os.getenv("USER_MAX_SERVICE_TOKEN")
+        if svc_token:
+            headers["Authorization"] = f"Bearer {svc_token}"
         bases = await self._get_base_candidates()
         
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -86,10 +86,6 @@ class WorkoutCalculator:
         gw_env = os.getenv("GATEWAY_URL")
         if gw_env:
             bases.append(gw_env.rstrip("/"))
-        bases.extend([
-            "http://exercises-service:8002",
-            "http://gateway:8000",
-        ])
         
         async with httpx.AsyncClient(timeout=10.0) as client:
             for ex_id in exercise_ids:

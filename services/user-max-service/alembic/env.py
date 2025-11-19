@@ -15,6 +15,8 @@ if config.config_file_name is not None:
 try:
     from user_max_service.database import Base
     from user_max_service.database import DATABASE_URL
+    # Import models so that all tables are registered on Base.metadata
+    from user_max_service import models  # noqa: F401
 except Exception:
     Base = None
     DATABASE_URL = os.getenv("USER_MAX_DATABASE_URL")
@@ -25,10 +27,34 @@ if Base is not None:
 
 # Resolve URL: prefer service's resolved DATABASE_URL, then env DATABASE_URL, then USER_MAX_DATABASE_URL, then config
 DB_URL = (
-os.getenv("USER_MAX_DATABASE_URL")
+    os.getenv("USER_MAX_DATABASE_URL")
     or config.get_main_option("sqlalchemy.url")
 )
 if DB_URL:
+    # Normalize query params for psycopg2: it doesn't accept 'ssl=true', expects 'sslmode=require'
+    try:
+        from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+        parsed = urlparse(DB_URL)
+        q = dict(parse_qsl(parsed.query, keep_blank_values=True))
+        ssl_val = (q.get("ssl") or "").strip().lower()
+        sslmode = (q.get("sslmode") or "").strip().lower()
+        changed = False
+        # Drop unsupported channel_binding for psycopg2
+        if "channel_binding" in q:
+            q.pop("channel_binding", None)
+            changed = True
+        # Map asyncpg-style 'ssl' to psycopg2 'sslmode'
+        if ssl_val:
+            if ssl_val in {"true", "1", "require"} and not sslmode:
+                q["sslmode"] = "require"
+                changed = True
+            # Remove 'ssl' param entirely for psycopg2
+            q.pop("ssl", None)
+            changed = True
+        if changed:
+            DB_URL = urlunparse(parsed._replace(query=urlencode(q, doseq=True)))
+    except Exception:
+        pass
     config.set_main_option("sqlalchemy.url", DB_URL)
 
 

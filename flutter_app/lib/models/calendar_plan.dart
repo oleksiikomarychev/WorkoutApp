@@ -7,10 +7,20 @@ class CalendarPlan {
   final Map<String, dynamic> schedule;
   final int durationWeeks;
   final bool isActive;
+  final int? rootPlanId;
+  final bool isOriginal;
   final DateTime? startDate;
   final DateTime? endDate;
   // New nested structure
   final List<Mesocycle> mesocycles;
+  // Plan metadata
+  final String? primaryGoal;
+  final String? intendedExperienceLevel;
+  final int? intendedFrequencyPerWeek;
+  final int? sessionDurationTargetMin;
+  final List<int>? primaryFocusLifts;
+  final List<String>? requiredEquipment;
+  final String? notes;
 
   CalendarPlan({
     required this.id,
@@ -18,9 +28,18 @@ class CalendarPlan {
     required this.schedule,
     required this.durationWeeks,
     this.isActive = false,
+    this.rootPlanId,
+    this.isOriginal = true,
     this.startDate,
     this.endDate,
     this.mesocycles = const [],
+    this.primaryGoal,
+    this.intendedExperienceLevel,
+    this.intendedFrequencyPerWeek,
+    this.sessionDurationTargetMin,
+    this.primaryFocusLifts,
+    this.requiredEquipment,
+    this.notes,
   });
 
   factory CalendarPlan.fromJson(Map<String, dynamic> json) {
@@ -30,11 +49,24 @@ class CalendarPlan {
       schedule: Map<String, dynamic>.from(json['schedule'] ?? {}),
       durationWeeks: (json['duration_weeks'] as int?) ?? 0,
       isActive: json['is_active'] ?? false,
+      rootPlanId: json['root_plan_id'] as int?,
+      isOriginal: (json['is_original'] as bool?) ?? (json['root_plan_id'] == null || json['root_plan_id'] == json['id']),
       startDate: json['start_date'] != null ? DateTime.parse(json['start_date']) : null,
       endDate: json['end_date'] != null ? DateTime.parse(json['end_date']) : null,
       mesocycles: (json['mesocycles'] as List<dynamic>? ?? [])
           .map((e) => e != null ? Mesocycle.fromJson(e as Map<String, dynamic>) : Mesocycle(id: 0, name: '', orderIndex: 0))
           .toList(),
+      primaryGoal: json['primary_goal'] as String?,
+      intendedExperienceLevel: json['intended_experience_level'] as String?,
+      intendedFrequencyPerWeek: json['intended_frequency_per_week'] as int?,
+      sessionDurationTargetMin: json['session_duration_target_min'] as int?,
+      primaryFocusLifts: (json['primary_focus_lifts'] as List<dynamic>?)
+          ?.map((e) => (e as num).toInt())
+          .toList(),
+      requiredEquipment: (json['required_equipment'] as List<dynamic>?)
+          ?.map((e) => e.toString())
+          .toList(),
+      notes: json['notes'] as String?,
     );
   }
 
@@ -45,9 +77,18 @@ class CalendarPlan {
       'schedule': schedule,
       'duration_weeks': durationWeeks,
       'is_active': isActive,
+      'root_plan_id': rootPlanId,
+      'is_original': isOriginal,
       'start_date': startDate?.toIso8601String(),
       'end_date': endDate?.toIso8601String(),
       'mesocycles': mesocycles.map((e) => e.toJson()).toList(),
+      'primary_goal': primaryGoal,
+      'intended_experience_level': intendedExperienceLevel,
+      'intended_frequency_per_week': intendedFrequencyPerWeek,
+      'session_duration_target_min': sessionDurationTargetMin,
+      'primary_focus_lifts': primaryFocusLifts,
+      'required_equipment': requiredEquipment,
+      'notes': notes,
     };
   }
 }

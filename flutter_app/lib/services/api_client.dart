@@ -137,7 +137,7 @@ class ApiClient {
       rethrow;
     }
   }
-  Future<dynamic> post(String endpoint, Map<String, dynamic> data, {Map<String, dynamic>? queryParams, String? context}) async {
+  Future<dynamic> post(String endpoint, dynamic data, {Map<String, dynamic>? queryParams, String? context}) async {
     final url = ApiConfig.buildFullUrl(endpoint);
     final uri = Uri.parse(url).replace(queryParameters: queryParams);
     

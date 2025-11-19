@@ -3,6 +3,8 @@ import 'package:http/http.dart' as http;
 import 'package:workout_app/models/user_max.dart';
 import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/models/workout.dart';
+import 'package:workout_app/models/calendar_plan.dart';
+import 'package:workout_app/models/calendar_plan_summary.dart';
 import 'package:workout_app/services/api_client.dart';
 
 class PlanApi {
@@ -57,5 +59,35 @@ class PlanApi {
     ) as Map<String, dynamic>;
 
     return UserMax.fromJson(response);
+  }
+
+  // ===== Variants =====
+  static Future<List<CalendarPlanSummary>> getVariants(int planId) async {
+    final data = await _apiClient.get(
+      ApiConfig.listPlanVariantsEndpoint(planId.toString()),
+    ) as List<dynamic>;
+    return data
+        .map((json) => CalendarPlanSummary.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<CalendarPlan> getCalendarPlan(int planId) async {
+    final data = await _apiClient.get(
+      ApiConfig.getCalendarPlanEndpoint(planId.toString()),
+    ) as Map<String, dynamic>;
+    return CalendarPlan.fromJson(data);
+  }
+
+  static Future<CalendarPlan> createVariant({
+    required int planId,
+    required String name,
+  }) async {
+    final data = await _apiClient.post(
+      ApiConfig.createPlanVariantEndpoint(planId.toString()),
+      {
+        'name': name,
+      },
+    ) as Map<String, dynamic>;
+    return CalendarPlan.fromJson(data);
   }
 }

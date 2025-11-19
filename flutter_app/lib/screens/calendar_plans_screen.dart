@@ -3,6 +3,8 @@ import 'package:workout_app/models/calendar_plan.dart';
 import 'package:workout_app/services/api_client.dart';
 import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/screens/user_profile_screen.dart';
+import 'package:workout_app/config/constants/theme_constants.dart';
+import 'package:workout_app/widgets/floating_header_bar.dart';
 import 'calendar_plan_create.dart';
 import 'calendar_plan_detail.dart';
 import 'dart:async';
@@ -33,7 +35,8 @@ class _CalendarPlansScreenState extends State<CalendarPlansScreen> {
         _errorMessage = null;
       });
 
-      final response = await _apiClient.get(ApiConfig.getAllPlansEndpoint());
+      final endpoint = ApiConfig.getAllPlansEndpoint();
+      final response = await _apiClient.get('$endpoint?roots_only=true');
 
       if (response is List) {
         setState(() {
@@ -91,63 +94,96 @@ class _CalendarPlansScreenState extends State<CalendarPlansScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Training Plans'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _fetchPlans,
-          ),
-          IconButton(
-            icon: const Icon(Icons.account_circle_outlined),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const UserProfileScreen()),
-              );
-            },
+      backgroundColor: AppColors.background,
+      body: Stack(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Stack(
+              children: [
+                _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _errorMessage != null
+                        ? Center(child: Text(_errorMessage!))
+                        : _plans.isEmpty
+                            ? const Center(child: Text('No plans available'))
+                            : ListView.builder(
+                                padding: const EdgeInsets.only(
+                                  top: 72,
+                                  left: 16,
+                                  right: 16,
+                                  bottom: 16,
+                                ),
+                                itemCount: _plans.length,
+                                itemBuilder: (context, index) {
+                                  final plan = _plans[index];
+                                  final metaParts = <String>[];
+                                  if (plan.primaryGoal != null && plan.primaryGoal!.isNotEmpty) {
+                                    metaParts.add(plan.primaryGoal!);
+                                  }
+                                  if (plan.intendedExperienceLevel != null && plan.intendedExperienceLevel!.isNotEmpty) {
+                                    metaParts.add(plan.intendedExperienceLevel!);
+                                  }
+                                  if (plan.intendedFrequencyPerWeek != null) {
+                                    metaParts.add('${plan.intendedFrequencyPerWeek}x/week');
+                                  }
+                                  final subtitle = [
+                                    '${plan.durationWeeks} weeks',
+                                    if (plan.mesocycles.isNotEmpty) '${plan.mesocycles.length} mesocycles',
+                                    if (metaParts.isNotEmpty) metaParts.join(' • '),
+                                  ].join(' • ');
+
+                                  return Card(
+                                    margin: const EdgeInsets.only(bottom: 16.0),
+                                    child: ListTile(
+                                      title: Text(plan.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                      subtitle: Text(subtitle),
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            plan.isActive ? Icons.check_circle : Icons.circle_outlined,
+                                            color: plan.isActive ? Colors.green : Colors.grey,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          IconButton(
+                                            icon: const Icon(Icons.delete, color: Colors.red),
+                                            onPressed: () => _deletePlan(plan.id),
+                                          ),
+                                        ],
+                                      ),
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(builder: (context) => CalendarPlanDetail(plan: plan)),
+                                        );
+                                      },
+                                    ),
+                                  );
+                                },
+                              ),
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: FloatingHeaderBar(
+                    title: 'Training Plans',
+                    actions: [
+                      IconButton(
+                        icon: const Icon(Icons.refresh),
+                        onPressed: _fetchPlans,
+                      ),
+                    ],
+                    onProfileTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
-              ? Center(child: Text(_errorMessage!))
-              : _plans.isEmpty
-                  ? const Center(child: Text('No plans available'))
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16.0),
-                      itemCount: _plans.length,
-                      itemBuilder: (context, index) {
-                        final plan = _plans[index];
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 16.0),
-                          child: ListTile(
-                            title: Text(plan.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text('${plan.durationWeeks} weeks • ${plan.mesocycles.length} mesocycles'),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  plan.isActive ? Icons.check_circle : Icons.circle_outlined,
-                                  color: plan.isActive ? Colors.green : Colors.grey,
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red),
-                                  onPressed: () => _deletePlan(plan.id),
-                                ),
-                              ],
-                            ),
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (context) => CalendarPlanDetail(plan: plan)),
-                              );
-                            },
-                          ),
-                        );
-                      },
-                    ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           Navigator.push(

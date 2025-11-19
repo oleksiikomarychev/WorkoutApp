@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, JSON, DateTime, Index
+from sqlalchemy import Column, Integer, String, JSON, DateTime, Index, LargeBinary
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 
@@ -15,3 +15,12 @@ class GeneratedPlan(Base):
     __table_args__ = (
         Index('ix_generated_plans_user_id', 'user_id'),
     )
+
+
+class Avatar(Base):
+    __tablename__ = "user_avatars"
+
+    user_id = Column(String(255), primary_key=True, index=True)
+    content_type = Column(String(64), default="image/png", nullable=False)
+    image = Column(LargeBinary, nullable=False)  # PNG bytes
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

@@ -18,6 +18,7 @@ class WorkoutSessionResponse(WorkoutSessionBase):
     location: Optional[str] = None
     readiness_score: Optional[int] = None
     progress: Dict[str, Any] = Field(default_factory=dict)
+    macro_suggestion: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True

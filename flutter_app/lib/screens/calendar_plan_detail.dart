@@ -1,7 +1,4 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:workout_app/models/calendar_plan.dart';
 import 'package:workout_app/models/exercise_definition.dart';
 import 'package:workout_app/models/mesocycle.dart';
@@ -12,6 +9,12 @@ import 'package:workout_app/services/api_client.dart';
 import 'package:workout_app/services/exercise_service.dart';
 import 'package:workout_app/src/api/plan_api.dart';
 import 'package:workout_app/src/widgets/apply_plan_widget.dart' show ApplyPlanWidget;
+import 'package:workout_app/models/calendar_plan_summary.dart';
+import 'package:workout_app/screens/plan_editor_screen.dart';
+import 'package:workout_app/config/constants/theme_constants.dart';
+import 'package:workout_app/widgets/floating_header_bar.dart';
+import 'package:workout_app/widgets/plan_analytics_chart.dart';
+import 'package:workout_app/screens/user_profile_screen.dart';
 
 class CalendarPlanDetail extends StatefulWidget {
   final CalendarPlan plan;
@@ -23,18 +26,6 @@ class CalendarPlanDetail extends StatefulWidget {
 }
 
 enum _TimeBucket { session, microcycle, calendarWeek }
-
-class _PlanAnalyticsPoint {
-  final int order;
-  final String label;
-  final Map<String, double> values;
-
-  const _PlanAnalyticsPoint({
-    required this.order,
-    required this.label,
-    required this.values,
-  });
-}
 
 class _MultiSelectOption<T> {
   final T value;
@@ -241,17 +232,28 @@ class _SingleSelectSheetState<T> extends State<_SingleSelectSheet<T>> {
 }
 
 class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
+  // Current/Original plan state for inline variant switching
+  late final CalendarPlan _originalPlan;
+  late CalendarPlan _currentPlan;
+  late final int _rootPlanId;
+  final Map<int, CalendarPlan> _variantCache = {};
+  bool _prefetchingVariants = false;
+  bool _changingVariant = false;
   List<UserMax> _userMaxList = [];
   Map<int, List<UserMax>> _userMaxesByExerciseId = {};
   Map<String, List<UserMax>> _userMaxesByName = {};
-  late final Set<int> _planExerciseDefinitionIds;
-  late final Set<String> _planExerciseNames;
+  Set<int> _planExerciseDefinitionIds = {};
+  Set<String> _planExerciseNames = {};
+  // Variants state
+  List<CalendarPlanSummary> _variants = const [];
+  bool _variantsLoading = false;
+  String? _variantsError;
 
   // Analytics state (plan-derived)
   final List<String> _metrics = const ['sets', 'volume', 'intensity', 'effort'];
   String _metricX = 'effort';
   String _metricY = 'effort';
-  late List<_PlanAnalyticsPoint> _planAnalytics;
+  late List<PlanAnalyticsPoint> _planAnalytics;
   _TimeBucket _timeBucket = _TimeBucket.microcycle;
   bool _analyticsExpanded = true;
 
@@ -325,6 +327,24 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       _indexUserMaxes(userMaxes);
     } catch (e) {
       print('Failed to fetch user maxes: $e');
+    }
+  }
+
+  Future<void> _prefetchAllVariants() async {
+    if (_prefetchingVariants) return;
+    _prefetchingVariants = true;
+    try {
+      for (final v in _variants) {
+        if (_variantCache.containsKey(v.id)) continue;
+        try {
+          final full = await PlanApi.getCalendarPlan(v.id);
+          _variantCache[v.id] = full;
+        } catch (_) {
+          // ignore individual prefetch errors
+        }
+      }
+    } finally {
+      _prefetchingVariants = false;
     }
   }
 
@@ -456,12 +476,125 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     super.initState();
     _apiClient = ApiClient();
     _exerciseService = ExerciseService(_apiClient);
-    final exerciseData = _collectPlanExerciseData(widget.plan);
+    _originalPlan = widget.plan;
+    _currentPlan = widget.plan;
+    _rootPlanId = _originalPlan.rootPlanId ?? _originalPlan.id;
+    _variantCache[_originalPlan.id] = _originalPlan;
+    final exerciseData = _collectPlanExerciseData(_currentPlan);
     _planExerciseDefinitionIds = exerciseData.$1;
     _planExerciseNames = exerciseData.$2;
     _fetchUserMaxes();
-    _planAnalytics = _computePlanAnalytics(widget.plan);
+    _planAnalytics = _computePlanAnalytics(_currentPlan);
     _loadExerciseMeta();
+    _fetchVariants();
+  }
+
+  Future<void> _fetchVariants() async {
+    setState(() {
+      _variantsLoading = true;
+      _variantsError = null;
+    });
+    try {
+      final list = await PlanApi.getVariants(_rootPlanId);
+      if (!mounted) return;
+      setState(() {
+        _variants = list;
+        _variantsLoading = false;
+        // If we opened on дочернем варианте, найдём и зафиксируем оригинал
+        final orig = _variants.where((v) => v.isOriginal).cast<CalendarPlanSummary?>().firstWhere(
+              (v) => v != null,
+              orElse: () => null,
+            );
+        if (orig != null && _originalPlan.id != orig.id) {
+          _originalPlan = _variantCache[orig.id] ?? _originalPlan;
+        }
+      });
+      // Prefetch full variant payloads in background for faster switching (optional)
+      // ignore: unawaited_futures
+      _prefetchAllVariants();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _variantsError = 'Не удалось загрузить варианты: $e';
+        _variantsLoading = false;
+      });
+    }
+  }
+
+  void _createVariantDialog() {
+    final controller = TextEditingController();
+    bool submitting = false;
+    String? error;
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              title: const Text('Новый вариант плана'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: controller,
+                    decoration: const InputDecoration(labelText: 'Название варианта'),
+                    autofocus: true,
+                  ),
+                  if (error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Text(
+                        error!,
+                        style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                      ),
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: submitting ? null : () => Navigator.of(context).pop(),
+                  child: const Text('Отмена'),
+                ),
+                FilledButton(
+                  onPressed: submitting
+                      ? null
+                      : () async {
+                          final name = controller.text.trim();
+                          if (name.isEmpty) {
+                            setModalState(() => error = 'Введите название');
+                            return;
+                          }
+                          setModalState(() {
+                            submitting = true;
+                            error = null;
+                          });
+                          try {
+                            await PlanApi.createVariant(planId: _rootPlanId, name: name);
+                            if (!mounted) return;
+                            Navigator.of(context).pop();
+                            await _fetchVariants();
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Вариант создан')),
+                            );
+                          } catch (e) {
+                            setModalState(() {
+                              submitting = false;
+                              error = 'Ошибка: $e';
+                            });
+                          }
+                        },
+                  child: submitting
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Создать'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    ).then((_) => controller.dispose());
   }
 
   Future<void> _applyPlan(BuildContext context) async {
@@ -470,15 +603,15 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
         context: context,
         isScrollControlled: true,
         builder: (context) => ApplyPlanWidget(
-          plan: widget.plan,
+          plan: _currentPlan,
           userMaxList: _userMaxList,
           allowedExerciseIds: _planExerciseDefinitionIds,
           allowedExerciseNames: _planExerciseNames,
-          planId: widget.plan.id,
+          planId: _currentPlan.id,
           onApply: (settings) async {
             try {
               await PlanApi.applyPlan(
-                planId: widget.plan.id,
+                planId: _currentPlan.id,
                 userMaxIds: settings['user_max_ids'],
                 computeWeights: settings['compute_weights'],
                 roundingStep: settings['rounding_step'],
@@ -509,43 +642,201 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.plan.name),
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.check),
-            onPressed: () => _applyPlan(context),
-            tooltip: 'Apply Plan',
+      backgroundColor: AppColors.background,
+      body: Stack(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(
+                    top: 72,
+                    left: 12,
+                    right: 12,
+                    bottom: 12,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildPlanInfo(context),
+                        const SizedBox(height: 12),
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Варианты', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 8),
+                                if (_variantsLoading || _changingVariant)
+                                  const LinearProgressIndicator(minHeight: 2)
+                                else if (_variantsError != null)
+                                  Text(_variantsError!, style: const TextStyle(color: Colors.redAccent))
+                                else
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 6,
+                                    children: [
+                                      InputChip(
+                                        avatar: const Icon(Icons.star, size: 18, color: Colors.orange),
+                                        label: const Text('Оригинал'),
+                                        selected: (() {
+                                          final origId = _variants.firstWhere((v) => v.isOriginal, orElse: () => CalendarPlanSummary(id: _rootPlanId, name: '', durationWeeks: 0, isActive: true, rootPlanId: _rootPlanId, isOriginal: true)).id;
+                                          return _currentPlan.id == origId;
+                                        })(),
+                                        onPressed: () async {
+                                          final orig = _variants.firstWhere(
+                                            (v) => v.isOriginal,
+                                            orElse: () => CalendarPlanSummary(
+                                              id: _rootPlanId,
+                                              name: '',
+                                              durationWeeks: 0,
+                                              isActive: true,
+                                              rootPlanId: _rootPlanId,
+                                              isOriginal: true,
+                                            ),
+                                          );
+                                          if (_currentPlan.id == orig.id) return;
+                                          setState(() => _changingVariant = true);
+                                          try {
+                                            final cached = _variantCache[orig.id];
+                                            final full = cached ?? await PlanApi.getCalendarPlan(orig.id);
+                                            if (!mounted) return;
+                                            _setPlan(full);
+                                            _variantCache[orig.id] = full;
+                                          } catch (e) {
+                                            if (!mounted) return;
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(content: Text('Не удалось загрузить план: $e')),
+                                            );
+                                          } finally {
+                                            if (mounted) setState(() => _changingVariant = false);
+                                          }
+                                        },
+                                      ),
+                                      ..._variants
+                                          .where((v) => !v.isOriginal)
+                                          .map(
+                                            (v) => InputChip(
+                                              avatar: const Icon(Icons.fork_right, size: 18),
+                                              label: Text(v.name),
+                                              selected: v.id == _currentPlan.id,
+                                              onPressed: v.id == _currentPlan.id
+                                                  ? null
+                                                  : () => _switchToVariant(v),
+                                            ),
+                                          ),
+                                      ActionChip(
+                                        avatar: const Icon(Icons.add, size: 18),
+                                        label: const Text('Добавить вариант+'),
+                                        onPressed: _createVariantDialog,
+                                      ),
+                                    ],
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildAnalyticsSection(context),
+                        const SizedBox(height: 12),
+                        const Text('Mesocycles', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        ..._currentPlan.mesocycles.map((mesocycle) => _buildMesocycleExpansionTile(mesocycle)),
+                      ],
+                    ),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: FloatingHeaderBar(
+                    title: _currentPlan.name,
+                    leading: IconButton(
+                      icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                    actions: [
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        tooltip: 'Редактировать план',
+                        onPressed: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => PlanEditorScreen(plan: _currentPlan),
+                            ),
+                          );
+                          try {
+                            final refreshed = await PlanApi.getCalendarPlan(_currentPlan.id);
+                            if (!mounted) return;
+                            _setPlan(refreshed);
+                          } catch (e) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Не удалось обновить план: $e')),
+                            );
+                          }
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.check),
+                        onPressed: () => _applyPlan(context),
+                        tooltip: 'Apply Plan',
+                      ),
+                    ],
+                    onProfileTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildPlanInfo(context),
-              const SizedBox(height: 12),
-              _buildAnalyticsSection(context),
-              const SizedBox(height: 12),
-              const Text('Mesocycles', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              ...widget.plan.mesocycles.map((mesocycle) => _buildMesocycleExpansionTile(mesocycle)),
-            ],
-          ),
-        ),
-      ),
     );
   }
+  void _setPlan(CalendarPlan plan) {
+    final exerciseData = _collectPlanExerciseData(plan);
+    setState(() {
+      _currentPlan = plan;
+      _planExerciseDefinitionIds = exerciseData.$1;
+      _planExerciseNames = exerciseData.$2;
+      _selectedExerciseIds.clear();
+      _selectedMuscles.clear();
+      _planAnalytics = _computePlanAnalytics(plan);
+    });
+    _loadExerciseMeta();
+  }
 
-  List<_PlanAnalyticsPoint> _computePlanAnalytics(
+  Future<void> _switchToVariant(CalendarPlanSummary v) async {
+    if (v.id == _currentPlan.id) return;
+    setState(() => _changingVariant = true);
+    try {
+      final cached = _variantCache[v.id];
+      final full = cached ?? await PlanApi.getCalendarPlan(v.id);
+      if (!mounted) return;
+      _setPlan(full);
+      _variantCache[v.id] = full;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось загрузить план: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _changingVariant = false);
+    }
+  }
+
+  List<PlanAnalyticsPoint> _computePlanAnalytics(
     CalendarPlan plan, {
     Set<int>? onlyExerciseIds,
     Set<String>? onlyMuscles,
   }) {
-    final points = <_PlanAnalyticsPoint>[];
+    final points = <PlanAnalyticsPoint>[];
     var order = 0;
 
     List<PlanWorkout> _sortedWorkouts(Microcycle microcycle) {
@@ -654,7 +945,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
               final values = _aggregateSetsFromExercises(workout.exercises);
               final hasAny = values.values.any((v) => v != 0);
               if (hasAny) {
-                points.add(_PlanAnalyticsPoint(order: order, label: 'S$order', values: values));
+                points.add(PlanAnalyticsPoint(order: order, label: 'S$order', values: values));
               }
             }
           }
@@ -672,7 +963,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
           final hasAny = values.values.any((v) => v != 0);
           if (hasAny) {
             mOrder += 1;
-            points.add(_PlanAnalyticsPoint(order: mOrder, label: 'M$mOrder', values: values));
+            points.add(PlanAnalyticsPoint(order: mOrder, label: 'M$mOrder', values: values));
           }
         }
       }
@@ -765,7 +1056,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       };
       final hasAny = values.values.any((v) => v != 0);
       if (hasAny) {
-        points.add(_PlanAnalyticsPoint(order: w + 1, label: 'W${w + 1}', values: values));
+        points.add(PlanAnalyticsPoint(order: w + 1, label: 'W${w + 1}', values: values));
       }
     }
 
@@ -801,7 +1092,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     final onlyMuscles = _selectedMuscles.isEmpty ? null : _selectedMuscles;
     setState(() {
       _planAnalytics = _computePlanAnalytics(
-        widget.plan,
+        _currentPlan,
         onlyExerciseIds: onlyIds,
         onlyMuscles: onlyMuscles,
       );
@@ -952,7 +1243,12 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(12),
-                        child: _buildAnalyticsChart(),
+                        child: PlanAnalyticsChart(
+                          points: _planAnalytics,
+                          metricX: _metricX,
+                          metricY: _metricY,
+                          emptyText: 'Нет данных для плана',
+                        ),
                       ),
                     ),
                   ),
@@ -1277,199 +1573,6 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     // No-op: analytics are precomputed from plan structure.
   }
 
-  Widget _buildAnalyticsChart() {
-    if (_planAnalytics.isEmpty) {
-      return const Center(child: Text('Нет данных для плана'));
-    }
-    final mx = _metricX;
-    final my = _metricY;
-
-    if (mx == my) {
-      // Time series line chart
-      final points = <FlSpot>[];
-      final labels = <String>[];
-
-      for (var i = 0; i < _planAnalytics.length; i++) {
-        final point = _planAnalytics[i];
-        final val = point.values[mx] ?? 0;
-        points.add(FlSpot(i.toDouble(), val));
-        labels.add(point.label);
-      }
-      if (points.isEmpty) {
-        return const Center(child: Text('Нет данных для выбранных метрик'));
-      }
-
-      final yValues = points.map((p) => p.y).toList();
-      final minY = yValues.reduce(math.min);
-      final maxY = yValues.reduce(math.max);
-      final span = maxY - minY;
-
-      double computeNiceInterval(double target) {
-        if (target <= 0) return 1.0;
-        final exponent = (math.log(target) / math.ln10).floor();
-        final magnitude = math.pow(10, exponent).toDouble();
-        final normalized = target / magnitude;
-        double niceNormalized;
-        if (normalized <= 1) {
-          niceNormalized = 1;
-        } else if (normalized <= 2) {
-          niceNormalized = 2;
-        } else if (normalized <= 5) {
-          niceNormalized = 5;
-        } else {
-          niceNormalized = 10;
-        }
-        return niceNormalized * magnitude;
-      }
-
-      double yInterval;
-      if (span == 0) {
-        yInterval = 1.0;
-      } else {
-        final rawInterval = span / 5;
-        yInterval = rawInterval < 1 ? 1.0 : computeNiceInterval(rawInterval);
-      }
-
-      double chartMinY;
-      double chartMaxY;
-      if (span == 0) {
-        chartMinY = minY - yInterval;
-        chartMaxY = maxY + yInterval;
-      } else {
-        chartMinY = (minY / yInterval).floor() * yInterval - yInterval;
-        chartMaxY = (maxY / yInterval).ceil() * yInterval + yInterval;
-      }
-      if (chartMinY == chartMaxY) {
-        chartMaxY = chartMinY + yInterval;
-      }
-
-      const showEvery = 2;
-
-      return LineChart(
-        LineChartData(
-          minY: chartMinY,
-          maxY: chartMaxY,
-          titlesData: FlTitlesData(
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: 1,
-                getTitlesWidget: (value, meta) {
-                  final idx = value.toInt();
-                  if (idx < 0 || idx >= labels.length) {
-                    return const SizedBox.shrink();
-                  }
-                  if (idx % showEvery != 0) {
-                    return const SizedBox.shrink();
-                  }
-                  return SideTitleWidget(
-                    meta: meta,
-                    child: Text(labels[idx], style: const TextStyle(fontSize: 10)),
-                  );
-                },
-              ),
-            ),
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: yInterval,
-                reservedSize: 44,
-                getTitlesWidget: (value, meta) {
-                  return SideTitleWidget(
-                    meta: meta,
-                    child: Text(
-                      value.toStringAsFixed(0),
-                      style: const TextStyle(fontSize: 10),
-                    ),
-                  );
-                },
-              ),
-            ),
-            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          ),
-          lineTouchData: LineTouchData(
-            touchTooltipData: LineTouchTooltipData(
-              getTooltipColor: (touchedSpot) => Colors.black.withOpacity(0.75),
-              getTooltipItems: (touchedSpots) {
-                return touchedSpots
-                    .map(
-                      (spot) => LineTooltipItem(
-                        spot.y.toStringAsFixed(2),
-                        const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    )
-                    .toList();
-              },
-            ),
-          ),
-          lineBarsData: [
-            LineChartBarData(
-              spots: points,
-              isCurved: true,
-              color: Colors.blue,
-              dotData: FlDotData(show: false),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Scatter: X vs Y correlation
-    final scatters = <ScatterSpot>[];
-    for (final point in _planAnalytics) {
-      final vx = point.values[mx];
-      final vy = point.values[my];
-      if (vx != null && vy != null) {
-        scatters.add(ScatterSpot(vx, vy));
-      }
-    }
-    if (scatters.isEmpty) {
-      return const Center(child: Text('Нет данных для выбранных метрик'));
-    }
-    return ScatterChart(
-      ScatterChartData(
-        scatterSpots: scatters,
-        titlesData: FlTitlesData(
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 28,
-              getTitlesWidget: (value, meta) {
-                return SideTitleWidget(
-                  meta: meta,
-                  child: Text(
-                    value.toStringAsFixed(2),
-                    style: const TextStyle(fontSize: 10),
-                  ),
-                );
-              },
-            ),
-          ),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 44,
-              getTitlesWidget: (value, meta) {
-                return SideTitleWidget(
-                  meta: meta,
-                  child: Text(
-                    value.toStringAsFixed(2),
-                    style: const TextStyle(fontSize: 10),
-                  ),
-                );
-              },
-            ),
-          ),
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        ),
-      ),
-    );
-  }
 
   Widget _buildPlanWorkoutsTable(List<PlanWorkout> planWorkouts) {
     if (planWorkouts.isEmpty) {
@@ -1728,17 +1831,50 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                 Icon(Icons.calendar_today, size: 18, color: Theme.of(context).primaryColor),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(widget.plan.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  child: Text(_currentPlan.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
             const SizedBox(height: 8),
-            _buildInfoRow('Duration', '${widget.plan.durationWeeks} weeks'),
-            _buildInfoRow('Active', widget.plan.isActive ? 'Yes' : 'No'),
-            if (widget.plan.startDate != null)
-              _buildInfoRow('Start Date', widget.plan.startDate!.toLocal().toString().split(' ')[0]),
-            if (widget.plan.endDate != null)
-              _buildInfoRow('End Date', widget.plan.endDate!.toLocal().toString().split(' ')[0]),
+            _buildInfoRow('Duration', '${_currentPlan.durationWeeks} weeks'),
+            _buildInfoRow('Active', _currentPlan.isActive ? 'Yes' : 'No'),
+            if (_currentPlan.startDate != null)
+              _buildInfoRow('Start Date', _currentPlan.startDate!.toLocal().toString().split(' ')[0]),
+            if (_currentPlan.endDate != null)
+              _buildInfoRow('End Date', _currentPlan.endDate!.toLocal().toString().split(' ')[0]),
+            if (_currentPlan.primaryGoal != null && _currentPlan.primaryGoal!.isNotEmpty)
+              _buildInfoRow('Goal', _currentPlan.primaryGoal!),
+            if (_currentPlan.intendedExperienceLevel != null &&
+                _currentPlan.intendedExperienceLevel!.isNotEmpty)
+              _buildInfoRow('Experience', _currentPlan.intendedExperienceLevel!),
+            if (_currentPlan.intendedFrequencyPerWeek != null)
+              _buildInfoRow('Frequency', '${_currentPlan.intendedFrequencyPerWeek} sessions/week'),
+            if (_currentPlan.sessionDurationTargetMin != null)
+              _buildInfoRow('Session length', '${_currentPlan.sessionDurationTargetMin} min'),
+            if (_currentPlan.requiredEquipment != null &&
+                _currentPlan.requiredEquipment!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: _currentPlan.requiredEquipment!
+                    .map(
+                      (e) => Chip(
+                        label: Text(e),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
+            if (_currentPlan.notes != null && _currentPlan.notes!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                _currentPlan.notes!,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ],
           ],
         ),
       ),

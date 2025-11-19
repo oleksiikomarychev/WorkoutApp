@@ -44,6 +44,7 @@ class WorkoutSetResponse(BaseModel):
     effort: Optional[float] = None
     volume: Optional[int] = None
     working_weight: Optional[float] = None
+    set_type: Optional[str] = None
 
     class Config:
         from_attributes = True

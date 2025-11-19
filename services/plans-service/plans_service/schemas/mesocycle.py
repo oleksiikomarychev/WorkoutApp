@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field, constr, model_validator
 from enum import Enum
 
@@ -61,7 +61,8 @@ class MicrocycleBase(BaseModel):
 
 
 class MicrocycleUpdate(MicrocycleBase):
-    pass
+    # Schedule is a mapping Day->List[ExerciseScheduleItemDto-like dicts]
+    schedule: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
 class MicrocycleResponse(MicrocycleBase):
@@ -73,7 +74,7 @@ class MicrocycleResponse(MicrocycleBase):
 
 
 class MicrocycleCreate(MicrocycleBase):
-    pass
+    schedule: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
 MesocycleResponse.model_rebuild()
