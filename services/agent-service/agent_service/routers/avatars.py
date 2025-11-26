@@ -1,20 +1,23 @@
-from fastapi import APIRouter, HTTPException, Request, Depends
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 import io
 import os
 from typing import Optional
 
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from huggingface_hub import InferenceClient
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from ..dependencies import get_db, get_current_user_id
+
+from ..dependencies import get_current_user_id, get_db
+from ..metrics import AVATARS_APPLIED_TOTAL, AVATARS_GENERATED_TOTAL
 from ..models import Avatar
 
 router = APIRouter()
 
 # Global prompt prefix to enforce consistent style
 _AVATAR_PROMPT_PREFIX = (
-    "Style: Apple emoji; Background: total white; Lighting: soft; Framing: centered headshot; High quality; Perspective: en face"
+    "Style: Apple emoji; Background: total white; Lighting: soft; Framing: centered headshot; "
+    "High quality; Perspective: en face"
 )
 
 
@@ -49,6 +52,7 @@ def generate_avatar(req: AvatarRequest, request: Request):
         raise HTTPException(status_code=500, detail=f"Failed to encode image: {e}")
     buf.seek(0)
 
+    AVATARS_GENERATED_TOTAL.inc()
     return StreamingResponse(buf, media_type="image/png")
 
 
@@ -69,6 +73,7 @@ async def apply_avatar(request: Request, db: Session = Depends(get_db), user_id:
             existing = Avatar(user_id=user_id, image=raw)
             db.add(existing)
         db.commit()
+        AVATARS_APPLIED_TOTAL.inc()
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to save avatar: {e}")

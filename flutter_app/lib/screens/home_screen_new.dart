@@ -1,67 +1,158 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:provider/provider.dart' as pv;
+import 'package:workout_app/providers/providers.dart';
 import 'package:workout_app/screens/workouts_screen.dart';
 import 'package:workout_app/screens/calendar_plans_screen.dart';
+import 'package:workout_app/screens/coach/coach_dashboard_screen.dart';
+import 'package:workout_app/screens/coach/coach_athletes_screen.dart';
 import 'package:workout_app/screens/debug_screen.dart';
+import 'package:workout_app/screens/coach/coach_dashboard_screen.dart';
+import 'package:workout_app/screens/social/social_feed_screen.dart';
 import 'package:workout_app/widgets/custom_bottom_nav_bar.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
 import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/services/chat_service.dart';
 
-class HomeScreenNew extends StatefulWidget {
+class HomeScreenNew extends ConsumerStatefulWidget {
   const HomeScreenNew({super.key});
 
   @override
-  State<HomeScreenNew> createState() => _HomeScreenNewState();
+  ConsumerState<HomeScreenNew> createState() => _HomeScreenNewState();
 }
 
-class _HomeScreenNewState extends State<HomeScreenNew> {
-  int _selectedIndex = 0;
-  
-  final List<Widget> _widgetOptions = [
-    const WorkoutsScreen(),  // Connected to workoutEndpoint
-    const CalendarPlansScreen(), // Connected to calendarPlansEndpoint
-    const DebugScreen(),
-  ];
+enum HomeTab { workouts, plans, social, crm, debug }
 
-  final List<String> _appBarTitles = [
-    'Тренировки',  // workoutEndpoint
-    'Планы тренировок',   // calendarPlansEndpoint
-    'Отладка',
-  ];
+class _HomeScreenNewState extends ConsumerState<HomeScreenNew> {
+  HomeTab _activeTab = HomeTab.workouts;
 
-  void _onItemTapped(int index) {
+  void _onItemTapped(HomeTab tab) {
+    if (_activeTab == tab) return;
     setState(() {
-      _selectedIndex = index;
-      // Log which endpoint is being accessed
-      switch (index) {
-        case 0: // Workouts
+      _activeTab = tab;
+      switch (tab) {
+        case HomeTab.workouts:
           debugPrint('Accessing endpoint: ${ApiConfig.workoutsEndpoint}');
           break;
-        case 1: // Plans
+        case HomeTab.plans:
           debugPrint('Accessing endpoint: ${ApiConfig.calendarPlansEndpoint}');
           break;
-        case 2: // Debug
+        case HomeTab.social:
+          debugPrint('Opening social feed');
+          break;
+        case HomeTab.crm:
+          debugPrint('Navigating to CoachDashboardScreen');
+          break;
+        case HomeTab.debug:
           debugPrint('Navigating to DebugScreen');
           break;
       }
     });
   }
 
+  Widget _tabBody(HomeTab tab) {
+    switch (tab) {
+      case HomeTab.workouts:
+        return WorkoutsScreen();
+      case HomeTab.plans:
+        return CalendarPlansScreen();
+      case HomeTab.social:
+        return SocialFeedScreen();
+      case HomeTab.crm:
+        return const CoachDashboardScreen();
+      case HomeTab.debug:
+        return const DebugScreen();
+    }
+  }
+
+  String _tabTitle(HomeTab tab) {
+    switch (tab) {
+      case HomeTab.workouts:
+        return 'Тренировки';
+      case HomeTab.plans:
+        return 'Планы тренировок';
+      case HomeTab.social:
+        return 'Лента';
+      case HomeTab.crm:
+        return 'CRM';
+      case HomeTab.debug:
+        return 'Отладка';
+    }
+  }
+
+  BottomNavBarItem _navItemFor(HomeTab tab) {
+    switch (tab) {
+      case HomeTab.workouts:
+        return const BottomNavBarItem(
+          icon: Icons.fitness_center,
+          label: 'Тренировки',
+          activeLabel: 'Тренировки',
+        );
+      case HomeTab.plans:
+        return const BottomNavBarItem(
+          icon: Icons.schedule,
+          label: 'Планы',
+          activeLabel: 'Планы',
+        );
+      case HomeTab.social:
+        return const BottomNavBarItem(
+          icon: Icons.dynamic_feed_outlined,
+          label: 'Лента',
+          activeLabel: 'Лента',
+        );
+      case HomeTab.crm:
+        return const BottomNavBarItem(
+          icon: Icons.analytics_outlined,
+          label: 'CRM',
+          activeLabel: 'CRM',
+        );
+      case HomeTab.debug:
+        return const BottomNavBarItem(
+          icon: Icons.bug_report_outlined,
+          label: 'Дебаг',
+          activeLabel: 'Дебаг',
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final profileAsync = ref.watch(userProfileProvider);
+    final isCoach = profileAsync.maybeWhen(
+      data: (profile) => profile.coaching?.enabled ?? false,
+      orElse: () => false,
+    );
+
+    final tabs = <HomeTab>[
+      HomeTab.workouts,
+      HomeTab.plans,
+      HomeTab.social,
+      if (isCoach) HomeTab.crm,
+      HomeTab.debug,
+    ];
+
+    if (!tabs.contains(_activeTab)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _activeTab = HomeTab.workouts;
+          });
+        }
+      });
+    }
+
     final theme = Theme.of(context);
     final mediaQuery = MediaQuery.of(context);
     final bottomPadding = mediaQuery.padding.bottom;
     
-    final bool showOuterAppBar = _selectedIndex == 2;
+    final bool showOuterAppBar = _activeTab == HomeTab.debug;
 
     return Scaffold(
       appBar: !showOuterAppBar
           ? null
           : AppBar(
-              title: Text(_appBarTitles[_selectedIndex]),
+              title: Text(_tabTitle(_activeTab)),
               actions: [
                 PopupMenuButton<String>(
                   onSelected: (value) async {
@@ -121,27 +212,14 @@ class _HomeScreenNewState extends State<HomeScreenNew> {
                 ),
               ],
             ),
-      body: _widgetOptions.elementAt(_selectedIndex),
+      body: _tabBody(_activeTab),
       bottomNavigationBar: CustomBottomNavBar(
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        items: const [
-          BottomNavBarItem(
-            icon: Icons.fitness_center,
-            label: 'Тренировки',
-            activeLabel: 'Тренировки',
-          ),
-          BottomNavBarItem(
-            icon: Icons.schedule,
-            label: 'Планы',
-            activeLabel: 'Планы',
-          ),
-          BottomNavBarItem(
-            icon: Icons.bug_report_outlined,
-            label: 'Дебаг',
-            activeLabel: 'Дебаг',
-          ),
-        ],
+        currentIndex: tabs.indexOf(_activeTab).clamp(0, tabs.length - 1),
+        onTap: (index) {
+          if (index < 0 || index >= tabs.length) return;
+          _onItemTapped(tabs[index]);
+        },
+        items: tabs.map(_navItemFor).toList(),
       ),
     );
   }

@@ -1,17 +1,17 @@
-from sqlalchemy import Column, Integer, String, DateTime, Float, ForeignKey, Enum
-from sqlalchemy import ForeignKey
-from .database import Base
-from sqlalchemy.orm import relationship
 from datetime import datetime
+
+from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSON
-from sqlalchemy import select
+from sqlalchemy.orm import relationship
+
+from .database import Base
 
 # Define enum type
-workout_type_enum = Enum('manual', 'generated', name='workouttypeenum')
+workout_type_enum = Enum("manual", "generated", name="workouttypeenum")
 
 
 class Workout(Base):
-    __tablename__ = 'workouts'
+    __tablename__ = "workouts"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String(255), nullable=False, index=True)
@@ -33,7 +33,7 @@ class Workout(Base):
     location = Column(String(255), nullable=True)
     readiness_score = Column(Integer, nullable=True)
     # Add workout type classification
-    workout_type = Column(workout_type_enum, nullable=False, default='manual')
+    workout_type = Column(workout_type_enum, nullable=False, default="manual")
 
     sessions = relationship(
         "WorkoutSession",
@@ -45,7 +45,12 @@ class Workout(Base):
     exercises = relationship("WorkoutExercise", back_populates="workout", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<Workout(id={self.id}, name='{self.name}', applied_plan_id={self.applied_plan_id}, order={self.plan_order_index})>"
+        return "<Workout(id=%s, name='%s', applied_plan_id=%s, order=%s)>" % (
+            self.id,
+            self.name,
+            self.applied_plan_id,
+            self.plan_order_index,
+        )
 
 
 class WorkoutExercise(Base):
@@ -91,7 +96,8 @@ class WorkoutSession(Base):
 
     workout = relationship("Workout", back_populates="sessions")
 
-    def __repr__(self) -> str:
-        return f"<WorkoutSession(id={self.id}, workout_id={self.workout_id}, status={self.status})>"
+    def __repr__(self):
+        return "<WorkoutSession(id=%s, workout_id=%s, status=%s)>" % (self.id, self.workout_id, self.status)
+
 
 # Removed CalendarPlan model because it resides in the plans-service

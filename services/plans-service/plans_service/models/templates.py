@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, JSON
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from .calendar import Base
@@ -43,7 +42,12 @@ class MicrocycleTemplate(Base):
     __tablename__ = "microcycle_templates"
 
     id = Column(Integer, primary_key=True, index=True)
-    mesocycle_template_id = Column(Integer, ForeignKey("mesocycle_templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    mesocycle_template_id = Column(
+        Integer,
+        ForeignKey("mesocycle_templates.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
     name = Column(String(255), nullable=False)
     notes = Column(String(255), nullable=True)
@@ -56,4 +60,8 @@ class MicrocycleTemplate(Base):
     mesocycle_template = relationship("MesocycleTemplate", back_populates="microcycles")
 
     def __repr__(self) -> str:
-        return f"<MicrocycleTemplate(id={self.id}, meso_tpl_id={self.mesocycle_template_id}, name='{self.name}', order={self.order_index})>"
+        return (
+            "<MicrocycleTemplate("
+            f"id={self.id}, meso_tpl_id={self.mesocycle_template_id}, "
+            f"name='{self.name}', order={self.order_index})>"
+        )

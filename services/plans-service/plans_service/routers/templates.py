@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 from typing import List
-from fastapi import APIRouter, Depends, Body
+
+from fastapi import APIRouter, Body, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..dependencies import get_db, get_current_user_id
+from ..dependencies import get_current_user_id, get_db
 from ..schemas.templates import (
-    MesocycleTemplateCreate, MesocycleTemplateUpdate, MesocycleTemplateResponse,
     InstantiateFromTemplateRequest,
+    MesocycleTemplateCreate,
+    MesocycleTemplateResponse,
+    MesocycleTemplateUpdate,
 )
 from ..services.template_service import TemplateService
 
-router = APIRouter(prefix="/mesocycle-templates", tags=["Mesocycle Templates"]) 
+router = APIRouter(prefix="/mesocycle-templates", tags=["Mesocycle Templates"])
 
 
 @router.get("/", response_model=List[MesocycleTemplateResponse])

@@ -48,6 +48,17 @@ class RouteNames {
   static const String notifications = '/notifications';
   static const String about = '/about';
   
+  // Coach / CRM routes
+  static const String coachDashboard = '/coach/dashboard';
+  static const String coachAthletes = '/coach/athletes';
+  static const String coachAthleteDetail = '/coach/athletes/detail';
+  static const String coachRelationships = '/coach/relationships';
+  static const String coachChat = '/coach/chat';
+  static const String myCoaches = '/coaching/my-coaches';
+
+  // Social routes
+  static const String socialFeed = '/social/feed';
+
   // Utility routes
   static const String notFound = '/not-found';
   static const String maintenance = '/maintenance';

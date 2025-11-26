@@ -1,24 +1,25 @@
-from typing import List, Optional, Dict, Any
-from sqlalchemy import or_, select
+from typing import Any, Dict, List, Optional
+
+from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
-from fastapi import HTTPException, status
 
 from ..models.calendar import (
     CalendarPlan,
     Mesocycle,
     Microcycle,
-    PlanWorkout,
     PlanExercise,
     PlanSet,
+    PlanWorkout,
 )
 from ..schemas.mesocycle import (
     MesocycleCreate,
-    MesocycleUpdate,
     MesocycleResponse,
+    MesocycleUpdate,
     MicrocycleCreate,
-    MicrocycleUpdate,
     MicrocycleResponse,
+    MicrocycleUpdate,
 )
 
 
@@ -102,13 +103,16 @@ class MesocycleService:
             meso = result.scalars().all()
             return [MesocycleResponse.model_validate(m) for m in meso]
         except Exception as e:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to list mesocycles: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to list mesocycles: {str(e)}",
+            )
 
     async def create_mesocycle(self, data: MesocycleCreate) -> MesocycleResponse:
         try:
             await self._check_plan_permission(data.calendar_plan_id)
             user_id = self._require_user_id()
-            order_index = (data.order_index if (data.order_index is not None and data.order_index > 0) else None)
+            order_index = data.order_index if (data.order_index is not None and data.order_index > 0) else None
             if order_index is None:
                 stmt = (
                     select(Mesocycle)
@@ -139,7 +143,10 @@ class MesocycleService:
             return MesocycleResponse.model_validate(m)
         except Exception as e:
             self.db.rollback()
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to create mesocycle: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create mesocycle: {str(e)}",
+            )
 
     async def update_mesocycle(self, mesocycle_id: int, data: MesocycleUpdate) -> MesocycleResponse:
         m = await self._check_mesocycle_permission(mesocycle_id)
@@ -173,7 +180,7 @@ class MesocycleService:
         return result.scalars().first()
 
     async def list_microcycles(self, mesocycle_id: int) -> List[MicrocycleResponse]:
-        meso = await self._check_mesocycle_permission(mesocycle_id)
+        await self._check_mesocycle_permission(mesocycle_id)
         stmt = (
             select(Microcycle)
             .join(Microcycle.mesocycle)
@@ -193,7 +200,7 @@ class MesocycleService:
         if not meso:
             raise HTTPException(status_code=404, detail="Mesocycle not found")
         try:
-            order_index = (data.order_index if (data.order_index is not None and data.order_index > 0) else None)
+            order_index = data.order_index if (data.order_index is not None and data.order_index > 0) else None
             if order_index is None:
                 stmt = (
                     select(Microcycle)
@@ -217,6 +224,7 @@ class MesocycleService:
                 schedule=await self._serialize_schedule(data.schedule),
                 normalization_value=data.normalization_value,
                 normalization_unit=(data.normalization_unit if data.normalization_unit is not None else None),
+                normalization_rules=[rule.model_dump() for rule in (data.normalization_rules or [])] or None,
                 days_count=data.days_count,
             )
             self.db.add(mc)
@@ -225,7 +233,10 @@ class MesocycleService:
             return MicrocycleResponse.model_validate(mc)
         except Exception as e:
             self.db.rollback()
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to create microcycle: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create microcycle: {str(e)}",
+            )
 
     async def update_microcycle(self, microcycle_id: int, data: MicrocycleUpdate) -> MicrocycleResponse:
         mc = await self._check_microcycle_permission(microcycle_id)
@@ -287,7 +298,7 @@ class MesocycleService:
 
                 # Replace exercises for this day
                 new_exercises: list[PlanExercise] = []
-                for item in (items or []):
+                for item in items or []:
                     if not isinstance(item, dict):
                         continue
                     ex_id = item.get("exercise_id") or item.get("exercise_list_id")
@@ -328,6 +339,8 @@ class MesocycleService:
             mc.normalization_value = data.normalization_value
         if data.normalization_unit is not None:
             mc.normalization_unit = data.normalization_unit
+        if data.normalization_rules is not None:
+            mc.normalization_rules = [rule.model_dump() for rule in (data.normalization_rules or [])] or None
         if data.days_count is not None:
             mc.days_count = data.days_count
         await self.db.commit()

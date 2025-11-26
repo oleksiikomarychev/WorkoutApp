@@ -12,8 +12,10 @@ import 'package:workout_app/services/workout_service.dart';
 import 'package:workout_app/services/avatar_service.dart';
 import 'package:workout_app/screens/workout_session_history_screen.dart';
 import 'package:workout_app/screens/session_log_screen.dart';
+import 'package:workout_app/config/constants/route_names.dart';
 import 'dart:typed_data';
 import 'package:workout_app/widgets/floating_header_bar.dart';
+import '../widgets/user_profile_view.dart';
 
 const int kActivityWeeks = 48;
 
@@ -44,7 +46,6 @@ final profileAggregatesProvider = FutureProvider<UserStats>((ref) async {
       } catch (_) {}
     }
   });
-
   final sessionsRaw = data['completed_sessions'] as List<dynamic>? ?? const [];
   final completedSessions = <WorkoutSession>[];
   for (final item in sessionsRaw) {
@@ -289,6 +290,36 @@ class UserProfileScreen extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildStatsRow(UserStats stats) {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildStatCard(
+            '${stats.totalWorkouts}',
+            'Total Workouts',
+            const Color(0xFFD4F1D5),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildStatCard(
+            stats.totalVolume.toStringAsFixed(0),
+            'Volume (kg)',
+            const Color(0xFFD4E6F1),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildStatCard(
+            '${stats.activeDays}',
+            'Active Days',
+            const Color(0xFFFFE4C4),
+          ),
+        ),
+      ],
     );
   }
 
@@ -583,14 +614,227 @@ class UserProfileScreen extends ConsumerWidget {
       child: Column(
         children: [
           const SizedBox(height: kToolbarHeight + 24),
-          _buildProfileHeader(context, ref, user, profile, stats),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: UserProfileView(
+                  profile: profile,
+                  isOwner: true,
+                  subtitle:
+                      'Units: ${profile.settings.unitSystem} • Locale: ${profile.settings.locale}${profile.settings.timezone != null && profile.settings.timezone!.isNotEmpty ? ' • TZ: ${profile.settings.timezone}' : ''}',
+                  avatarUrlOverride: user?.photoURL,
+                  onEditProfile: () => _showEditProfileDialog(context, ref, user, profile),
+                  onManageCoaching: () => _showCoachingProfileDialog(context, ref, profile),
+                  showCoachingCard: false,
+                  additionalSections: [
+                    const SizedBox(height: 16),
+                    Text(
+                      user?.email ?? '',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Member since ${user?.metadata.creationTime != null ? DateFormat('yyyy').format(user!.metadata.creationTime!) : DateFormat('yyyy').format(DateTime.now())}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 520),
+                        child: _buildStatsRow(stats),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: _buildCoachingSection(context, ref, profile),
+              ),
+            ),
+          ),
           const SizedBox(height: 32),
-          _buildAvatarGenerator(context, ref),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: _buildAvatarGenerator(context, ref),
+              ),
+            ),
+          ),
           const SizedBox(height: 32),
-          _buildActivitySection(stats),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: _buildActivitySection(stats),
+              ),
+            ),
+          ),
           const SizedBox(height: 32),
-          _buildCompletedWorkouts(context, ref),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: _buildCompletedWorkouts(context, ref),
+              ),
+            ),
+          ),
           const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCoachingSection(BuildContext context, WidgetRef ref, UserProfile profile) {
+    final coaching = profile.coaching;
+    final enabled = coaching?.enabled ?? false;
+    final accepting = coaching?.acceptingClients ?? false;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: AppShadows.sm,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.workspaces_outline, color: AppColors.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Coaching profile',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: enabled ? const Color(0xFFE6F4EA) : const Color(0xFFFFF3E0),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  enabled ? (accepting ? 'Accepting clients' : 'Coaching paused') : 'Disabled',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: enabled
+                        ? (accepting ? AppColors.success : AppColors.textSecondary)
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (!enabled)
+            const Text(
+              'Turn on coaching features to let other athletes see a "Hire" button on your profile and manage your athletes via the CRM tab.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            )
+          else ...[
+            if ((coaching?.tagline?.isNotEmpty ?? false)) ...[
+              Text(
+                coaching!.tagline!,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+            ],
+            if ((coaching?.description?.isNotEmpty ?? false)) ...[
+              Text(
+                coaching!.description!,
+                style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 12),
+            ],
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if ((coaching?.specializations ?? []).isNotEmpty)
+                  _coachingChip('Focus', coaching!.specializations.join(', ')),
+                if ((coaching?.languages ?? []).isNotEmpty)
+                  _coachingChip('Languages', coaching!.languages.join(', ')),
+                if (coaching?.experienceYears != null)
+                  _coachingChip('Experience', '${coaching!.experienceYears} yrs'),
+                if ((coaching?.timezone?.isNotEmpty ?? false))
+                  _coachingChip('Timezone', coaching!.timezone!),
+                if (coaching?.ratePlan != null)
+                  _coachingChip(
+                    'Rate',
+                    coaching!.ratePlan!.amountMinor != null && coaching.ratePlan!.currency != null
+                        ? '${(coaching.ratePlan!.amountMinor! / 100).toStringAsFixed(0)} ${coaching.ratePlan!.currency!.toUpperCase()} ${coaching.ratePlan!.type ?? ''}'
+                        : (coaching.ratePlan!.type ?? 'Custom rate'),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => _showCoachingProfileDialog(context, ref, profile),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.textPrimary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: Text(enabled ? 'Manage coaching profile' : 'Enable coaching features'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () {
+                Navigator.of(context).pushNamed(RouteNames.myCoaches);
+              },
+              child: const Text('My coaches'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _coachingChip(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+          const SizedBox(height: 2),
+          Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -601,261 +845,133 @@ class UserProfileScreen extends ConsumerWidget {
     final imageBytes = ref.watch(avatarImageProvider);
     final prompt = ref.watch(avatarPromptProvider);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.edit, color: AppColors.primary, size: 20),
-              SizedBox(width: 8),
-              Text(
-                'Generate your Avatar',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Use fofr/sdxl-emoji to create something unique.',
-            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 12),
-          if (imageBytes != null)
-            Center(
-              child: Container(
-                width: 96,
-                height: 96,
-                decoration: const BoxDecoration(shape: BoxShape.circle),
-                clipBehavior: Clip.antiAlias,
-                child: Image.memory(imageBytes, fit: BoxFit.cover),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.edit, color: AppColors.primary, size: 20),
+            SizedBox(width: 8),
+            Text(
+              'Generate your Avatar',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
               ),
             ),
-          if (imageBytes != null) const SizedBox(height: 8),
-          if (imageBytes != null)
-            Center(
-              child: TextButton.icon(
+          ],
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Use fofr/sdxl-emoji to create something unique.',
+          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        if (imageBytes != null)
+          Center(
+            child: Container(
+              width: 96,
+              height: 96,
+              decoration: const BoxDecoration(shape: BoxShape.circle),
+              clipBehavior: Clip.antiAlias,
+              child: Image.memory(imageBytes, fit: BoxFit.cover),
+            ),
+          ),
+        if (imageBytes != null) const SizedBox(height: 8),
+        if (imageBytes != null)
+          Center(
+            child: TextButton.icon(
+              onPressed: loading
+                  ? null
+                  : () async {
+                      try {
+                        final svc = ref.read(sl.avatarServiceProvider);
+                        final url = await svc.applyAsProfile(pngBytes: imageBytes);
+                        try {
+                          await FirebaseAuth.instance.currentUser?.reload();
+                        } catch (_) {}
+                        ref.invalidate(profileAggregatesProvider);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(url.isNotEmpty ? 'Profile photo updated' : 'Saved avatar')),
+                          );
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Failed to apply: $e')),
+                          );
+                        }
+                      }
+                    },
+              icon: const Icon(Icons.check_circle_outline),
+              label: const Text('Use as profile picture'),
+            ),
+          ),
+        if (imageBytes != null) const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                initialValue: prompt,
+                onChanged: (v) => ref.read(avatarPromptProvider.notifier).state = v,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.casino_outlined),
+                  hintText: 'Describe your avatar',
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  filled: true,
+                  fillColor: AppColors.surface,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              height: 44,
+              child: ElevatedButton(
                 onPressed: loading
                     ? null
                     : () async {
+                        final text = ref.read(avatarPromptProvider);
+                        if (text.trim().isEmpty) return;
+                        ref.read(avatarLoadingProvider.notifier).state = true;
                         try {
                           final svc = ref.read(sl.avatarServiceProvider);
-                          final url = await svc.applyAsProfile(pngBytes: imageBytes);
-                          try { await FirebaseAuth.instance.currentUser?.reload(); } catch (_) {}
-                          ref.invalidate(profileAggregatesProvider);
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(url.isNotEmpty ? 'Profile photo updated' : 'Saved avatar')),
-                            );
-                          }
+                          final bytes = await svc.generateAvatar(prompt: text);
+                          ref.read(avatarImageProvider.notifier).state = bytes;
                         } catch (e) {
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Failed to apply: $e')),
+                              SnackBar(content: Text('Failed: $e')),
                             );
                           }
+                        } finally {
+                          ref.read(avatarLoadingProvider.notifier).state = false;
                         }
                       },
-                icon: const Icon(Icons.check_circle_outline),
-                label: const Text('Use as profile picture'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.textPrimary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
+                child: loading
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('Generate'),
               ),
             ),
-          if (imageBytes != null) const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  initialValue: prompt,
-                  onChanged: (v) => ref.read(avatarPromptProvider.notifier).state = v,
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.casino_outlined),
-                    hintText: 'Describe your avatar',
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                    filled: true,
-                    fillColor: AppColors.surface,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                height: 44,
-                child: ElevatedButton(
-                  onPressed: loading
-                      ? null
-                      : () async {
-                          final text = ref.read(avatarPromptProvider);
-                          if (text.trim().isEmpty) return;
-                          ref.read(avatarLoadingProvider.notifier).state = true;
-                          try {
-                            final svc = ref.read(sl.avatarServiceProvider);
-                            final bytes = await svc.generateAvatar(prompt: text);
-                            ref.read(avatarImageProvider.notifier).state = bytes;
-                          } catch (e) {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Failed: $e')),
-                              );
-                            }
-                          } finally {
-                            ref.read(avatarLoadingProvider.notifier).state = false;
-                          }
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.textPrimary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                  ),
-                  child: loading
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Text('Generate'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Randomize or write your own prompt! Your avatar will be displayed on your public profile.',
-            style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProfileHeader(BuildContext context, WidgetRef ref, User? user, UserProfile profile, UserStats stats) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        children: [
-          Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.primary.withOpacity(0.15),
-              image: user?.photoURL != null
-                  ? DecorationImage(
-                      image: NetworkImage(user!.photoURL!),
-                      fit: BoxFit.cover,
-                    )
-                  : null,
-            ),
-            child: user?.photoURL == null
-                ? Center(
-                    child: Text(
-                      (user?.displayName?.isNotEmpty == true)
-                          ? user!.displayName!.substring(0, 1).toUpperCase()
-                          : 'U',
-                      style: const TextStyle(
-                        fontSize: 40,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  )
-                : null,
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Column(
-                  children: [
-                    Text(
-                      profile.displayName ?? user?.displayName ?? 'User',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    if (profile.bio != null && profile.bio!.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        profile.bio!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 6),
-                    Text(
-                      'Units: ${profile.settings.unitSystem} • Locale: ${profile.settings.locale}${profile.settings.timezone != null && profile.settings.timezone!.isNotEmpty ? ' • TZ: ${profile.settings.timezone}' : ''}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.edit, size: 20, color: AppColors.textSecondary),
-                onPressed: () => _showEditProfileDialog(context, ref, user, profile),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            user?.email ?? '',
-            style: const TextStyle(
-              fontSize: 14,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Member since ${user?.metadata.creationTime != null ? DateFormat('yyyy').format(user!.metadata.creationTime!) : DateFormat('yyyy').format(DateTime.now())}',
-            style: const TextStyle(
-              fontSize: 14,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatCard(
-                  '${stats.totalWorkouts}',
-                  'Total Workouts',
-                  const Color(0xFFD4F1D5),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildStatCard(
-                  stats.totalVolume.toStringAsFixed(0),
-                  'Volume (kg)',
-                  const Color(0xFFD4E6F1),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildStatCard(
-                  '${stats.activeDays}',
-                  'Active Days',
-                  const Color(0xFFFFE4C4),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Randomize or write your own prompt! Your avatar will be displayed on your public profile.',
+          style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+        ),
+      ],
     );
   }
 
@@ -891,46 +1007,43 @@ class UserProfileScreen extends ConsumerWidget {
   }
 
   Widget _buildActivitySection(UserStats stats) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Activity',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Activity',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Last $kActivityWeeks weeks',
+              style: const TextStyle(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Last $kActivityWeeks weeks',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textSecondary,
-                ),
+            Text(
+              'Max: ${stats.maxDayVolume.toStringAsFixed(0)} kg/day',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w500,
               ),
-              Text(
-                'Max: ${stats.maxDayVolume.toStringAsFixed(0)} kg/day',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildActivityGrid(stats.activityMap, stats.maxDayVolume),
-          const SizedBox(height: 8),
-          _buildActivityLegend(stats.maxDayVolume),
-        ],
-      ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _buildActivityGrid(stats.activityMap, stats.maxDayVolume),
+        const SizedBox(height: 8),
+        _buildActivityLegend(stats.maxDayVolume),
+      ],
     );
   }
 
@@ -1078,35 +1191,32 @@ class UserProfileScreen extends ConsumerWidget {
 
   Widget _buildCompletedWorkouts(BuildContext context, WidgetRef ref) {
     final sessionsAsync = ref.watch(completedSessionsProvider);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.calendar_today, color: AppColors.primary, size: 24),
-              SizedBox(width: 8),
-              Text(
-                'Completed Workouts',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.calendar_today, color: AppColors.primary, size: 24),
+            SizedBox(width: 8),
+            Text(
+              'Completed Workouts',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          sessionsAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => Text('Ошибка загрузки списка: $error'),
-            data: (sessions) => Column(
-              children: sessions.map((s) => _buildWorkoutCard(context, s)).toList(),
             ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        sessionsAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, _) => Text('Ошибка загрузки списка: $error'),
+          data: (sessions) => Column(
+            children: sessions.map((s) => _buildWorkoutCard(context, s)).toList(),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -1172,5 +1282,189 @@ class UserProfileScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _showCoachingProfileDialog(BuildContext context, WidgetRef ref, UserProfile profile) async {
+    final coaching = profile.coaching;
+
+    bool enabled = coaching?.enabled ?? false;
+    bool acceptingClients = coaching?.acceptingClients ?? false;
+    final taglineController = TextEditingController(text: coaching?.tagline ?? '');
+    final descriptionController = TextEditingController(text: coaching?.description ?? '');
+    final specializationsController = TextEditingController(text: (coaching?.specializations ?? []).join(', '));
+    final languagesController = TextEditingController(text: (coaching?.languages ?? []).join(', '));
+    final experienceController = TextEditingController(
+      text: coaching?.experienceYears != null ? coaching!.experienceYears!.toString() : '',
+    );
+    final timezoneController = TextEditingController(text: coaching?.timezone ?? '');
+    String? rateType = coaching?.ratePlan?.type;
+    final rateCurrencyController = TextEditingController(text: coaching?.ratePlan?.currency ?? '');
+    final rateAmountController = TextEditingController(
+      text: coaching?.ratePlan?.amountMinor != null ? (coaching!.ratePlan!.amountMinor! / 100).toStringAsFixed(0) : '',
+    );
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            return AlertDialog(
+              title: const Text('Coaching settings'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Enable coaching features'),
+                      value: enabled,
+                      onChanged: (value) => setState(() => enabled = value),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Accepting new clients'),
+                      value: acceptingClients,
+                      onChanged: enabled ? (value) => setState(() => acceptingClients = value) : null,
+                    ),
+                    TextField(
+                      controller: taglineController,
+                      decoration: const InputDecoration(labelText: 'Tagline'),
+                    ),
+                    TextField(
+                      controller: descriptionController,
+                      decoration: const InputDecoration(labelText: 'Description'),
+                      maxLines: 3,
+                    ),
+                    TextField(
+                      controller: specializationsController,
+                      decoration: const InputDecoration(
+                        labelText: 'Specializations (comma separated)',
+                      ),
+                    ),
+                    TextField(
+                      controller: languagesController,
+                      decoration: const InputDecoration(
+                        labelText: 'Languages (comma separated)',
+                      ),
+                    ),
+                    TextField(
+                      controller: experienceController,
+                      decoration: const InputDecoration(labelText: 'Experience (years)'),
+                      keyboardType: TextInputType.number,
+                    ),
+                    TextField(
+                      controller: timezoneController,
+                      decoration: const InputDecoration(labelText: 'Timezone (e.g. Europe/Kyiv)'),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: rateType,
+                      decoration: const InputDecoration(labelText: 'Rate type'),
+                      items: const [
+                        DropdownMenuItem(value: 'per_month', child: Text('Per month')),
+                        DropdownMenuItem(value: 'per_program', child: Text('Per program')),
+                        DropdownMenuItem(value: 'per_session', child: Text('Per session')),
+                      ],
+                      onChanged: (value) => setState(() => rateType = value),
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: rateCurrencyController,
+                            decoration: const InputDecoration(labelText: 'Currency (e.g. USD)'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: rateAmountController,
+                            decoration: const InputDecoration(labelText: 'Amount'),
+                            keyboardType: TextInputType.number,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Amount is entered in whole units (e.g. 120 = 120.00).',
+                        style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(ctx).pop(true),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result != true) return;
+
+    List<String> _parseList(String text) {
+      return text
+          .split(',')
+          .map((e) => e.trim())
+          .where((element) => element.isNotEmpty)
+          .toList();
+    }
+
+    int? _parseInt(String text) {
+      if (text.trim().isEmpty) return null;
+      return int.tryParse(text.trim());
+    }
+
+    int? _parseAmount(String text) {
+      if (text.trim().isEmpty) return null;
+      final value = double.tryParse(text.trim());
+      if (value == null) return null;
+      return (value * 100).round();
+    }
+
+    final svc = ref.read(sl.profileServiceProvider);
+    try {
+      await svc.updateCoachingProfile(
+        enabled: enabled,
+        acceptingClients: acceptingClients,
+        tagline: taglineController.text.trim(),
+        description: descriptionController.text.trim(),
+        specializations: _parseList(specializationsController.text),
+        languages: _parseList(languagesController.text),
+        experienceYears: _parseInt(experienceController.text),
+        timezone: timezoneController.text.trim(),
+        ratePlan: (rateType != null || rateCurrencyController.text.trim().isNotEmpty || rateAmountController.text.trim().isNotEmpty)
+            ? CoachingRatePlan(
+                type: rateType,
+                currency: rateCurrencyController.text.trim().isEmpty ? null : rateCurrencyController.text.trim().toLowerCase(),
+                amountMinor: _parseAmount(rateAmountController.text),
+              )
+            : null,
+      );
+      ref.invalidate(userProfileProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Coaching profile updated')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update coaching profile: $e')),
+        );
+      }
+    }
   }
 }

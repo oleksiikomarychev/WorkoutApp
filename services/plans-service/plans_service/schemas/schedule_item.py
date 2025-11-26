@@ -1,14 +1,13 @@
+from typing import List, Optional
+
 from pydantic import BaseModel, Field
-from typing import Optional, List
 
 
 class ParamsSets(BaseModel):
-    intensity: Optional[int] = Field(default=None, ge=0, le=100)
+    intensity: Optional[int] = Field(default=None, ge=0, le=110)
     effort: Optional[int] = Field(default=None, ge=1, le=10)
     volume: Optional[int] = Field(default=None, ge=1)
-    working_weight: Optional[float] = Field(
-        default=None, exclude=True
-    )  # Only for workout instances, not for plans
+    working_weight: Optional[float] = Field(default=None, exclude=True)  # Only for workout instances, not for plans
 
 
 class ExerciseScheduleItem(BaseModel):

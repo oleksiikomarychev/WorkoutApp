@@ -1,7 +1,7 @@
 """Add user scoping columns"""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "cf2dbd4a8c72"
 down_revision = "add_missing_cols_plan_exercises"

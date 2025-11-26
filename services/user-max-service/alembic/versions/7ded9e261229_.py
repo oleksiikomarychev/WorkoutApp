@@ -5,12 +5,9 @@ Revises: add_missing_columns, ca60be69197b
 Create Date: 2025-09-10 15:37:05.424064
 """
 
-from alembic import op
-import sqlalchemy as sa
-
 # revision identifiers, used by Alembic.
-revision = '7ded9e261229'
-down_revision = ('add_missing_columns', 'ca60be69197b')
+revision = "7ded9e261229"
+down_revision = ("add_missing_columns", "ca60be69197b")
 branch_labels = None
 depends_on = None
 

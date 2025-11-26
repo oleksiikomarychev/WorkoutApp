@@ -1,11 +1,13 @@
-from fastapi import APIRouter, HTTPException, Request, Depends
-from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 import io
 from typing import Optional
 
-from ..dependencies import get_db, get_current_user_id
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..dependencies import get_current_user_id, get_db
+from ..metrics import AVATARS_APPLIED_TOTAL
 from ..models import UserAvatar
 
 router = APIRouter(prefix="/avatars", tags=["avatars"])
@@ -35,6 +37,7 @@ async def apply_avatar(
             existing = UserAvatar(user_id=user_id, image=raw, content_type=content_type)
             db.add(existing)
         await db.commit()
+        AVATARS_APPLIED_TOTAL.inc()
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to save avatar: {e}")

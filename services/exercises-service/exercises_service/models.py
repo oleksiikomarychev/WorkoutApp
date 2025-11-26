@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, JSON, Text, ForeignKey, Float, Boolean
+from sqlalchemy import JSON, Column, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from .database import Base  # Import Base from database
@@ -31,7 +31,7 @@ class ExerciseInstance(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     workout_id = Column(Integer, nullable=False)  # Removed ForeignKey to avoid cross-service dependency
-    exercise_list_id = Column(Integer, ForeignKey('exercise_list.id'), nullable=False)
+    exercise_list_id = Column(Integer, ForeignKey("exercise_list.id"), nullable=False)
     user_max_id = Column(Integer, nullable=True)
     user_id = Column(String(255), nullable=False)
     sets = Column(JSON, nullable=False, default=list)

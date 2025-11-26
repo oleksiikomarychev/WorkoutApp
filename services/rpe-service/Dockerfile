@@ -15,4 +15,4 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 EXPOSE 8001
 
-CMD ["sh", "-c", "uvicorn rpe_service.main:app --host 0.0.0.0 --port ${PORT:-8001} --log-level ${LOG_LEVEL:-info}"]
+CMD ["sh", "-c", "LOWER_LOG_LEVEL=$(printf '%s' \"${LOG_LEVEL:-info}\" | tr '[:upper:]' '[:lower:]'); uvicorn rpe_service.main:app --host 0.0.0.0 --port ${PORT:-8001} --log-level ${LOWER_LOG_LEVEL}"]

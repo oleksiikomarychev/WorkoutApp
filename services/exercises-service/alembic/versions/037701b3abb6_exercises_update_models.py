@@ -1,12 +1,11 @@
 """exercises: update models"""
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = '037701b3abb6'
-down_revision = 'c1d2e3f4g5h6'
+revision = "037701b3abb6"
+down_revision = "c1d2e3f4g5h6"
 branch_labels = None
 depends_on = None
 

@@ -1,9 +1,10 @@
 import os
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
-from alembic import context
 
+from agent_service import models  # noqa: F401
 from agent_service.models import Base
+from alembic import context
+from sqlalchemy import engine_from_config, pool
 
 config = context.config
 
@@ -24,9 +25,6 @@ elif db_url.startswith("postgresql://") and "+psycopg2" not in db_url:
 
 config.set_main_option("sqlalchemy.url", db_url)
 
-# Import all models to ensure they are attached to the Base.metadata
-from agent_service import models  # noqa: F401
-
 target_metadata = Base.metadata
 
 
@@ -37,7 +35,7 @@ def run_migrations_offline():
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        file_template='%(rev)s_%(slug)s'
+        file_template="%(rev)s_%(slug)s",
     )
 
     with context.begin_transaction():
@@ -52,11 +50,7 @@ def run_migrations_online():
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            file_template='%(rev)s_%(slug)s'
-        )
+        context.configure(connection=connection, target_metadata=target_metadata, file_template="%(rev)s_%(slug)s")
         with context.begin_transaction():
             context.run_migrations()
 

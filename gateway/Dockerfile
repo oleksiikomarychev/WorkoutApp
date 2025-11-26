@@ -17,4 +17,4 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "uvicorn gateway_app.main:app --host 0.0.0.0 --port ${PORT:-8000} --log-level ${LOG_LEVEL:-info}"]
+CMD ["sh", "-c", "LOWER_LOG_LEVEL=$(printf '%s' \"${LOG_LEVEL:-info}\" | tr '[:upper:]' '[:lower:]'); uvicorn gateway_app.main:app --host 0.0.0.0 --port ${PORT:-8000} --log-level ${LOWER_LOG_LEVEL}"]

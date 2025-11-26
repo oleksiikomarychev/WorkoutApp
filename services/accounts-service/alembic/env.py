@@ -1,8 +1,8 @@
-from logging.config import fileConfig
 import os
+from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
 # Alembic Config
 config = context.config
@@ -13,7 +13,7 @@ if config.config_file_name is not None:
 
 # Import service metadata and DB URL
 try:
-    from accounts_service.database import Base, DATABASE_URL  # type: ignore
+    from accounts_service.database import DATABASE_URL, Base  # type: ignore
 except Exception:
     Base = None
     DATABASE_URL = os.getenv("ACCOUNTS_DATABASE_URL")
@@ -25,11 +25,7 @@ else:
     target_metadata = None
 
 # Resolve URL: prefer env ACCOUNTS_DATABASE_URL, then alembic.ini
-DB_URL = (
-    os.getenv("ACCOUNTS_DATABASE_URL")
-    or DATABASE_URL
-    or config.get_main_option("sqlalchemy.url")
-)
+DB_URL = os.getenv("ACCOUNTS_DATABASE_URL") or DATABASE_URL or config.get_main_option("sqlalchemy.url")
 if DB_URL:
     # Alembic должен использовать sync-драйвер, даже если приложение async
     # Меняем asyncpg -> psycopg2 при необходимости
@@ -43,7 +39,7 @@ if DB_URL:
 
     # Нормализуем query-параметры для psycopg2 (ssl/sslmode и т.п.)
     try:
-        from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+        from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
         parsed = urlparse(DB_URL)
         q = dict(parse_qsl(parsed.query, keep_blank_values=True))

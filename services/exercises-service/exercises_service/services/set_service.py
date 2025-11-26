@@ -4,10 +4,10 @@ class SetService:
         # Нормализует сеты для внутренней обработки.
         normalized = []
         for s in sets:
-            if 'reps' not in s:
+            if "reps" not in s:
                 raise ValueError("Reps are required for each set")
             ns = s.copy()
-            ns['reps'] = int(ns['reps'])
+            ns["reps"] = int(ns["reps"])
             normalized.append(ns)
         return normalized
 
@@ -19,10 +19,10 @@ class SetService:
             ns = s.copy()
             # Backward compatibility: if effort is missing but rpe is present, mirror it
             try:
-                if (ns.get('effort') is None) and (ns.get('rpe') is not None):
-                    ns['effort'] = ns.get('rpe')
-                if ns.get('effort') is not None and not ns.get('effort_type'):
-                    ns['effort_type'] = 'RPE'
+                if (ns.get("effort") is None) and (ns.get("rpe") is not None):
+                    ns["effort"] = ns.get("rpe")
+                if ns.get("effort") is not None and not ns.get("effort_type"):
+                    ns["effort_type"] = "RPE"
             except Exception:
                 # best-effort only
                 pass
@@ -35,13 +35,13 @@ class SetService:
         # Генерирует положительные временные ID вместо отрицательных
         max_id = 0
         for s in sets:
-            if 'id' in s and s['id'] is not None and isinstance(s['id'], int) and s['id'] > max_id:
-                max_id = s['id']
-        
+            if "id" in s and s["id"] is not None and isinstance(s["id"], int) and s["id"] > max_id:
+                max_id = s["id"]
+
         next_temp_id = max_id + 1
         for s in sets:
-            if 'id' not in s or s['id'] is None or not isinstance(s['id'], int) or s['id'] <= 0:
-                s['id'] = next_temp_id
+            if "id" not in s or s["id"] is None or not isinstance(s["id"], int) or s["id"] <= 0:
+                s["id"] = next_temp_id
                 next_temp_id += 1
         return sets
 
@@ -51,7 +51,7 @@ class SetService:
         new_sets = []
         updated = False
         for s in existing_sets:
-            if s.get('id') == set_id:
+            if s.get("id") == set_id:
                 updated_set = {**s, **update_data}
                 new_sets.append(updated_set)
                 updated = True

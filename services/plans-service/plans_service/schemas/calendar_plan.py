@@ -1,11 +1,11 @@
-from pydantic import BaseModel, Field, model_validator, validator, field_validator
-from typing import Optional, List, Dict, TYPE_CHECKING, Literal
 from datetime import datetime
 from enum import Enum
-from .mesocycle import MesocycleResponse
-from .schedule_item import ExerciseScheduleItem
-from .workout_schemas import WorkoutExerciseCreate
+from typing import TYPE_CHECKING, List, Literal, Optional
 
+from pydantic import BaseModel, Field, model_validator
+
+from .mesocycle import MesocycleResponse, NormalizationRule
+from .workout_schemas import WorkoutExerciseCreate
 
 if TYPE_CHECKING:
     from .mesocycle import MesocycleResponse
@@ -25,9 +25,10 @@ class CalendarPlanBase(BaseModel):
     """Базовая схема календарного плана"""
 
     name: str = Field(..., max_length=255, description="Plan name must be 1-255 characters")
-    #duration_weeks: int = Field(..., ge=1, le=104, description="Duration must be between 1 and 104 weeks")
+    # duration_weeks: int = Field(..., ge=1, le=104, description="Duration must be between 1 and 104 weeks")
     primary_goal: Optional[str] = Field(
-        default=None, description="Primary goal of the plan (e.g. strength, hypertrophy, recomposition)"
+        default=None,
+        description="Primary goal of the plan (e.g. strength, hypertrophy, recomposition)",
     )
     intended_experience_level: Optional[str] = Field(
         default=None, description="Intended lifter level (novice/intermediate/advanced)"
@@ -45,7 +46,8 @@ class CalendarPlanBase(BaseModel):
         default=None, description="List of required equipment tags (e.g. barbell, rack, bench)"
     )
     supported_constraints: Optional[List[str]] = Field(
-        default=None, description="List of supported constraint codes (e.g. shoulder_overhead_limit)"
+        default=None,
+        description="List of supported constraint codes (e.g. shoulder_overhead_limit)",
     )
 
     class Config:
@@ -59,6 +61,7 @@ class MicrocycleBase(BaseModel):
     order_index: Optional[int] = Field(default=None, ge=0)
     normalization_value: Optional[float] = None
     normalization_unit: Optional[str] = None
+    normalization_rules: Optional[List[NormalizationRule]] = Field(default=None)
 
 
 # ===== Plan Schemas =====
@@ -66,8 +69,10 @@ class PlanWorkoutBase(BaseModel):
     day_label: str = Field(..., max_length=50, description="Day label, e.g., 'Day 1'")
     order_index: int = Field(default=0, ge=0)
 
+
 class PlanWorkoutCreate(PlanWorkoutBase):
     exercises: List[WorkoutExerciseCreate] = Field(default_factory=list)
+
 
 class PlanWorkoutResponse(PlanWorkoutBase):
     id: int
@@ -82,8 +87,10 @@ class PlanExerciseBase(BaseModel):
     exercise_definition_id: int
     order_index: int = Field(default=0, ge=0)
 
+
 class PlanExerciseCreate(PlanExerciseBase):
     pass
+
 
 class PlanExerciseResponse(PlanExerciseBase):
     id: int
@@ -97,13 +104,15 @@ class PlanExerciseResponse(PlanExerciseBase):
 
 class PlanSetBase(BaseModel):
     order_index: Optional[int] = Field(default=None, ge=0)  # Make optional
-    intensity: Optional[int] = Field(default=None, ge=0, le=100)
+    intensity: Optional[int] = Field(default=None, ge=0, le=110)
     effort: Optional[int] = Field(default=None, ge=1, le=10)
     volume: Optional[int] = Field(default=None, ge=1)
     working_weight: Optional[float] = Field(default=None, exclude=True)
 
+
 class PlanSetCreate(PlanSetBase):
     pass
+
 
 class PlanSetResponse(PlanSetBase):
     id: int
@@ -123,15 +132,15 @@ class MicrocycleCreate(MicrocycleBase):
     normalization_unit: Optional[str] = None
     plan_workouts: List[PlanWorkoutCreate] = Field(default_factory=list)
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def generate_day_labels(self):
         """Auto-generate day labels based on days_count"""
         if not self.plan_workouts or self.days_count is None:
             return self
-        
+
         # Generate day labels: Day 1, Day 2, etc.
         day_labels = [f"Day {i+1}" for i in range(self.days_count)]
-        
+
         # Create new plan_workouts with generated labels
         new_workouts = []
         for i, label in enumerate(day_labels):
@@ -153,6 +162,7 @@ class MicrocycleResponse(BaseModel):
     normalization_value: Optional[float] = None
     normalization_unit: Optional[str] = None
     days_count: Optional[int] = Field(default=None, ge=1, le=31)
+    normalization_rules: Optional[List[NormalizationRule]] = Field(default=None)
     plan_workouts: List["PlanWorkoutResponse"] = Field(default_factory=list)
 
     class Config:
@@ -194,7 +204,9 @@ class CalendarPlanUpdate(BaseModel):
     """Схема для частичного обновления плана"""
 
     name: Optional[str] = Field(None, max_length=255, description="Plan name must be 1-255 characters")
-    duration_weeks: Optional[int] = Field(default=None, ge=1, le=104, description="Duration must be between 1 and 104 weeks")
+    duration_weeks: Optional[int] = Field(
+        default=None, ge=1, le=104, description="Duration must be between 1 and 104 weeks"
+    )
     primary_goal: Optional[str] = None
     intended_experience_level: Optional[str] = None
     intended_frequency_per_week: Optional[int] = Field(default=None, ge=1, le=14)
@@ -335,11 +347,11 @@ class AppliedCalendarPlanSummaryResponse(AppliedCalendarPlanBase):
 
 class AppliedPlanWorkoutResponse(BaseModel):
     """Схема ответа для тренировки в примененном плане"""
-    
+
     id: int
     workout_id: int
     order_index: int
-    
+
     class Config:
         from_attributes = True
 
@@ -371,6 +383,7 @@ class AppliedCalendarPlanResponse(AppliedCalendarPlanBase):
 
 class AppliedWorkout(BaseModel):
     """Schema for workouts in applied plans"""
+
     id: int
     order_index: int
     is_current: bool
@@ -378,6 +391,7 @@ class AppliedWorkout(BaseModel):
 
 class AppliedMicrocycle(BaseModel):
     """Schema for microcycles in applied plans"""
+
     id: int
     name: str
     order_index: int
@@ -386,6 +400,7 @@ class AppliedMicrocycle(BaseModel):
 
 class AppliedMesocycle(BaseModel):
     """Schema for mesocycles in applied plans"""
+
     id: int
     name: str
     order_index: int
@@ -425,16 +440,17 @@ class FullCalendarPlanCreate(BaseModel):
     mesocycles: List[MesocycleCreate]
     duration_weeks: int
 
+
 class PlanExerciseFilter(BaseModel):
     """Фильтры для выборки упражнений в плане для mass edit/replace"""
 
     exercise_name_exact: Optional[str] = None
     exercise_name_contains: Optional[str] = None
 
-    intensity_lt: Optional[int] = Field(default=None, ge=0, le=100)
-    intensity_lte: Optional[int] = Field(default=None, ge=0, le=100)
-    intensity_gt: Optional[int] = Field(default=None, ge=0, le=100)
-    intensity_gte: Optional[int] = Field(default=None, ge=0, le=100)
+    intensity_lt: Optional[int] = Field(default=None, ge=0, le=110)
+    intensity_lte: Optional[int] = Field(default=None, ge=0, le=110)
+    intensity_gt: Optional[int] = Field(default=None, ge=0, le=110)
+    intensity_gte: Optional[int] = Field(default=None, ge=0, le=110)
 
     volume_lt: Optional[int] = Field(default=None, ge=1)
     volume_gt: Optional[int] = Field(default=None, ge=1)
@@ -447,7 +463,7 @@ class PlanExerciseFilter(BaseModel):
 class PlanExerciseActions(BaseModel):
     """Действия, которые нужно применить к выбранным упражнениям/сетам"""
 
-    set_intensity: Optional[int] = Field(default=None, ge=0, le=100)
+    set_intensity: Optional[int] = Field(default=None, ge=0, le=110)
     increase_intensity_by: Optional[int] = None
     decrease_intensity_by: Optional[int] = None
 

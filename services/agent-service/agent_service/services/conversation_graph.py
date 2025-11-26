@@ -1,29 +1,26 @@
-from enum import Enum
-from typing import Dict, List, Deque, Optional, Tuple, Any
-from collections import deque
-import httpx
-import os
-import logging
-import time
 import asyncio
-import re
 import json
+import logging
+import os
+import re
+import time
+from collections import deque
+from enum import Enum
+from typing import Any, Deque, Dict, List, Optional, Tuple
+
+import httpx
+
 try:
     import json5  # type: ignore
 except Exception:  # pragma: no cover
     json5 = None  # type: ignore
-from langchain.agents import AgentExecutor, Tool, initialize_agent, AgentType
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
-from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from google.api_core.exceptions import ResourceExhausted
+from langchain.agents import AgentExecutor, AgentType, Tool, initialize_agent
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
+
 from ..config import Settings
-from ..schemas.user_data import UserDataInput
-from ..schemas.training_plans import TrainingPlan
-from ..services.plans_service import save_plan_to_plans_service
-from .plan_generation import generate_training_plan, generate_training_plan_with_rationale, generate_training_plan_with_summary
 from ..prompts.conversation import (
     EXTRACT_USER_DATA_SYSTEM_PROMPT,
     build_state_completion_system_prompt,
@@ -31,8 +28,12 @@ from ..prompts.conversation import (
     get_state_requirements,
     get_state_system_prompt,
 )
-
-
+from ..schemas.training_plans import TrainingPlan
+from ..schemas.user_data import UserDataInput
+from ..services.plans_service import save_plan_to_plans_service
+from .plan_generation import (
+    generate_training_plan_with_summary,
+)
 
 # Load settings
 settings = Settings()
@@ -44,8 +45,9 @@ def _initialize_chat_llm(*, temperature: float = 0.7) -> BaseChatModel:
         raise ValueError("GOOGLE_API_KEY (or GEMINI_API_KEY) environment variable must be set")
     os.environ["GOOGLE_API_KEY"] = google_api_key
     model_name = settings.llm_model
-    logging.info('Using Gemini model %s', model_name)
+    logging.info("Using Gemini model %s", model_name)
     return ChatGoogleGenerativeAI(model=model_name, temperature=temperature)
+
 
 # Minimal schema validation helper to avoid extra dependency
 def validate(value, schema: Dict) -> bool:
@@ -85,6 +87,7 @@ class ConversationState(Enum):
     COLLECT_PREFERENCES = "collect_preferences"
     GENERATE = "generate"
 
+
 class AutonomyManager:
     """Manages autonomous question generation and state completion"""
 
@@ -100,7 +103,7 @@ class AutonomyManager:
         self._EN_GOALS: List[str] = [
             "weight_loss",
             "strength",
-            "endurance",  
+            "endurance",
             "muscle_definition",
             "general_fitness",
         ]
@@ -119,34 +122,45 @@ class AutonomyManager:
             gl = g.strip().lower()
             # Simple contains-based normalization with multilingual/intent coverage
             # Weight loss
-            if (
-                ("weight" in gl and "loss" in gl)
-                or "fat loss" in gl
-                or "сброс" in gl
-                or "похуд" in gl
-            ):
+            if ("weight" in gl and "loss" in gl) or "fat loss" in gl or "сброс" in gl or "похуд" in gl:
                 canon.append("weight_loss")
                 continue
             # Strength (broad, including specific lift improvement intents)
             strength_markers = [
-                "strength", "power", "powerlifting", "stronger", "1rm", "one-rep",
-                "bench", "press", "deadlift", "squat",
-                "жим", "присед", "станов", "тяга", "сил", "увелич", "повысить",
+                "strength",
+                "power",
+                "powerlifting",
+                "stronger",
+                "1rm",
+                "one-rep",
+                "bench",
+                "press",
+                "deadlift",
+                "squat",
+                "жим",
+                "присед",
+                "станов",
+                "тяга",
+                "сил",
+                "увелич",
+                "повысить",
             ]
             if any(m in gl for m in strength_markers):
                 canon.append("strength")
                 continue
             # Endurance
-            if (
-                "endurance" in gl or "cardio" in gl or "run" in gl or
-                "вынослив" in gl or "кардио" in gl or "бег" in gl
-            ):
+            if "endurance" in gl or "cardio" in gl or "run" in gl or "вынослив" in gl or "кардио" in gl or "бег" in gl:
                 canon.append("endurance")
                 continue
             # Muscle definition / hypertrophy
             if (
-                "muscle" in gl or "definition" in gl or "hypertrophy" in gl or
-                "гипертроф" in gl or "масса" in gl or "мышц" in gl or "набор" in gl
+                "muscle" in gl
+                or "definition" in gl
+                or "hypertrophy" in gl
+                or "гипертроф" in gl
+                or "масса" in gl
+                or "мышц" in gl
+                or "набор" in gl
             ):
                 canon.append("muscle_definition")
                 continue
@@ -156,8 +170,6 @@ class AutonomyManager:
         # Deduplicate and keep only allowed keys
         canon = [c for c in dict.fromkeys(canon) if c in self._EN_GOALS]
         return canon or None
-
-    
 
     def _merge_lists(self, a: List[str] | None, b: List[str] | None) -> List[str]:
         out: List[str] = []
@@ -178,6 +190,7 @@ class AutonomyManager:
         4) json5 if available
         Returns {} if nothing works.
         """
+
         def attempt(payload: str) -> Optional[Dict]:
             try:
                 obj = json.loads(payload)
@@ -209,9 +222,9 @@ class AutonomyManager:
             depth = 0
             for i in range(start, len(text)):
                 ch = text[i]
-                if ch == '{':
+                if ch == "{":
                     depth += 1
-                elif ch == '}':
+                elif ch == "}":
                     depth -= 1
                     if depth == 0:
                         candidate = text[start : i + 1]
@@ -228,7 +241,7 @@ class AutonomyManager:
         """
         prompt = [
             SystemMessage(content=EXTRACT_USER_DATA_SYSTEM_PROMPT),
-            HumanMessage(content=user_text)
+            HumanMessage(content=user_text),
         ]
         extracted: Dict = {}
         try:
@@ -262,13 +275,15 @@ class AutonomyManager:
 
         prompt = [
             SystemMessage(content=get_state_system_prompt(state_key)),
-            HumanMessage(content=(
-                f"История диалога:\n{'\n'.join(context[-5:])}\n\n"
-                f"Уже собрано: {', '.join(f'{k}: {v}' for k, v in collected_data.items()) or '-'}\n\n"
-                f"Сгенерируй один персонализированный вопрос, который поможет уточнить: "
-                f"{', '.join(missing_items)}. "
-                "Вопрос должен заканчиваться знаком вопроса."
-            ))
+            HumanMessage(
+                content=(
+                    f"История диалога:\n{'\n'.join(context[-5:])}\n\n"
+                    f"Уже собрано: {', '.join(f'{k}: {v}' for k, v in collected_data.items()) or '-'}\n\n"
+                    f"Сгенерируй один персонализированный вопрос, который поможет уточнить: "
+                    f"{', '.join(missing_items)}. "
+                    "Вопрос должен заканчиваться знаком вопроса."
+                )
+            ),
         ]
         try:
             response = self.llm.invoke(prompt)
@@ -278,7 +293,7 @@ class AutonomyManager:
         except Exception as e:
             logging.exception("LLM error in generate_question: %s", e)
             return "ллм не может сгенерировать вопрос"
-        
+
         # Validate and normalize question text
         content = response.content.strip()
         if not content:
@@ -287,14 +302,14 @@ class AutonomyManager:
         if content[-1] not in "?？":
             content = content.rstrip(" .!…") + "?"
         return content
-  
+
     def is_state_complete(self, state: ConversationState, context: List[str]) -> bool:
         state_key = state.value
         requirements_list = get_state_requirements(state_key)
-        requirements = ', '.join(requirements_list)
+        requirements = ", ".join(requirements_list)
         cot_prompt = [
             SystemMessage(content=build_state_completion_system_prompt(state_key, requirements)),
-            HumanMessage(content=f"Полный контекст диалога:\n{' '.join(context)}")
+            HumanMessage(content=f"Полный контекст диалога:\n{' '.join(context)}"),
         ]
         try:
             resp = self.llm.invoke(cot_prompt)
@@ -337,16 +352,18 @@ class AutonomyManager:
 
         validation_prompt = [
             SystemMessage(content=build_validation_system_prompt()),
-            HumanMessage(content=(
-                f"Данные пользователя:\n"
-                f"Цели: {collected_data.get('goals', [])}\n"
-                f"Тренировок в неделю: {collected_data.get('workouts_per_microcycle', 'не указано')}\n"
-                f"Оборудование: {collected_data.get('available_equipment', [])}\n"
-                f"Ограничения: {collected_data.get('limits', {})}\n"
-                f"Текущие показатели: {collected_data.get('current_metrics', {})}\n"
-                f"Целевые показатели: {collected_data.get('target_metrics', {})}\n"
-                f"Заметки: {collected_data.get('notes', '-')}"
-            ))
+            HumanMessage(
+                content=(
+                    f"Данные пользователя:\n"
+                    f"Цели: {collected_data.get('goals', [])}\n"
+                    f"Тренировок в неделю: {collected_data.get('workouts_per_microcycle', 'не указано')}\n"
+                    f"Оборудование: {collected_data.get('available_equipment', [])}\n"
+                    f"Ограничения: {collected_data.get('limits', {})}\n"
+                    f"Текущие показатели: {collected_data.get('current_metrics', {})}\n"
+                    f"Целевые показатели: {collected_data.get('target_metrics', {})}\n"
+                    f"Заметки: {collected_data.get('notes', '-')}"
+                )
+            ),
         ]
 
         try:
@@ -379,15 +396,17 @@ class AutonomyManager:
 
         return is_valid, warnings
 
+
 class ConversationGraph:
     """Hybrid conversation manager with state-based autonomy"""
+
     STATE_FLOW = [
         ConversationState.COLLECT_GOALS,
         ConversationState.COLLECT_CONSTRAINTS,
         ConversationState.COLLECT_PREFERENCES,
-        ConversationState.GENERATE
+        ConversationState.GENERATE,
     ]
-    
+
     def _add_user_message(self, text: str) -> None:
         if not text:
             return
@@ -426,6 +445,7 @@ class ConversationGraph:
                 prefix = "Сообщение"
             lines.append(f"{prefix}: {content}")
         return lines
+
     async def _build_user_input(self) -> UserDataInput:
         goals = self.collected_data.get("goals")
         # Do not inject defaults for cycles/frequency; let LLM choose if not provided by user
@@ -450,7 +470,7 @@ class ConversationGraph:
             current_metrics=self.collected_data.get("current_metrics"),
             target_metrics=self.collected_data.get("target_metrics"),
             normalization_unit=self.collected_data.get("normalization_unit"),
-            normalization_value=self.collected_data.get("normalization_value")
+            normalization_value=self.collected_data.get("normalization_value"),
         )
 
     async def _save_plan(self, plan: TrainingPlan) -> str:
@@ -506,7 +526,7 @@ class ConversationGraph:
 
             # If the user confirmed, or no warnings — proceed with generation
             self.autonomy.validation_warnings = []
-            
+
             user_data = await self._build_user_input()
             try:
                 # Generate plan and concise in-model summary in a single call
@@ -523,12 +543,9 @@ class ConversationGraph:
                 return message, True
             plan_id = await self._save_plan(plan)
             # Use the in-model summary from the same LLM call, if present
-            summary_text = (plan_summary or "").strip() if 'plan_summary' in locals() else ""
+            summary_text = (plan_summary or "").strip() if "plan_summary" in locals() else ""
             if summary_text:
-                message = (
-                    f"Ваш план тренировок готов! ID: {plan_id}\n\n"
-                    f"Краткое саммари плана:\n{summary_text}"
-                )
+                message = f"Ваш план тренировок готов! ID: {plan_id}\n\n" f"Краткое саммари плана:\n{summary_text}"
             else:
                 message = f"Ваш план тренировок готов! ID: {plan_id}"
             self._add_assistant_message(message)
@@ -565,10 +582,8 @@ class ConversationGraph:
         self._add_assistant_message(question)
         return question, False
 
-
     def current_state(self) -> ConversationState:
         return self.STATE_FLOW[self.state_index]
-
 
     def __init__(self, user_id: Optional[str] = None):
         self.state_index = 0
@@ -586,9 +601,11 @@ class ConversationGraph:
                 return True
         return False
 
+
 # -----------------------------------------------------------------------------
 # LangChain agent utilities (point 8 fix)
 # -----------------------------------------------------------------------------
+
 
 async def fetch_exercises(query: str) -> str:
     """Fetch exercises from exercises-service asynchronously."""

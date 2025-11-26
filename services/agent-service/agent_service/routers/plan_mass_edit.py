@@ -1,69 +1,68 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import structlog
+from celery.result import AsyncResult
+from fastapi import APIRouter, Depends
 
+from ..celery_app import celery_app
 from ..dependencies import get_current_user_id
-from ..schemas.mass_edit import (
-    AgentPlanMassEditRequest,
-    AgentPlanMassEditResponse,
-    AgentPlanMassEditToolResponse,
+from ..schemas.mass_edit import AgentPlanMassEditRequest
+from ..schemas.task_responses import TaskStatusResponse, TaskSubmissionResponse
+from ..tasks.mass_edit_tasks import (
+    execute_mass_edit_agent_task,
+    execute_mass_edit_task,
 )
-from ..services.mass_edit import (
-    generate_mass_edit_command,
-    apply_mass_edit_to_plan,
-    create_plan_mass_edit_tool,
-)
-from ..services.tool_agent import run_tools_agent
 
 router = APIRouter(prefix="/agent", tags=["mass_edit"])
+logger = structlog.get_logger(__name__)
 
 
-@router.post("/plan-mass-edit", response_model=AgentPlanMassEditResponse)
+def _submit_task(task_fn, payload: AgentPlanMassEditRequest, user_id: str) -> TaskSubmissionResponse:
+    signature = task_fn.s(
+        plan_id=payload.plan_id,
+        user_id=user_id,
+        mode=payload.mode,
+        prompt=payload.prompt,
+    )
+    async_result = signature.apply_async()
+    logger.info(
+        "mass_edit_task_enqueued",
+        task_id=async_result.id,
+        task_name=task_fn.name,
+        plan_id=payload.plan_id,
+        user_id=user_id,
+        mode=payload.mode,
+    )
+    return TaskSubmissionResponse(task_id=async_result.id, status=async_result.status)
+
+
+@router.post("/plan-mass-edit", response_model=TaskSubmissionResponse)
 async def plan_mass_edit_endpoint(
     payload: AgentPlanMassEditRequest,
     user_id: str = Depends(get_current_user_id),
-) -> AgentPlanMassEditResponse:
-    """Обработать запрос пользователя к ЛЛМ и применить mass edit к плану."""
+):
+    """Запустить mass edit (прямое применение команды) в Celery."""
 
-    try:
-        command = await generate_mass_edit_command(payload.prompt, payload.mode)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-
-    updated_plan = await apply_mass_edit_to_plan(payload.plan_id, user_id, command)
-    return AgentPlanMassEditResponse(plan=updated_plan, mass_edit_command=command)
+    return _submit_task(execute_mass_edit_task, payload, user_id)
 
 
-@router.post("/plan-mass-edit-gpt", response_model=AgentPlanMassEditToolResponse)
+@router.post("/plan-mass-edit-gpt", response_model=TaskSubmissionResponse)
 async def plan_mass_edit_gpt_endpoint(
     payload: AgentPlanMassEditRequest,
     user_id: str = Depends(get_current_user_id),
-) -> AgentPlanMassEditToolResponse:
-    tool = create_plan_mass_edit_tool(user_id)
+):
+    """Запустить сценарий с tool-агентом через Celery."""
 
-    user_prompt = payload.prompt
-    arguments_prompt = (
-        f"You must use the `plan_mass_edit` tool if it helps. "
-        f"The target plan_id is {payload.plan_id} and default mode is {payload.mode}. "
-        f"User instructions: {user_prompt}"
-    )
+    return _submit_task(execute_mass_edit_agent_task, payload, user_id)
 
-    result = await run_tools_agent(
-        user_prompt=arguments_prompt,
-        tools=[tool],
-        temperature=0.2,
-    )
 
-    plan = None
-    command = None
-    if result.decision_type == "tool_call" and isinstance(result.tool_result, dict):
-        plan = result.tool_result.get("plan")
-        command = result.tool_result.get("mass_edit_command")
+@router.get("/plan-mass-edit/tasks/{task_id}", response_model=TaskStatusResponse)
+async def get_mass_edit_task_status(task_id: str) -> TaskStatusResponse:
+    """Вернуть статус выполнения mass edit задачи."""
 
-    return AgentPlanMassEditToolResponse(
-        decision_type=result.decision_type,
-        tool_name=result.tool_name,
-        assistant_message=result.answer,
-        tool_arguments=result.arguments,
-        plan=plan,
-        mass_edit_command=command,
-        raw_decision=result.raw_decision,
-    )
+    result = AsyncResult(task_id, app=celery_app)
+    response = TaskStatusResponse(task_id=task_id, status=result.status)
+    if result.failed():
+        response.error = str(result.result)
+    elif result.successful():
+        response.result = result.result
+    response.meta = result.info if isinstance(result.info, dict) else None
+    return response

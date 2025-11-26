@@ -1,32 +1,43 @@
 import asyncio
 import base64
-import json
 import hashlib
-import logging
+import json
 import os
 import re
+import time
+import uuid
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+
 import httpx
-from fastapi import APIRouter, FastAPI, Request, Response, HTTPException
-from fastapi.responses import JSONResponse
+import structlog
+from asgi_correlation_id import CorrelationIdMiddleware
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
+from redis.asyncio import Redis
+from sentry_sdk import set_tag, set_user
 from starlette.middleware.base import BaseHTTPMiddleware
-from fastapi import status, Query
-from datetime import datetime, timedelta
+
 from gateway_app import schemas
+from gateway_app.logging_config import configure_logging
 
+configure_logging()
+logger = structlog.get_logger(__name__)
+SERVICE_NAME = os.getenv("SERVICE_NAME", "api-gateway")
 
-logger = logging.getLogger(__name__)
 
 def _normalize_env_url(var_name: str) -> Optional[str]:
     raw = (os.getenv(var_name) or "").strip()
     if not raw:
-        logger.error("ENV %s is not set", var_name)
+        logger.error("env_var_missing", env_var=var_name)
         return None
     if not raw.startswith(("http://", "https://")):
         raw = f"https://{raw}"
     return raw.rstrip("/")
+
 
 RPE_SERVICE_URL = _normalize_env_url("RPE_SERVICE_URL")
 EXERCISES_SERVICE_URL = _normalize_env_url("EXERCISES_SERVICE_URL")
@@ -35,10 +46,18 @@ WORKOUTS_SERVICE_URL = _normalize_env_url("WORKOUTS_SERVICE_URL")
 PLANS_SERVICE_URL = _normalize_env_url("PLANS_SERVICE_URL")
 AGENT_SERVICE_URL = _normalize_env_url("AGENT_SERVICE_URL")
 ACCOUNTS_SERVICE_URL = _normalize_env_url("ACCOUNTS_SERVICE_URL")
+CRM_SERVICE_URL = _normalize_env_url("CRM_SERVICE_URL")
+
+SOCIAL_API_URL_RAW = (os.getenv("SOCIAL_API_URL") or "").strip()
+SOCIAL_API_URL = SOCIAL_API_URL_RAW.rstrip("/") if SOCIAL_API_URL_RAW else ""
+MESSAGING_API_URL_RAW = (os.getenv("MESSAGING_API_URL") or "").strip()
+MESSAGING_API_URL = MESSAGING_API_URL_RAW.rstrip("/") if MESSAGING_API_URL_RAW else ""
+MESSENGER_APP_ID = (os.getenv("MESSENGER_APP_ID") or "").strip()
 
 try:
     import firebase_admin
-    from firebase_admin import auth, credentials, exceptions as firebase_exceptions
+    from firebase_admin import auth, credentials
+    from firebase_admin import exceptions as firebase_exceptions
 except Exception:  # pragma: no cover
     firebase_admin = None  # type: ignore
     auth = None  # type: ignore
@@ -54,13 +73,16 @@ _GET_RETRY_BASE_DELAY = float(os.getenv("PROXY_GET_RETRY_BASE_DELAY_SECONDS", "0
 app = FastAPI(
     title="WorkoutApp Gateway",
     version="1.0",
-    servers=[{"url": "/api/v1", "description": "Gateway API base path"}]
+    servers=[{"url": "/api/v1", "description": "Gateway API base path"}],
 )
 app.router.redirect_slashes = False
+
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 # In-memory cache for profile aggregates
 _PROFILE_CACHE: dict[str, dict] = {}
 _PROFILE_CACHE_TTL_SECONDS = int(os.getenv("PROFILE_AGGREGATES_CACHE_TTL_SECONDS", "900"))
+
 
 def _invalidate_profile_cache_for_user(uid: Optional[str]) -> None:
     """Invalidate profile aggregates cache entries for a given user."""
@@ -76,13 +98,19 @@ def _invalidate_profile_cache_for_user(uid: Optional[str]) -> None:
         pass
 
 
+def _bind_sentry_user(uid: Optional[str]) -> None:
+    if uid:
+        set_user({"id": str(uid)})
+        set_tag("service", SERVICE_NAME)
+    else:
+        set_user(None)
+
+
 def _forward_headers(request: Request) -> Dict[str, str]:
     """Build downstream headers, ensuring X-User-Id is injected from the authenticated user."""
 
     allowed_header_names = {"traceparent", "x-request-id", "content-type", "accept"}
-    forwarded: Dict[str, str] = {
-        k: v for k, v in request.headers.items() if k.lower() in allowed_header_names
-    }
+    forwarded: Dict[str, str] = {k: v for k, v in request.headers.items() if k.lower() in allowed_header_names}
 
     user = getattr(request.state, "user", None)
     if user and isinstance(user, dict):
@@ -93,11 +121,92 @@ def _forward_headers(request: Request) -> Dict[str, str]:
     return forwarded
 
 
+def _forward_messenger_headers(request: Request) -> Dict[str, str]:
+    headers = _forward_headers(request)
+    authorization = request.headers.get("authorization")
+    if authorization:
+        headers["Authorization"] = authorization
+    if MESSENGER_APP_ID:
+        headers["X-App-Id"] = MESSENGER_APP_ID
+    return headers
+
+
+def _build_messenger_target(base_url: str, path: str) -> str:
+    suffix = path or ""
+    if suffix and not suffix.startswith("/"):
+        suffix = f"/{suffix}"
+    return f"{base_url.rstrip('/')}/{suffix.lstrip('/')}"
+
+
 _FIREBASE_APP: Optional[firebase_admin.App] = None if firebase_admin else None  # type: ignore
 _FIREBASE_CHECK_REVOKED = True
 _FIREBASE_AUDIENCE: Optional[str] = os.getenv("FIREBASE_PROJECT_ID")
 _FIREBASE_ISSUER: Optional[str] = None
-_PUBLIC_PATHS = {"/api/v1/health", "/openapi.json", "/docs", "/docs/", "/redoc", "/redoc/"}
+_PUBLIC_PATHS = {
+    "/api/v1/health",
+    "/openapi.json",
+    "/docs",
+    "/docs/",
+    "/redoc",
+    "/redoc/",
+    "/metrics",
+}
+_INTERNAL_GATEWAY_SECRET = (os.getenv("INTERNAL_GATEWAY_SECRET") or "").strip()
+
+_RATE_LIMIT_ENABLED = (os.getenv("GATEWAY_RATE_LIMIT_ENABLED") or "true").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+_RATE_LIMIT_REQUESTS = int(os.getenv("GATEWAY_RATE_LIMIT_REQUESTS", "60"))
+_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("GATEWAY_RATE_LIMIT_WINDOW_SECONDS", "60"))
+
+_GATEWAY_REDIS_HOST = os.getenv("GATEWAY_REDIS_HOST", "redis")
+_GATEWAY_REDIS_PORT = int(os.getenv("GATEWAY_REDIS_PORT", "6379"))
+_GATEWAY_REDIS_DB = int(os.getenv("GATEWAY_REDIS_DB", "0"))
+_GATEWAY_REDIS_PASSWORD = (os.getenv("GATEWAY_REDIS_PASSWORD") or "").strip() or None
+
+_rate_limit_redis: Optional[Redis] = None
+_rate_limit_redis_error_logged = False
+
+
+async def _get_rate_limit_redis() -> Optional[Redis]:
+    global _rate_limit_redis, _rate_limit_redis_error_logged
+    if not _RATE_LIMIT_ENABLED:
+        return None
+    if _rate_limit_redis is not None:
+        return _rate_limit_redis
+    try:
+        client = Redis(
+            host=_GATEWAY_REDIS_HOST,
+            port=_GATEWAY_REDIS_PORT,
+            db=_GATEWAY_REDIS_DB,
+            password=_GATEWAY_REDIS_PASSWORD,
+            encoding="utf-8",
+            decode_responses=True,
+            health_check_interval=30,
+        )
+        await client.ping()
+        _rate_limit_redis = client
+        try:
+            logger.info(
+                "gateway_rate_limit_redis_connected",
+                host=_GATEWAY_REDIS_HOST,
+                port=_GATEWAY_REDIS_PORT,
+                db=_GATEWAY_REDIS_DB,
+            )
+        except Exception:
+            pass
+        return _rate_limit_redis
+    except Exception as exc:
+        if not _rate_limit_redis_error_logged:
+            try:
+                logger.error("gateway_rate_limit_redis_connection_failed", error=str(exc))
+            except Exception:
+                pass
+            _rate_limit_redis_error_logged = True
+        return None
 
 
 def _initialize_firebase_app() -> None:
@@ -141,19 +250,91 @@ def _is_public_route(method: str, path: str) -> bool:
     return False
 
 
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if not _RATE_LIMIT_ENABLED:
+            return await call_next(request)
+
+        method = request.method.upper()
+        path = request.url.path
+
+        if method == "OPTIONS" or _is_public_route(method, path):
+            return await call_next(request)
+
+        internal_secret = request.headers.get("X-Internal-Secret")
+        if _INTERNAL_GATEWAY_SECRET and internal_secret == _INTERNAL_GATEWAY_SECRET:
+            return await call_next(request)
+
+        redis = await _get_rate_limit_redis()
+        if redis is None:
+            return await call_next(request)
+
+        user = getattr(request.state, "user", None)
+        identifier: str
+        if isinstance(user, dict) and user.get("uid"):
+            identifier = f"user:{user['uid']}"
+        else:
+            client = request.client
+            client_host = getattr(client, "host", None) if client else None
+            identifier = f"ip:{client_host or 'unknown'}"
+
+        now = int(time.time())
+        window = max(_RATE_LIMIT_WINDOW_SECONDS, 1)
+        bucket = now // window
+        key = f"gateway:ratelimit:{identifier}:{bucket}"
+        ttl = window
+
+        try:
+            count = await redis.incr(key)
+            if count == 1:
+                await redis.expire(key, ttl)
+        except Exception as exc:
+            try:
+                logger.warning("gateway_rate_limit_redis_operation_failed", error=str(exc))
+            except Exception:
+                pass
+            return await call_next(request)
+
+        if count > _RATE_LIMIT_REQUESTS:
+            retry_after = bucket * window + window - now
+            if retry_after < 1:
+                retry_after = 1
+            headers = {"Retry-After": str(retry_after)}
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content={"detail": "Too many requests"},
+                headers=headers,
+            )
+
+        return await call_next(request)
+
+
 class FirebaseAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         method = request.method.upper()
         path = request.url.path
         if method == "OPTIONS" or _is_public_route(method, path):
             return await call_next(request)
+        internal_secret = request.headers.get("X-Internal-Secret")
+        if _INTERNAL_GATEWAY_SECRET and internal_secret == _INTERNAL_GATEWAY_SECRET:
+            x_user_id = request.headers.get("X-User-Id")
+            if x_user_id:
+                request.state.user = {
+                    "uid": x_user_id,
+                    "email": None,
+                    "name": None,
+                    "picture": None,
+                    "claims": {},
+                }
+                _bind_sentry_user(x_user_id)
+            return await call_next(request)
         authorization = request.headers.get("authorization")
         if not authorization or not authorization.lower().startswith("bearer "):
-            logger.info("Missing Authorization header", extra={"path": path, "method": method})
+            logger.info("missing_authorization_header", path=path, method=method)
             return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Not authenticated"})
         token = authorization.split(" ", 1)[1].strip()
         if not token:
-            logger.info("Empty bearer token", extra={"path": path, "method": method})
+            logger.info("empty_bearer_token", path=path, method=method)
             return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Not authenticated"})
         try:
             if _FIREBASE_APP is None:
@@ -161,44 +342,77 @@ class FirebaseAuthMiddleware(BaseHTTPMiddleware):
             check_revoked = _FIREBASE_CHECK_REVOKED
             decoded = auth.verify_id_token(token, check_revoked=check_revoked, app=_FIREBASE_APP)
         except auth.RevokedIdTokenError:  # type: ignore[attr-defined]
-            logger.info("Firebase token revoked", extra={"path": path, "method": method})
+            logger.info("firebase_token_revoked", path=path, method=method)
             return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"detail": "Token revoked"})
         except (auth.InvalidIdTokenError, auth.ExpiredIdTokenError, ValueError):  # type: ignore[attr-defined]
-            logger.info("Invalid Firebase token", extra={"path": path, "method": method})
-            return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid authentication credentials"})
+            logger.info("invalid_firebase_token", path=path, method=method)
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": "Invalid authentication credentials"},
+            )
         except Exception as exc:
             if firebase_exceptions and isinstance(exc, firebase_exceptions.FirebaseError):  # type: ignore[attr-defined]
                 logger.error("Firebase verification error", exc_info=True)
-                return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"detail": "Authentication service unavailable"})
+                return JSONResponse(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    content={"detail": "Authentication service unavailable"},
+                )
             if isinstance(exc, RuntimeError):
                 logger.error("Firebase initialization failed", exc_info=True)
-                return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": "Authentication backend misconfigured"})
+                return JSONResponse(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    content={"detail": "Authentication backend misconfigured"},
+                )
             logger.error("Unexpected authentication error", exc_info=True)
-            return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": "Authentication error"})
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"detail": "Authentication error"},
+            )
         if not decoded.get("uid"):
-            logger.info("Missing uid in Firebase token", extra={"path": path, "method": method})
-            return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid authentication credentials"})
-        if _FIREBASE_AUDIENCE and decoded.get("aud") not in {_FIREBASE_AUDIENCE, f"project-{_FIREBASE_AUDIENCE}"}:
-            logger.info("Firebase token audience mismatch", extra={"path": path, "method": method})
-            return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid authentication credentials"})
+            logger.info("missing_uid_in_token", path=path, method=method)
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": "Invalid authentication credentials"},
+            )
+        if _FIREBASE_AUDIENCE and decoded.get("aud") not in {
+            _FIREBASE_AUDIENCE,
+            f"project-{_FIREBASE_AUDIENCE}",
+        }:
+            logger.info("firebase_token_audience_mismatch", path=path, method=method)
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": "Invalid authentication credentials"},
+            )
         if _FIREBASE_ISSUER and decoded.get("iss") != _FIREBASE_ISSUER:
-            logger.info("Firebase token issuer mismatch", extra={"path": path, "method": method})
-            return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid authentication credentials"})
-        filtered_claims = {k: v for k, v in decoded.items() if k not in {"uid", "sub", "aud", "iss", "iat", "exp", "auth_time"}}
+            logger.info("firebase_token_issuer_mismatch", path=path, method=method)
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": "Invalid authentication credentials"},
+            )
+        filtered_claims = {
+            k: v for k, v in decoded.items() if k not in {"uid", "sub", "aud", "iss", "iat", "exp", "auth_time"}
+        }
+        uid = decoded["uid"]
         request.state.user = {
-            "uid": decoded["uid"],
+            "uid": uid,
             "email": decoded.get("email"),
             "name": decoded.get("name"),
             "picture": decoded.get("picture"),
             "claims": filtered_claims,
         }
+        _bind_sentry_user(uid)
         return await call_next(request)
 
 
 # First attach CORS (outer)
 _cors_origins = os.getenv("CORS_ORIGINS", "*")
 _allow_origins = [o.strip() for o in _cors_origins.split(",")] if _cors_origins != "*" else ["*"]
-_env_allow_credentials = os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower() in ("1", "true", "yes", "on")
+_env_allow_credentials = os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 
 # If wildcard origin is used, Starlette cannot send Access-Control-Allow-Origin with credentials enabled.
 # To ensure browsers get ACAO "*", disable credentials when origins is wildcard.
@@ -211,8 +425,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+app.add_middleware(
+    CorrelationIdMiddleware,
+    header_name="X-Request-ID",
+    generator=lambda: str(uuid.uuid4()),
+    update_request_header=True,
+)
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(FirebaseAuthMiddleware)
+
 
 @app.get("/api/v1/health")
 async def health() -> dict:
@@ -267,6 +488,7 @@ async def get_authenticated_user(request: Request) -> dict:
         "claims": user.get("claims") or {},
     }
 
+
 async def fetch_service_spec(url: str) -> dict:
     timeout = httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=10.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
@@ -275,14 +497,25 @@ async def fetch_service_spec(url: str) -> dict:
                 r = await client.get(f"{url}/openapi.json", headers={"Accept": "application/json"})
                 if r.status_code == 200:
                     return r.json()
-                # Log non-200 statuses to aid diagnostics
                 body_preview = r.text[:200] if r.text else ""
-                print(f"Attempt {attempt+1}: {url}/openapi.json -> {r.status_code} {body_preview}")
-            except Exception as e:
-                print(f"Attempt {attempt+1} failed to fetch spec from {url}: {e}")
+                logger.warning(
+                    "openapi_fetch_non_200",
+                    attempt=attempt + 1,
+                    url=url,
+                    status_code=r.status_code,
+                    body_preview=body_preview,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "openapi_fetch_error",
+                    attempt=attempt + 1,
+                    url=url,
+                    error=str(exc),
+                )
             await asyncio.sleep(2)
-        print(f"Failed to fetch spec from {url} after 10 attempts")
+        logger.error("openapi_fetch_failed", url=url, attempts=attempt + 1)
         return {}
+
 
 def merge_openapi_schemas(specs: list[dict], services: dict) -> dict:
     merged = {
@@ -290,12 +523,12 @@ def merge_openapi_schemas(specs: list[dict], services: dict) -> dict:
         "info": {
             "title": "WorkoutApp Gateway",
             "version": "1.0",
-            "description": "Aggregated API Documentation"
+            "description": "Aggregated API Documentation",
         },
         "paths": {},
         "components": {"schemas": {}},
     }
-    
+
     # Map service names to their gateway prefixes
     service_prefixes = {
         "rpe": "/api/v1",
@@ -303,9 +536,9 @@ def merge_openapi_schemas(specs: list[dict], services: dict) -> dict:
         "user_max": "/api/v1",
         "workouts": "/api/v1",
         "sessions": "/api/v1",
-        "plans": "/api/v1"
+        "plans": "/api/v1",
     }
-    
+
     for service_name, spec in zip(services.keys(), specs):
         if not spec or "paths" not in spec:
             continue
@@ -323,13 +556,18 @@ def merge_openapi_schemas(specs: list[dict], services: dict) -> dict:
                         merged["paths"][full_path][method] = operation
         if "components" in spec and "schemas" in spec["components"]:
             merged["components"]["schemas"].update(spec["components"]["schemas"])
-    
+
     return merged
+
 
 @app.on_event("startup")
 async def aggregate_openapi():
     # Allow disabling spec fetch on startup via ENV
-    fetch_on_start = (os.getenv("FETCH_OPENAPI_ON_STARTUP", "false").strip().lower() in {"1", "true", "yes"})
+    fetch_on_start = os.getenv("FETCH_OPENAPI_ON_STARTUP", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
     if not fetch_on_start:
         try:
             logger.info("Skipping OpenAPI aggregation on startup (FETCH_OPENAPI_ON_STARTUP=false)")
@@ -341,29 +579,32 @@ async def aggregate_openapi():
         "exercises": EXERCISES_SERVICE_URL,
         "user_max": USER_MAX_SERVICE_URL,
         "workouts": WORKOUTS_SERVICE_URL,
-        "plans": PLANS_SERVICE_URL
+        "plans": PLANS_SERVICE_URL,
     }
     try:
         logger.info(
-            "Upstream URLs | rpe=%s exercises=%s user_max=%s workouts=%s plans=%s agent=%s",
-            RPE_SERVICE_URL, EXERCISES_SERVICE_URL, USER_MAX_SERVICE_URL, WORKOUTS_SERVICE_URL, PLANS_SERVICE_URL, AGENT_SERVICE_URL,
+            "upstream_urls",
+            rpe=RPE_SERVICE_URL,
+            exercises=EXERCISES_SERVICE_URL,
+            user_max=USER_MAX_SERVICE_URL,
+            workouts=WORKOUTS_SERVICE_URL,
+            plans=PLANS_SERVICE_URL,
+            agent=AGENT_SERVICE_URL,
         )
     except Exception:
         pass
-    
+
     # Fetch OpenAPI specs from all services
-    specs = await asyncio.gather(*[
-        fetch_service_spec(url) for url in services.values() if url
-    ])
-    
+    specs = await asyncio.gather(*[fetch_service_spec(url) for url in services.values() if url])
+
     merged_spec = merge_openapi_schemas(specs, services)
-    # Log which services were fetched successfully
     for service_name, spec in zip(services.keys(), specs):
         if spec:
-            print(f"Successfully fetched OpenAPI spec for {service_name}")
+            logger.info("openapi_spec_fetch_success", service=service_name)
         else:
-            print(f"Failed to fetch OpenAPI spec for {service_name}")
+            logger.warning("openapi_spec_fetch_failed", service=service_name)
     app.openapi_schema = merged_spec
+
 
 # On-demand OpenAPI aggregation endpoint
 @app.post("/api/v1/openapi/refresh")
@@ -382,6 +623,7 @@ async def refresh_openapi(request: Request) -> JSONResponse:
     else:
         await aggregate_openapi()
         return JSONResponse({"status": "ok"})
+
 
 @app.post("/api/v1/profile/photo/apply")
 async def apply_profile_photo(request: Request) -> JSONResponse:
@@ -430,6 +672,19 @@ async def apply_profile_photo(request: Request) -> JSONResponse:
         base_url = str(request.base_url).rstrip("/")
         photo_url = f"{base_url}{public_path}?v={version}"
 
+    # Best-effort sync of profile.photo_url in accounts-service
+    try:
+        if ACCOUNTS_SERVICE_URL:
+            profile_url = f"{ACCOUNTS_SERVICE_URL}/profile/me"
+            profile_headers = dict(headers)
+            profile_headers["Content-Type"] = "application/json"
+            payload = json.dumps({"photo_url": photo_url})
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                await client.patch(profile_url, headers=profile_headers, content=payload, follow_redirects=True)
+    except Exception:
+        # Non-fatal; avatar remains usable even if profile update fails
+        pass
+
     # Update Firebase user photoURL if admin SDK is available
     try:
         if auth is not None:
@@ -440,11 +695,13 @@ async def apply_profile_photo(request: Request) -> JSONResponse:
 
     return JSONResponse({"photo_url": photo_url})
 
+
 @app.get("/api/v1/avatars/{uid}.png")
 async def proxy_avatar(uid: str, request: Request) -> Response:
     headers = _forward_headers(request)
     target_url = f"{ACCOUNTS_SERVICE_URL}/avatars/{uid}.png"
     return await _proxy_request(request, target_url, headers)
+
 
 # Create routers for each service
 rpe_router = APIRouter(prefix="/api/v1/rpe")
@@ -460,6 +717,8 @@ plans_instances_router = APIRouter(prefix="/api/v1/plans/calendar-plan-instances
 plans_mesocycles_router = APIRouter(prefix="/api/v1/plans/mesocycles")
 plans_templates_router = APIRouter(prefix="/api/v1/plans/mesocycle-templates")
 analytics_router = APIRouter(prefix="/api/v1")
+crm_router = APIRouter(prefix="/api/v1/crm")
+
 
 def _date_key_from_iso(iso_str: str) -> str:
     try:
@@ -467,6 +726,7 @@ def _date_key_from_iso(iso_str: str) -> str:
     except Exception:
         return iso_str[:10]
     return dt.date().isoformat()
+
 
 async def _fetch_instances_for_workout(workout_id: int, headers: dict) -> list[dict]:
     url = f"{EXERCISES_SERVICE_URL}/exercises/instances/workouts/{workout_id}/instances"
@@ -476,6 +736,7 @@ async def _fetch_instances_for_workout(workout_id: int, headers: dict) -> list[d
             data = res.json() or []
             return data if isinstance(data, list) else []
     return []
+
 
 def _build_set_volume_index(instances: list[dict]) -> tuple[dict[int, float], float]:
     set_volume: dict[int, float] = {}
@@ -522,17 +783,53 @@ def _build_set_volume_index(instances: list[dict]) -> tuple[dict[int, float], fl
             total += v
     return set_volume, total
 
+
+async def _fetch_target_profile(user_id: str) -> dict:
+    if not ACCOUNTS_SERVICE_URL:
+        raise HTTPException(status_code=503, detail="Accounts service unavailable")
+    target_url = f"{ACCOUNTS_SERVICE_URL}/profile/{user_id}"
+    async with httpx.AsyncClient(timeout=_DEFAULT_PROXY_TIMEOUT, follow_redirects=True) as client:
+        resp = await client.get(target_url)
+    if resp.status_code == 404:
+        raise HTTPException(status_code=404, detail="User profile not found")
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail="Failed to fetch target profile")
+    data = resp.json()
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=502, detail="Invalid profile response")
+    return data
+
+
 @analytics_router.get("/profile/aggregates", response_model=schemas.ProfileAggregatesResponse)
-async def get_profile_aggregates(request: Request, weeks: int = Query(48, ge=1, le=104), limit: int = Query(20, ge=1, le=100)):
+async def get_profile_aggregates(
+    request: Request,
+    weeks: int = Query(48, ge=1, le=104),
+    limit: int = Query(20, ge=1, le=100),
+    user_id: str | None = Query(
+        None,
+        description="Optional target user id. Defaults to current user.",
+    ),
+):
     headers = _forward_headers(request)
     now = datetime.utcnow()
     grid_end = datetime(now.year, now.month, now.day)
     grid_start = grid_end - timedelta(days=weeks * 7 - 1)
 
-    # Check cache/ETag
+    # Determine target uid
     user = getattr(request.state, "user", None)
-    uid = (user or {}).get("uid") if isinstance(user, dict) else None
-    cache_key = f"{uid or 'anon'}:{weeks}:{limit}"
+    requester_uid = (user or {}).get("uid") if isinstance(user, dict) else None
+    target_uid = user_id or requester_uid
+    if target_uid is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # If requesting someone else's data, ensure their profile is public
+    if user_id and user_id != requester_uid:
+        profile_data = await _fetch_target_profile(user_id)
+        if not profile_data.get("is_public", False):
+            raise HTTPException(status_code=403, detail="Profile is private")
+
+    # Check cache/ETag
+    cache_key = f"{target_uid}:{weeks}:{limit}"
     inm = request.headers.get("if-none-match")
     cached = _PROFILE_CACHE.get(cache_key)
     if cached:
@@ -545,8 +842,10 @@ async def get_profile_aggregates(request: Request, weeks: int = Query(48, ge=1, 
 
     # 1) Fetch all sessions
     sessions_url = f"{WORKOUTS_SERVICE_URL}/workouts/sessions/history/all"
+    headers_for_sessions = dict(headers)
+    headers_for_sessions["X-User-Id"] = target_uid
     async with httpx.AsyncClient() as client:
-        resp = await client.get(sessions_url, headers=headers, follow_redirects=True)
+        resp = await client.get(sessions_url, headers=headers_for_sessions, follow_redirects=True)
         if resp.status_code != 200:
             raise HTTPException(status_code=resp.status_code, detail="Failed to fetch sessions history")
         sessions_raw = resp.json() or []
@@ -606,11 +905,14 @@ async def get_profile_aggregates(request: Request, weeks: int = Query(48, ge=1, 
     wid_to_index: dict[int, dict[int, float]] = {}
     wid_to_total: dict[int, float] = {}
 
+    headers_for_instances = dict(headers)
+    headers_for_instances["X-User-Id"] = target_uid
+
     sem = asyncio.Semaphore(6)
 
     async def _build_for_wid(wid: int):
         async with sem:
-            instances = await _fetch_instances_for_workout(wid, headers)
+            instances = await _fetch_instances_for_workout(wid, headers_for_instances)
             set_idx, total = _build_set_volume_index(instances)
             wid_to_index[wid] = set_idx
             wid_to_total[wid] = total
@@ -639,7 +941,9 @@ async def get_profile_aggregates(request: Request, weeks: int = Query(48, ge=1, 
         if isinstance(wid, int):
             set_lookup = wid_to_index.get(wid) or {}
             # If nothing completed explicitly, fallback to total workout volume
-            if not isinstance(completed_map, dict) or not any(isinstance(v, list) and v for v in completed_map.values()):
+            if not isinstance(completed_map, dict) or not any(
+                isinstance(v, list) and v for v in completed_map.values()
+            ):
                 session_volume = wid_to_total.get(wid, 0.0)
             else:
                 for v in completed_map.values():
@@ -671,7 +975,11 @@ async def get_profile_aggregates(request: Request, weeks: int = Query(48, ge=1, 
                 id=int(s.get("id")),
                 workout_id=int(s.get("workout_id")),
                 started_at=datetime.fromisoformat(str(s.get("started_at")).replace("Z", "+00:00")),
-                finished_at=(datetime.fromisoformat(str(s.get("finished_at")).replace("Z", "+00:00")) if s.get("finished_at") else None),
+                finished_at=(
+                    datetime.fromisoformat(str(s.get("finished_at")).replace("Z", "+00:00"))
+                    if s.get("finished_at")
+                    else None
+                ),
                 status=str(s.get("status") or ""),
             )
         )
@@ -739,10 +1047,36 @@ async def avatars_generate(request: Request) -> Response:
         headers["X-User-Id"] = str(user["uid"])  # needed by agent-service
     target_url = f"{AGENT_SERVICE_URL}/avatars/generate"
     return await _proxy_request(request, target_url, headers)
+
+
+@app.api_route(
+    "/api/v1/social{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+)
+async def proxy_social(request: Request, path: str = "") -> Response:
+    if not SOCIAL_API_URL:
+        raise HTTPException(status_code=503, detail="Social API is not configured")
+    target_url = _build_messenger_target(SOCIAL_API_URL, path)
+    headers = _forward_messenger_headers(request)
+    return await _proxy_request(request, target_url, headers)
+
+
+@app.api_route(
+    "/api/v1/messaging{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+)
+async def proxy_messaging(request: Request, path: str = "") -> Response:
+    if not MESSAGING_API_URL:
+        raise HTTPException(status_code=503, detail="Messaging API is not configured")
+    target_url = _build_messenger_target(MESSAGING_API_URL, path)
+    headers = _forward_messenger_headers(request)
+    return await _proxy_request(request, target_url, headers)
+
+
 async def _proxy_request(request: Request, target_url: str, headers: dict) -> Response:
     method = request.method
     params = dict(request.query_params)
-    
+
     timeout_seconds = _DEFAULT_PROXY_TIMEOUT
     if "plans/applied-plans/apply" in target_url:
         timeout_seconds = _PLANS_APPLY_TIMEOUT
@@ -757,7 +1091,6 @@ async def _proxy_request(request: Request, target_url: str, headers: dict) -> Re
     # Retry only for idempotent methods (GET/HEAD) on connection/timeout errors
     attempts = 1
     max_attempts = _GET_RETRIES if method in ("GET", "HEAD") else 1
-    last_exc: Exception | None = None
     while attempts <= max_attempts:
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
@@ -781,34 +1114,36 @@ async def _proxy_request(request: Request, target_url: str, headers: dict) -> Re
                     )
             break
         except (httpx.TimeoutException, httpx.ConnectError) as exc:
-            last_exc = exc
             if attempts >= max_attempts:
                 if isinstance(exc, httpx.TimeoutException):
                     logger.error(
                         "Proxy request timed out",
-                        extra={"target_url": target_url, "method": method, "params": params, "attempt": attempts},
-                        exc_info=True,
+                        logger.error(
+                            "proxy_request_timed_out",
+                            target_url=target_url,
+                            method=method,
+                            params=params,
+                            attempt=attempts,
+                            exc_info=True,
+                        ),
                     )
-                    raise HTTPException(status_code=504, detail="Upstream service timeout") from exc
-                logger.error(
-                    "Proxy request failed before receiving response",
-                    extra={"target_url": target_url, "method": method, "params": params, "attempt": attempts},
-                    exc_info=True,
-                )
-                raise HTTPException(status_code=502, detail="Upstream service error") from exc
-            # backoff and retry
-            delay = _GET_RETRY_BASE_DELAY * (2 ** (attempts - 1))
-            try:
-                await asyncio.sleep(delay)
-            except Exception:
-                pass
-            attempts += 1
-            continue
+                raise HTTPException(status_code=504, detail="Upstream service timeout") from exc
+            logger.error(
+                "proxy_request_failed_before_response",
+                target_url=target_url,
+                method=method,
+                params=params,
+                attempt=attempts,
+                exc_info=True,
+            )
+            raise HTTPException(status_code=502, detail="Upstream service error") from exc
         except httpx.HTTPError as exc:
             # Non-retryable httpx errors
             logger.error(
-                "Proxy request failed before receiving response",
-                extra={"target_url": target_url, "method": method, "params": params},
+                "proxy_request_failed_before_response",
+                target_url=target_url,
+                method=method,
+                params=params,
                 exc_info=True,
             )
             raise HTTPException(status_code=502, detail="Upstream service error") from exc
@@ -818,14 +1153,12 @@ async def _proxy_request(request: Request, target_url: str, headers: dict) -> Re
         if len(body_preview) > 1000:
             body_preview = f"{body_preview[:1000]}..."
         logger.error(
-            "Proxy request failed",
-            extra={
-                "target_url": target_url,
-                "status_code": r.status_code,
-                "response_body": body_preview,
-                "method": method,
-                "params": params,
-            },
+            "proxy_request_failed",
+            target_url=target_url,
+            status_code=r.status_code,
+            response_body=body_preview,
+            method=method,
+            params=params,
         )
 
     ct = r.headers.get("content-type", "application/json")
@@ -863,7 +1196,12 @@ async def _derive_exercise_instances_from_plan(
         async with httpx.AsyncClient() as client:
             res = await client.get(plan_url, headers=headers)
             if res.status_code != 200:
-                print(f"[DEBUG] Plan fetch failed: {res.status_code} {res.text}")
+                logger.warning(
+                    "plan_fetch_failed",
+                    status_code=res.status_code,
+                    body=res.text,
+                    url=plan_url,
+                )
                 return []
             plan = res.json()
 
@@ -934,9 +1272,10 @@ async def _derive_exercise_instances_from_plan(
                         if day_label_target:
                             return instances
 
-    except Exception as e:
-        print(f"[DEBUG] Failed to derive instances from plan: {e}")
+    except Exception as exc:
+        logger.warning("plan_instance_derivation_failed", error=str(exc), applied_plan_id=applied_plan_id)
     return []
+
 
 # -------- Shared workout assembler (BFF) --------
 def _parse_include_expand(request: Request) -> set[str]:
@@ -952,6 +1291,7 @@ def _parse_include_expand(request: Request) -> set[str]:
             if part:
                 tokens.add(part)
     return tokens
+
 
 async def _assemble_workout_for_client(
     *,
@@ -974,18 +1314,20 @@ async def _assemble_workout_for_client(
     instances_url = f"{EXERCISES_SERVICE_URL}/exercises/instances/workouts/{workout_id}/instances"
     try:
         async with httpx.AsyncClient() as client:
-            print(f"[DEBUG] Fetching exercise instances from: {instances_url}")
+            logger.debug("instances_fetch_start", url=instances_url)
             instances_res = await client.get(instances_url, headers=headers, follow_redirects=True)
-            print(f"[DEBUG] Instances response status: {instances_res.status_code}")
+            logger.debug("instances_fetch_response", status_code=instances_res.status_code)
             if instances_res.status_code == 200:
                 instances_data = instances_res.json() or []
             else:
-                try:
-                    print(f"[DEBUG] Instances response body: {instances_res.text}")
-                except Exception:
-                    pass
-    except Exception as e:
-        print(f"[DEBUG] Failed to fetch instances for workout {workout_id}: {e}")
+                logger.warning(
+                    "instances_fetch_non_200",
+                    status_code=instances_res.status_code,
+                    body=instances_res.text,
+                    url=instances_url,
+                )
+    except Exception as exc:
+        logger.warning("instances_fetch_failed", workout_id=workout_id, error=str(exc))
 
     # 2) Fallbacks only when instances are unavailable
     if not instances_data:
@@ -1000,25 +1342,31 @@ async def _assemble_workout_for_client(
                     sets = []
                     for s in ex.get("sets", []):
                         # Keep compact client schema but include effort as a separate field for consistency
-                        sets.append({
+                        sets.append(
+                            {
+                                "id": None,
+                                "reps": s.get("volume"),
+                                "weight": s.get("working_weight")
+                                if s.get("working_weight") is not None
+                                else s.get("weight"),
+                                "rpe": s.get("effort"),
+                                "effort": s.get("effort"),
+                                "effort_type": "RPE",
+                                "intensity": s.get("intensity"),
+                                "order": None,
+                            }
+                        )
+                    mapped_instances.append(
+                        {
                             "id": None,
-                            "reps": s.get("volume"),
-                            "weight": s.get("working_weight") if s.get("working_weight") is not None else s.get("weight"),
-                            "rpe": s.get("effort"),
-                            "effort": s.get("effort"),
-                            "effort_type": "RPE",
-                            "intensity": s.get("intensity"),
+                            "exercise_list_id": ex.get("exercise_id"),
+                            "sets": sets,
+                            "notes": ex.get("notes"),
                             "order": None,
-                        })
-                    mapped_instances.append({
-                        "id": None,
-                        "exercise_list_id": ex.get("exercise_id"),
-                        "sets": sets,
-                        "notes": ex.get("notes"),
-                        "order": None,
-                        "workout_id": workout_id,
-                        "user_max_id": None,
-                    })
+                            "workout_id": workout_id,
+                            "user_max_id": None,
+                        }
+                    )
                 workout_data["exercise_instances"] = mapped_instances
             else:
                 # 2b) Plan-based fallback for generated workouts
@@ -1057,12 +1405,13 @@ async def _assemble_workout_for_client(
                             ex_id = inst.get("exercise_list_id")
                             if isinstance(ex_id, (int, str)) and str(ex_id).isdigit():
                                 inst["exercise_definition"] = by_id.get(int(ex_id))
-        except Exception as e:
-            print(f"[DEBUG] Failed to enrich exercise definitions: {e}")
+        except Exception as exc:
+            logger.warning("exercise_definition_enrich_failed", error=str(exc))
 
     # 5) Do not expose raw workouts-service 'exercises' to clients
     workout_data.pop("exercises", None)
     return workout_data
+
 
 # RPE routes
 @rpe_router.api_route("{path:path}", methods=["GET", "POST"])
@@ -1070,6 +1419,7 @@ async def proxy_rpe(request: Request, path: str = "") -> Response:
     target_url = f"{RPE_SERVICE_URL}/rpe{path}"
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
+
 
 @workouts_router.put("/sessions/{session_id}/instances/{instance_id}/sets/{set_id}/completion")
 async def complete_set_for_session(session_id: int, instance_id: int, set_id: int, request: Request) -> Response:
@@ -1099,7 +1449,11 @@ async def complete_set_for_session(session_id: int, instance_id: int, set_id: in
             try:
                 return JSONResponse(status_code=ex_res.status_code, content=ex_res.json())
             except Exception:
-                return Response(status_code=ex_res.status_code, content=ex_res.content, media_type=ex_res.headers.get("content-type", "application/json"))
+                return Response(
+                    status_code=ex_res.status_code,
+                    content=ex_res.content,
+                    media_type=ex_res.headers.get("content-type", "application/json"),
+                )
 
     # 2) Fetch instance to derive workout_id
     workout_id: int | None = None
@@ -1132,6 +1486,7 @@ async def complete_set_for_session(session_id: int, instance_id: int, set_id: in
                 # Ensure started_at non-null ISO string
                 if not session_data.get("started_at"):
                     import datetime as _dt
+
                     session_data["started_at"] = _dt.datetime.utcnow().isoformat()
                 return JSONResponse(content=session_data)
     except Exception:
@@ -1181,10 +1536,12 @@ async def complete_set_for_session(session_id: int, instance_id: int, set_id: in
     try:
         if not session_data.get("started_at"):
             import datetime as _dt
+
             session_data["started_at"] = _dt.datetime.utcnow().isoformat()
     except Exception:
         pass
     return JSONResponse(content=session_data)
+
 
 # Exercises core routes
 @exercises_core_router.api_route("{path:path}", methods=["GET"])
@@ -1193,12 +1550,14 @@ async def proxy_exercises_core(request: Request, path: str = "") -> Response:
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
 
+
 # Exercises definitions routes
 @exercises_definitions_router.api_route("{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_exercises_definitions(request: Request, path: str = "") -> Response:
     target_url = f"{EXERCISES_SERVICE_URL}/exercises/definitions{path}"
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
+
 
 # Exercises instances routes
 @exercises_instances_router.api_route("{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
@@ -1207,6 +1566,7 @@ async def proxy_exercises_instances(request: Request, path: str = "") -> Respons
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
 
+
 # User Max routes
 @user_max_router.api_route("{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_user_max(request: Request, path: str = "") -> Response:
@@ -1214,53 +1574,57 @@ async def proxy_user_max(request: Request, path: str = "") -> Response:
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
 
+
 # Workouts routes
 @workouts_router.post("/", response_model=schemas.WorkoutResponseWithExercises, status_code=status.HTTP_201_CREATED)
 async def create_workout(workout_data: schemas.WorkoutCreateWithExercises, request: Request):
     headers = _forward_headers(request)
-    
+
     try:
         # Создание тренировки
-        workout_url = f"{WORKOUTS_SERVICE_URL}/workouts/"  
+        workout_url = f"{WORKOUTS_SERVICE_URL}/workouts/"
         async with httpx.AsyncClient() as client:
             workout_payload = workout_data.model_dump_json(exclude={"exercise_instances"})
             workout_resp = await client.post(workout_url, content=workout_payload, headers=headers)
             workout_resp.raise_for_status()
-            
+
             workout = workout_resp.json()
             workout_id = workout["id"]
-            
+
             # Создание инстансов
             if workout_data.exercise_instances:
-                instances_url = f"{EXERCISES_SERVICE_URL}/exercises/instances/workouts/{workout_id}/instances"  
+                instances_url = f"{EXERCISES_SERVICE_URL}/exercises/instances/workouts/{workout_id}/instances"
                 created_instances = []
-                
+
                 for instance in workout_data.exercise_instances:
                     instance_data = instance.model_dump_json()
-                    instance_resp = await client.post(instances_url, content=instance_data, headers=headers, follow_redirects=True)
-                    
+                    instance_resp = await client.post(
+                        instances_url, content=instance_data, headers=headers, follow_redirects=True
+                    )
+
                     if instance_resp.status_code != 201:
                         # Compensation: delete workout if instance creation fails
-                        await client.delete(f"{workout_url}{workout_id}", headers=headers, follow_redirects=True)  
+                        await client.delete(f"{workout_url}{workout_id}", headers=headers, follow_redirects=True)
                         return JSONResponse(
-                            content={"detail": "Failed to create exercise instance", "error": instance_resp.json()},
-                            status_code=instance_resp.status_code
+                            content={
+                                "detail": "Failed to create exercise instance",
+                                "error": instance_resp.json(),
+                            },
+                            status_code=instance_resp.status_code,
                         )
                     created_instances.append(instance_resp.json())
-                
+
                 # Add instances to workout response
                 workout["exercise_instances"] = created_instances
-        
+
         return JSONResponse(content=workout, status_code=201)
     except httpx.HTTPStatusError as e:
         # Если создание инстансов провалилось, удаляем тренировку
         if "workout_id" in locals():
             async with httpx.AsyncClient() as cleanup_client:
                 await cleanup_client.delete(f"{workout_url}{workout_id}/", headers=headers)
-        return JSONResponse(
-            content={"detail": str(e)},
-            status_code=e.response.status_code
-        )
+        return JSONResponse(content={"detail": str(e)}, status_code=e.response.status_code)
+
 
 @workouts_router.get("/", response_model=List[schemas.WorkoutResponse])
 async def list_workouts(request: Request, skip: int = 0, limit: int = 100) -> Response:
@@ -1269,17 +1633,20 @@ async def list_workouts(request: Request, skip: int = 0, limit: int = 100) -> Re
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
 
+
 @workouts_router.get("/{workout_id}", response_model=schemas.WorkoutResponseWithExercises)
 async def get_workout(workout_id: int, request: Request):
     headers = _forward_headers(request)
-    
+
     # Get workout
     workout_url = f"{WORKOUTS_SERVICE_URL}/workouts/{workout_id}"
-    print(f"[DEBUG] Fetching workout from: {workout_url}")
     async with httpx.AsyncClient() as client:
         workout_res = await client.get(workout_url, headers=headers)
-        print(f"[DEBUG] Workout response status: {workout_res.status_code}")
-        print(f"[DEBUG] Workout response content: {workout_res.text}")
+        logger.debug(
+            "workout_fetch_response",
+            url=workout_url,
+            status_code=workout_res.status_code,
+        )
         if workout_res.status_code != 200:
             return JSONResponse(content=workout_res.json(), status_code=workout_res.status_code)
         workout_data = workout_res.json()
@@ -1291,8 +1658,9 @@ async def get_workout(workout_id: int, request: Request):
         headers=headers,
         include=include,
     )
-    print(f"[DEBUG] Final response data: {workout_data}")
+    logger.debug("workout_fetch_completed", workout_id=workout_id)
     return JSONResponse(content=workout_data)
+
 
 @workouts_router.get("/sessions/{workout_id}/history")
 async def get_workout_session_history(workout_id: int, request: Request) -> Response:
@@ -1300,11 +1668,34 @@ async def get_workout_session_history(workout_id: int, request: Request) -> Resp
     target_url = f"{WORKOUTS_SERVICE_URL}/workouts/sessions/{workout_id}/history"
     return await _proxy_request(request, target_url, headers)
 
+
 @workouts_router.get("/sessions/history/all")
 async def get_all_workouts_sessions_history(request: Request) -> Response:
     headers = _forward_headers(request)
     target_url = f"{WORKOUTS_SERVICE_URL}/workouts/sessions/history/all"
     return await _proxy_request(request, target_url, headers)
+
+
+@workouts_router.post("/schedule/shift-in-plan")
+async def shift_schedule_in_plan_proxy(request: Request) -> Response:
+    headers = _forward_headers(request)
+    target_url = f"{WORKOUTS_SERVICE_URL}/workouts/schedule/shift-in-plan"
+    return await _proxy_request(request, target_url, headers)
+
+
+@workouts_router.post("/schedule/shift-in-plan-async")
+async def shift_schedule_in_plan_async_proxy(request: Request) -> Response:
+    headers = _forward_headers(request)
+    target_url = f"{WORKOUTS_SERVICE_URL}/workouts/schedule/shift-in-plan-async"
+    return await _proxy_request(request, target_url, headers)
+
+
+@workouts_router.get("/schedule/tasks/{task_id}")
+async def get_schedule_task_status_proxy(task_id: str, request: Request) -> Response:
+    headers = _forward_headers(request)
+    target_url = f"{WORKOUTS_SERVICE_URL}/workouts/schedule/tasks/{task_id}"
+    return await _proxy_request(request, target_url, headers)
+
 
 @analytics_router.get("/profile/me")
 async def proxy_profile_me(request: Request) -> Response:
@@ -1320,6 +1711,32 @@ async def proxy_update_profile_me(request: Request) -> Response:
     return await _proxy_request(request, target_url, headers)
 
 
+@analytics_router.patch("/profile/me/coaching")
+async def proxy_update_profile_coaching(request: Request) -> Response:
+    headers = _forward_headers(request)
+    target_url = f"{ACCOUNTS_SERVICE_URL}/profile/me/coaching"
+    return await _proxy_request(request, target_url, headers)
+
+
+@analytics_router.get("/users/all")
+async def proxy_users_all(request: Request) -> Response:
+    headers = _forward_headers(request)
+    target_url = f"{ACCOUNTS_SERVICE_URL}/users/all"
+    return await _proxy_request(request, target_url, headers)
+
+
+@analytics_router.get("/profile/{user_id}")
+async def proxy_profile_by_id(user_id: str, request: Request) -> Response:
+    """Proxy to accounts-service to fetch profile by arbitrary user_id.
+
+    Gateway path: /api/v1/profile/{user_id}
+    Upstream:     {ACCOUNTS_SERVICE_URL}/profile/{user_id}
+    """
+    headers = _forward_headers(request)
+    target_url = f"{ACCOUNTS_SERVICE_URL}/profile/{user_id}"
+    return await _proxy_request(request, target_url, headers)
+
+
 @analytics_router.get("/profile/settings")
 async def proxy_profile_settings(request: Request) -> Response:
     headers = _forward_headers(request)
@@ -1331,6 +1748,33 @@ async def proxy_profile_settings(request: Request) -> Response:
 async def proxy_update_profile_settings(request: Request) -> Response:
     headers = _forward_headers(request)
     target_url = f"{ACCOUNTS_SERVICE_URL}/profile/settings"
+    return await _proxy_request(request, target_url, headers)
+
+
+@crm_router.api_route("/relationships{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def proxy_crm_relationships(path: str = "", request: Request = None) -> Response:  # type: ignore[assignment]
+    if request is None:
+        raise HTTPException(status_code=500, detail="Request context missing")
+    headers = _forward_headers(request)
+    target_url = f"{CRM_SERVICE_URL}/crm/relationships{path}"
+    return await _proxy_request(request, target_url, headers)
+
+
+@crm_router.api_route("/coach{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def proxy_crm_coach(path: str = "", request: Request = None) -> Response:  # type: ignore[assignment]
+    if request is None:
+        raise HTTPException(status_code=500, detail="Request context missing")
+    headers = _forward_headers(request)
+    target_url = f"{CRM_SERVICE_URL}/crm/coach{path}"
+    return await _proxy_request(request, target_url, headers)
+
+
+@crm_router.api_route("/analytics{path:path}", methods=["GET", "POST"])
+async def proxy_crm_analytics(path: str = "", request: Request = None) -> Response:  # type: ignore[assignment]
+    if request is None:
+        raise HTTPException(status_code=500, detail="Request context missing")
+    headers = _forward_headers(request)
+    target_url = f"{CRM_SERVICE_URL}/crm/analytics{path}"
     return await _proxy_request(request, target_url, headers)
 
 
@@ -1353,6 +1797,7 @@ async def get_workout_metrics(
     """
     headers = _forward_headers(request)
     allowed = {"volume", "effort", "kpsh", "reps", "1rm"}
+
     def _norm_metric(m: str) -> str:
         m = (m or "").strip().lower()
         return "1rm" if m in {"1rm", "one_rm", "one-rm"} else m
@@ -1366,9 +1811,10 @@ async def get_workout_metrics(
     mx = _norm_metric(metric_x)
     my = _norm_metric(metric_y)
     if not mx or not my or mx not in allowed or my not in allowed:
-        return JSONResponse(status_code=400, content={
-            "detail": f"metric_x and metric_y must be in {sorted(list(allowed))}"
-        })
+        return JSONResponse(
+            status_code=400,
+            content={"detail": f"metric_x and metric_y must be in {sorted(list(allowed))}"},
+        )
 
     # Date range: default last 90 days
     def _parse_dt(s: str | None) -> datetime | None:
@@ -1413,6 +1859,7 @@ async def get_workout_metrics(
     details: Dict[int, dict] = {}
     instances_by_workout: Dict[int, List[dict]] = {}
     async with httpx.AsyncClient(timeout=httpx.Timeout(20.0)) as client:
+
         async def fetch_detail(wid: int):
             try:
                 res = await client.get(f"{WORKOUTS_SERVICE_URL}/workouts/{wid}", headers=headers)
@@ -1420,20 +1867,25 @@ async def get_workout_metrics(
                     details[wid] = res.json()
             except Exception:
                 pass
+
         async def fetch_instances(wid: int):
             try:
-                res = await client.get(f"{EXERCISES_SERVICE_URL}/exercises/instances/workouts/{wid}/instances", headers=headers)
+                res = await client.get(
+                    f"{EXERCISES_SERVICE_URL}/exercises/instances/workouts/{wid}/instances",
+                    headers=headers,
+                )
                 if res.status_code == 200 and isinstance(res.json(), list):
                     instances_by_workout[wid] = res.json()
             except Exception:
                 pass
+
         await asyncio.gather(*[fetch_detail(wid) for wid in workout_ids])
         await asyncio.gather(*[fetch_instances(wid) for wid in workout_ids])
 
     # 3) Fetch exercise definitions once for equipment detection
     exercise_ids: set[int] = set()
     for d in details.values():
-        for ex in (d.get("exercises") or []):
+        for ex in d.get("exercises") or []:
             ex_id = ex.get("exercise_id")
             if isinstance(ex_id, int):
                 exercise_ids.add(ex_id)
@@ -1449,7 +1901,12 @@ async def get_workout_metrics(
         ids_query = ",".join(str(i) for i in sorted(exercise_ids))
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(20.0)) as client:
-                res = await client.get(f"{EXERCISES_SERVICE_URL}/exercises/definitions", headers=headers, params={"ids": ids_query}, follow_redirects=True)
+                res = await client.get(
+                    f"{EXERCISES_SERVICE_URL}/exercises/definitions",
+                    headers=headers,
+                    params={"ids": ids_query},
+                    follow_redirects=True,
+                )
                 if res.status_code == 200:
                     defs = res.json() or []
                     for d in defs:
@@ -1481,11 +1938,11 @@ async def get_workout_metrics(
         volume_kg_ws = 0.0
         kpsh = 0
 
-        for ex in (d.get("exercises") or []):
+        for ex in d.get("exercises") or []:
             ex_id = ex.get("exercise_id")
             equip = equipment_by_ex_id.get(ex_id, "") if isinstance(ex_id, int) else ""
             is_impl = _is_implement(equip)
-            for s in (ex.get("sets") or []):
+            for s in ex.get("sets") or []:
                 reps = s.get("volume") or 0
                 w = s.get("working_weight")
                 try:
@@ -1508,7 +1965,7 @@ async def get_workout_metrics(
             for inst in instances_by_workout.get(wid, []) or []:
                 equip = equipment_by_ex_id.get(inst.get("exercise_list_id"), "")
                 is_impl = _is_implement(equip)
-                for s in (inst.get("sets") or []):
+                for s in inst.get("sets") or []:
                     reps = s.get("reps") or s.get("volume") or 0
                     weight = s.get("weight")
                     try:
@@ -1530,23 +1987,29 @@ async def get_workout_metrics(
         volume_final = volume_kg_ws if volume_kg_ws > 0 else volume_kg_inst
 
         _d = _pick_date(d)
-        items.append({
-            "date": (_d.date().isoformat() if _d else None),
-            "workout_id": wid,
-            "values": {
-                "volume": round(volume_final, 2) if volume_final is not None else None,
-                "effort": round(avg_effort, 2) if avg_effort is not None else None,
-                "kpsh": int(kpsh),
-                "reps": int(total_reps),
+        items.append(
+            {
+                "date": (_d.date().isoformat() if _d else None),
+                "workout_id": wid,
+                "values": {
+                    "volume": round(volume_final, 2) if volume_final is not None else None,
+                    "effort": round(avg_effort, 2) if avg_effort is not None else None,
+                    "kpsh": int(kpsh),
+                    "reps": int(total_reps),
+                },
             }
-        })
+        )
 
     # 5) Optional: 1RM series from user-max-service
     one_rm_series: List[dict] = []
     if mx == "1rm" or my == "1rm":
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(20.0)) as client:
-                r = await client.get(f"{USER_MAX_SERVICE_URL}/user-max/", headers=headers, params={"skip": 0, "limit": 10000})
+                r = await client.get(
+                    f"{USER_MAX_SERVICE_URL}/user-max/",
+                    headers=headers,
+                    params={"skip": 0, "limit": 10000},
+                )
                 if r.status_code == 200:
                     data = r.json() or []
                 else:
@@ -1584,43 +2047,50 @@ async def get_workout_metrics(
                 continue
         one_rm_series = [{"date": k, "value": round(v, 2)} for k, v in sorted(by_day.items())]
 
-    return JSONResponse(content={
-        "plan_id": plan_id,
-        "range": {"from": start_dt.isoformat(), "to": end_dt.isoformat()},
-        "items": items,
-        "one_rm": one_rm_series,
-        "allowed_metrics": sorted(list(allowed)),
-        "requested": {"x": mx, "y": my}
-    })
+    return JSONResponse(
+        content={
+            "plan_id": plan_id,
+            "range": {"from": start_dt.isoformat(), "to": end_dt.isoformat()},
+            "items": items,
+            "one_rm": one_rm_series,
+            "allowed_metrics": sorted(list(allowed)),
+            "requested": {"x": mx, "y": my},
+        }
+    )
+
 
 @workouts_router.get("/{workout_id}/next", response_model=schemas.WorkoutResponseWithExercises)
 async def get_next_workout_in_plan(workout_id: int, request: Request):
     headers = _forward_headers(request)
-    
+
     # Fetch next workout from workouts-service
     next_url = f"{WORKOUTS_SERVICE_URL}/workouts/{workout_id}/next"
-    print(f"[DEBUG] Fetching next workout from: {next_url}")
     async with httpx.AsyncClient() as client:
         next_res = await client.get(next_url, headers=headers)
-        print(f"[DEBUG] Next workout response status: {next_res.status_code}")
-        print(f"[DEBUG] Next workout response content: {next_res.text}")
+        logger.debug(
+            "next_workout_fetch_response",
+            url=next_url,
+            status_code=next_res.status_code,
+        )
         if next_res.status_code != 200:
             return JSONResponse(content=next_res.json(), status_code=next_res.status_code)
         next_data = next_res.json()
-    
+
     # Determine the actual next workout id (may differ from the current path param)
     next_id = next_data.get("id", workout_id)
-    
+
     # Always try to fetch exercise instances for the next workout
     instances_data = []
     instances_url = f"{EXERCISES_SERVICE_URL}/exercises/instances/workouts/{next_id}/instances"
-    print(f"[DEBUG] Fetching instances for next workout from: {instances_url}")
     async with httpx.AsyncClient() as client:
         instances_res = await client.get(instances_url, headers=headers, follow_redirects=True)
-        print(f"[DEBUG] Next instances response status: {instances_res.status_code}")
-        print(f"[DEBUG] Next instances response content: {instances_res.text}")
+        logger.debug(
+            "next_instances_fetch_response",
+            url=instances_url,
+            status_code=instances_res.status_code,
+        )
         instances_data = instances_res.json() if instances_res.status_code == 200 else []
-    
+
     # Combine data: prefer real instances, otherwise map exercises
     if instances_data:
         next_data["exercise_instances"] = instances_data
@@ -1628,30 +2098,36 @@ async def get_next_workout_in_plan(workout_id: int, request: Request):
         # Prefer mapping from workouts-service exercises when present
         exercises = next_data.get("exercises") or []
         if exercises:
-            print("[DEBUG] Mapping workouts-service exercises to exercise_instances fallback for next workout")
+            logger.debug("next_workout_mapping_exercises", workout_id=next_id)
             mapped_instances = []
             for ex in exercises:
                 sets = []
                 for s in ex.get("sets", []):
-                    sets.append({
+                    sets.append(
+                        {
+                            "id": None,
+                            "reps": s.get("volume"),
+                            "weight": s.get("working_weight")
+                            if s.get("working_weight") is not None
+                            else s.get("weight"),
+                            "rpe": s.get("effort"),
+                            "effort": s.get("effort"),
+                            "effort_type": "RPE",
+                            "intensity": s.get("intensity"),
+                            "order": None,
+                        }
+                    )
+                mapped_instances.append(
+                    {
                         "id": None,
-                        "reps": s.get("volume"),
-                        "weight": s.get("working_weight") if s.get("working_weight") is not None else s.get("weight"),
-                        "rpe": s.get("effort"),
-                        "effort": s.get("effort"),
-                        "effort_type": "RPE",
-                        "intensity": s.get("intensity"),
+                        "exercise_list_id": ex.get("exercise_id"),
+                        "sets": sets,
+                        "notes": ex.get("notes"),
                         "order": None,
-                    })
-                mapped_instances.append({
-                    "id": None,
-                    "exercise_list_id": ex.get("exercise_id"),
-                    "sets": sets,
-                    "notes": ex.get("notes"),
-                    "order": None,
-                    "workout_id": next_id,
-                    "user_max_id": None,
-                })
+                        "workout_id": next_id,
+                        "user_max_id": None,
+                    }
+                )
             next_data["exercise_instances"] = mapped_instances
         else:
             # Only then try plan-based fallback
@@ -1663,14 +2139,15 @@ async def get_next_workout_in_plan(workout_id: int, request: Request):
                 headers=headers,
             )
             if plan_instances:
-                print("[DEBUG] Using plan-based fallback to populate exercise_instances for next workout")
+                logger.debug("next_workout_plan_based_fallback", workout_id=next_id)
                 next_data["exercise_instances"] = plan_instances
             else:
                 next_data["exercise_instances"] = next_data.get("exercise_instances", [])
     # Do not expose raw workouts-service 'exercises' field to clients
     next_data.pop("exercises", None)
-    print(f"[DEBUG] Final next workout data: {next_data}")
+    logger.debug("next_workout_response_ready", workout_id=next_id)
     return JSONResponse(content=next_data)
+
 
 @workouts_router.get("/generated/next", response_model=schemas.WorkoutResponse)
 async def get_next_generated_workout(request: Request):
@@ -1678,25 +2155,31 @@ async def get_next_generated_workout(request: Request):
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
 
+
 @workouts_router.get("/generated/first", response_model=schemas.WorkoutResponse)
 async def get_first_generated_workout(request: Request):
     target_url = f"{WORKOUTS_SERVICE_URL}/workouts/generated/first"
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
 
+
 @workouts_router.put("/{workout_id}", response_model=schemas.WorkoutResponseWithExercises)
 async def update_workout(workout_id: int, request: Request):
     """Update workout and ensure exercise_instances are properly mapped in response"""
     headers = _forward_headers(request)
     include = _parse_include_expand(request)
-    
+
     # Forward the PUT request to workouts-service
     target_url = f"{WORKOUTS_SERVICE_URL}/workouts/{workout_id}"
     body = await request.body()
-    
+
     async with httpx.AsyncClient() as client:
         workout_res = await client.put(target_url, headers=headers, content=body)
-        print(f"[DEBUG] PUT workout response status: {workout_res.status_code}")
+        logger.debug(
+            "workout_update_response",
+            workout_id=workout_id,
+            status_code=workout_res.status_code,
+        )
         if workout_res.status_code != 200:
             return JSONResponse(content=workout_res.json(), status_code=workout_res.status_code)
         workout_data = workout_res.json()
@@ -1707,8 +2190,13 @@ async def update_workout(workout_id: int, request: Request):
         headers=headers,
         include=include,
     )
-    print(f"[DEBUG] Final PUT response data with {len(workout_data.get('exercise_instances', []))} instances")
+    logger.debug(
+        "workout_update_completed",
+        workout_id=workout_id,
+        exercise_instances=len(workout_data.get("exercise_instances", [])),
+    )
     return JSONResponse(content=workout_data)
+
 
 @workouts_router.post("/{workout_id}/start", response_model=schemas.WorkoutResponseWithExercises)
 async def start_workout(workout_id: int, request: Request):
@@ -1724,7 +2212,7 @@ async def start_workout(workout_id: int, request: Request):
     session_url = f"{WORKOUTS_SERVICE_URL}/workouts/sessions/{workout_id}/start"
     async with httpx.AsyncClient() as client:
         session_res = await client.post(session_url, headers=headers, content=body)
-        print(f"[DEBUG] Start session status: {session_res.status_code}")
+        logger.debug("session_start_response", workout_id=workout_id, status_code=session_res.status_code)
         if session_res.status_code not in (200, 201):
             # Bubble up the error from downstream
             return JSONResponse(content=session_res.json(), status_code=session_res.status_code)
@@ -1738,10 +2226,14 @@ async def start_workout(workout_id: int, request: Request):
         workout_put_url = f"{WORKOUTS_SERVICE_URL}/workouts/{workout_id}"
         async with httpx.AsyncClient() as client:
             put_res = await client.put(workout_put_url, headers=headers, json=put_payload)
-            print(f"[DEBUG] Update workout after start status: {put_res.status_code}")
+            logger.debug(
+                "workout_update_after_start",
+                workout_id=workout_id,
+                status_code=put_res.status_code,
+            )
             # Ignore errors; final GET below will reflect actual state
-    except Exception as e:
-        print(f"[DEBUG] Failed to update workout after start: {e}")
+    except Exception as exc:
+        logger.warning("workout_update_after_start_failed", workout_id=workout_id, error=str(exc))
 
     # 3) Fetch workout and assemble for client
     async with httpx.AsyncClient() as client:
@@ -1758,6 +2250,7 @@ async def start_workout(workout_id: int, request: Request):
     )
     return JSONResponse(content=workout_data)
 
+
 @workouts_router.get("/sessions/{workout_id}/active")
 async def get_active_workout_session(workout_id: int, request: Request) -> Response:
     """Proxy: GET /api/v1/workouts/sessions/{workout_id}/active -> workouts-service.
@@ -1768,6 +2261,7 @@ async def get_active_workout_session(workout_id: int, request: Request) -> Respo
     headers = _forward_headers(request)
     target_url = f"{WORKOUTS_SERVICE_URL}/workouts/sessions/{workout_id}/active"
     return await _proxy_request(request, target_url, headers)
+
 
 @workouts_router.post("/{workout_id}/finish", response_model=schemas.WorkoutResponseWithExercises)
 async def finish_workout(workout_id: int, request: Request):
@@ -1781,10 +2275,9 @@ async def finish_workout(workout_id: int, request: Request):
     # 1) Find active session
     async with httpx.AsyncClient() as client:
         active_res = await client.get(f"{WORKOUTS_SERVICE_URL}/workouts/sessions/{workout_id}/active", headers=headers)
-        print(f"[DEBUG] Get active session status: {active_res.status_code}")
+        logger.debug("session_active_fetch", workout_id=workout_id, status_code=active_res.status_code)
         if active_res.status_code != 200:
             # No active session; proceed to return current workout state
-            print("[DEBUG] No active session; returning current workout state")
             workout_res = await client.get(f"{WORKOUTS_SERVICE_URL}/workouts/{workout_id}", headers=headers)
             if workout_res.status_code != 200:
                 return JSONResponse(content=workout_res.json(), status_code=workout_res.status_code)
@@ -1808,7 +2301,7 @@ async def finish_workout(workout_id: int, request: Request):
             headers=headers,
             content=body,
         )
-        print(f"[DEBUG] Finish session status: {finish_res.status_code}")
+        logger.debug("session_finish_response", workout_id=workout_id, status_code=finish_res.status_code)
         if finish_res.status_code not in (200, 201):
             return JSONResponse(content=finish_res.json(), status_code=finish_res.status_code)
         finish_data = finish_res.json()
@@ -1826,9 +2319,13 @@ async def finish_workout(workout_id: int, request: Request):
         workout_put_url = f"{WORKOUTS_SERVICE_URL}/workouts/{workout_id}"
         async with httpx.AsyncClient() as client:
             put_res = await client.put(workout_put_url, headers=headers, json=put_payload)
-            print(f"[DEBUG] Update workout after finish status: {put_res.status_code}")
-    except Exception as e:
-        print(f"[DEBUG] Failed to update workout after finish: {e}")
+            logger.debug(
+                "workout_update_after_finish",
+                workout_id=workout_id,
+                status_code=put_res.status_code,
+            )
+    except Exception as exc:
+        logger.warning("workout_update_after_finish_failed", workout_id=workout_id, error=str(exc))
 
     # 3b) Invalidate profile aggregates cache for this user to reflect fresh activity immediately
     try:
@@ -1853,11 +2350,13 @@ async def finish_workout(workout_id: int, request: Request):
     )
     return JSONResponse(content=workout_data)
 
+
 @workouts_router.api_route("{path:path}", methods=["POST", "PUT", "DELETE"])
 async def proxy_workouts(request: Request, path: str = "") -> Response:
     target_url = f"{WORKOUTS_SERVICE_URL}/workouts{path}"
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
+
 
 # Sessions routes
 @sessions_router.api_route("{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
@@ -1866,12 +2365,43 @@ async def proxy_sessions(request: Request, path: str = "") -> Response:
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
 
+
 # Plans applied routes
+
+
+@plans_applied_router.post("/apply-async/{plan_id}")
+async def proxy_apply_plan_async(request: Request, plan_id: int) -> Response:
+    """Proxy Celery-based plan application (enqueue task)."""
+
+    target_url = f"{PLANS_SERVICE_URL}/plans/applied-plans/apply-async/{plan_id}"
+    headers = _forward_headers(request)
+    return await _proxy_request(request, target_url, headers)
+
+
+@plans_applied_router.post("/{applied_plan_id}/apply-macros-async")
+async def proxy_apply_plan_macros_async(request: Request, applied_plan_id: int) -> Response:
+    """Proxy Celery-based macro application (enqueue task)."""
+
+    target_url = f"{PLANS_SERVICE_URL}/plans/applied-plans/{applied_plan_id}/apply-macros-async"
+    headers = _forward_headers(request)
+    return await _proxy_request(request, target_url, headers)
+
+
+@plans_applied_router.get("/tasks/{task_id}")
+async def proxy_plans_task_status(request: Request, task_id: str) -> Response:
+    """Proxy task status polling to plans-service."""
+
+    target_url = f"{PLANS_SERVICE_URL}/plans/applied-plans/tasks/{task_id}"
+    headers = _forward_headers(request)
+    return await _proxy_request(request, target_url, headers)
+
+
 @plans_applied_router.api_route("{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_plans_applied(request: Request, path: str = "") -> Response:
     target_url = f"{PLANS_SERVICE_URL}/plans/applied-plans{path}"
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
+
 
 # Plans calendar routes
 @plans_calendar_router.api_route("{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
@@ -1881,11 +2411,13 @@ async def proxy_plans_calendar(request: Request, path: str = "") -> Response:
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
 
+
 @plans_calendar_router.post("/", status_code=201)
 async def create_calendar_plan(plan_data: schemas.CalendarPlanCreate, request: Request):
     target_url = f"{PLANS_SERVICE_URL}/plans/calendar-plans/"
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
+
 
 # Plans instances routes
 @plans_instances_router.api_route("{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
@@ -1894,12 +2426,14 @@ async def proxy_plans_instances(request: Request, path: str = "") -> Response:
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
 
+
 # Plans mesocycles routes
 @plans_mesocycles_router.api_route("{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_plans_mesocycles(request: Request, path: str = "") -> Response:
     target_url = f"{PLANS_SERVICE_URL}/plans/mesocycles{path}"
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
+
 
 # Plans mesocycle templates routes
 @plans_templates_router.api_route("{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
@@ -1908,6 +2442,7 @@ async def proxy_plans_templates(request: Request, path: str = "") -> Response:
     target_url = f"{PLANS_SERVICE_URL}/plans/mesocycle-templates{suffix}"
     headers = _forward_headers(request)
     return await _proxy_request(request, target_url, headers)
+
 
 # Include routers in the app
 app.include_router(rpe_router)
@@ -1923,3 +2458,4 @@ app.include_router(plans_instances_router)
 app.include_router(plans_mesocycles_router)
 app.include_router(plans_templates_router)
 app.include_router(analytics_router)
+app.include_router(crm_router)

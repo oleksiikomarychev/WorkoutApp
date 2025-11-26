@@ -1,10 +1,7 @@
 """Manual migration for exercises-service"""
-from alembic import op
-import sqlalchemy as sa
-
 
 # revision identifiers, used by Alembic.
-revision = 'manual_exercises_20250909_202042'
+revision = "manual_exercises_20250909_202042"
 down_revision = None
 branch_labels = None
 depends_on = None

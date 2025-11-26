@@ -11,6 +11,13 @@ import 'package:workout_app/services/analytics_service.dart';
 import 'package:workout_app/services/avatar_service.dart';
 import 'package:workout_app/services/profile_service.dart';
 import 'package:workout_app/services/agent_mass_edit_service.dart';
+import 'package:workout_app/services/crm_relationships_service.dart';
+import 'package:workout_app/services/crm_coach_service.dart';
+import 'package:workout_app/services/crm_analytics_service.dart';
+import 'package:workout_app/services/users_service.dart';
+import 'package:workout_app/services/social_service.dart';
+import 'package:workout_app/services/messaging_service.dart';
+import 'package:workout_app/services/crm_coach_mass_edit_service.dart';
 
 // Riverpod Providers
 final apiClientProvider = Provider<ApiClient>((ref) {
@@ -41,11 +48,36 @@ final workoutServiceProviderVerify = Provider((ref) => WorkoutService(apiClient:
 
 final rpeServiceProvider = Provider<RpeService>((ref) => RpeService(ref.watch(apiClientProvider)));
 final analyticsServiceProvider = Provider<AnalyticsService>((ref) => AnalyticsService(ref.watch(apiClientProvider)));
+final usersServiceProvider = Provider<UsersService>((ref) => UsersService(ref.watch(apiClientProvider)));
 final avatarServiceProvider = Provider<AvatarService>((ref) => AvatarService());
 final profileServiceProvider = Provider<ProfileService>((ref) => ProfileService(ref.watch(apiClientProvider)));
 
 final agentMassEditServiceProvider = Provider<AgentMassEditService>((ref) {
   return AgentMassEditService(ref.watch(apiClientProvider));
+});
+
+final crmRelationshipsServiceProvider = Provider<CrmRelationshipsService>((ref) {
+  return CrmRelationshipsService(ref.watch(apiClientProvider));
+});
+
+final crmCoachServiceProvider = Provider<CrmCoachService>((ref) {
+  return CrmCoachService(ref.watch(apiClientProvider));
+});
+
+final crmAnalyticsServiceProvider = Provider<CrmAnalyticsService>((ref) {
+  return CrmAnalyticsService(ref.watch(apiClientProvider));
+});
+
+final crmCoachMassEditServiceProvider = Provider<CrmCoachMassEditService>((ref) {
+  return CrmCoachMassEditService(ref.watch(apiClientProvider));
+});
+
+final socialServiceProvider = Provider<SocialService>((ref) {
+  return SocialService(ref.watch(apiClientProvider));
+});
+
+final messagingServiceProvider = Provider<MessagingService>((ref) {
+  return MessagingService(ref.watch(apiClientProvider));
 });
 
 

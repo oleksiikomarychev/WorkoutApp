@@ -1,7 +1,9 @@
-import httpx
-from ..schemas.training_plans import TrainingPlan
-from ..config import settings
 import logging
+
+import httpx
+
+from ..config import settings
+from ..schemas.training_plans import TrainingPlan
 
 logger = logging.getLogger(__name__)
 
@@ -38,39 +40,50 @@ def _to_calendar_plan_create_payload(plan: TrainingPlan) -> dict:
                 for ex in sorted(exercises_by_workout.get(w.id, []), key=lambda ee: ee.order_index):
                     sets_payload = []
                     for s in sorted(sets_by_ex.get(ex.id, []), key=lambda ss: (ss.order_index or 0)):
-                        sets_payload.append({
-                            "intensity": s.intensity,
-                            "effort": s.effort,
-                            "volume": s.volume,
-                        })
-                    exercises_payload.append({
-                        "exercise_definition_id": ex.exercise_definition_id,
-                        "sets": sets_payload,
-                    })
-                workouts_payload.append({
-                    "day_label": w.day_label,
-                    "order_index": w.order_index,
-                    "exercises": exercises_payload,
-                })
-            micro_payload.append({
-                "name": micro.name,
-                "days_count": micro.days_count,
-                "order_index": micro.order_index,
-                "normalization_value": None,
-                "normalization_unit": None,
-                "plan_workouts": workouts_payload,
-            })
-        mesocycles_payload.append({
-            "name": meso.name,
-            "duration_weeks": meso.weeks_count,
-            "microcycles": micro_payload,
-        })
+                        sets_payload.append(
+                            {
+                                "intensity": s.intensity,
+                                "effort": s.effort,
+                                "volume": s.volume,
+                            }
+                        )
+                    exercises_payload.append(
+                        {
+                            "exercise_definition_id": ex.exercise_definition_id,
+                            "sets": sets_payload,
+                        }
+                    )
+                workouts_payload.append(
+                    {
+                        "day_label": w.day_label,
+                        "order_index": w.order_index,
+                        "exercises": exercises_payload,
+                    }
+                )
+            micro_payload.append(
+                {
+                    "name": micro.name,
+                    "days_count": micro.days_count,
+                    "order_index": micro.order_index,
+                    "normalization_value": None,
+                    "normalization_unit": None,
+                    "plan_workouts": workouts_payload,
+                }
+            )
+        mesocycles_payload.append(
+            {
+                "name": meso.name,
+                "duration_weeks": meso.weeks_count,
+                "microcycles": micro_payload,
+            }
+        )
 
     return {
         "name": plan.calendar_plan.name,
         "duration_weeks": plan.calendar_plan.duration_weeks,
         "mesocycles": mesocycles_payload,
     }
+
 
 async def save_plan_to_plans_service(plan: TrainingPlan, user_id: str):
     """Отправляем план в plans-service (create calendar plan)."""
@@ -84,7 +97,11 @@ async def save_plan_to_plans_service(plan: TrainingPlan, user_id: str):
                 headers=headers,
             )
             response.raise_for_status()
-            logger.info("Plan saved to plans-service for user %s | id=%s", user_id, response.json().get("id"))
+            logger.info(
+                "Plan saved to plans-service for user %s | id=%s",
+                user_id,
+                response.json().get("id"),
+            )
             return response.json()
     except (httpx.RequestError, httpx.HTTPStatusError) as e:
         logger.error(f"Ошибка сохранения плана: {str(e)}")

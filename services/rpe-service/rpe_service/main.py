@@ -1,28 +1,30 @@
-from .calculation import get_rpe_table as cached_rpe_table
-from .rpe_calculations import (
-    get_volume,
-    get_intensity,
-    get_effort,
-    IntensityNotFoundError,
-    EffortNotFoundError,
-    VolumeNotFoundError,
-)
-from .calculation import round_to_step
-from .schemas import RpeComputeRequest, RpeComputeResponse, ComputationError
-from .rpc import get_effective_max
-from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import JSONResponse
-from typing import Dict
 import logging
-from fastapi import APIRouter, Header
+from typing import Dict
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException
+from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
+from sentry_sdk import set_tag, set_user
+
+from .calculation import get_rpe_table as cached_rpe_table
+from .calculation import round_to_step
+from .rpc import get_effective_max
+from .rpe_calculations import (
+    EffortNotFoundError,
+    IntensityNotFoundError,
+    VolumeNotFoundError,
+    get_effort,
+    get_intensity,
+    get_volume,
 )
+from .schemas import ComputationError, RpeComputeRequest, RpeComputeResponse
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="rpe-service", version="0.1.0")
+
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 # Регистрация роутов
 router = APIRouter(prefix="/rpe")
 
@@ -35,12 +37,9 @@ def health() -> Dict[str, str]:
 def get_current_user_id(x_user_id: str | None = Header(default=None, alias="X-User-Id")) -> str:
     if not x_user_id:
         raise HTTPException(status_code=401, detail="X-User-Id header required")
+    set_user({"id": str(x_user_id)})
+    set_tag("service", "rpe-service")
     return x_user_id
-
-
-@router.get("/health")
-def health(user_id: str = Depends(get_current_user_id)) -> Dict[str, str]:
-    return {"status": "ok"}
 
 
 @router.get("/table", tags=["Utils"])
@@ -50,7 +49,11 @@ def get_rpe_table(user_id: str = Depends(get_current_user_id)) -> Dict[int, Dict
         return cached_rpe_table()
     except Exception as e:
         logger.error(f"RPE table error: {str(e)}")
-        return JSONResponse(status_code=500, content=ComputationError(error="RPE_TABLE_ERROR", message=str(e)).model_dump())
+        return JSONResponse(
+            status_code=500,
+            content=ComputationError(error="RPE_TABLE_ERROR", message=str(e)).model_dump(),
+        )
+
 
 @router.post("/compute", tags=["Utils"], response_model=RpeComputeResponse)
 async def compute_rpe_set(
@@ -65,7 +68,7 @@ async def compute_rpe_set(
         max_weight = None
         if payload.user_max_id:
             try:
-                effective_max = await get_effective_max(payload.user_max_id)
+                await get_effective_max(payload.user_max_id)
             except Exception as e:
                 logger.error(f"Failed to get effective max: {str(e)}")
         elif payload.max_weight:
@@ -86,8 +89,13 @@ async def compute_rpe_set(
                         nearest_eff = min(mapping.keys(), key=lambda k: abs(k - int(effort)))
                         volume = mapping[nearest_eff]
                         logger.warning(
-                            "Adjusted (intensity,effort)->volume using nearest match | input=(%s,%s) -> intensity=%d effort=%d volume=%d",
-                            str(intensity), str(effort), nearest_int, nearest_eff, volume
+                            "Adjusted (intensity,effort)->volume using nearest match | "
+                            "input=(%s,%s) -> intensity=%d effort=%d volume=%d",
+                            str(intensity),
+                            str(effort),
+                            nearest_int,
+                            nearest_eff,
+                            volume,
                         )
                         intensity = nearest_int
                         effort = nearest_eff
@@ -110,8 +118,12 @@ async def compute_rpe_set(
                         intensity = nearest_int
                         volume = reps
                         logger.warning(
-                            "Adjusted (volume,effort)->intensity using nearest match | requested_volume=%d effort=%d -> intensity=%d volume=%d",
-                            volume, ekey, intensity, volume
+                            "Adjusted (volume,effort)->intensity using nearest match | "
+                            "requested_volume=%d effort=%d -> intensity=%d volume=%d",
+                            volume,
+                            ekey,
+                            intensity,
+                            volume,
                         )
 
             # Case 3: volume + intensity -> fill effort
@@ -119,14 +131,20 @@ async def compute_rpe_set(
                 try:
                     effort = get_effort(table, volume=volume, intensity=intensity)
                 except (IntensityNotFoundError, VolumeNotFoundError):
-                    # Fallback: snap intensity to nearest row, then choose effort whose reps is closest to volume
+                    # Fallback: snap intensity to nearest row, then choose effort
+                    # whose reps is closest to volume
                     nearest_int = min(table.keys(), key=lambda x: abs(x - int(intensity)))
                     mapping = table[nearest_int]
                     # pick effort whose reps is closest to requested volume
                     nearest_eff, reps = min(mapping.items(), key=lambda kv: abs(kv[1] - int(volume)))
                     logger.warning(
-                        "Adjusted (intensity,volume)->effort using nearest match | input=(%s,%s) -> intensity=%d effort=%d volume=%d",
-                        str(intensity), str(volume), nearest_int, nearest_eff, reps
+                        "Adjusted (intensity,volume)->effort using nearest match | "
+                        "input=(%s,%s) -> intensity=%d effort=%d volume=%d",
+                        str(intensity),
+                        str(volume),
+                        nearest_int,
+                        nearest_eff,
+                        reps,
                     )
                     intensity = nearest_int
                     effort = nearest_eff
@@ -135,7 +153,7 @@ async def compute_rpe_set(
         if max_weight is not None and intensity is not None:
             raw = max_weight * (intensity / 100.0)
             weight = round_to_step(raw, payload.rounding_step, payload.rounding_mode)
-        return RpeComputeResponse(intensity=intensity,effort=effort,volume=volume,weight=weight)
+        return RpeComputeResponse(intensity=intensity, effort=effort, volume=volume, weight=weight)
     except Exception as e:
         error_msg = (
             f"RPE calculation failed: {str(e)}. "
@@ -144,12 +162,17 @@ async def compute_rpe_set(
             "Valid ranges: 90-100%→1-3 reps, 80-89%→3-6 reps, 70-79%→6-10 reps, 60-69%→10-20 reps, 50-59%→15-25 reps."
         )
         logger.error(error_msg)
-        return JSONResponse(status_code=400, content=ComputationError(error="COMPUTE_ERROR", message=error_msg).model_dump())
+        return JSONResponse(
+            status_code=400,
+            content=ComputationError(error="COMPUTE_ERROR", message=error_msg).model_dump(),
+        )
+
 
 app.include_router(router)
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8001)
 
 # Логирование зарегистрированных роутов

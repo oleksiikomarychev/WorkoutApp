@@ -1,10 +1,8 @@
-import math
-import os
 import logging
+import os
+from typing import Dict, List, Optional
+
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
-from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +45,7 @@ class WorkoutCalculator:
         if svc_token:
             headers["Authorization"] = f"Bearer {svc_token}"
         bases = await self._get_base_candidates()
-        
+
         async with httpx.AsyncClient(timeout=10.0) as client:
             for base in bases:
                 try:
@@ -61,7 +59,7 @@ class WorkoutCalculator:
                 except Exception as e:
                     logger.error(f"Failed to fetch user maxes from {base}: {e}")
                     continue
-        
+
         # Fallback: generate mock user maxes
         logger.warning("All user-max services failed. Generating mock user maxes")
         return [
@@ -78,7 +76,7 @@ class WorkoutCalculator:
     async def _ensure_exercises_present(self, exercise_ids: set[int]) -> None:
         if not exercise_ids:
             return
-        
+
         bases: list[str] = []
         ex_env = os.getenv("EXERCISES_SERVICE_URL")
         if ex_env:
@@ -86,7 +84,7 @@ class WorkoutCalculator:
         gw_env = os.getenv("GATEWAY_URL")
         if gw_env:
             bases.append(gw_env.rstrip("/"))
-        
+
         async with httpx.AsyncClient(timeout=10.0) as client:
             for ex_id in exercise_ids:
                 found = False

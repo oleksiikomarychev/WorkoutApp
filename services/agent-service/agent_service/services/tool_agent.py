@@ -43,9 +43,7 @@ async def _decide_tool_call(
 
     tools_descriptions: List[str] = []
     for t in tools:
-        tools_descriptions.append(
-            f"- {t.name}: {t.description}. Parameters JSON schema: {t.parameters_schema!r}"
-        )
+        tools_descriptions.append(f"- {t.name}: {t.description}. Parameters JSON schema: {t.parameters_schema!r}")
     tools_block = "\n".join(tools_descriptions)
 
     system_prompt = (
@@ -55,14 +53,14 @@ async def _decide_tool_call(
         f"{tools_block}\n\n"
         "If you decide to call a tool, respond as:\n"
         "{\n"
-        "  \"type\": \"tool_call\",\n"
-        "  \"tool\": \"<tool_name>\",\n"
-        "  \"arguments\": { ... }\n"
+        '  "type": "tool_call",\n'
+        '  "tool": "<tool_name>",\n'
+        '  "arguments": { ... }\n'
         "}\n\n"
         "If you decide to answer directly, respond as:\n"
         "{\n"
-        "  \"type\": \"answer\",\n"
-        "  \"answer\": \"<final natural language answer>\"\n"
+        '  "type": "answer",\n'
+        '  "answer": "<final natural language answer>"\n'
         "}\n"
     )
 

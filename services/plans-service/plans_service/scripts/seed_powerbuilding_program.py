@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import argparse
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 from sqlalchemy.orm import Session
 
-from ..database import SessionLocal, Base, engine
+from ..database import Base, SessionLocal, engine
 from ..models.calendar import CalendarPlan, Mesocycle, Microcycle
 from ..models.exercises import ExerciseList
-
 
 # --- Workout Day Templates ---
 
@@ -205,9 +204,7 @@ def seed_program(plan_name: str, drop_existing: bool = True) -> None:
     db = SessionLocal()
     try:
         if drop_existing:
-            existing_plan = (
-                db.query(CalendarPlan).filter(CalendarPlan.name == plan_name).first()
-            )
+            existing_plan = db.query(CalendarPlan).filter(CalendarPlan.name == plan_name).first()
             if existing_plan:
                 db.delete(existing_plan)
                 db.commit()
@@ -227,18 +224,13 @@ def seed_program(plan_name: str, drop_existing: bool = True) -> None:
         new_plan = CalendarPlan(
             name=plan_name,
             schedule={},  # Top-level schedule is now deprecated
-            duration_weeks=sum(
-                m["microcycles_count"] * m["days_per_micro"] // 7
-                for m in mesocycles_data
-            ),
+            duration_weeks=sum(m["microcycles_count"] * m["days_per_micro"] // 7 for m in mesocycles_data),
             mesocycles=[],
         )
 
         # --- Build Mesocycles and Microcycles ---
         for meso_idx, meso_data in enumerate(mesocycles_data):
-            meso = Mesocycle(
-                name=meso_data["name"], order_index=meso_idx, microcycles=[]
-            )
+            meso = Mesocycle(name=meso_data["name"], order_index=meso_idx, microcycles=[])
 
             for micro_idx in range(meso_data["microcycles_count"]):
                 schedule = {}
@@ -299,9 +291,7 @@ def seed_program(plan_name: str, drop_existing: bool = True) -> None:
 
 def main() -> None:
     Base.metadata.create_all(bind=engine)  # Ensure tables are created
-    parser = argparse.ArgumentParser(
-        description="Seed a detailed power-building training program."
-    )
+    parser = argparse.ArgumentParser(description="Seed a detailed power-building training program.")
     parser.add_argument(
         "--name",
         type=str,

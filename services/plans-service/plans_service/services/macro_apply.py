@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
 import os
-import logging
+from typing import Any, Dict, List
+
+import structlog
 
 try:
     import httpx
@@ -10,15 +11,21 @@ except Exception:  # pragma: no cover
     httpx = None
 
 
+logger = structlog.get_logger(__name__)
+
+
 class MacroApplier:
     """Applies preview patches to downstream services in batch.
 
     Strategy (safe Phase 1):
     - For Adjust_Sets:
-      - add_set: append a cloned set to the exercise instance in exercises-service by PUTting the full instance with new sets list
-      - remove_set: remove the set by calling DELETE set endpoint if available; otherwise PUT instance without this set
+      - add_set: append a cloned set to the exercise instance in exercises-service
+        by PUTting the full instance with a new sets list
+      - remove_set: remove the set by calling DELETE set endpoint if available;
+        otherwise PUT the instance without this set
     - For Adjust_Load/Adjust_Reps:
-      - Update specific set fields via exercises-service's update set endpoint if available; otherwise PUT instance with updated set
+      - Update specific set fields via exercises-service's update set endpoint
+        if available; otherwise PUT the instance with an updated set
 
     Note: Workouts may be 'generated' and have embedded sets in workouts-service.
     For Phase 1 we operate via exercises-service instances (manual path) to avoid schema differences.
@@ -36,7 +43,6 @@ class MacroApplier:
         self.workouts_base = self.workouts_base.rstrip("/")
 
     async def apply(self, preview: Dict[str, Any]) -> Dict[str, Any]:
-        logger = logging.getLogger(__name__)
         if not httpx:
             return {"applied": 0, "errors": ["httpx not available"], "details": []}
         patches = self._collect_patches(preview)
@@ -116,7 +122,11 @@ class MacroApplier:
                                     if "intensity" in ch:
                                         updated["intensity"] = ch["intensity"]
                                     if "weight" in ch or "working_weight" in ch:
-                                        val = ch.get("weight") if ch.get("weight") is not None else ch.get("working_weight")
+                                        val = (
+                                            ch.get("weight")
+                                            if ch.get("weight") is not None
+                                            else ch.get("working_weight")
+                                        )
                                         updated["weight"] = val
                                     sets[i] = updated
                                     changed = True
@@ -166,7 +176,9 @@ class MacroApplier:
             return []
         return []
 
-    async def _put_instance(self, client: "httpx.AsyncClient", inst: Dict[str, Any], sets: List[Dict[str, Any]]) -> bool:
+    async def _put_instance(
+        self, client: "httpx.AsyncClient", inst: Dict[str, Any], sets: List[Dict[str, Any]]
+    ) -> bool:
         inst_id = inst.get("id")
         if inst_id is None:
             return False

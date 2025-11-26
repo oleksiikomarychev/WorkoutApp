@@ -21,7 +21,11 @@ async def notify_rpe_plan_created(plan: TrainingPlan, user_id: str) -> bool:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(url, json=payload, headers=headers)
             response.raise_for_status()
-        logger.info("Notified RPE service about generated plan for user %s | status=%d", user_id, response.status_code)
+        logger.info(
+            "Notified RPE service about generated plan for user %s | status=%d",
+            user_id,
+            response.status_code,
+        )
         return True
     except (httpx.RequestError, httpx.HTTPStatusError) as exc:
         logger.warning("Failed to notify RPE service about generated plan: %s", exc)

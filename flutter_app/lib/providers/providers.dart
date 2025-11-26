@@ -1,9 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/services/api_client.dart';
 import 'package:workout_app/models/user_profile.dart';
+import 'package:workout_app/models/user_summary.dart';
 import 'package:workout_app/services/service_locator.dart' as sl;
 import 'package:workout_app/services/workout_session_service.dart';
 import 'package:workout_app/models/workout_session.dart';
+import 'package:workout_app/models/user_stats.dart';
+import 'package:workout_app/constants/profile_constants.dart';
 
 // API Client Provider
 final apiClientProvider = Provider<ApiClient>((ref) {
@@ -35,4 +38,28 @@ final completedSessionsProvider = FutureProvider<List<WorkoutSession>>((ref) asy
 final userProfileProvider = FutureProvider<UserProfile>((ref) async {
   final svc = ref.watch(sl.profileServiceProvider);
   return svc.fetchProfile();
+});
+
+final allUsersProvider = FutureProvider<List<UserSummary>>((ref) async {
+  final svc = ref.watch(sl.usersServiceProvider);
+  return svc.fetchAll(limit: 500);
+});
+
+final publicUserProfileProvider = FutureProvider.family<UserProfile, String>((ref, userId) async {
+  final svc = ref.watch(sl.profileServiceProvider);
+  return svc.fetchProfileById(userId);
+});
+
+final publicProfileAggregatesProvider = FutureProvider.family<UserStats, String>((ref, userId) async {
+  final analytics = ref.watch(sl.analyticsServiceProvider);
+  final data = await analytics.getProfileAggregates(
+    weeks: kProfileActivityWeeks,
+    limit: kProfileCompletedSessionsLimit,
+    userId: userId,
+  );
+  return UserStats.fromAggregates(
+    data,
+    weeks: kProfileActivityWeeks,
+    sessionLimit: kProfileCompletedSessionsLimit,
+  );
 });

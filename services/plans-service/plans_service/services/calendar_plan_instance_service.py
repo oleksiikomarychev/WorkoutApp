@@ -1,12 +1,13 @@
-from typing import List, Optional, Dict, Any
-from sqlalchemy import or_
-from sqlalchemy.orm import Session
 import math
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy.orm import Session
+
 from ..models.calendar import CalendarPlan, CalendarPlanInstance
 from ..schemas.calendar_plan import (
     CalendarPlanInstanceCreate,
-    CalendarPlanInstanceUpdate,
     CalendarPlanInstanceResponse,
+    CalendarPlanInstanceUpdate,
 )
 
 
@@ -67,7 +68,7 @@ class CalendarPlanInstanceService:
                 .filter(
                     CalendarPlan.id == plan_id,
                     CalendarPlan.user_id == user_id,
-                    )
+                )
                 .first()
             )
             if not plan:
@@ -83,9 +84,7 @@ class CalendarPlanInstanceService:
                 day_counter = 0
                 total_days = 0
                 try:
-                    mesocycles = sorted(
-                        list(plan.mesocycles or []), key=lambda m: (m.order_index, m.id)
-                    )
+                    mesocycles = sorted(list(plan.mesocycles or []), key=lambda m: (m.order_index, m.id))
                     for m in mesocycles:
                         microcycles = sorted(
                             list(m.microcycles or []),
@@ -101,9 +100,7 @@ class CalendarPlanInstanceService:
                                 except Exception:
                                     return 0
 
-                            for _, items in sorted(
-                                mc_sched.items(), key=lambda kv: _day_key(kv[0])
-                            ):
+                            for _, items in sorted(mc_sched.items(), key=lambda kv: _day_key(kv[0])):
                                 day_counter += 1
                                 flat_schedule[f"day{day_counter}"] = items or []
                     total_days = day_counter
@@ -130,7 +127,7 @@ class CalendarPlanInstanceService:
             self.db.commit()
             self.db.refresh(inst)
             return self._to_response(inst)
-        except Exception as e:
+        except Exception:
             self.db.rollback()
             raise
 
@@ -165,7 +162,7 @@ class CalendarPlanInstanceService:
             self.db.commit()
             self.db.refresh(inst)
             return self._to_response(inst)
-        except Exception as e:
+        except Exception:
             self.db.rollback()
             raise
 
@@ -193,7 +190,7 @@ class CalendarPlanInstanceService:
             self.db.commit()
             self.db.refresh(inst)
             return self._to_response(inst)
-        except Exception as e:
+        except Exception:
             self.db.rollback()
             raise
 

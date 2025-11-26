@@ -1,24 +1,27 @@
 from __future__ import annotations
 
+import json
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy.ext.asyncio import AsyncSession
+import structlog
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.calendar import AppliedCalendarPlan, AppliedPlanWorkout
 from ..models.macro import PlanMacro
-import json
-import os
-import logging
 
 try:
     import httpx  # optional; used for fetching metrics
 except Exception:  # pragma: no cover
     httpx = None
 
+logger = structlog.get_logger(__name__)
+
 # RPE RPC helpers (plans-service rpc)
 try:
-    from ..rpc import get_intensity as rpc_get_intensity, get_volume as rpc_get_volume
+    from ..rpc import get_intensity as rpc_get_intensity
+    from ..rpc import get_volume as rpc_get_volume
 except Exception:  # pragma: no cover
     rpc_get_intensity = None
     rpc_get_volume = None
@@ -35,12 +38,22 @@ class MacroEngine:
         self.db = db
         self.user_id = user_id
 
-    async def run_for_applied_plan(self, applied_plan_id: int, anchor: str = "current", index_offset: int | None = None) -> Dict[str, Any]:
-        logger = logging.getLogger(__name__)
-        logger.info("MacroEngine.run_for_applied_plan start | applied_plan_id=%s user_id=%s", applied_plan_id, self.user_id)
+    async def run_for_applied_plan(
+        self, applied_plan_id: int, anchor: str = "current", index_offset: int | None = None
+    ) -> Dict[str, Any]:
+        logger.info(
+            "MacroEngine.run_for_applied_plan start",
+            applied_plan_id=applied_plan_id,
+            user_id=self.user_id,
+        )
         plan = await self._load_applied_plan(applied_plan_id)
         if not plan:
-            return {"applied_plan_id": applied_plan_id, "macros_evaluated": 0, "actions_applied": 0, "preview": []}
+            return {
+                "applied_plan_id": applied_plan_id,
+                "macros_evaluated": 0,
+                "actions_applied": 0,
+                "preview": [],
+            }
 
         macros = await self._load_plan_macros(plan.calendar_plan_id)
         ordered_workouts = await self._load_applied_workouts(applied_plan_id)
@@ -60,7 +73,9 @@ class MacroEngine:
         preview: List[Dict[str, Any]] = []
         for m in macros:
             rule = self._safe_parse_rule(m.rule_json)
-            duration_scope = ((rule.get("duration") or {}).get("scope") if isinstance(rule.get("duration"), dict) else None) or "Next_N_Workouts"
+            duration_scope = (
+                (rule.get("duration") or {}).get("scope") if isinstance(rule.get("duration"), dict) else None
+            ) or "Next_N_Workouts"
             count = 1
             if isinstance(rule.get("duration"), dict):
                 try:
@@ -84,7 +99,8 @@ class MacroEngine:
                 rng = cond.get("range") or cond.get("values")
                 if matched_workouts:
                     logger.info(
-                        "Macro trigger fired | macro_id=%s name=%s metric=%s op=%s value=%s range=%s matched_count=%d matched_workouts=%s",
+                        "Macro trigger fired | macro_id=%s name=%s metric=%s op=%s "
+                        "value=%s range=%s matched_count=%d matched_workouts=%s",
                         m.id,
                         m.name,
                         metric,
@@ -117,38 +133,44 @@ class MacroEngine:
                         if mode == "by_Template":
                             tpl_id = params.get("template_id")
                             if tpl_id is not None:
-                                plan_changes.append({
-                                    "type": "Inject_Mesocycle",
-                                    "params": {
-                                        "template_id": tpl_id,
-                                        "placement": placement,
-                                        "on_conflict": on_conflict,
+                                plan_changes.append(
+                                    {
+                                        "type": "Inject_Mesocycle",
+                                        "params": {
+                                            "template_id": tpl_id,
+                                            "placement": placement,
+                                            "on_conflict": on_conflict,
+                                        },
                                     }
-                                })
+                                )
                         elif mode == "by_Existing":
                             src_id = params.get("source_mesocycle_id") or params.get("mesocycle_id")
                             if src_id is not None:
-                                plan_changes.append({
-                                    "type": "Inject_Mesocycle",
-                                    "params": {
-                                        "source_mesocycle_id": src_id,
-                                        "placement": placement,
-                                        "on_conflict": on_conflict,
+                                plan_changes.append(
+                                    {
+                                        "type": "Inject_Mesocycle",
+                                        "params": {
+                                            "source_mesocycle_id": src_id,
+                                            "placement": placement,
+                                            "on_conflict": on_conflict,
+                                        },
                                     }
-                                })
+                                )
             except Exception:
                 plan_changes = []
-            preview.append({
-                "macro_id": m.id,
-                "name": m.name,
-                "is_active": m.is_active,
-                "priority": m.priority,
-                "duration": {"scope": duration_scope, "count": count},
-                "target_workouts": target_workouts,
-                "matched_workouts": matched_workouts,
-                "patches": patches,
-                "plan_changes": plan_changes,
-            })
+            preview.append(
+                {
+                    "macro_id": m.id,
+                    "name": m.name,
+                    "is_active": m.is_active,
+                    "priority": m.priority,
+                    "duration": {"scope": duration_scope, "count": count},
+                    "target_workouts": target_workouts,
+                    "matched_workouts": matched_workouts,
+                    "patches": patches,
+                    "plan_changes": plan_changes,
+                }
+            )
 
         summary = {
             "applied_plan_id": applied_plan_id,
@@ -204,7 +226,9 @@ class MacroEngine:
         except Exception:
             return {}
 
-    async def _filter_by_trigger(self, rule: Dict[str, Any], workout_ids: List[int], ctx: Optional[Dict[str, Any]] = None) -> List[int]:
+    async def _filter_by_trigger(
+        self, rule: Dict[str, Any], workout_ids: List[int], ctx: Optional[Dict[str, Any]] = None
+    ) -> List[int]:
         if not workout_ids:
             return []
         trigger = rule.get("trigger") if isinstance(rule.get("trigger"), dict) else {}
@@ -219,7 +243,7 @@ class MacroEngine:
         if not metric:
             return []
 
-        logger = logging.getLogger(__name__)
+        logger = structlog.get_logger(__name__)
 
         supported_metrics = {
             "e1RM",
@@ -331,7 +355,9 @@ class MacroEngine:
                 val_pct = float(condition.get("value_percent") or 1.0)
                 direction = (condition.get("direction") or "").strip() or None
                 ok = self._trend_deviates(values, val_pct, direction)
-                logger.info("Trend.deviates_from_avg | n=%d value_percent=%.4f dir=%s series=%s result=%s", n, val_pct, direction, values, ok)
+                logger.info(
+                    "Trend.deviates_from_avg | n=%d value_percent=%.4f dir=%s result=%s", n, val_pct, direction, ok
+                )
                 return workout_ids if ok else []
 
         if metric == "Total_Reps":
@@ -359,7 +385,13 @@ class MacroEngine:
                     rel = str(condition.get("relation") or ">=").strip()
                     n = int(condition.get("n") or 3)
                     # Build series for previous windows using same logic
-                    if await self._holds_for_series(lambda widx: self._total_reps_for_workout(widx, ex_ids), rel, float(value), n, ctx):
+                    if await self._holds_for_series(
+                        lambda widx: self._total_reps_for_workout(widx, ex_ids),
+                        rel,
+                        float(value),
+                        n,
+                        ctx,
+                    ):
                         return workout_ids
                     return []
                 else:
@@ -447,7 +479,9 @@ class MacroEngine:
                 plan_details = await self._fetch_workout_details(workout_ids)
                 instances = await self._fetch_exercise_instances(workout_ids)
                 for wid in workout_ids:
-                    if await self._reps_delta_consecutive_sets(wid, ex_ids, relation, thr, n_sets, plan_details, instances, metric):
+                    if await self._reps_delta_consecutive_sets(
+                        wid, ex_ids, relation, thr, n_sets, plan_details, instances, metric
+                    ):
                         matched.append(wid)
                 return matched
 
@@ -511,9 +545,6 @@ class MacroEngine:
         # Unknown metric -> no filtering
         return workout_ids
 
-        
-        
-
     def _compare(self, op: str, v: Any, target: Any, rng: Any) -> bool:
         # None handling: comparisons are false unless op is not_in_range with None range
         if v is None:
@@ -569,6 +600,7 @@ class MacroEngine:
         if len(window) < n:
             return False
         metrics = await self._fetch_workout_metrics(window)
+
         def _val(wid: int) -> Optional[float]:
             d = metrics.get(wid) or {}
             if metric == "Readiness_Score":
@@ -576,6 +608,7 @@ class MacroEngine:
             if metric == "RPE_Session":
                 return d.get("rpe_session")
             return None
+
         for wid in window:
             v = _val(wid)
             if v is None:
@@ -589,7 +622,14 @@ class MacroEngine:
                 return False
         return True
 
-    async def _holds_for_series(self, get_value_for_wid, relation: str, threshold: float, n: int, ctx: Optional[Dict[str, Any]]) -> bool:
+    async def _holds_for_series(
+        self,
+        get_value_for_wid,
+        relation: str,
+        threshold: float,
+        n: int,
+        ctx: Optional[Dict[str, Any]],
+    ) -> bool:
         if not ctx:
             return False
         ordered = ctx.get("ordered_workouts") or []
@@ -759,7 +799,7 @@ class MacroEngine:
                 best_e1rm = None
                 best_weight = None
                 best_reps = None
-                for s in (inst.get("sets") or []):
+                for s in inst.get("sets") or []:
                     try:
                         w = s.get("weight") if s.get("weight") is not None else s.get("working_weight")
                         r = s.get("reps") or s.get("volume")
@@ -777,12 +817,14 @@ class MacroEngine:
                     except Exception:
                         continue
                 if best_e1rm is not None and date is not None:
-                    histories[eid].append({
-                        "date": date,
-                        "max_weight": best_weight,
-                        "rep_max": best_reps,
-                        "e1rm": best_e1rm,
-                    })
+                    histories[eid].append(
+                        {
+                            "date": date,
+                            "max_weight": best_weight,
+                            "rep_max": best_reps,
+                            "e1rm": best_e1rm,
+                        }
+                    )
         # Ensure chronological order
         for eid, items in histories.items():
             try:
@@ -811,7 +853,7 @@ class MacroEngine:
             inst = inst_by_eid.get(eid)
             if not inst:
                 continue
-            for s in (inst.get("sets") or []):
+            for s in inst.get("sets") or []:
                 try:
                     w = s.get("weight") if s.get("weight") is not None else s.get("working_weight")
                     r = s.get("reps") or s.get("volume")
@@ -838,7 +880,7 @@ class MacroEngine:
         if not prev:
             return []
         details = await self._fetch_workout_details(prev)
-        instances = await self._fetch_exercise_instances(prev)
+        await self._fetch_exercise_instances(prev)
         series: List[Tuple[str, float]] = []
         for wid in prev:
             date = (details.get(wid) or {}).get("date")
@@ -846,7 +888,7 @@ class MacroEngine:
             if date is not None and val is not None:
                 series.append((date, float(val)))
         series.sort(key=lambda x: x[0])
-        return series[-max(1, int(window_n * 2)):]  # keep a reasonable cap (2x window)
+        return series[-max(1, int(window_n * 2)) :]  # keep a reasonable cap (2x window)
 
     @staticmethod
     def _e1rm_from_weight_reps(weight: float, reps: int) -> float:
@@ -890,7 +932,6 @@ class MacroEngine:
         if direction == "negative":
             return (-delta_pct) >= thr
         return abs(delta_pct) >= thr
-
 
     async def _fetch_workout_metrics(self, workout_ids: List[int]) -> Dict[int, Dict[str, Any]]:
         out: Dict[int, Dict[str, Any]] = {}
@@ -979,7 +1020,7 @@ class MacroEngine:
                         if mode == "by_Percent" and factor is not None:
                             try:
                                 if intensity is not None:
-                                    new_intensity = max(0, min(100, float(intensity) * factor))
+                                    new_intensity = max(0, min(110, float(intensity) * factor))
                             except Exception:
                                 new_intensity = None
                             try:
@@ -995,7 +1036,9 @@ class MacroEngine:
                                 reps_int = None
                             if reps_int is not None:
                                 try:
-                                    new_intensity = await rpc_get_intensity(volume=reps_int, effort=target_rpe, headers=None)
+                                    new_intensity = await rpc_get_intensity(
+                                        volume=reps_int, effort=target_rpe, headers=None
+                                    )
                                 except Exception:
                                     new_intensity = None
 
@@ -1005,7 +1048,7 @@ class MacroEngine:
                             "workout_id": wid,
                             "exercise_id": exercise_id,
                             "set_id": set_id,
-                            "changes": {}
+                            "changes": {},
                         }
                         if new_intensity is not None:
                             patch["changes"]["intensity"] = round(new_intensity, 1)
@@ -1042,7 +1085,9 @@ class MacroEngine:
                         new_reps = None
                         if mode == "by_Value" and base_reps is not None and offset is not None:
                             new_reps = max(1, base_reps + offset)
-                        elif mode == "to_Target" and target_rpe is not None and rpc_get_volume and intensity is not None:
+                        elif (
+                            mode == "to_Target" and target_rpe is not None and rpc_get_volume and intensity is not None
+                        ):
                             try:
                                 ii = float(intensity)
                                 vol = await rpc_get_volume(intensity=int(ii), effort=target_rpe, headers=None)
@@ -1052,12 +1097,14 @@ class MacroEngine:
                                 new_reps = None
                         if new_reps is None or (base_reps is not None and new_reps == base_reps):
                             continue
-                        patches.append({
-                            "workout_id": wid,
-                            "exercise_id": exercise_id,
-                            "set_id": set_id,
-                            "changes": {"volume": new_reps}
-                        })
+                        patches.append(
+                            {
+                                "workout_id": wid,
+                                "exercise_id": exercise_id,
+                                "set_id": set_id,
+                                "changes": {"volume": new_reps},
+                            }
+                        )
 
         elif a_type == "Adjust_Sets":
             # by_Value: positive => add N sets (clone last set), negative => remove N from end
@@ -1078,28 +1125,32 @@ class MacroEngine:
                     if delta_sets > 0:
                         template = sets[-1]
                         for i in range(delta_sets):
-                            patches.append({
-                                "workout_id": wid,
-                                "exercise_id": exercise_id,
-                                "set_id": None,
-                                "changes": {
-                                    "action": "add_set",
-                                    "template": {
-                                        "intensity": template.get("intensity"),
-                                        "effort": template.get("effort"),
-                                        "volume": template.get("volume"),
-                                    }
+                            patches.append(
+                                {
+                                    "workout_id": wid,
+                                    "exercise_id": exercise_id,
+                                    "set_id": None,
+                                    "changes": {
+                                        "action": "add_set",
+                                        "template": {
+                                            "intensity": template.get("intensity"),
+                                            "effort": template.get("effort"),
+                                            "volume": template.get("volume"),
+                                        },
+                                    },
                                 }
-                            })
+                            )
                     else:
                         remove_n = min(len(sets), abs(delta_sets))
                         for s in reversed(sets[-remove_n:]):
-                            patches.append({
-                                "workout_id": wid,
-                                "exercise_id": exercise_id,
-                                "set_id": s.get("id"),
-                                "changes": {"action": "remove_set"}
-                            })
+                            patches.append(
+                                {
+                                    "workout_id": wid,
+                                    "exercise_id": exercise_id,
+                                    "set_id": s.get("id"),
+                                    "changes": {"action": "remove_set"},
+                                }
+                            )
 
     async def _resolve_target_exercise_ids(self, target: Dict[str, Any]) -> Optional[set[int]]:
         """Return a set of exercise IDs to apply patches to, or None to apply to all.
@@ -1136,6 +1187,7 @@ class MacroEngine:
         rg = val.get("region")
         mg = val.get("muscle_group")
         eq = val.get("equipment")
+
         # Normalize to sets of lowercase strings
         def _norm(x):
             if x is None:
@@ -1145,6 +1197,7 @@ class MacroEngine:
             if isinstance(x, list):
                 return {str(i).lower() for i in x}
             return None
+
         mv_set = _norm(mv)
         rg_set = _norm(rg)
         mg_set = _norm(mg)
@@ -1185,7 +1238,7 @@ class MacroEngine:
         except Exception:
             return None
 
-        return patches
+        return None
 
     async def _fetch_workout_details(self, workout_ids: List[int]) -> Dict[int, Dict[str, Any]]:
         out: Dict[int, Dict[str, Any]] = {}
@@ -1206,7 +1259,8 @@ class MacroEngine:
                     res = await client.get(url, headers=headers)
                     if res.status_code == 200:
                         data = res.json() or {}
-                        # Expect 'exercises': [{id, exercise_id, sets: [{id, intensity, effort, volume, working_weight}]}]
+                        # Expect 'exercises': [{id, exercise_id, sets:
+                        #   {id, intensity, effort, volume, working_weight}}]
                         out[wid] = {
                             "exercises": data.get("exercises") or [],
                             "date": data.get("scheduled_for") or data.get("completed_at"),

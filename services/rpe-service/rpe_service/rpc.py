@@ -1,8 +1,9 @@
 import httpx
+
 from .config import settings
 
 
-#Получает эффективный максимум пользователя из user-max-service по ID
+# Получает эффективный максимум пользователя из user-max-service по ID
 async def get_effective_max(user_max_id: int) -> float:
     url = f"{settings.USER_MAX_SERVICE_URL}/api/v1/user-max/{user_max_id}"
     async with httpx.AsyncClient() as client:
