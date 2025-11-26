@@ -1,17 +1,33 @@
 from __future__ import annotations
 
 from typing import List, Optional
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
-from fastapi import HTTPException, status
 
+from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from ..models.calendar import (
+    AppliedCalendarPlan,
+    AppliedMesocycle,
+    AppliedMicrocycle,
+    AppliedWorkout,
+    CalendarPlan,
+    Mesocycle,
+    Microcycle,
+    PlanExercise,
+    PlanSet,
+    PlanWorkout,
+)
 from ..models.templates import MesocycleTemplate, MicrocycleTemplate
-from ..models.calendar import CalendarPlan, Mesocycle, Microcycle, PlanWorkout, PlanExercise, PlanSet, AppliedWorkout, AppliedMicrocycle, AppliedMesocycle, AppliedCalendarPlan
 from ..schemas.templates import (
-    MesocycleTemplateCreate, MesocycleTemplateUpdate,
-    MesocycleTemplateResponse, MicrocycleTemplateDto,
-    InstantiateFromTemplateRequest, InstantiateFromExistingRequest, PlacementDto, PlacementMode
+    InstantiateFromExistingRequest,
+    InstantiateFromTemplateRequest,
+    MesocycleTemplateCreate,
+    MesocycleTemplateResponse,
+    MesocycleTemplateUpdate,
+    MicrocycleTemplateDto,
+    PlacementMode,
 )
 
 
@@ -29,9 +45,11 @@ class TemplateService:
         return plan
 
     async def list_templates(self) -> List[MesocycleTemplateResponse]:
-        stmt = select(MesocycleTemplate).where(
-            (MesocycleTemplate.user_id == self.user_id) | (MesocycleTemplate.is_public.is_(True))
-        ).order_by(MesocycleTemplate.id.desc())
+        stmt = (
+            select(MesocycleTemplate)
+            .where((MesocycleTemplate.user_id == self.user_id) | (MesocycleTemplate.is_public.is_(True)))
+            .order_by(MesocycleTemplate.id.desc())
+        )
         res = await self.db.execute(stmt)
         items = list(res.scalars().all())
         return [self._to_response(i) for i in items]
@@ -59,20 +77,24 @@ class TemplateService:
         await self.db.flush()
         # microcycles
         for mc in payload.microcycles or []:
-            self.db.add(MicrocycleTemplate(
-                mesocycle_template_id=tpl.id,
-                name=mc.name,
-                notes=mc.notes,
-                order_index=mc.order_index or 0,
-                days_count=mc.days_count,
-                schedule_json=mc.schedule,
-            ))
+            self.db.add(
+                MicrocycleTemplate(
+                    mesocycle_template_id=tpl.id,
+                    name=mc.name,
+                    notes=mc.notes,
+                    order_index=mc.order_index or 0,
+                    days_count=mc.days_count,
+                    schedule_json=mc.schedule,
+                )
+            )
         await self.db.commit()
         await self.db.refresh(tpl)
         return await self.get_template(tpl.id)
 
     async def update_template(self, template_id: int, payload: MesocycleTemplateUpdate) -> MesocycleTemplateResponse:
-        stmt = select(MesocycleTemplate).where(MesocycleTemplate.id == template_id, MesocycleTemplate.user_id == self.user_id)
+        stmt = select(MesocycleTemplate).where(
+            MesocycleTemplate.id == template_id, MesocycleTemplate.user_id == self.user_id
+        )
         res = await self.db.execute(stmt)
         tpl = res.scalars().first()
         if not tpl:
@@ -99,20 +121,24 @@ class TemplateService:
             for mc in res_mc.scalars().all():
                 await self.db.delete(mc)
             for mc in payload.microcycles:
-                self.db.add(MicrocycleTemplate(
-                    mesocycle_template_id=tpl.id,
-                    name=mc.name,
-                    notes=mc.notes,
-                    order_index=mc.order_index or 0,
-                    days_count=mc.days_count,
-                    schedule_json=mc.schedule,
-                ))
+                self.db.add(
+                    MicrocycleTemplate(
+                        mesocycle_template_id=tpl.id,
+                        name=mc.name,
+                        notes=mc.notes,
+                        order_index=mc.order_index or 0,
+                        days_count=mc.days_count,
+                        schedule_json=mc.schedule,
+                    )
+                )
         await self.db.commit()
         await self.db.refresh(tpl)
         return await self.get_template(tpl.id)
 
     async def delete_template(self, template_id: int) -> None:
-        stmt = select(MesocycleTemplate).where(MesocycleTemplate.id == template_id, MesocycleTemplate.user_id == self.user_id)
+        stmt = select(MesocycleTemplate).where(
+            MesocycleTemplate.id == template_id, MesocycleTemplate.user_id == self.user_id
+        )
         res = await self.db.execute(stmt)
         tpl = res.scalars().first()
         if not tpl:
@@ -121,14 +147,19 @@ class TemplateService:
         await self.db.commit()
 
     def _to_response(self, tpl: MesocycleTemplate) -> MesocycleTemplateResponse:
-        mcs = [MicrocycleTemplateDto.model_validate({
-            "id": mc.id,
-            "name": mc.name,
-            "notes": mc.notes,
-            "order_index": mc.order_index,
-            "days_count": mc.days_count,
-            "schedule": mc.schedule_json,
-        }) for mc in tpl.microcycles]
+        mcs = [
+            MicrocycleTemplateDto.model_validate(
+                {
+                    "id": mc.id,
+                    "name": mc.name,
+                    "notes": mc.notes,
+                    "order_index": mc.order_index,
+                    "days_count": mc.days_count,
+                    "schedule": mc.schedule_json,
+                }
+            )
+            for mc in tpl.microcycles
+        ]
         return MesocycleTemplateResponse(
             id=tpl.id,
             user_id=tpl.user_id,
@@ -187,6 +218,9 @@ class TemplateService:
                 notes=tm.notes,
                 order_index=tm.order_index or 0,
                 days_count=tm.days_count,
+                normalization_value=getattr(tm, "normalization_value", None),
+                normalization_unit=getattr(tm, "normalization_unit", None),
+                normalization_rules=(getattr(tm, "normalization_rules", None) or None),
             )
             self.db.add(mc)
             await self.db.flush()
@@ -219,14 +253,16 @@ class TemplateService:
                     self.db.add(pe)
                     await self.db.flush()
                     for s in item.get("sets") or []:
-                        self.db.add(PlanSet(
-                            plan_exercise_id=pe.id,
-                            order_index=0,  # will be reindexed by natural order
-                            intensity=s.get("intensity"),
-                            effort=s.get("effort"),
-                            volume=s.get("volume"),
-                            working_weight=s.get("working_weight"),
-                        ))
+                        self.db.add(
+                            PlanSet(
+                                plan_exercise_id=pe.id,
+                                order_index=0,  # will be reindexed by natural order
+                                intensity=s.get("intensity"),
+                                effort=s.get("effort"),
+                                volume=s.get("volume"),
+                                working_weight=s.get("working_weight"),
+                            )
+                        )
         await self.db.commit()
         return new_meso.id
 
@@ -238,9 +274,9 @@ class TemplateService:
             select(Mesocycle)
             .options(
                 selectinload(Mesocycle.microcycles)
-                    .selectinload(Microcycle.plan_workouts)
-                    .selectinload(PlanWorkout.exercises)
-                    .selectinload(PlanExercise.sets)
+                .selectinload(Microcycle.plan_workouts)
+                .selectinload(PlanWorkout.exercises)
+                .selectinload(PlanExercise.sets)
             )
             .join(Mesocycle.calendar_plan)
             .where(Mesocycle.id == int(body.source_mesocycle_id))
@@ -276,7 +312,9 @@ class TemplateService:
             order_index=insert_after_index + 1,
             weeks_count=weeks_count,
             microcycle_length_days=src.microcycle_length_days,
-            duration_weeks=src.duration_weeks if getattr(src, 'duration_weeks', None) is not None else (weeks_count or 0),
+            duration_weeks=src.duration_weeks
+            if getattr(src, "duration_weeks", None) is not None
+            else (weeks_count or 0),
         )
         self.db.add(new_meso)
         await self.db.flush()
@@ -288,8 +326,9 @@ class TemplateService:
                 name=mc_src.name,
                 notes=mc_src.notes,
                 order_index=mc_src.order_index or 0,
-                normalization_value=getattr(mc_src, 'normalization_value', None),
-                normalization_unit=getattr(mc_src, 'normalization_unit', None),
+                normalization_value=getattr(mc_src, "normalization_value", None),
+                normalization_unit=getattr(mc_src, "normalization_unit", None),
+                normalization_rules=getattr(mc_src, "normalization_rules", None),
                 days_count=mc_src.days_count,
             )
             self.db.add(mc_new)
@@ -315,23 +354,29 @@ class TemplateService:
                     await self.db.flush()
                     # Sets
                     for s_src in sorted(ex_src.sets or [], key=lambda s: (s.order_index, s.id)):
-                        self.db.add(PlanSet(
-                            plan_exercise_id=ex_new.id,
-                            order_index=s_src.order_index or 0,
-                            intensity=s_src.intensity,
-                            effort=s_src.effort,
-                            volume=s_src.volume,
-                            working_weight=s_src.working_weight,
-                        ))
+                        self.db.add(
+                            PlanSet(
+                                plan_exercise_id=ex_new.id,
+                                order_index=s_src.order_index or 0,
+                                intensity=s_src.intensity,
+                                effort=s_src.effort,
+                                volume=s_src.volume,
+                                working_weight=s_src.working_weight,
+                            )
+                        )
 
         await self.db.commit()
         return new_meso.id
 
     async def _get_last_mesocycle_index(self, plan_id: int) -> int:
-        stmt = select(Mesocycle).where(Mesocycle.calendar_plan_id == plan_id).order_by(Mesocycle.order_index.desc(), Mesocycle.id.desc())
+        stmt = (
+            select(Mesocycle)
+            .where(Mesocycle.calendar_plan_id == plan_id)
+            .order_by(Mesocycle.order_index.desc(), Mesocycle.id.desc())
+        )
         res = await self.db.execute(stmt)
         last = res.scalars().first()
-        return (last.order_index if last else 0)
+        return last.order_index if last else 0
 
     async def _resolve_mesocycle_index_by_workout(self, plan_id: int, workout_id: Optional[int]) -> int:
         if not workout_id:
@@ -359,7 +404,11 @@ class TemplateService:
 
     async def _shift_mesocycles(self, plan_id: int, after_index: int) -> None:
         # Increment order_index for mesocycles with order_index > after_index
-        stmt = select(Mesocycle).where(Mesocycle.calendar_plan_id == plan_id).order_by(Mesocycle.order_index.asc(), Mesocycle.id.asc())
+        stmt = (
+            select(Mesocycle)
+            .where(Mesocycle.calendar_plan_id == plan_id)
+            .order_by(Mesocycle.order_index.asc(), Mesocycle.id.asc())
+        )
         res = await self.db.execute(stmt)
         items = list(res.scalars().all())
         for m in items:

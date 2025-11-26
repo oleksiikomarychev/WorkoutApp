@@ -1,6 +1,8 @@
-from typing import Any, Generic, Type, TypeVar, Optional, Union
-from sqlalchemy.orm import Session
+from typing import Any, Generic, Optional, Type, TypeVar, Union
+
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
 from ..database import Base
 
 ModelType = TypeVar("ModelType", bound=Base)
@@ -15,9 +17,7 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     def get(self, db: Session, id: Any) -> Optional[ModelType]:
         return db.query(self.model).filter(self.model.id == id).first()
 
-    def get_multi(
-        self, db: Session, *, skip: int = 0, limit: int = 100
-    ) -> list[ModelType]:
+    def get_multi(self, db: Session, *, skip: int = 0, limit: int = 100) -> list[ModelType]:
         return db.query(self.model).offset(skip).limit(limit).all()
 
     def create(self, db: Session, *, obj_in: CreateSchemaType) -> Optional[ModelType]:
@@ -46,7 +46,7 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             else:
                 update_data = obj_in.model_dump(exclude_unset=True)
 
-            protected_fields = {'id'}
+            protected_fields = {"id"}
             for field in update_data:
                 if field not in protected_fields and hasattr(db_obj, field):
                     setattr(db_obj, field, update_data[field])

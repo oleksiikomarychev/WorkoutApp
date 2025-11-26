@@ -5,20 +5,23 @@ Revises: <previous_revision_id>
 Create Date: 2025-09-15 12:17:49.000000
 
 """
-from alembic import op
-import sqlalchemy as sa
 
+import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = '2025_09_15_1217'
-down_revision = 'c1d2e3f4a5b6'
+revision = "2025_09_15_1217"
+down_revision = "c1d2e3f4a5b6"
 branch_labels = None
 depends_on = None
 
 
 def upgrade():
-    op.add_column('workouts', sa.Column('next_workout_id', sa.Integer(), sa.ForeignKey('workouts.id'), nullable=True))
+    op.add_column(
+        "workouts",
+        sa.Column("next_workout_id", sa.Integer(), sa.ForeignKey("workouts.id"), nullable=True),
+    )
 
 
 def downgrade():
-    op.drop_column('workouts', 'next_workout_id')
+    op.drop_column("workouts", "next_workout_id")

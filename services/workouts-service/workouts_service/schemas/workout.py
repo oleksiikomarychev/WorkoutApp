@@ -1,13 +1,14 @@
-from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, Field
 from enum import Enum
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
 
 
 # Define enum for schemas
 class WorkoutTypeEnum(str, Enum):
-    manual = 'manual'
-    generated = 'generated'
+    manual = "manual"
+    generated = "generated"
 
 
 class WorkoutBase(BaseModel):
@@ -24,7 +25,7 @@ class WorkoutBase(BaseModel):
     scheduled_for: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     # Add workout type classification
-    workout_type: WorkoutTypeEnum = Field(default='manual')
+    workout_type: WorkoutTypeEnum = Field(default="manual")
 
 
 class WorkoutCreate(WorkoutBase):
@@ -92,7 +93,7 @@ class WorkoutSummaryResponse(BaseModel):
     scheduled_for: Optional[datetime] = None
     status: Optional[str] = None
     plan_workout_id: Optional[int] = None  # Add this field
-    workout_type: WorkoutTypeEnum = Field(default='manual')
+    workout_type: WorkoutTypeEnum = Field(default="manual")
 
     class Config:
         from_attributes = True
@@ -107,7 +108,7 @@ class WorkoutListResponse(BaseModel):
     scheduled_for: Optional[datetime] = None
     status: Optional[str] = None
     plan_workout_id: Optional[int] = None  # Add this field
-    workout_type: WorkoutTypeEnum = Field(default='manual')
+    workout_type: WorkoutTypeEnum = Field(default="manual")
 
     class Config:
         from_attributes = True

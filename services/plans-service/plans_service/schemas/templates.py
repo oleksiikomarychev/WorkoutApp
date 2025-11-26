@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field, constr
 
 
@@ -29,7 +30,10 @@ class ConflictPolicy(str):
 
 
 class PlacementDto(BaseModel):
-    mode: str = Field(..., description="Placement mode: Insert_After_Mesocycle | Insert_After_Workout | Append_To_End")
+    mode: str = Field(
+        ...,
+        description="Placement mode: Insert_After_Mesocycle | Insert_After_Workout | Append_To_End",
+    )
     mesocycle_index: Optional[int] = Field(default=None, ge=1)
     workout_id: Optional[int] = Field(default=None, ge=1)
 
@@ -44,7 +48,6 @@ class InstantiateFromExistingRequest(BaseModel):
     source_mesocycle_id: int
     placement: PlacementDto
     on_conflict: str = Field(default=ConflictPolicy.Shift_Forward)
-
 
 
 class MesocycleTemplateCreate(BaseModel):

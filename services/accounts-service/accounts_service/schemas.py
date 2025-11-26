@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SettingsResponse(BaseModel):
@@ -34,11 +34,60 @@ class ProfileResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     settings: SettingsResponse
+    coaching: Optional["CoachingProfileResponse"] = None
+
+
+class UserSummaryResponse(BaseModel):
+    user_id: str
+    display_name: Optional[str] = None
+    photo_url: Optional[str] = None
+    is_public: bool
+    created_at: datetime
+    last_active_at: Optional[datetime] = None
+
+
+class CoachingRatePlan(BaseModel):
+    type: Optional[str] = None
+    currency: Optional[str] = None
+    amount_minor: Optional[int] = None
+
+
+class CoachingProfileResponse(BaseModel):
+    enabled: bool
+    accepting_clients: bool
+    tagline: Optional[str] = None
+    description: Optional[str] = None
+    specializations: List[str] = Field(default_factory=list)
+    languages: List[str] = Field(default_factory=list)
+    experience_years: Optional[int] = None
+    timezone: Optional[str] = None
+    rate_plan: Optional[CoachingRatePlan] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CoachingRatePlanUpdate(BaseModel):
+    type: Optional[str] = None
+    currency: Optional[str] = None
+    amount_minor: Optional[int] = None
+
+
+class CoachingProfileUpdateRequest(BaseModel):
+    enabled: Optional[bool] = None
+    accepting_clients: Optional[bool] = None
+    tagline: Optional[str] = None
+    description: Optional[str] = None
+    specializations: Optional[List[str]] = None
+    languages: Optional[List[str]] = None
+    experience_years: Optional[int] = None
+    timezone: Optional[str] = None
+    rate_plan: Optional[CoachingRatePlanUpdate] = None
 
 
 class ProfileUpdateRequest(BaseModel):
     display_name: Optional[str] = None
     bio: Optional[str] = None
+    photo_url: Optional[str] = None
     is_public: Optional[bool] = None
     bodyweight_kg: Optional[float] = None
     height_cm: Optional[float] = None
@@ -56,3 +105,7 @@ class SettingsUpdateRequest(BaseModel):
     locale: Optional[str] = None
     timezone: Optional[str] = None
     notifications_enabled: Optional[bool] = None
+
+
+ProfileResponse.model_rebuild()
+CoachingProfileResponse.model_rebuild()

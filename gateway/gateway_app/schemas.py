@@ -1,7 +1,8 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict
-from .exercise_schemas import ExerciseInstanceCreate, ExerciseInstanceResponse
+from typing import Dict, List, Optional
+
+from pydantic import BaseModel
+
 
 class WorkoutBase(BaseModel):
     name: str
@@ -17,16 +18,20 @@ class WorkoutBase(BaseModel):
     scheduled_for: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
+
 class WorkoutCreateWithExercises(WorkoutBase):
-    #exercise_instances: List[ExerciseInstanceCreate] = []
+    # exercise_instances: List[ExerciseInstanceCreate] = []
     pass
+
+
 class WorkoutResponse(WorkoutBase):
     id: int
-    #exercise_instances: List[ExerciseInstanceCreate] = []
+    # exercise_instances: List[ExerciseInstanceCreate] = []
+
 
 class WorkoutResponseWithExercises(WorkoutBase):
     id: int
-    #exercise_instances: List[ExerciseInstanceResponse] = Field(..., alias="exercise_instances")
+    # exercise_instances: List[ExerciseInstanceResponse] = Field(..., alias="exercise_instances")
 
 
 class MicrocycleCreate(BaseModel):
@@ -35,19 +40,23 @@ class MicrocycleCreate(BaseModel):
     normalization_value: Optional[float] = None
     normalization_unit: Optional[str] = None
 
+
 class MesocycleCreate(BaseModel):
     name: str
     order_index: int
     microcycles: List[MicrocycleCreate]
+
 
 class CalendarPlanCreate(BaseModel):
     name: str
     duration_weeks: int
     mesocycles: List[MesocycleCreate]
 
+
 class DayActivity(BaseModel):
     session_count: int
     volume: float
+
 
 class SessionLite(BaseModel):
     id: int
@@ -55,6 +64,7 @@ class SessionLite(BaseModel):
     started_at: datetime
     finished_at: Optional[datetime] = None
     status: str
+
 
 class ProfileAggregatesResponse(BaseModel):
     generated_at: datetime

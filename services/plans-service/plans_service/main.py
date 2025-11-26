@@ -1,27 +1,26 @@
+import time
+import uuid
+
+import structlog
+from asgi_correlation_id import CorrelationIdMiddleware
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-import time
-import logging
-import sys
-from .routers import calendar_plans, applied_calendar_plans
+from prometheus_fastapi_instrumentator import Instrumentator
+
+from .dependencies import engine
+from .logging_config import configure_logging
+from .models.calendar import Base
+from .redis_client import close_redis, init_redis
 from .routers import (
-    mesocycles,
+    applied_calendar_plans,
+    calendar_plans,
     macros,
+    mesocycles,
     templates,
 )
 
-# Ensure INFO logs are emitted from application modules
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-    stream=sys.stdout,
-)
-# Reduce uvicorn access log noise if needed, but keep uvicorn/error at INFO
-logging.getLogger("uvicorn").setLevel(logging.INFO)
-logging.getLogger("uvicorn.error").setLevel(logging.INFO)
-logging.getLogger("uvicorn.access").setLevel(logging.INFO)
-from .dependencies import engine
-from .models.calendar import Base
+configure_logging()
+logger = structlog.get_logger(__name__)
 
 
 def create_tables():
@@ -56,11 +55,21 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
+
 # Add startup event handler for async database initialization
 @app.on_event("startup")
 async def startup_event():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await init_redis()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await close_redis()
+
 
 origins = [
     "http://localhost",
@@ -76,8 +85,14 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+app.add_middleware(
+    CorrelationIdMiddleware,
+    header_name="X-Request-ID",
+    generator=lambda: str(uuid.uuid4()),
+    update_request_header=True,
+)
 
-app.include_router(applied_calendar_plans.router,prefix="/plans",tags=["Applied Plans"])
+app.include_router(applied_calendar_plans.router, prefix="/plans", tags=["Applied Plans"])
 app.include_router(calendar_plans.router, prefix="/plans", tags=["Calendar Plans"])
 app.include_router(mesocycles.router, prefix="/plans", tags=["Mesocycles"])
 app.include_router(macros.router, prefix="/plans", tags=["Plan Macros"])

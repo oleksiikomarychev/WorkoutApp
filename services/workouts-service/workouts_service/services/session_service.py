@@ -1,18 +1,38 @@
+import json
+import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set, Tuple
-import os
 
+import httpx
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from ..exceptions import ActiveSessionNotFoundException, SessionNotFoundException, WorkoutNotFoundException
+from ..exceptions import (
+    ActiveSessionNotFoundException,
+    SessionNotFoundException,
+    WorkoutNotFoundException,
+)
+from ..metrics import (
+    SESSION_CACHE_ERRORS_TOTAL,
+    SESSION_CACHE_HITS_TOTAL,
+    SESSION_CACHE_MISSES_TOTAL,
+    WORKOUT_SESSIONS_STARTED_TOTAL,
+)
 from ..models import Workout, WorkoutExercise, WorkoutSession, WorkoutSet
+from ..redis_client import (
+    SESSION_DETAIL_TTL_SECONDS,
+    get_redis,
+    invalidate_session_cache,
+    session_detail_key,
+    session_list_key,
+)
 from .user_max_client import UserMaxClient
-import logging
-import httpx
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
+SOCIAL_GATEWAY_URL = (os.getenv("SOCIAL_GATEWAY_URL") or "http://gateway:8000/api/v1/social").rstrip("/")
+INTERNAL_GATEWAY_SECRET = (os.getenv("INTERNAL_GATEWAY_SECRET") or "").strip()
 
 
 class SessionService:
@@ -21,11 +41,63 @@ class SessionService:
         self.user_max_client = user_max_client or UserMaxClient()
         self.user_id = user_id
 
+    async def _get_cached_session(self, session_id: int) -> Optional[dict]:
+        redis = await get_redis()
+        if not redis:
+            return None
+        key = session_detail_key(self.user_id, session_id)
+        try:
+            cached_value = await redis.get(key)
+            if cached_value:
+                SESSION_CACHE_HITS_TOTAL.inc()
+                return json.loads(cached_value)
+            SESSION_CACHE_MISSES_TOTAL.inc()
+        except Exception as exc:
+            SESSION_CACHE_ERRORS_TOTAL.inc()
+            logger.warning("session_cache_get_failed", key=key, error=str(exc))
+        return None
+
+    async def _set_cached_session(self, session_id: int, payload: dict) -> None:
+        redis = await get_redis()
+        if not redis:
+            return
+        key = session_detail_key(self.user_id, session_id)
+        try:
+            await redis.set(key, json.dumps(payload), ex=SESSION_DETAIL_TTL_SECONDS)
+        except Exception as exc:
+            SESSION_CACHE_ERRORS_TOTAL.inc()
+            logger.warning("session_cache_set_failed", key=key, error=str(exc))
+
+    async def _get_cached_session_list(self) -> Optional[List[dict]]:
+        redis = await get_redis()
+        if not redis:
+            return None
+        key = session_list_key(self.user_id)
+        try:
+            cached_value = await redis.get(key)
+            if cached_value:
+                SESSION_CACHE_HITS_TOTAL.inc()
+                return json.loads(cached_value)
+            SESSION_CACHE_MISSES_TOTAL.inc()
+        except Exception as exc:
+            SESSION_CACHE_ERRORS_TOTAL.inc()
+            logger.warning("session_list_cache_get_failed", key=key, error=str(exc))
+        return None
+
+    async def _set_cached_session_list(self, payload: List[dict]) -> None:
+        redis = await get_redis()
+        if not redis:
+            return
+        key = session_list_key(self.user_id)
+        try:
+            await redis.set(key, json.dumps(payload), ex=SESSION_DETAIL_TTL_SECONDS)
+        except Exception as exc:
+            SESSION_CACHE_ERRORS_TOTAL.inc()
+            logger.warning("session_list_cache_set_failed", key=key, error=str(exc))
+
     async def start_workout_session(self, workout_id: int, started_at: datetime | None = None) -> WorkoutSession:
         result = await self.db.execute(
-            select(Workout)
-            .filter(Workout.id == workout_id)
-            .filter(Workout.user_id == self.user_id)
+            select(Workout).filter(Workout.id == workout_id).filter(Workout.user_id == self.user_id)
         )
         workout = result.scalars().first()
         if not workout:
@@ -48,15 +120,46 @@ class SessionService:
 
         naive_started_at = started_at.replace(tzinfo=None)
 
-        session = WorkoutSession(workout_id=workout_id, started_at=naive_started_at, status="active", user_id=self.user_id)
+        session = WorkoutSession(
+            workout_id=workout_id,
+            started_at=naive_started_at,
+            status="active",
+            user_id=self.user_id,
+        )
         self.db.add(session)
         if not workout.started_at:
             workout.started_at = naive_started_at
         await self.db.commit()
         await self.db.refresh(session)
+
+        try:
+            WORKOUT_SESSIONS_STARTED_TOTAL.inc()
+        except Exception:
+            logger.exception("Failed to increment WORKOUT_SESSIONS_STARTED_TOTAL")
+
+        await invalidate_session_cache(self.user_id, session_ids=[session.id])
         return session
 
+    async def _serialize_session(self, session: WorkoutSession) -> dict:
+        return {
+            "id": session.id,
+            "workout_id": session.workout_id,
+            "user_id": session.user_id,
+            "status": session.status,
+            "started_at": session.started_at,
+            "finished_at": session.finished_at,
+            "progress": session.progress,
+            "macro_suggestion": session.macro_suggestion,
+        }
+
     async def get_active_session(self, workout_id: int) -> WorkoutSession:
+        cached_list = await self._get_cached_session_list()
+        if cached_list is not None:
+            for payload in cached_list:
+                if payload.get("workout_id") == workout_id and payload.get("status") == "active":
+                    session = WorkoutSession(**payload)
+                    return session
+
         result = await self.db.execute(
             select(WorkoutSession)
             .filter(WorkoutSession.workout_id == workout_id)
@@ -66,32 +169,58 @@ class SessionService:
         session = result.scalars().first()
         if not session:
             raise ActiveSessionNotFoundException(workout_id)
+        await self._set_cached_session(session.id, self._serialize_session(session))
         return session
 
     async def get_session_history(self, workout_id: int) -> list[WorkoutSession]:
+        cached_list = await self._get_cached_session_list()
+        if cached_list is not None:
+            filtered = [WorkoutSession(**payload) for payload in cached_list if payload.get("workout_id") == workout_id]
+            if filtered:
+                return filtered
+
         result = await self.db.execute(
             select(WorkoutSession)
             .filter(WorkoutSession.workout_id == workout_id)
             .filter(WorkoutSession.user_id == self.user_id)
             .order_by(WorkoutSession.id.desc())
         )
-        return result.scalars().all()
+        sessions = result.scalars().all()
+        if sessions:
+            serialized = [self._serialize_session(s) for s in sessions]
+            await self._set_cached_session_list(serialized)
+        return sessions
 
     async def get_all_sessions(self) -> List[WorkoutSession]:
-        result = await self.db.execute(
-            select(WorkoutSession)
-            .filter(WorkoutSession.user_id == self.user_id)
-            .order_by(WorkoutSession.id.desc())
-        )
-        return result.scalars().all()
+        cached_list = await self._get_cached_session_list()
+        if cached_list is not None:
+            return [WorkoutSession(**payload) for payload in cached_list]
 
-    async def finish_session(self, session_id: int) -> WorkoutSession:
+        result = await self.db.execute(
+            select(WorkoutSession).filter(WorkoutSession.user_id == self.user_id).order_by(WorkoutSession.id.desc())
+        )
+        sessions = result.scalars().all()
+        if sessions:
+            serialized = [self._serialize_session(s) for s in sessions]
+            await self._set_cached_session_list(serialized)
+        return sessions
+
+    async def get_session_by_id(self, session_id: int) -> WorkoutSession | None:
+        cached = await self._get_cached_session(session_id)
+        if cached:
+            return WorkoutSession(**cached)
         result = await self.db.execute(
             select(WorkoutSession)
             .filter(WorkoutSession.id == session_id)
             .filter(WorkoutSession.user_id == self.user_id)
         )
         session = result.scalars().first()
+        if session:
+            await self._set_cached_session(session_id, self._serialize_session(session))
+        return session
+
+    async def finish_session(self, session_id: int) -> WorkoutSession:
+        session = await self.get_session_by_id(session_id)
         if not session:
             raise SessionNotFoundException(session_id)
         if session.status == "finished":
@@ -100,85 +229,84 @@ class SessionService:
         finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
         session.status = "finished"
         session.finished_at = finished_at
-
         result = await self.db.execute(
             select(Workout)
             .options(selectinload(Workout.exercises).selectinload(WorkoutExercise.sets))
             .filter(Workout.id == session.workout_id)
         )
         workout = result.scalars().first()
-        # Cache primitive attributes before commit to avoid async lazy loads after commit expiration
-        workout_id_cached: Optional[int] = workout.id if workout else None
-        applied_plan_id_cached: Optional[int] = workout.applied_plan_id if workout else None
 
-        sync_payload = None
         if workout:
             if not workout.completed_at:
                 workout.completed_at = finished_at
             workout.status = "completed"
-            try:
-                sync_payload = await self._prepare_user_max_payload(workout, session, finished_at)
-            except Exception:
-                logger.exception("SessionService._prepare_user_max_payload failed")
 
         await self.db.commit()
         await self.db.refresh(session)
-
-        if sync_payload:
-            await self.user_max_client.push_entries(sync_payload, user_id=self.user_id)
-
-        # Build macro suggestion first (best-effort) using current plan index, then advance index
-        try:
-            # Need applied_plan_id to compute macros
-            if applied_plan_id_cached:
-                # 1) Compute suggestion preview while current_workout_index still points to current workout
-                suggestion = await self._compute_macro_suggestion(int(applied_plan_id_cached))
-                # Persist on the session row so history endpoint can read it later
-                session.macro_suggestion = suggestion
-                await self.db.commit()
-                await self.db.refresh(session)
-                # 2) Advance current_workout_index for the applied plan (best-effort)
-                try:
-                    base_url = os.getenv("PLANS_SERVICE_URL")
-                    if not base_url:
-                        raise RuntimeError("PLANS_SERVICE_URL is not set")
-                    base_url = base_url.rstrip("/")
-                    adv_url = f"{base_url}/plans/applied-plans/{int(applied_plan_id_cached)}/advance-index?by=1"
-                    headers = {"X-User-Id": self.user_id}
-                    async with httpx.AsyncClient(timeout=4.0) as client:
-                        resp = await client.post(adv_url, headers=headers)
-                        if resp.status_code >= 400:
-                            logger.warning(
-                                "advance-index non-2xx | applied_plan_id=%s status=%s",
-                                applied_plan_id_cached,
-                                resp.status_code,
-                            )
-                except Exception:
-                    logger.exception(
-                        "SessionService.finish_session advance-index failed | applied_plan_id=%s session_id=%s",
-                        applied_plan_id_cached,
-                        session.id,
-                    )
-                    pass
-        except Exception:
-            # best-effort only
-            logger.exception(
-                "SessionService.finish_session macro suggestion compute/persist failed | session_id=%s workout_id=%s applied_plan_id=%s",
-                session.id,
-                workout_id_cached,
-                applied_plan_id_cached,
-            )
-            pass
+        await invalidate_session_cache(self.user_id, session_ids=[session.id])
 
         return session
 
-    async def update_progress(self, session_id: int, instance_id: int, set_id: int, completed: bool = True) -> WorkoutSession:
-        result = await self.db.execute(
-            select(WorkoutSession)
-            .filter(WorkoutSession.id == session_id)
-            .filter(WorkoutSession.user_id == self.user_id)
-        )
-        session = result.scalars().first()
+    async def _post_social_workout_completion(self, workout_id: int, session: WorkoutSession) -> None:
+        if not SOCIAL_GATEWAY_URL:
+            return
+
+        url = f"{SOCIAL_GATEWAY_URL}/posts"
+        headers = {"X-User-Id": self.user_id}
+        if INTERNAL_GATEWAY_SECRET:
+            headers["X-Internal-Secret"] = INTERNAL_GATEWAY_SECRET
+
+        content = f"Completed workout #{workout_id}"
+
+        attachment: Dict[str, object] = {"type": "workout_session"}
+        try:
+            if session.started_at and session.finished_at:
+                try:
+                    started = session.started_at
+                    finished = session.finished_at
+                    duration_seconds = (finished - started).total_seconds()
+                    if duration_seconds > 0:
+                        attachment["duration_minutes"] = int(duration_seconds // 60)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        attachments = []
+        if len(attachment) > 1:
+            attachments.append(attachment)
+
+        payload: Dict[str, object] = {
+            "content": content,
+            "scope": "public",
+            "context_resource": {
+                "type": "workout",
+                "id": workout_id,
+                "owner_id": self.user_id,
+            },
+            "attachments": attachments,
+        }
+
+        timeout = httpx.Timeout(3.0, connect=1.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            try:
+                await client.post(url, headers=headers, json=payload)
+            except Exception:
+                logger.warning(
+                    "_post_social_workout_completion: request failed | workout_id=%s session_id=%s",
+                    workout_id,
+                    session.id,
+                )
+                return
+
+    async def update_progress(
+        self,
+        session_id: int,
+        instance_id: int,
+        set_id: int,
+        completed: bool,
+    ) -> WorkoutSession:
+        session = await self.get_session_by_id(session_id)
         if not session:
             raise SessionNotFoundException(session_id)
 
@@ -193,11 +321,7 @@ class SessionService:
         completed_map = dict(raw_completed)
 
         key = str(int(instance_id))
-        raw_list = completed_map.get(key)
-        if isinstance(raw_list, list):
-            current_list = list(raw_list)
-        else:
-            current_list = []
+        current_list = list(completed_map.get(key) or [])
 
         if completed:
             if set_id not in current_list:
@@ -211,6 +335,7 @@ class SessionService:
 
         await self.db.commit()
         await self.db.refresh(session)
+        await invalidate_session_cache(self.user_id, session_ids=[session_id])
         return session
 
     async def _prepare_user_max_payload(
@@ -226,7 +351,9 @@ class SessionService:
         completed_map = self._extract_completed_sets(session)
         logger.info(
             "_prepare_user_max_payload | workout_id=%s session_id=%s completed_map=%s",
-            workout.id, session.id, completed_map
+            workout.id,
+            session.id,
+            completed_map,
         )
 
         # Fetch instances with sets from exercises-service
@@ -252,7 +379,7 @@ class SessionService:
                     # Skip if exercise id is invalid
                     continue
 
-                for s in (inst.get("sets") or []):
+                for s in inst.get("sets") or []:
                     try:
                         sid = int(s.get("id"))
                     except Exception:
@@ -284,7 +411,8 @@ class SessionService:
         if not entries:
             logger.warning(
                 "No entries to sync to user-max | workout_id=%s session_id=%s",
-                workout.id, session.id
+                workout.id,
+                session.id,
             )
             return None
 
@@ -300,7 +428,9 @@ class SessionService:
         ]
         logger.info(
             "Prepared user_max payload | workout_id=%s session_id=%s entries_count=%d",
-            workout.id, session.id, len(payload)
+            workout.id,
+            session.id,
+            len(payload),
         )
         return payload
 
@@ -325,7 +455,7 @@ class SessionService:
                 # Summarize planned plan-level changes and patches
                 inject_count = 0
                 for item in preview:
-                    for ch in (item.get("plan_changes") or []):
+                    for ch in item.get("plan_changes") or []:
                         if ch.get("type") == "Inject_Mesocycle":
                             inject_count += 1
                 has_patches = any((item.get("patches") for item in preview))
@@ -373,14 +503,18 @@ class SessionService:
         if reps is None or reps <= 0:
             logger.debug(
                 "_build_entry: invalid reps | exercise_id=%s set_id=%s volume=%s",
-                exercise_id, w_set.id, w_set.volume
+                exercise_id,
+                w_set.id,
+                w_set.volume,
             )
             return None
         weight = self._safe_float(w_set.working_weight)
         if weight is None or weight <= 0:
             logger.debug(
                 "_build_entry: invalid weight | exercise_id=%s set_id=%s working_weight=%s",
-                exercise_id, w_set.id, w_set.working_weight
+                exercise_id,
+                w_set.id,
+                w_set.working_weight,
             )
             return None
         rir = self._estimate_rir(w_set.effort)
@@ -388,7 +522,13 @@ class SessionService:
         rep_max = max(1, min(rep_max, 30))
         logger.debug(
             "_build_entry: success | exercise_id=%s set_id=%s reps=%s weight=%s effort=%s rir=%s rep_max=%s",
-            exercise_id, w_set.id, reps, weight, w_set.effort, rir, rep_max
+            exercise_id,
+            w_set.id,
+            reps,
+            weight,
+            w_set.effort,
+            rir,
+            rep_max,
         )
         return {
             "exercise_id": exercise_id,

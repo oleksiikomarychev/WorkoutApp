@@ -1,5 +1,7 @@
-from pydantic import BaseModel
 from typing import List, Optional
+
+from pydantic import BaseModel
+
 
 class ExerciseSetCreate(BaseModel):
     weight: Optional[float] = None
@@ -8,6 +10,7 @@ class ExerciseSetCreate(BaseModel):
     effort_type: Optional[str] = None
     effort: Optional[float] = None
     reps: Optional[int] = None
+
 
 class ExerciseSet(BaseModel):
     id: int
@@ -18,11 +21,13 @@ class ExerciseSet(BaseModel):
     effort: Optional[float] = None
     reps: Optional[int] = None
 
+
 class ExerciseInstanceCreate(BaseModel):
     exercise_list_id: int
     sets: List[ExerciseSetCreate] = []
     notes: Optional[str] = None
     order: Optional[int] = None
+
 
 class ExerciseInstanceResponse(BaseModel):
     id: int

@@ -1,9 +1,11 @@
-import httpx
 import logging
-import asyncio
-from fastapi import HTTPException
 import os
+
+import httpx
+from fastapi import HTTPException
+
 logger = logging.getLogger(__name__)
+
 
 async def get_exercise_by_id(exercise_id: int):
     """Fetch an exercise by ID from the exercises service"""
@@ -25,6 +27,7 @@ async def get_exercise_by_id(exercise_id: int):
     except httpx.RequestError as e:
         logger.error(f"Request to exercises-service failed: {str(e)}")
         raise HTTPException(status_code=503, detail="Service unavailable")
+
 
 class PlansServiceRPC:
     def __init__(self, base_url: str = ""):
@@ -59,7 +62,7 @@ class PlansServiceRPC:
                 response = await client.post(
                     f"{self.base_url}/microcycles/validate",
                     json={"microcycle_ids": microcycle_ids},
-                    timeout=5.0
+                    timeout=5.0,
                 )
                 if response.status_code == 200:
                     return response.json().get("valid_ids", [])
@@ -69,11 +72,9 @@ class PlansServiceRPC:
 
     async def get_params_workout(self, params_workout_id: int):
         """Fetch a ParamsWorkout by ID"""
-        response = await self.call_rpc(
-            "get_params_workout",
-            {"params_workout_id": params_workout_id}
-        )
+        response = await self.call_rpc("get_params_workout", {"params_workout_id": params_workout_id})
         return response
+
 
 class RpeServiceRPC:
     def __init__(self, base_url: str = ""):
@@ -137,9 +138,7 @@ class RpeServiceRPC:
                 resp.raise_for_status()
                 return resp.json()
         except httpx.HTTPStatusError as e:
-            logger.error(
-                f"HTTP error from rpe-service: {e.response.status_code} {e.response.text}"
-            )
+            logger.error(f"HTTP error from rpe-service: {e.response.status_code} {e.response.text}")
             raise HTTPException(
                 status_code=e.response.status_code,
                 detail=f"RPE service error: {e.response.text}",

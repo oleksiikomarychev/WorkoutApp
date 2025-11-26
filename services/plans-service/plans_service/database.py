@@ -1,5 +1,5 @@
-import os
 from dotenv import load_dotenv
+
 from .config import get_settings
 from .models.calendar import Base  # noqa: F401
 

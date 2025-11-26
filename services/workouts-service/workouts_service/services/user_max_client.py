@@ -1,7 +1,7 @@
-import os
 import logging
-from typing import Iterable, Optional
+import os
 from datetime import date
+from typing import Iterable, Optional
 
 import httpx
 
@@ -23,12 +23,22 @@ class UserMaxClient:
             return
         url = f"{self.base_url}/user-max/bulk"
         headers = {"X-User-Id": user_id}
-        logger.info("UserMaxClient.push_entries: sending %d entries to %s for user %s | payload=%s", len(payload), url, user_id, payload)
+        logger.info(
+            "UserMaxClient.push_entries: sending %d entries to %s for user %s | payload=%s",
+            len(payload),
+            url,
+            user_id,
+            payload,
+        )
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
-                logger.info("UserMaxClient.push_entries: success | status=%d response=%s", response.status_code, response.text[:200])
+                logger.info(
+                    "UserMaxClient.push_entries: success | status=%d response=%s",
+                    response.status_code,
+                    response.text[:200],
+                )
             except Exception as exc:
                 logger.exception("UserMaxClient.push_entries failed: %s", exc)
 

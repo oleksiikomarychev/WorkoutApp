@@ -5,9 +5,8 @@ Revises: 9fa19f5392f3
 Create Date: 2025-10-12 22:40:00.000000
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "g1h2i3j4k5l6"
@@ -27,7 +26,7 @@ def upgrade() -> None:
                 server_default=sa.text("'legacy-user'"),
             )
         )
-    
+
     # Add index on user_id for filtering
     op.create_index(
         "ix_generated_plans_user_id",
@@ -35,7 +34,7 @@ def upgrade() -> None:
         ["user_id"],
         unique=False,
     )
-    
+
     # Drop the default value after backfill
     with op.batch_alter_table("generated_plans", schema=None) as batch_op:
         batch_op.alter_column(
@@ -47,6 +46,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index("ix_generated_plans_user_id", table_name="generated_plans")
-    
+
     with op.batch_alter_table("generated_plans", schema=None) as batch_op:
         batch_op.drop_column("user_id")

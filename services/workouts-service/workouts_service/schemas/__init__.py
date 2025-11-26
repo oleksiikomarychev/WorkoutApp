@@ -1,5 +1,18 @@
 # This file makes the schemas directory a Python package
 
-from .workout import WorkoutBase, WorkoutCreate, WorkoutUpdate, WorkoutResponse, WorkoutSummaryResponse
-from .session import WorkoutSessionBase, WorkoutSessionCreate, WorkoutSessionResponse, SessionFinishRequest, SessionProgressUpdate
 from .effort import EffortType
+from .session import (
+    SessionFinishRequest,
+    SessionProgressUpdate,
+    WorkoutSessionBase,
+    WorkoutSessionCreate,
+    WorkoutSessionResponse,
+)
+from .task_responses import TaskStatusResponse, TaskSubmissionResponse
+from .workout import (
+    WorkoutBase,
+    WorkoutCreate,
+    WorkoutResponse,
+    WorkoutSummaryResponse,
+    WorkoutUpdate,
+)

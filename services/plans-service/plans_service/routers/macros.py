@@ -1,29 +1,26 @@
 from __future__ import annotations
 
+import json
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Body, Depends, HTTPException, status
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete
 
-from ..dependencies import get_db, get_current_user_id
+from ..dependencies import get_current_user_id, get_db
 from ..models.calendar import CalendarPlan
 from ..models.macro import PlanMacro
 from ..schemas.macro import (
     PlanMacroCreate,
-    PlanMacroUpdate,
     PlanMacroResponse,
+    PlanMacroUpdate,
 )
 
-router = APIRouter(prefix="/calendar-plans/{plan_id}/macros", tags=["plan-macros"]) 
+router = APIRouter(prefix="/calendar-plans/{plan_id}/macros", tags=["plan-macros"])
 
 
 async def _require_plan(db: AsyncSession, plan_id: int, user_id: str) -> CalendarPlan:
-    stmt = (
-        select(CalendarPlan)
-        .where(CalendarPlan.id == plan_id)
-        .where(CalendarPlan.user_id == user_id)
-    )
+    stmt = select(CalendarPlan).where(CalendarPlan.id == plan_id).where(CalendarPlan.user_id == user_id)
     res = await db.execute(stmt)
     plan = res.scalars().first()
     if not plan:
@@ -140,14 +137,14 @@ async def delete_macro(
 ):
     await _require_plan(db, plan_id, user_id)
     stmt = delete(PlanMacro).where(PlanMacro.id == macro_id, PlanMacro.calendar_plan_id == plan_id)
-    res = await db.execute(stmt)
+    await db.execute(stmt)
     await db.commit()
     # No explicit rows-affected check to avoid leaking existence; 204 regardless
     return
 
 
 # --- helpers ---
-import json
+
 
 def _safe_parse_json(s: str | None):
     if not s:

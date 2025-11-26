@@ -1,6 +1,7 @@
-from sqlalchemy import Column, Integer, Date, Float, String, Index
-from sqlalchemy.orm import relationship
 import datetime
+
+from sqlalchemy import Column, Date, Float, Index, Integer, String
+
 from .database import Base
 
 
@@ -14,17 +15,21 @@ class UserMax(Base):
     max_weight = Column(Integer, nullable=False)
     rep_max = Column(Integer)
     date = Column(Date, default=datetime.date.today, nullable=False)
-    true_1rm = Column(Float) #Теоретический максимум
-    verified_1rm = Column(Float) #Подтвержденный максимум
+    true_1rm = Column(Float)  # Теоретический максимум
+    verified_1rm = Column(Float)  # Подтвержденный максимум
     source = Column(String(64))
 
     # exercise_instances = relationship("ExerciseInstance", back_populates="user_max")
-    # applied_plans = relationship("AppliedCalendarPlan", back_populates="user_maxes", secondary="applied_calendar_plan_user_maxes")
+    # applied_plans = relationship(
+    #     "AppliedCalendarPlan",
+    #     back_populates="user_maxes",
+    #     secondary="applied_calendar_plan_user_maxes",
+    # )
 
     __table_args__ = (
-        Index('idx_exercise_id', 'exercise_id'),
-        Index('ix_user_maxes_user_id', 'user_id'),
-        Index('ix_user_maxes_unique_entry', 'user_id', 'exercise_id', 'rep_max', 'date', unique=True),
+        Index("idx_exercise_id", "exercise_id"),
+        Index("ix_user_maxes_user_id", "user_id"),
+        Index("ix_user_maxes_unique_entry", "user_id", "exercise_id", "rep_max", "date", unique=True),
     )
 
     def __str__(self):

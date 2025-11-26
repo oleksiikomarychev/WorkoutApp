@@ -1,18 +1,20 @@
+from datetime import datetime, timedelta
+
 from sqlalchemy import (
+    JSON,
+    Boolean,
     Column,
+    DateTime,
+    Float,
+    ForeignKey,
     Integer,
     String,
-    ForeignKey,
-    JSON,
-    DateTime,
-    Boolean,
     text,
-    Float,
 )
 from sqlalchemy.orm import declarative_base, relationship
-from datetime import timedelta, datetime
 
 Base = declarative_base()
+
 
 class CalendarPlan(Base):
     __tablename__ = "calendar_plans"
@@ -20,7 +22,7 @@ class CalendarPlan(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
     duration_weeks = Column(Integer, nullable=False)
-    is_active = Column(Boolean, default=True, server_default=text('true'))
+    is_active = Column(Boolean, default=True, server_default=text("true"))
     user_id = Column(String(255), nullable=False, index=True)
     root_plan_id = Column(Integer, ForeignKey("calendar_plans.id", ondelete="RESTRICT"), nullable=False, index=True)
     # Plan metadata
@@ -30,15 +32,17 @@ class CalendarPlan(Base):
     intended_frequency_per_week = Column(Integer, nullable=True)
     session_duration_target_min = Column(Integer, nullable=True)
     primary_focus_lifts = Column(JSON, nullable=True)  # e.g. list of exercise_definition_ids
-    required_equipment = Column(JSON, nullable=True)   # e.g. list of strings
+    required_equipment = Column(JSON, nullable=True)  # e.g. list of strings
 
-    applied_instances = relationship("AppliedCalendarPlan", back_populates="calendar_plan", cascade="all, delete-orphan")
+    applied_instances = relationship(
+        "AppliedCalendarPlan", back_populates="calendar_plan", cascade="all, delete-orphan"
+    )
     mesocycles = relationship(
-        "Mesocycle", 
-        back_populates="calendar_plan", 
+        "Mesocycle",
+        back_populates="calendar_plan",
         cascade="all, delete-orphan",
         order_by="Mesocycle.order_index",
-        lazy="selectin"
+        lazy="selectin",
     )
     root_plan = relationship("CalendarPlan", remote_side=[id], back_populates="variants", uselist=False)
     variants = relationship("CalendarPlan", back_populates="root_plan", cascade="all, delete-orphan")
@@ -75,10 +79,10 @@ class AppliedCalendarPlan(Base):
 
     calendar_plan = relationship("CalendarPlan", back_populates="applied_instances")
     workouts = relationship(
-        "AppliedPlanWorkout", 
+        "AppliedPlanWorkout",
         back_populates="applied_plan",
         order_by="AppliedPlanWorkout.order_index",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
     mesocycles = relationship("AppliedMesocycle", back_populates="applied_plan", cascade="all, delete-orphan")
 
@@ -87,55 +91,59 @@ class AppliedCalendarPlan(Base):
             self.end_date = self.start_date + timedelta(weeks=duration_weeks)
 
     def __repr__(self):
-        return f"<AppliedCalendarPlan(id={self.id}, calendar_plan_id={self.calendar_plan_id}, start_date={self.start_date}, end_date={self.end_date})>"
+        return (
+            "<AppliedCalendarPlan("
+            f"id={self.id}, calendar_plan_id={self.calendar_plan_id}, "
+            f"start_date={self.start_date}, end_date={self.end_date})>"
+        )
 
 
 class AppliedPlanWorkout(Base):
     __tablename__ = "applied_plan_workouts"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     applied_plan_id = Column(Integer, ForeignKey("applied_calendar_plans.id"), nullable=False)
     workout_id = Column(Integer, nullable=False)
     order_index = Column(Integer, nullable=False)
-    
+
     applied_plan = relationship("AppliedCalendarPlan", back_populates="workouts")
-    
+
     def __repr__(self):
         return f"<AppliedPlanWorkout(id={self.id}, workout_id={self.workout_id}, order={self.order_index})>"
 
 
 class AppliedMesocycle(Base):
     __tablename__ = "applied_mesocycles"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     applied_plan_id = Column(Integer, ForeignKey("applied_calendar_plans.id"), nullable=False)
     mesocycle_id = Column(Integer, ForeignKey("mesocycles.id"), nullable=True)
     order_index = Column(Integer, nullable=False)
-    
+
     applied_plan = relationship("AppliedCalendarPlan", back_populates="mesocycles")
     microcycles = relationship("AppliedMicrocycle", back_populates="applied_mesocycle", cascade="all, delete-orphan")
 
 
 class AppliedMicrocycle(Base):
     __tablename__ = "applied_microcycles"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     applied_mesocycle_id = Column(Integer, ForeignKey("applied_mesocycles.id"), nullable=False)
     microcycle_id = Column(Integer, ForeignKey("microcycles.id"), nullable=True)
     order_index = Column(Integer, nullable=False)
-    
+
     applied_mesocycle = relationship("AppliedMesocycle", back_populates="microcycles")
     workouts = relationship("AppliedWorkout", back_populates="applied_microcycle", cascade="all, delete-orphan")
 
 
 class AppliedWorkout(Base):
     __tablename__ = "applied_workouts"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     applied_microcycle_id = Column(Integer, ForeignKey("applied_microcycles.id"), nullable=False)
     workout_id = Column(Integer, nullable=False)
     order_index = Column(Integer, nullable=False)
-    
+
     applied_microcycle = relationship("AppliedMicrocycle", back_populates="workouts")
 
 
@@ -143,9 +151,7 @@ class Mesocycle(Base):
     __tablename__ = "mesocycles"
 
     id = Column(Integer, primary_key=True, index=True)
-    calendar_plan_id = Column(
-        Integer, ForeignKey("calendar_plans.id", ondelete="CASCADE"), nullable=False
-    )
+    calendar_plan_id = Column(Integer, ForeignKey("calendar_plans.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
     notes = Column(String(100), nullable=True)
     order_index = Column(Integer, nullable=False, default=0)
@@ -162,7 +168,9 @@ class Mesocycle(Base):
     )
 
     def __repr__(self):
-        return f"<Mesocycle(id={self.id}, plan_id={self.calendar_plan_id}, name='{self.name}', order={self.order_index})>"
+        return (
+            f"<Mesocycle(id={self.id}, plan_id={self.calendar_plan_id}, name='{self.name}', order={self.order_index})>"
+        )
 
 
 class Microcycle(Base):
@@ -175,13 +183,23 @@ class Microcycle(Base):
     order_index = Column(Integer, nullable=False, default=0)
     normalization_value = Column(Float, nullable=True)
     normalization_unit = Column(String(16), nullable=True)
+    normalization_rules = Column(JSON, nullable=True)
     days_count = Column(Integer, nullable=True)
 
     mesocycle = relationship("Mesocycle", back_populates="microcycles")
-    plan_workouts = relationship("PlanWorkout", back_populates="microcycle", cascade="all, delete-orphan", order_by="PlanWorkout.order_index")
+    plan_workouts = relationship(
+        "PlanWorkout",
+        back_populates="microcycle",
+        cascade="all, delete-orphan",
+        order_by="PlanWorkout.order_index",
+    )
 
     def __repr__(self):
-        return f"<Microcycle(id={self.id}, mesocycle_id={self.mesocycle_id}, name='{self.name}', order={self.order_index})>"
+        return (
+            "<Microcycle("
+            f"id={self.id}, mesocycle_id={self.mesocycle_id}, "
+            f"name='{self.name}', order={self.order_index})>"
+        )
 
 
 class PlanWorkout(Base):
@@ -217,7 +235,12 @@ class PlanExercise(Base):
     sets = relationship("PlanSet", back_populates="plan_exercise", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<PlanExercise(id={self.id}, plan_workout_id={self.plan_workout_id}, exercise_definition_id={self.exercise_definition_id}, exercise_name='{self.exercise_name}')>"
+        return (
+            "<PlanExercise("
+            f"id={self.id}, plan_workout_id={self.plan_workout_id}, "
+            f"exercise_definition_id={self.exercise_definition_id}, "
+            f"exercise_name='{self.exercise_name}')>"
+        )
 
 
 class PlanSet(Base):
@@ -226,7 +249,7 @@ class PlanSet(Base):
     id = Column(Integer, primary_key=True, index=True)
     plan_exercise_id = Column(Integer, ForeignKey("plan_exercises.id", ondelete="CASCADE"), nullable=False)
     order_index = Column(Integer, nullable=False, default=0)
-    intensity = Column(Integer, nullable=True)  # 0-100
+    intensity = Column(Integer, nullable=True)  # 0-110
     effort = Column(Integer, nullable=True)  # 1-10
     volume = Column(Integer, nullable=True)  # >=1
     working_weight = Column(Float, nullable=True)  # For calculations, exclude in responses if needed
@@ -240,7 +263,7 @@ class PlanSet(Base):
         return f"<PlanSet(id={self.id}, plan_exercise_id={self.plan_exercise_id}, intensity={self.intensity})>"
 
 
-class WorkoutProgress(Base): #Сопоставление с воркаут сервисом(на будущее)
+class WorkoutProgress(Base):  # Сопоставление с воркаут сервисом(на будущее)
     __tablename__ = "workout_progress"
 
     id = Column(Integer, primary_key=True, index=True)

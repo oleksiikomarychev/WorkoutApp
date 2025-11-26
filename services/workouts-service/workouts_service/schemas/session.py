@@ -1,6 +1,8 @@
-from typing import Optional, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, Optional
+
 from pydantic import BaseModel, Field
+
 
 class WorkoutSessionBase(BaseModel):
     workout_id: int
@@ -8,8 +10,10 @@ class WorkoutSessionBase(BaseModel):
     started_at: datetime
     finished_at: Optional[datetime] = None
 
+
 class WorkoutSessionCreate(BaseModel):
     started_at: Optional[datetime] = None
+
 
 class WorkoutSessionResponse(WorkoutSessionBase):
     id: int
@@ -24,9 +28,11 @@ class WorkoutSessionResponse(WorkoutSessionBase):
         from_attributes = True
         json_encoders = {"datetime": lambda v: v.isoformat() if v else None}
 
+
 class SessionFinishRequest(BaseModel):
     cancelled: bool = False
     mark_workout_completed: bool = False
+
 
 class SessionProgressUpdate(BaseModel):
     instance_id: int

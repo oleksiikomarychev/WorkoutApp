@@ -19,6 +19,7 @@ import 'package:workout_app/services/plan_service.dart';
 import 'package:workout_app/services/service_locator.dart';
 import 'package:workout_app/services/logger_service.dart';
 import 'package:workout_app/services/rpe_service.dart';
+import 'package:workout_app/widgets/workout_status_helpers.dart';
 import 'package:workout_app/models/exercise_set_dto.dart';
 import 'package:workout_app/providers/chat_provider.dart';
 import 'package:workout_app/widgets/assistant_chat_overlay.dart';

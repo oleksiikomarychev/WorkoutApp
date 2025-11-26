@@ -3,14 +3,12 @@ from __future__ import annotations
 import argparse
 from typing import Tuple
 
-from ..database import SessionLocal, Base, engine
+from ..database import Base, SessionLocal, engine
 from ..models.exercises import ExerciseList
 from ..models.user_max import UserMax
 
 
-def _desired_values_for(
-    ex_name: str, default_weight: int, default_rep_max: int
-) -> Tuple[int, int]:
+def _desired_values_for(ex_name: str, default_weight: int, default_rep_max: int) -> Tuple[int, int]:
     """Возвращает (max_weight, rep_max) для упражнения.
     Пока используем дефолтные значения; точные профили можно добавить позже.
     """
@@ -33,9 +31,7 @@ def _desired_values_for(
     return default_weight, default_rep_max
 
 
-def seed_user_maxes(
-    default_weight: int = 100, default_rep_max: int = 1, upsert: bool = True
-) -> None:
+def seed_user_maxes(default_weight: int = 100, default_rep_max: int = 1, upsert: bool = True) -> None:
     """Создаёт (или обновляет) записи user_maxes для КАЖДОГО упражнения из exercise_list.
 
     - Если запись существует и upsert=True — обновляет значения.
@@ -53,9 +49,7 @@ def seed_user_maxes(
     try:
         exercises = db.query(ExerciseList).all()
         for ex in exercises:
-            want_weight, want_rep = _desired_values_for(
-                ex.name, default_weight, default_rep_max
-            )
+            want_weight, want_rep = _desired_values_for(ex.name, default_weight, default_rep_max)
 
             existing = db.query(UserMax).filter(UserMax.exercise_id == ex.id).first()
             if existing:
@@ -74,15 +68,11 @@ def seed_user_maxes(
                 else:
                     skipped += 1
             else:
-                db.add(
-                    UserMax(exercise_id=ex.id, max_weight=want_weight, rep_max=want_rep)
-                )
+                db.add(UserMax(exercise_id=ex.id, max_weight=want_weight, rep_max=want_rep))
                 created += 1
 
         db.commit()
-        print(
-            f"UserMax seeding finished: created={created}, updated={updated}, skipped={skipped}"
-        )
+        print(f"UserMax seeding finished: created={created}, updated={updated}, skipped={skipped}")
     except Exception:
         db.rollback()
         raise

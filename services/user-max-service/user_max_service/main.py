@@ -1,31 +1,32 @@
-from typing import List, Optional, Dict
 import logging
+from typing import Dict, List, Optional
+
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, status
+from prometheus_fastapi_instrumentator import Instrumentator
+from sqlalchemy.orm import Session
+
+from . import schemas as schemas
+from .database import get_db
+from .dependencies import get_current_user_id
+from .models import UserMax
+from .services.analysis_service import compute_weak_muscles
+from .services.exercise_service import get_exercise_name_by_id
+from .services.true_1rm_service import calculate_true_1rm
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-from datetime import date
-from fastapi import FastAPI, Depends, HTTPException, status, APIRouter, Query
-from sqlalchemy.orm import Session
-import asyncio
-
-from .database import get_db
-from .models import UserMax
-from . import schemas as schemas  
-from .services.true_1rm_service import calculate_true_1rm
-from .services.exercise_service import get_exercise_name_by_id
-from .services.analysis_service import compute_weak_muscles
-from .dependencies import get_current_user_id
-
 
 app = FastAPI(title="user-max-service", version="0.1.0")
+
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 router = APIRouter(prefix="/user-max")
 
 
-def get_user_max_or_404(user_max_id: int, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)) -> UserMax:
+def get_user_max_or_404(
+    user_max_id: int, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)
+) -> UserMax:
     """Get UserMax by ID, ensuring it belongs to the current user."""
-    user_max = db.query(UserMax).filter(
-        UserMax.id == user_max_id,
-        UserMax.user_id == user_id
-    ).first()
+    user_max = db.query(UserMax).filter(UserMax.id == user_max_id, UserMax.user_id == user_id).first()
     if user_max is None:
         raise HTTPException(status_code=404, detail=f"UserMax с id {user_max_id} не найден")
     return user_max
@@ -37,13 +38,12 @@ async def health():
     return {"status": "ok"}
 
 
-@router.get("/health")
-def health() -> Dict[str, str]:
-    return {"status": "ok"}
-
-
 @router.post("/", response_model=schemas.UserMaxResponse, status_code=status.HTTP_201_CREATED)
-async def create_user_max(user_max: schemas.UserMaxCreate, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+async def create_user_max(
+    user_max: schemas.UserMaxCreate,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     # Fetch exercise name automatically
     try:
         exercise_name = get_exercise_name_by_id(user_max.exercise_id)
@@ -51,10 +51,7 @@ async def create_user_max(user_max: schemas.UserMaxCreate, user_id: str = Depend
         raise e
     except Exception as e:
         logger.error(f"Error fetching exercise name: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch exercise name: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to fetch exercise name: {str(e)}")
     # Upsert by (user_id, exercise_id, rep_max, date)
     existing = (
         db.query(UserMax)
@@ -105,7 +102,13 @@ async def create_user_max(user_max: schemas.UserMaxCreate, user_id: str = Depend
 
 
 @router.get("/", response_model=List[schemas.UserMaxResponse])
-async def list_user_maxes(exercise_id: Optional[int] = None, skip: int = 0, limit: int = 100, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+async def list_user_maxes(
+    exercise_id: Optional[int] = None,
+    skip: int = 0,
+    limit: int = 100,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Получить список записей UserMax с возможностью фильтрации по exercise_id"""
     q = db.query(UserMax).filter(UserMax.user_id == user_id)
     if exercise_id is not None:
@@ -114,37 +117,48 @@ async def list_user_maxes(exercise_id: Optional[int] = None, skip: int = 0, limi
 
 
 @router.get("/by_exercise/{exercise_id}", response_model=List[schemas.UserMaxResponse])
-async def get_by_exercise(exercise_id: int, skip: int = 0, limit: int = 100, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+async def get_by_exercise(
+    exercise_id: int,
+    skip: int = 0,
+    limit: int = 100,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Получить записи UserMax для указанного exercise_id с пагинацией"""
-    return db.query(UserMax).filter(
-        UserMax.user_id == user_id,
-        UserMax.exercise_id == exercise_id
-    ).offset(skip).limit(limit).all()
+    return (
+        db.query(UserMax)
+        .filter(UserMax.user_id == user_id, UserMax.exercise_id == exercise_id)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 
 @router.get("/by-exercises", response_model=List[schemas.UserMaxResponse])
-async def get_user_maxes_by_exercises(exercise_ids: List[int], user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+async def get_user_maxes_by_exercises(
+    exercise_ids: List[int],
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Получить записи UserMax по списку ID упражнений"""
     if not all(isinstance(id, int) for id in exercise_ids):
         raise HTTPException(400, "Некорректные ID упражнений")
-    return db.query(UserMax).filter(
-        UserMax.user_id == user_id,
-        UserMax.exercise_id.in_(exercise_ids)
-    ).all()
+    return db.query(UserMax).filter(UserMax.user_id == user_id, UserMax.exercise_id.in_(exercise_ids)).all()
 
 
 @router.get("/by-ids", response_model=List[schemas.UserMaxResponse])
-async def get_user_maxes_by_ids(ids: List[int] = Query(..., alias="ids"), user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+async def get_user_maxes_by_ids(
+    ids: List[int] = Query(..., alias="ids"),
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Получить записи UserMax по списку их идентификаторов"""
     if not ids:
         raise HTTPException(status_code=400, detail="Необходимо указать хотя бы один идентификатор user_max")
     invalid = [value for value in ids if not isinstance(value, int)]
     if invalid:
         raise HTTPException(status_code=400, detail="Список идентификаторов содержит некорректные значения")
-    records = db.query(UserMax).filter(
-        UserMax.user_id == user_id,
-        UserMax.id.in_(ids)
-    ).all()
+    records = db.query(UserMax).filter(UserMax.user_id == user_id, UserMax.id.in_(ids)).all()
     # Сохраняем порядок, указанный в запросе
     by_id = {um.id: um for um in records}
     ordered = [by_id[id_] for id_ in ids if id_ in by_id]
@@ -157,10 +171,14 @@ async def get_user_max(user_max: UserMax = Depends(get_user_max_or_404)):
 
 
 @router.put("/{user_max_id}", response_model=schemas.UserMaxResponse)
-async def update_user_max(payload: schemas.UserMaxUpdate, user_max: UserMax = Depends(get_user_max_or_404), db: Session = Depends(get_db)):
-    allowed_fields = ['exercise_id', 'max_weight', 'rep_max', 'true_1rm', 'verified_1rm']
+async def update_user_max(
+    payload: schemas.UserMaxUpdate,
+    user_max: UserMax = Depends(get_user_max_or_404),
+    db: Session = Depends(get_db),
+):
+    allowed_fields = ["exercise_id", "max_weight", "rep_max", "true_1rm", "verified_1rm"]
     for k, v in payload.model_dump().items():
-        if k == 'date':
+        if k == "date":
             raise HTTPException(status_code=400, detail="date field is not allowed to update")
         if k in allowed_fields:
             setattr(user_max, k, v)
@@ -182,7 +200,11 @@ async def calculate_true_1rm_endpoint(user_max: UserMax = Depends(get_user_max_o
 
 
 @router.put("/{user_max_id}/verify", response_model=schemas.UserMaxResponse)
-async def verify_1rm(verified_1rm: float, user_max: UserMax = Depends(get_user_max_or_404), db: Session = Depends(get_db)):
+async def verify_1rm(
+    verified_1rm: float,
+    user_max: UserMax = Depends(get_user_max_or_404),
+    db: Session = Depends(get_db),
+):
     user_max.verified_1rm = verified_1rm
     db.commit()
     db.refresh(user_max)
@@ -190,10 +212,14 @@ async def verify_1rm(verified_1rm: float, user_max: UserMax = Depends(get_user_m
 
 
 @router.post("/bulk", response_model=List[schemas.UserMaxBulkResponse])
-async def create_bulk_user_max(user_maxes: List[schemas.UserMaxCreate], user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+async def create_bulk_user_max(
+    user_maxes: List[schemas.UserMaxCreate],
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """Create multiple UserMax records in one request"""
     logger.info(f"Received bulk create request with {len(user_maxes)} items for user {user_id}")
-    
+
     # Collect all exercise IDs
     exercise_ids = [um.exercise_id for um in user_maxes]
 
@@ -229,7 +255,11 @@ async def create_bulk_user_max(user_maxes: List[schemas.UserMaxCreate], user_id:
     results: List[UserMax] = []
     for (exercise_id, rep_max, dt), um in merged.items():
         logger.info(
-            "Upserting UserMax user_id=%s exercise_id=%s rep_max=%s date=%s", user_id, exercise_id, rep_max, dt
+            "Upserting UserMax user_id=%s exercise_id=%s rep_max=%s date=%s",
+            user_id,
+            exercise_id,
+            rep_max,
+            dt,
         )
         existing = (
             db.query(UserMax)
@@ -277,6 +307,7 @@ async def create_bulk_user_max(user_maxes: List[schemas.UserMaxCreate], user_id:
         db.refresh(um)
     return results
 
+
 app.include_router(router)
 
 
@@ -300,7 +331,7 @@ def get_weak_muscles(
     k_shrink: float = 12.0,
     z_clip: float = 3.0,
     user_id: str = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Analyze user_maxes to identify weaker muscles using exercise metadata.

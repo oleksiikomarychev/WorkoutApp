@@ -6,8 +6,6 @@ Create Date: 2025-10-12 22:30:00.000000
 """
 
 from alembic import op
-import sqlalchemy as sa
-
 
 # revision identifiers, used by Alembic.
 revision = "c1d2e3f4g5h6"
@@ -24,7 +22,7 @@ def upgrade() -> None:
         ["user_id"],
         unique=False,
     )
-    
+
     # Add composite index on (user_id, workout_id) to match repository filters
     # This optimizes get_instances_by_workout query
     op.create_index(

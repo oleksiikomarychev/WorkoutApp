@@ -1,7 +1,7 @@
-from pydantic import BaseModel
+from datetime import date
 from typing import Optional
-from datetime import date, datetime
-from pydantic import Field
+
+from pydantic import BaseModel, Field
 
 
 class UserMaxBase(BaseModel):
@@ -20,6 +20,7 @@ class UserMaxBase(BaseModel):
 
 class UserMaxCreate(BaseModel):
     """Request schema for creating UserMax (without exercise_name)"""
+
     exercise_id: int
     max_weight: float
     rep_max: int
@@ -41,9 +42,12 @@ class UserMax(UserMaxBase):
         from_attributes = True
 
 
-#Не имеет rep_max чтобы  обновлять только max_weight в рамках прописанного ПМ(повторного максимума)
-#При желании указать другой rep_max пользователь создает отдельный user_max с другим ПМ(повторным максимум)
-#При достижении нового пользовательского максимума в рамках ПМ(повторного максимума) автоматически обновляется max_weight
+# Не имеет rep_max, чтобы обновлять только max_weight в рамках прописанного
+# ПМ (повторного максимума).
+# При желании указать другой rep_max пользователь создает отдельный user_max
+# с другим ПМ (повторным максимум).
+# При достижении нового пользовательского максимума в рамках ПМ (повторного
+# максимума) автоматически обновляется max_weight.
 class UserMaxUpdate(BaseModel):
     max_weight: Optional[int] = Field(gt=0)
 

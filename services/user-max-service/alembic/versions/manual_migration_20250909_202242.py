@@ -1,10 +1,7 @@
 """Manual migration for user-max-service"""
-from alembic import op
-import sqlalchemy as sa
-
 
 # revision identifiers, used by Alembic.
-revision = 'manual_user_max_20250909_202242'
+revision = "manual_user_max_20250909_202242"
 down_revision = None
 branch_labels = None
 depends_on = None

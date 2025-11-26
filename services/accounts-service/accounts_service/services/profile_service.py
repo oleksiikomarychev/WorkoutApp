@@ -6,14 +6,20 @@ from typing import Optional
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import UnitSystem, UserProfile, UserSettings
-from ..schemas import ProfileResponse, SettingsResponse
+from ..models import UnitSystem, UserCoachingProfile, UserProfile, UserSettings
+from ..schemas import (
+    CoachingProfileResponse,
+    CoachingRatePlan,
+    ProfileResponse,
+    SettingsResponse,
+)
 
 
 @dataclass
 class ProfileData:
     profile: UserProfile
     settings: UserSettings
+    coaching: Optional[UserCoachingProfile] = None
 
 
 async def _fetch_profile(db: AsyncSession, user_id: str) -> Optional[UserProfile]:
@@ -24,12 +30,16 @@ async def _fetch_settings(db: AsyncSession, user_id: str) -> Optional[UserSettin
     return await db.get(UserSettings, user_id)
 
 
+async def _fetch_coaching_profile(db: AsyncSession, user_id: str) -> Optional[UserCoachingProfile]:
+    return await db.get(UserCoachingProfile, user_id)
+
+
 async def ensure_profile_and_settings(db: AsyncSession, user_id: str) -> ProfileData:
     profile = await _fetch_profile(db, user_id)
     settings = await _fetch_settings(db, user_id)
     created = False
     if profile is None:
-        profile = UserProfile(user_id=user_id)
+        profile = UserProfile(user_id=user_id, display_name=user_id)
         db.add(profile)
         created = True
     if settings is None:
@@ -40,7 +50,17 @@ async def ensure_profile_and_settings(db: AsyncSession, user_id: str) -> Profile
         await db.commit()
         await db.refresh(profile)
         await db.refresh(settings)
-    return ProfileData(profile=profile, settings=settings)
+    coaching = await _fetch_coaching_profile(db, user_id)
+    return ProfileData(profile=profile, settings=settings, coaching=coaching)
+
+
+async def ensure_coaching_profile(db: AsyncSession, user_id: str) -> UserCoachingProfile:
+    coaching = await _fetch_coaching_profile(db, user_id)
+    if coaching is None:
+        coaching = UserCoachingProfile(user_id=user_id)
+        db.add(coaching)
+        await db.flush()
+    return coaching
 
 
 def build_profile_response(data: ProfileData) -> ProfileResponse:
@@ -70,6 +90,36 @@ def build_profile_response(data: ProfileData) -> ProfileResponse:
             created_at=data.settings.created_at,
             updated_at=data.settings.updated_at,
         ),
+        coaching=build_coaching_response(data.coaching),
+    )
+
+
+def build_coaching_response(
+    entity: Optional[UserCoachingProfile],
+) -> Optional[CoachingProfileResponse]:
+    if entity is None:
+        return None
+
+    rate_plan = None
+    if any([entity.rate_type, entity.rate_currency, entity.rate_amount_minor is not None]):
+        rate_plan = CoachingRatePlan(
+            type=entity.rate_type,
+            currency=entity.rate_currency,
+            amount_minor=entity.rate_amount_minor,
+        )
+
+    return CoachingProfileResponse(
+        enabled=bool(entity.enabled),
+        accepting_clients=bool(entity.accepting_clients),
+        tagline=entity.tagline,
+        description=entity.description,
+        specializations=list(entity.specializations or []),
+        languages=list(entity.languages or []),
+        experience_years=entity.experience_years,
+        timezone=entity.timezone,
+        rate_plan=rate_plan,
+        created_at=entity.created_at,
+        updated_at=entity.updated_at,
     )
 
 

@@ -1,10 +1,10 @@
-from pathlib import Path
 import json
-from exercises_service.repositories.exercise_repository import ExerciseRepository
+from pathlib import Path
+
 
 class ExerciseService:
     MUSCLE_LABELS = None
-    
+
     @classmethod
     def load_muscle_metadata(cls):
         if cls.MUSCLE_LABELS is not None:
@@ -31,7 +31,7 @@ class ExerciseService:
             # Ошибка формата JSON
             cls.MUSCLE_LABELS = {}
             raise ValueError(f"Invalid JSON in muscle_metadata.json: {e}") from e
-        except Exception as e:
+        except Exception:
             # Другие ошибки
             cls.MUSCLE_LABELS = {}
             raise

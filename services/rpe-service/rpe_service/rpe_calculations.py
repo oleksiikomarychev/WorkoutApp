@@ -1,17 +1,22 @@
 import math
-from typing import Dict, Optional
+from typing import Dict
+
 
 class TableLookupError(Exception):
     pass
 
+
 class IntensityNotFoundError(TableLookupError):
     pass
+
 
 class EffortNotFoundError(TableLookupError):
     pass
 
+
 class VolumeNotFoundError(TableLookupError):
     pass
+
 
 def get_volume(rpe_table: Dict[int, Dict[int, int]], *, intensity: int, effort: float) -> int:
     if intensity is None or effort is None:
@@ -24,6 +29,7 @@ def get_volume(rpe_table: Dict[int, Dict[int, int]], *, intensity: int, effort: 
         raise EffortNotFoundError(f"Effort {effort_key} not found for intensity {intensity}")
     return efforts[effort_key]
 
+
 def get_intensity(rpe_table: Dict[int, Dict[int, int]], *, volume: int, effort: float) -> int:
     if volume is None or effort is None:
         return None
@@ -32,6 +38,7 @@ def get_intensity(rpe_table: Dict[int, Dict[int, int]], *, volume: int, effort: 
         if effort_key in efforts and efforts[effort_key] == volume:
             return intensity
     raise VolumeNotFoundError(f"Volume {volume} with effort {effort_key} not found")
+
 
 def get_effort(rpe_table: Dict[int, Dict[int, int]], *, volume: int, intensity: int) -> float:
     if volume is None or intensity is None:

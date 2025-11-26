@@ -9,7 +9,7 @@ class AnalyticsService extends BaseApiService {
 
   AnalyticsService(this.apiClient) : super(apiClient);
 
-  Future<Map<String, dynamic>> getProfileAggregates({int weeks = 48, int limit = 20}) async {
+  Future<Map<String, dynamic>> getProfileAggregates({int weeks = 48, int limit = 20, String? userId}) async {
     try {
       final endpoint = ApiConfig.profileAggregatesEndpoint;
       final response = await apiClient.get(
@@ -17,6 +17,7 @@ class AnalyticsService extends BaseApiService {
         queryParams: <String, String>{
           'weeks': weeks.toString(),
           'limit': limit.toString(),
+          if (userId != null && userId.isNotEmpty) 'user_id': userId,
         },
         context: 'AnalyticsService.getProfileAggregates',
       );

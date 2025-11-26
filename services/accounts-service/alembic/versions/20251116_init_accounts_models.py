@@ -5,10 +5,9 @@ Revises: 1ae2cdd8f152
 Create Date: 2025-11-16
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
-
 
 # revision identifiers, used by Alembic.
 revision = "20251116_init_accounts_models"
@@ -71,9 +70,7 @@ def upgrade() -> None:
     op.create_table(
         "user_avatars",
         sa.Column("user_id", sa.String(), primary_key=True, index=True),
-        sa.Column(
-            "content_type", sa.String(length=64), nullable=False, server_default="image/png"
-        ),
+        sa.Column("content_type", sa.String(length=64), nullable=False, server_default="image/png"),
         sa.Column("image", sa.LargeBinary(), nullable=False),
         sa.Column(
             "updated_at",

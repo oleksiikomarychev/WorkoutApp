@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List
 from enum import Enum
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
 
 
 class EffortType(str, Enum):
@@ -18,7 +19,6 @@ class Region(str, Enum):
     lower = "lower"
 
 
-
 class MuscleInfo(BaseModel):
     key: str
     label: str
@@ -29,25 +29,15 @@ class ExerciseListBase(BaseModel):
     name: str = Field(..., max_length=255)
     muscle_group: Optional[str] = None
     equipment: Optional[str] = None
-    target_muscles: Optional[List[str]] = Field(
-        None, description="Primary target muscles"
-    )
-    synergist_muscles: Optional[List[str]] = Field(
-        None, description="Synergist muscles involved"
-    )
-    movement_type: Optional[MovementType] = Field(
-        None, description="compound or isolation"
-    )
+    target_muscles: Optional[List[str]] = Field(None, description="Primary target muscles")
+    synergist_muscles: Optional[List[str]] = Field(None, description="Synergist muscles involved")
+    movement_type: Optional[MovementType] = Field(None, description="compound or isolation")
     region: Optional[Region] = Field(None, description="upper or lower")
     category: Optional[str] = Field(
         None, description="Logical category, e.g. main_lift/accessory/isolation/conditioning"
     )
-    movement_pattern: Optional[str] = Field(
-        None, description="Movement pattern, e.g. horizontal_press/hinge/squat/row"
-    )
-    is_competition_lift: Optional[bool] = Field(
-        None, description="Whether this exercise is a competition lift variant"
-    )
+    movement_pattern: Optional[str] = Field(None, description="Movement pattern, e.g. horizontal_press/hinge/squat/row")
+    is_competition_lift: Optional[bool] = Field(None, description="Whether this exercise is a competition lift variant")
 
 
 class ExerciseListCreate(ExerciseListBase):

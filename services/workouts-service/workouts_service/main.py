@@ -1,26 +1,25 @@
-from fastapi import FastAPI, Depends, status
+import uuid
+
+import structlog
+from asgi_correlation_id import CorrelationIdMiddleware
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from typing import Dict
-import logging
-import sys
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from .exceptions import NotFoundException
-from .routers.workouts import router as workouts_router
+from .logging_config import configure_logging
+from .redis_client import close_redis, init_redis
+from .routers.analytics import router as analytics_router
 from .routers.sessions import router as sessions_router
 from .routers.workout_generation import router as workout_generation_router
-from .routers.analytics import router as analytics_router
+from .routers.workouts import router as workouts_router
+
+configure_logging()
+logger = structlog.get_logger(__name__)
 
 app = FastAPI(title="workouts-service", version="0.1.0")
 
-# Ensure INFO logs are emitted from application modules
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-    stream=sys.stdout,
-)
-logging.getLogger("uvicorn").setLevel(logging.INFO)
-logging.getLogger("uvicorn.error").setLevel(logging.INFO)
-logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 
 @app.exception_handler(NotFoundException)
@@ -36,7 +35,24 @@ async def health():
     return {"status": "ok"}
 
 
+@app.on_event("startup")
+async def startup_event():
+    await init_redis()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await close_redis()
+
+
 app.include_router(workouts_router, prefix="/workouts")
 app.include_router(sessions_router, prefix="/workouts")
 app.include_router(workout_generation_router, prefix="/workouts")
 app.include_router(analytics_router, prefix="/workouts")
+
+app.add_middleware(
+    CorrelationIdMiddleware,
+    header_name="X-Request-ID",
+    generator=lambda: str(uuid.uuid4()),
+    update_request_header=True,
+)

@@ -1,13 +1,14 @@
 """initial user_maxes table
 
 Revision ID: 0001_initial_user_maxes
-Revises: 
+Revises:
 Create Date: 2025-08-27 12:08:00.000000
 """
+
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "0001_initial_user_maxes"

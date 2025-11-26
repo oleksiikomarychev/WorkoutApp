@@ -156,6 +156,19 @@ class ApiConfig {
   static String get chatEndpoint => buildEndpoint('/chat');
   static String get agentPlanMassEditEndpoint => buildEndpoint('/agent/plan-mass-edit');
 
+  // Social endpoints (MessengerApp via WorkoutApp gateway)
+  static String get socialPostsEndpoint => buildEndpoint('/social/posts');
+  static String socialPostCommentsEndpoint(String postId) =>
+      buildEndpoint('/social/posts/$postId/comments');
+  static String socialPostReactionsEndpoint(String postId) =>
+      buildEndpoint('/social/posts/$postId/reactions');
+
+  // Messaging endpoints (MessengerApp via WorkoutApp gateway)
+  static String get messagingChannelsEndpoint =>
+      buildEndpoint('/messaging/channels');
+  static String messagingChannelMessagesEndpoint(String channelId) =>
+      buildEndpoint('/messaging/channels/$channelId/messages');
+
   // Progression Templates endpoints
   static String get progressionTemplatesEndpoint => buildEndpoint('/progressions/templates');
   static String progressionTemplateByIdEndpoint(String id) => buildEndpoint('/progressions/templates/$id');
@@ -164,7 +177,10 @@ class ApiConfig {
   static String get workoutMetricsEndpoint => buildEndpoint('/workout-metrics');
   static String get profileAggregatesEndpoint => buildEndpoint('/profile/aggregates');
   static String get profileMeEndpoint => buildEndpoint('/profile/me');
+  static String profileByIdEndpoint(String userId) => buildEndpoint('/profile/$userId');
+  static String get profileMeCoachingEndpoint => buildEndpoint('/profile/me/coaching');
   static String get profileSettingsEndpoint => buildEndpoint('/profile/settings');
+  static String get usersAllEndpoint => buildEndpoint('/users/all');
   // Avatars
   static String get avatarsGenerateEndpoint => buildEndpoint('/avatars/generate');
   static String get applyProfilePhotoEndpoint => buildEndpoint('/profile/photo/apply');
@@ -172,6 +188,31 @@ class ApiConfig {
   // Mesocycle Templates (plans-service)
   static String get mesocycleTemplatesEndpoint => buildEndpoint('/plans/mesocycle-templates');
   static String mesocycleTemplateByIdEndpoint(String id) => buildEndpoint('/plans/mesocycle-templates/$id');
+
+  // CRM: coach-athlete relationships
+  static String get crmMyRelationshipsEndpoint => buildEndpoint('/crm/relationships/my/athletes');
+  static String get crmMyCoachesEndpoint => buildEndpoint('/crm/relationships/my/coaches');
+  static String get crmRelationshipsEndpoint => buildEndpoint('/crm/relationships');
+  static String crmRelationshipStatusEndpoint(String id) => buildEndpoint('/crm/relationships/$id/status');
+
+  // CRM: coach planning
+  static String crmCoachActivePlanEndpoint(String athleteId) =>
+      buildEndpoint('/crm/coach/athletes/$athleteId/active-plan');
+  static String crmCoachActivePlanWorkoutsEndpoint(String athleteId) =>
+      buildEndpoint('/crm/coach/athletes/$athleteId/active-plan/workouts');
+  static String crmCoachWorkoutEndpoint(String athleteId, int workoutId) =>
+      buildEndpoint('/crm/coach/athletes/$athleteId/workouts/$workoutId');
+  static String crmCoachExerciseEndpoint(String athleteId, int instanceId) =>
+      buildEndpoint('/crm/coach/athletes/$athleteId/exercises/$instanceId');
+  static String crmCoachMassEditEndpoint(String athleteId) =>
+      buildEndpoint('/crm/coach/athletes/$athleteId/workouts/mass-edit');
+  static String crmCoachAiMassEditEndpoint(String athleteId) =>
+      buildEndpoint('/crm/coach/athletes/$athleteId/plan/ai-mass-edit');
+
+  // CRM: analytics
+  static String get crmAnalyticsMyAthletesEndpoint => buildEndpoint('/crm/analytics/coaches/my/athletes');
+  static String get crmAnalyticsMySummaryEndpoint => buildEndpoint('/crm/analytics/coaches/my/summary');
+  static String crmAnalyticsAthleteEndpoint(String athleteId) => buildEndpoint('/crm/analytics/athletes/$athleteId');
 
   static void logApiError(http.Response response) {
     print('API Error: ${response.statusCode}');

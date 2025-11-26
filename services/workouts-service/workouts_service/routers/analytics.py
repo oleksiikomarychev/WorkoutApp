@@ -1,15 +1,17 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional
 
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .. import models
 from ..database import get_db
 from ..dependencies import get_current_user_id
-from .. import models
 from ..schemas.analytics import PlanAnalyticsItem, PlanAnalyticsResponse
 
 router = APIRouter(prefix="/analytics")
+
 
 @router.get("/in-plan", response_model=PlanAnalyticsResponse)
 async def get_plan_analytics(
@@ -28,12 +30,13 @@ async def get_plan_analytics(
             return datetime.fromisoformat(s)
         except Exception:
             return None
+
     frm = parse_iso(from_dt)
     to = parse_iso(to_dt)
 
     # Fetch workouts for the plan
     q = (
-        models.select(models.Workout)
+        select(models.Workout)
         .where(models.Workout.user_id == user_id)
         .where(models.Workout.applied_plan_id == applied_plan_id)
     )
@@ -57,7 +60,7 @@ async def get_plan_analytics(
     workout_ids = [w.id for w in workouts if w.id is not None]
     # Fetch exercises
     ex_q = (
-        models.select(models.WorkoutExercise)
+        select(models.WorkoutExercise)
         .where(models.WorkoutExercise.user_id == user_id)
         .where(models.WorkoutExercise.workout_id.in_(workout_ids))
     )
@@ -68,10 +71,7 @@ async def get_plan_analytics(
         ex_by_w.setdefault(ex.workout_id, []).append(ex)
 
     # Fetch sets
-    set_q = (
-        models.select(models.WorkoutSet)
-        .where(models.WorkoutSet.exercise_id.in_([ex.id for ex in ex_list]))
-    )
+    set_q = select(models.WorkoutSet).where(models.WorkoutSet.exercise_id.in_([ex.id for ex in ex_list]))
     set_res = await db.execute(set_q)
     set_list: List[models.WorkoutSet] = list(set_res.scalars().all())
     sets_by_ex: Dict[int, List[models.WorkoutSet]] = {}

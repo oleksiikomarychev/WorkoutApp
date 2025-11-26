@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class MacroMetric(str, Enum):
@@ -83,10 +83,7 @@ class MacroTagSelectorValue(BaseModel):
 
     @model_validator(mode="after")
     def _ensure_any_value(cls, values: "MacroTagSelectorValue") -> "MacroTagSelectorValue":
-        if not any(
-            getattr(values, attr)
-            for attr in ("movement_type", "region", "muscle_group", "equipment")
-        ):
+        if not any(getattr(values, attr) for attr in ("movement_type", "region", "muscle_group", "equipment")):
             raise ValueError("selector.value must contain at least one non-empty filter")
         return values
 
@@ -165,14 +162,18 @@ class MacroCondition(BaseModel):
     def _validate_payload(cls, values: "MacroCondition") -> "MacroCondition":
         op = values.op
 
-        if op in {
-            MacroConditionOp.GT,
-            MacroConditionOp.LT,
-            MacroConditionOp.GE,
-            MacroConditionOp.LE,
-            MacroConditionOp.EQ,
-            MacroConditionOp.NE,
-        } and values.value is None:
+        if (
+            op
+            in {
+                MacroConditionOp.GT,
+                MacroConditionOp.LT,
+                MacroConditionOp.GE,
+                MacroConditionOp.LE,
+                MacroConditionOp.EQ,
+                MacroConditionOp.NE,
+            }
+            and values.value is None
+        ):
             raise ValueError("condition.value is required for comparison operators")
         if op in {MacroConditionOp.IN_RANGE, MacroConditionOp.NOT_IN_RANGE}:
             if values.range is None:

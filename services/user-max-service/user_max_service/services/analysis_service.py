@@ -1,15 +1,16 @@
-import math
-import time
-import os
 import json
 import logging
-from datetime import datetime, date, timedelta
+import math
+import os
+import time
+from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
+
 from google import genai
 
 from ..models import UserMax
-from .true_1rm_service import calculate_true_1rm
 from .exercise_service import get_all_exercises_meta
+from .true_1rm_service import calculate_true_1rm
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,7 @@ def _exp_decay_weight(sample_date: date, half_life_days: float = 90.0) -> float:
 
 class AlgorithmicLLMHelper:
     """Helper to use LLM for specific sub-tasks inside algorithmic pipeline."""
+
     def __init__(self) -> None:
         api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
         self.client: Optional[genai.Client]
@@ -96,7 +98,10 @@ class AlgorithmicLLMHelper:
         z = float(muscle_data.get("z") or 0.0)
         # Fallback quick rule if LLM not available
         if not self.client:
-            return {"priority": ("high" if z < -1.0 else ("low" if z > 0.5 else "medium")), "reason": "fallback"}
+            return {
+                "priority": ("high" if z < -1.0 else ("low" if z > 0.5 else "medium")),
+                "reason": "fallback",
+            }
 
         prompt = (
             "Проанализируй данные мышцы и определи приоритет тренировки (high, medium, low).\n"
@@ -117,10 +122,16 @@ class AlgorithmicLLMHelper:
             text = getattr(resp, "text", None) or str(resp)
             data = json.loads(text)
             if isinstance(data, dict) and data.get("priority"):
-                return {"priority": str(data.get("priority")), "reason": str(data.get("reason", ""))}
+                return {
+                    "priority": str(data.get("priority")),
+                    "reason": str(data.get("reason", "")),
+                }
         except Exception as e:
             logger.warning(f"LLM classify failed, using fallback: {e}")
-        return {"priority": ("high" if z < -1.0 else ("low" if z > 0.5 else "medium")), "reason": "fallback"}
+        return {
+            "priority": ("high" if z < -1.0 else ("low" if z > 0.5 else "medium")),
+            "reason": "fallback",
+        }
 
     def classify_muscle_priorities_batch(self, muscles: List[dict]) -> List[dict]:
         """Batch classify priorities to minimize API calls. Returns list aligned with inputs."""
@@ -144,7 +155,7 @@ class AlgorithmicLLMHelper:
         prompt = (
             "Проанализируй список мышц и присвой каждой приоритет тренировки (high, medium, low).\n"
             "Возвращай строго JSON массив объектов в том же порядке, что и вход, с ключами"
-            " {\"priority\": \"high|medium|low\", \"reason\": \"строка\"}.\n"
+            ' {"priority": "high|medium|low", "reason": "строка"}.\n'
             f"Данные: {json.dumps(compact, ensure_ascii=False)}"
         )
 
@@ -409,6 +420,7 @@ def _compute_relative_trends(
         }
     return out
 
+
 def _aggregate_exercise_strength(user_maxes: List[UserMax]) -> Dict[int, float]:
     """Compute an effective 1RM per exercise_id using time-decayed averaging."""
     by_ex: Dict[int, List[Tuple[float, float]]] = {}
@@ -442,9 +454,7 @@ def _distribute_to_muscles(ex_strength: Dict[int, float], synergist_weight: floa
             id_to_meta[ex_id] = m
         except Exception:
             continue
-    logger.info(
-        "distribute_to_muscles: fetched exercise metadata=%d", len(id_to_meta)
-    )
+    logger.info("distribute_to_muscles: fetched exercise metadata=%d", len(id_to_meta))
 
     mus_sum: Dict[str, float] = {}
     mus_wsum: Dict[str, float] = {}
@@ -484,13 +494,8 @@ def _distribute_to_muscles(ex_strength: Dict[int, float], synergist_weight: floa
         if w > 0:
             mus_score[m] = s / w
     if missing_meta:
-        logger.warning(
-            "distribute_to_muscles: missing metadata for exercises=%s",
-            sorted(set(missing_meta))
-        )
-    logger.info(
-        "distribute_to_muscles: output muscles=%d", len(mus_score)
-    )
+        logger.warning("distribute_to_muscles: missing metadata for exercises=%s", sorted(set(missing_meta)))
+    logger.info("distribute_to_muscles: output muscles=%d", len(mus_score))
     return mus_score
 
 
@@ -590,7 +595,7 @@ def compute_weak_muscles(
     Returns a dict suitable for inclusion into prompts and UI.
     """
     logger.info(
-        "compute_weak_muscles: received user_maxes=%d unique_exercises=%d recent_days=%d min_records=%d use_llm=%s",
+        "compute_weak_muscles: received user_maxes=%d unique_exercises=%d " "recent_days=%d min_records=%d use_llm=%s",
         len(user_maxes),
         len({um.exercise_id for um in user_maxes}),
         recent_days,
@@ -620,7 +625,12 @@ def compute_weak_muscles(
 
     # Filter and compute
     if not user_maxes:
-        result = {"recent_days": recent_days, "weak_muscles": [], "muscle_strength": {}, "trend": {}}
+        result = {
+            "recent_days": recent_days,
+            "weak_muscles": [],
+            "muscle_strength": {},
+            "trend": {},
+        }
         if use_cache:
             _CACHE[cache_key] = (_now_ts(), result)
         logger.warning("compute_weak_muscles: no user_max records found")
@@ -640,7 +650,12 @@ def compute_weak_muscles(
         len(by_ex),
     )
     if not filtered:
-        result = {"recent_days": recent_days, "weak_muscles": [], "muscle_strength": {}, "trend": {}}
+        result = {
+            "recent_days": recent_days,
+            "weak_muscles": [],
+            "muscle_strength": {},
+            "trend": {},
+        }
         if use_cache:
             _CACHE[cache_key] = (_now_ts(), result)
         logger.warning("compute_weak_muscles: filtered dataset empty after min_records filter")
@@ -653,7 +668,12 @@ def compute_weak_muscles(
         by_ex: Dict[int, List[UserMax]] = {}
         for um in filtered:
             by_ex.setdefault(um.exercise_id, []).append(um)
-        ex_stats = _compute_exercise_robust_stats(by_ex, iqr_floor=iqr_floor, sigma_floor=sigma_floor, robust=robust)
+        ex_stats = _compute_exercise_robust_stats(
+            by_ex,
+            iqr_floor=iqr_floor,
+            sigma_floor=sigma_floor,
+            robust=robust,
+        )
 
         # Current per-ex z with shrinkage and clipping
         z_by_ex: Dict[int, float] = {}
@@ -671,31 +691,41 @@ def compute_weak_muscles(
             conf_by_ex[ex_id] = math.sqrt(n_eff)
 
         muscle_strength = _aggregate_muscle_scores_from_ex(
-            z_by_ex, conf_by_ex, id_to_meta, synergist_weight, quantile_mode, quantile_p
+            z_by_ex,
+            conf_by_ex,
+            id_to_meta,
+            synergist_weight,
+            quantile_mode,
+            quantile_p,
         )
         trends = _compute_relative_trends(
-            by_ex, recent_days, id_to_meta, synergist_weight, ex_stats, quantile_mode, quantile_p
+            by_ex,
+            recent_days,
+            id_to_meta,
+            synergist_weight,
+            ex_stats,
+            quantile_mode,
+            quantile_p,
         )
         logger.info(
             "compute_weak_muscles: relative mode | exercises=%d muscles=%d",
-            len(z_by_ex), len(muscle_strength),
+            len(z_by_ex),
+            len(muscle_strength),
         )
         # Fallback: if relative mode yields empty or near-zero strengths (e.g., single
         # sample per exercise makes z≈0), switch to absolute mode so UI doesn't show all zeros.
         # Use a small threshold (0.05) because results are later rounded to 2 decimals.
         if not muscle_strength or all(abs(v) < 0.05 for v in muscle_strength.values()):
-            logger.warning("compute_weak_muscles: relative mode produced empty/near-zero scores; falling back to absolute mode")
-            ex_strength = _aggregate_exercise_strength(filtered)
-            logger.info(
-                "compute_weak_muscles: fallback aggregated exercise strengths=%d", len(ex_strength)
+            logger.warning(
+                "compute_weak_muscles: relative mode produced empty/near-zero scores; " "falling back to absolute mode"
             )
+            ex_strength = _aggregate_exercise_strength(filtered)
+            logger.info("compute_weak_muscles: fallback aggregated exercise strengths=%d", len(ex_strength))
             muscle_strength = _distribute_to_muscles(ex_strength, synergist_weight)
             trends = _compute_trends(filtered, recent_days, synergist_weight)
     else:
         ex_strength = _aggregate_exercise_strength(filtered)
-        logger.info(
-            "compute_weak_muscles: aggregated exercise strengths=%d", len(ex_strength)
-        )
+        logger.info("compute_weak_muscles: aggregated exercise strengths=%d", len(ex_strength))
         muscle_strength = _distribute_to_muscles(ex_strength, synergist_weight)
         trends = _compute_trends(filtered, recent_days, synergist_weight)
     logger.info(
@@ -713,12 +743,14 @@ def compute_weak_muscles(
     weak = []
     for m, s in muscle_strength.items():
         z = 0.0 if std == 0.0 else (s - mean) / std
-        weak.append({
-            "muscle": m,
-            "z": round(z, 3),
-            "score": round(s, 2),
-            "trend": trends.get(m, {}),
-        })
+        weak.append(
+            {
+                "muscle": m,
+                "z": round(z, 3),
+                "score": round(s, 2),
+                "trend": trends.get(m, {}),
+            }
+        )
     weak.sort(key=lambda x: x["z"])  # ascending: most negative first
 
     # LLM enrichment
@@ -731,7 +763,13 @@ def compute_weak_muscles(
                 item["priority"] = pr.get("priority", "medium")
                 item["priority_reason"] = pr.get("reason", "")
             # Build simple samples for anomalies
-            samples = [{"date": getattr(um, "date", datetime.utcnow().date()).isoformat(), "value": float(getattr(um, "max_weight", 0))} for um in filtered]
+            samples = [
+                {
+                    "date": getattr(um, "date", datetime.utcnow().date()).isoformat(),
+                    "value": float(getattr(um, "max_weight", 0)),
+                }
+                for um in filtered
+            ]
             anomalies = helper.detect_anomalies(samples)
         except Exception as e:
             logger.warning(f"LLM enrichment failed: {e}")

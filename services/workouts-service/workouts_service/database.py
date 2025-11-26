@@ -1,9 +1,14 @@
+import logging
 import os
-from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker, declarative_base
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+
+from . import models  # noqa: F401
 
 DATABASE_URL = os.getenv("WORKOUTS_DATABASE_URL")
+logger = logging.getLogger(__name__)
 
 if not DATABASE_URL:
     raise ValueError("WORKOUTS_DATABASE_URL environment variable is not set")
@@ -47,11 +52,14 @@ except Exception:
 engine_args = {}
 
 engine = create_async_engine(DATABASE_URL, **engine_args)
-AsyncSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
+AsyncSessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+    class_=AsyncSession,
+)
 Base = declarative_base()
 
-# Явный импорт моделей для Alembic
-from . import models  # noqa: F401
 
 async def get_db():
     async with AsyncSessionLocal() as session:

@@ -1,8 +1,9 @@
+import logging
 import os
+import time
+
 import httpx
 from fastapi import HTTPException
-import time
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ def get_exercise_name_by_id(exercise_id: int, max_retries: int = 3, retry_delay:
     """
     url = f"{EXERCISES_SERVICE_URL}/exercises/definitions/{exercise_id}"
     logger.info(f"Fetching exercise name from: {url}")
-    
+
     for attempt in range(max_retries):
         try:
             # Use a timeout of 3 seconds
@@ -34,28 +35,19 @@ def get_exercise_name_by_id(exercise_id: int, max_retries: int = 3, retry_delay:
                 continue
             raise HTTPException(
                 status_code=e.response.status_code,
-                detail=f"Error from exercises-service: {e.response.text}"
+                detail=f"Error from exercises-service: {e.response.text}",
             )
         except (httpx.ConnectError, httpx.ReadTimeout) as e:
             logger.error(f"Connection error to {url}: {str(e)}")
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
                 continue
-            raise HTTPException(
-                status_code=503,
-                detail=f"Cannot connect to exercises-service: {str(e)}"
-            )
+            raise HTTPException(status_code=503, detail=f"Cannot connect to exercises-service: {str(e)}")
         except Exception as e:
             logger.error(f"Unexpected error: {str(e)}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Unexpected error fetching exercise name: {str(e)}"
-            )
-    
-    raise HTTPException(
-        status_code=503,
-        detail="Failed to fetch exercise name after retries"
-    )
+            raise HTTPException(status_code=500, detail=f"Unexpected error fetching exercise name: {str(e)}")
+
+    raise HTTPException(status_code=503, detail="Failed to fetch exercise name after retries")
 
 
 def get_all_exercises_meta(max_retries: int = 3, retry_delay: float = 1.0) -> list:
@@ -78,21 +70,15 @@ def get_all_exercises_meta(max_retries: int = 3, retry_delay: float = 1.0) -> li
                 continue
             raise HTTPException(
                 status_code=e.response.status_code,
-                detail=f"Error from exercises-service: {e.response.text}"
+                detail=f"Error from exercises-service: {e.response.text}",
             )
         except (httpx.ConnectError, httpx.ReadTimeout) as e:
             logger.error(f"Connection error to {url}: {str(e)}")
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
                 continue
-            raise HTTPException(
-                status_code=503,
-                detail=f"Cannot connect to exercises-service: {str(e)}"
-            )
+            raise HTTPException(status_code=503, detail=f"Cannot connect to exercises-service: {str(e)}")
         except Exception as e:
             logger.error(f"Unexpected error: {str(e)}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Unexpected error fetching exercises meta: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Unexpected error fetching exercises meta: {str(e)}")
     return []

@@ -1,15 +1,26 @@
-.PHONY: run migrate makemigrations superuser
+.PHONY: run migrate makemigrations superuser sync pre-commit
 
 run:
 	python3 -m uvicorn app.main:app --reload
 
+pre-commit:
+	pre-commit run --all-files
+
 makemigrations:
+	docker compose exec exercises-service alembic upgrade head
+	docker compose exec workouts-service alembic upgrade head
+	docker compose exec plans-service alembic upgrade head
+	docker compose exec user-max-service alembic upgrade head
+	docker compose exec agent-service alembic upgrade head
+	docker compose exec accounts-service alembic upgrade head
+	docker compose exec crm-service alembic upgrade head
 	docker compose exec exercises-service alembic revision --autogenerate -m "exercises: update models"
 	docker compose exec workouts-service alembic revision --autogenerate -m "workouts: update models"
 	docker compose exec plans-service alembic revision --autogenerate -m "plans: update models"
 	docker compose exec user-max-service alembic revision --autogenerate -m "user-max: update models"
 	docker compose exec agent-service alembic revision --autogenerate -m "agent: update models"
 	docker compose exec accounts-service alembic revision --autogenerate -m "accounts: update models"
+	docker compose exec crm-service alembic revision --autogenerate -m "crm: update models"
 
 superuser:
 	python manage.py createsuperuser
@@ -27,6 +38,11 @@ migrate:
 	docker compose exec user-max-service alembic upgrade head
 	docker compose exec agent-service alembic upgrade head
 	docker compose exec accounts-service alembic upgrade head
+	docker compose exec crm-service alembic upgrade head
+
+sync:
+	make makemigrations
+	make migrate
 
 # Docker release tooling
 .PHONY: build-all push-all release \

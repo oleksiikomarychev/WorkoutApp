@@ -24,6 +24,60 @@ class ProfileService extends BaseApiService {
     }
   }
 
+  Future<UserProfile> fetchProfileById(String userId) async {
+    try {
+      final response = await apiClient.get(
+        ApiConfig.profileByIdEndpoint(userId),
+        context: 'ProfileService.fetchProfileById',
+      );
+      if (response is Map<String, dynamic>) {
+        return UserProfile.fromJson(response);
+      }
+      throw Exception('Unexpected profile response: $response');
+    } catch (e, st) {
+      handleError('Failed to fetch profile by id', e, st);
+      rethrow;
+    }
+  }
+
+  Future<UserProfile> updateCoachingProfile({
+    bool? enabled,
+    bool? acceptingClients,
+    String? tagline,
+    String? description,
+    List<String>? specializations,
+    List<String>? languages,
+    int? experienceYears,
+    String? timezone,
+    CoachingRatePlan? ratePlan,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (enabled != null) payload['enabled'] = enabled;
+    if (acceptingClients != null) payload['accepting_clients'] = acceptingClients;
+    if (tagline != null) payload['tagline'] = tagline;
+    if (description != null) payload['description'] = description;
+    if (specializations != null) payload['specializations'] = specializations;
+    if (languages != null) payload['languages'] = languages;
+    if (experienceYears != null) payload['experience_years'] = experienceYears;
+    if (timezone != null) payload['timezone'] = timezone;
+    if (ratePlan != null) payload['rate_plan'] = ratePlan.toJson();
+
+    try {
+      final response = await apiClient.patch(
+        ApiConfig.profileMeCoachingEndpoint,
+        payload,
+        context: 'ProfileService.updateCoachingProfile',
+      );
+      if (response is Map<String, dynamic>) {
+        return UserProfile.fromJson(response);
+      }
+      throw Exception('Unexpected coaching profile update response: $response');
+    } catch (e, st) {
+      handleError('Failed to update coaching profile', e, st);
+      rethrow;
+    }
+  }
+
   Future<UserProfile> updateProfile({
     String? displayName,
     String? bio,

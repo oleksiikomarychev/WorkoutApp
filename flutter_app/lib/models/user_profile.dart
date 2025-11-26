@@ -42,6 +42,138 @@ class UserSettings {
   }
 }
 
+class CoachingRatePlan {
+  final String? type;
+  final String? currency;
+  final int? amountMinor;
+
+  const CoachingRatePlan({
+    this.type,
+    this.currency,
+    this.amountMinor,
+  });
+
+  factory CoachingRatePlan.fromJson(Map<String, dynamic> json) {
+    return CoachingRatePlan(
+      type: json['type'] as String?,
+      currency: json['currency'] as String?,
+      amountMinor: json['amount_minor'] as int?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'type': type,
+        'currency': currency,
+        'amount_minor': amountMinor,
+      };
+
+  CoachingRatePlan copyWith({
+    String? type,
+    String? currency,
+    int? amountMinor,
+  }) {
+    return CoachingRatePlan(
+      type: type ?? this.type,
+      currency: currency ?? this.currency,
+      amountMinor: amountMinor ?? this.amountMinor,
+    );
+  }
+}
+
+class CoachingProfile {
+  final bool enabled;
+  final bool acceptingClients;
+  final String? tagline;
+  final String? description;
+  final List<String> specializations;
+  final List<String> languages;
+  final int? experienceYears;
+  final String? timezone;
+  final CoachingRatePlan? ratePlan;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const CoachingProfile({
+    required this.enabled,
+    required this.acceptingClients,
+    required this.tagline,
+    required this.description,
+    required this.specializations,
+    required this.languages,
+    required this.experienceYears,
+    required this.timezone,
+    required this.ratePlan,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory CoachingProfile.fromJson(Map<String, dynamic> json) {
+    return CoachingProfile(
+      enabled: json['enabled'] as bool? ?? false,
+      acceptingClients: json['accepting_clients'] as bool? ?? false,
+      tagline: json['tagline'] as String?,
+      description: json['description'] as String?,
+      specializations: (json['specializations'] as List<dynamic>? ?? const [])
+          .map((e) => e.toString())
+          .toList(),
+      languages: (json['languages'] as List<dynamic>? ?? const [])
+          .map((e) => e.toString())
+          .toList(),
+      experienceYears: json['experience_years'] as int?,
+      timezone: json['timezone'] as String?,
+      ratePlan: json['rate_plan'] is Map<String, dynamic>
+          ? CoachingRatePlan.fromJson(json['rate_plan'] as Map<String, dynamic>)
+          : null,
+      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      updatedAt: DateTime.tryParse(json['updated_at']?.toString() ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'enabled': enabled,
+        'accepting_clients': acceptingClients,
+        'tagline': tagline,
+        'description': description,
+        'specializations': specializations,
+        'languages': languages,
+        'experience_years': experienceYears,
+        'timezone': timezone,
+        'rate_plan': ratePlan?.toJson(),
+        'created_at': createdAt.toIso8601String(),
+        'updated_at': updatedAt.toIso8601String(),
+      };
+
+  CoachingProfile copyWith({
+    bool? enabled,
+    bool? acceptingClients,
+    String? tagline,
+    String? description,
+    List<String>? specializations,
+    List<String>? languages,
+    int? experienceYears,
+    String? timezone,
+    CoachingRatePlan? ratePlan,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return CoachingProfile(
+      enabled: enabled ?? this.enabled,
+      acceptingClients: acceptingClients ?? this.acceptingClients,
+      tagline: tagline ?? this.tagline,
+      description: description ?? this.description,
+      specializations: specializations ?? List<String>.from(this.specializations),
+      languages: languages ?? List<String>.from(this.languages),
+      experienceYears: experienceYears ?? this.experienceYears,
+      timezone: timezone ?? this.timezone,
+      ratePlan: ratePlan ?? this.ratePlan,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+}
+
 class UserProfile {
   final String userId;
   final String? displayName;
@@ -61,6 +193,7 @@ class UserProfile {
   final String? trainingEnvironment;
   final double? weeklyGainCoef;
   final DateTime? lastActiveAt;
+  final CoachingProfile? coaching;
 
   const UserProfile({
     required this.userId,
@@ -81,6 +214,7 @@ class UserProfile {
     this.trainingEnvironment,
     this.weeklyGainCoef,
     this.lastActiveAt,
+    this.coaching,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -105,6 +239,9 @@ class UserProfile {
       lastActiveAt: json['last_active_at'] != null
           ? DateTime.tryParse(json['last_active_at'].toString())
           : null,
+      coaching: json['coaching'] is Map<String, dynamic>
+          ? CoachingProfile.fromJson(json['coaching'] as Map<String, dynamic>)
+          : null,
     );
   }
 
@@ -127,6 +264,7 @@ class UserProfile {
         'training_environment': trainingEnvironment,
         'weekly_gain_coef': weeklyGainCoef,
         'last_active_at': lastActiveAt?.toIso8601String(),
+        'coaching': coaching?.toJson(),
       };
 
   UserProfile copyWith({
@@ -146,6 +284,7 @@ class UserProfile {
     String? trainingEnvironment,
     double? weeklyGainCoef,
     DateTime? lastActiveAt,
+    CoachingProfile? coaching,
   }) {
     return UserProfile(
       userId: userId,
@@ -168,6 +307,7 @@ class UserProfile {
       trainingEnvironment: trainingEnvironment ?? this.trainingEnvironment,
       weeklyGainCoef: weeklyGainCoef ?? this.weeklyGainCoef,
       lastActiveAt: lastActiveAt ?? this.lastActiveAt,
+      coaching: coaching ?? this.coaching,
     );
   }
 }

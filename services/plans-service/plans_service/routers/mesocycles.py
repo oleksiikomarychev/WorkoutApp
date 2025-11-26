@@ -1,23 +1,22 @@
 from typing import List
-from fastapi import APIRouter, Depends, status, HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
-from ..dependencies import get_db, get_current_user_id
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
+
+from ..dependencies import get_current_user_id, get_db
 from ..models import Microcycle
-from ..services.calendar_plan_service import CalendarPlanService
-from ..services.mesocycle_service import MesocycleService
-from ..services.template_service import TemplateService
-from ..schemas.calendar_plan import MesocycleResponse
-from ..schemas.calendar_plan import MicrocycleResponse
+from ..schemas.calendar_plan import MesocycleResponse, MicrocycleResponse
 from ..schemas.mesocycle import (
     MesocycleCreate,
     MesocycleUpdate,
-    MesocycleResponse,
+    MicrocycleCreate,
     MicrocycleUpdate,
-    MicrocycleCreate
 )
 from ..schemas.templates import InstantiateFromExistingRequest
+from ..services.mesocycle_service import MesocycleService
+from ..services.template_service import TemplateService
 
 router = APIRouter(prefix="/mesocycles")
 
@@ -88,7 +87,11 @@ async def list_microcycles(
     return await svc.list_microcycles(mesocycle_id)
 
 
-@router.post("/{mesocycle_id}/microcycles", response_model=MicrocycleResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{mesocycle_id}/microcycles",
+    response_model=MicrocycleResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_microcycle(
     mesocycle_id: int,
     body: MicrocycleUpdate,
@@ -131,7 +134,6 @@ async def delete_microcycle(
     return None
 
 
-
 @router.post("/validate")
 async def validate_microcycles(
     microcycle_ids: list[int],
@@ -140,8 +142,9 @@ async def validate_microcycles(
 ):
     if not microcycle_ids:
         return {"valid_ids": []}
-    
-    from ..models.calendar import Mesocycle, CalendarPlan
+
+    from ..models.calendar import CalendarPlan, Mesocycle
+
     # Filter by user ownership through the join chain
     stmt = (
         select(Microcycle.id)

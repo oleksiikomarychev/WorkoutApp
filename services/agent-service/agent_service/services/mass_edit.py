@@ -1,14 +1,18 @@
-import logging
 from typing import Any, Dict, Literal
 
 import httpx
+import structlog
 from fastapi import HTTPException, status
 
 from ..config import settings
+from ..metrics import (
+    MASS_EDIT_APPLICATIONS_TOTAL,
+    MASS_EDIT_COMMANDS_REQUESTED_TOTAL,
+)
 from .llm_wrapper import generate_structured_output
 from .tool_agent import ToolSpec
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 MASS_EDIT_COMMAND_SCHEMA: Dict[str, Any] = {
     "type": "object",
@@ -82,7 +86,12 @@ async def generate_mass_edit_command(prompt: str, desired_mode: Literal["preview
     """Call the LLM to transform a natural-language request into PlanMassEditCommand JSON."""
 
     composed_prompt = MASS_EDIT_PROMPT_TEMPLATE.format(user_prompt=f"User request: {prompt}")
-    logger.debug("Generating mass edit command for prompt: %s", prompt)
+    logger.info(
+        "mass_edit_command_generate_requested",
+        prompt=prompt,
+        mode=desired_mode,
+    )
+    MASS_EDIT_COMMANDS_REQUESTED_TOTAL.inc()
     command = await generate_structured_output(
         prompt=composed_prompt,
         response_schema=MASS_EDIT_COMMAND_SCHEMA,
@@ -97,8 +106,19 @@ async def generate_mass_edit_command(prompt: str, desired_mode: Literal["preview
     command["mode"] = desired_mode
 
     if "filter" not in command or "actions" not in command:
+        logger.error(
+            "mass_edit_command_invalid",
+            reason="missing_filter_or_actions",
+            command=command,
+        )
         raise ValueError("LLM response missing required keys 'filter' or 'actions'")
 
+    logger.info(
+        "mass_edit_command_generated",
+        mode=desired_mode,
+        has_filter="filter" in command,
+        has_actions="actions" in command,
+    )
     return command
 
 
@@ -108,17 +128,46 @@ async def apply_mass_edit_to_plan(plan_id: int, user_id: str, command: Dict[str,
     url = f"{settings.plans_service_url}/plans/calendar-plans/{plan_id}/mass-edit"
     headers = {"X-User-Id": user_id}
 
+    logger.info(
+        "mass_edit_apply_requested",
+        user_id=user_id,
+        plan_id=plan_id,
+        mode=command.get("mode"),
+        operation=command.get("operation"),
+    )
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.post(url, json=command, headers=headers)
             response.raise_for_status()
-            return response.json()
+            body = response.json()
+            logger.info(
+                "mass_edit_apply_success",
+                user_id=user_id,
+                plan_id=plan_id,
+            )
+            MASS_EDIT_APPLICATIONS_TOTAL.inc()
+            return body
     except httpx.HTTPStatusError as exc:
-        detail = exc.response.json() if exc.response.headers.get("content-type", "").startswith("application/json") else exc.response.text
-        logger.warning("Plans-service mass edit HTTP error: %s", detail)
+        detail = (
+            exc.response.json()
+            if exc.response.headers.get("content-type", "").startswith("application/json")
+            else exc.response.text
+        )
+        logger.warning(
+            "mass_edit_apply_http_error",
+            user_id=user_id,
+            plan_id=plan_id,
+            status_code=exc.response.status_code,
+            detail=detail,
+        )
         raise HTTPException(status_code=exc.response.status_code, detail=detail)
     except httpx.RequestError as exc:
-        logger.error("Plans-service mass edit request failed: %s", exc)
+        logger.error(
+            "mass_edit_apply_request_failed",
+            user_id=user_id,
+            plan_id=plan_id,
+            error=str(exc),
+        )
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Plans service unavailable")
 
 
@@ -162,8 +211,20 @@ def create_plan_mass_edit_tool(user_id: str) -> ToolSpec:
             raise ValueError("instructions must be a non-empty string")
         prompt_text = raw_instructions.strip()
 
+        logger.info(
+            "mass_edit_tool_invocation",
+            user_id=user_id,
+            plan_id=plan_id,
+            mode=mode,
+        )
         command = await generate_mass_edit_command(prompt_text, mode)
         plan = await apply_mass_edit_to_plan(plan_id, user_id, command)
+        logger.info(
+            "mass_edit_tool_success",
+            user_id=user_id,
+            plan_id=plan_id,
+            mode=mode,
+        )
         return {"plan": plan, "mass_edit_command": command}
 
     return ToolSpec(

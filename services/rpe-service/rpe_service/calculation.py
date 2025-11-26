@@ -1,15 +1,14 @@
-import math
-from typing import Dict, Optional, Union
-import os
 import json
-from pathlib import Path
-from typing import Dict, Union, Optional
 import logging
+import math
+import os
+from pathlib import Path
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 
 
-#Преобразует строковые значения словаря в целые числа
+# Преобразует строковые значения словаря в целые числа
 def _normalize_int_keys(d):
     if isinstance(d, dict):
         out = {}
@@ -21,20 +20,21 @@ def _normalize_int_keys(d):
             out[ik] = _normalize_int_keys(v)
         return out
     return d
-    
-#Округляет значение до ближайшего кратного
+
+
+# Округляет значение до ближайшего кратного
 def round_to_step(value: float, step: float, mode: str) -> float:
     if step <= 0:
         return value
     ratio = value / step
-    if mode == 'floor':
+    if mode == "floor":
         return math.floor(ratio) * step
-    if mode == 'ceil':
+    if mode == "ceil":
         return math.ceil(ratio) * step
     return round(ratio) * step
 
-    
-#Проверяет структуру таблицы RPE на соответствие ожидаемому формату
+
+# Проверяет структуру таблицы RPE на соответствие ожидаемому формату
 def validate_rpe_table(table: Dict) -> bool:
     if not isinstance(table, dict):
         return False
@@ -43,7 +43,7 @@ def validate_rpe_table(table: Dict) -> bool:
             return False
         if not isinstance(efforts, dict):
             return False
-            
+
         for effort, reps in efforts.items():
             if not isinstance(effort, int) or not (1 <= effort <= 10):
                 return False
@@ -52,11 +52,11 @@ def validate_rpe_table(table: Dict) -> bool:
     return True
 
 
-#Загружает таблицу RPE из JSON-файла или переменной окружения
+# Загружает таблицу RPE из JSON-файла или переменной окружения
 def load_rpe_table() -> Dict[int, Dict[int, int]]:
-    default_json_path = Path(__file__).parent.parent / 'rpe_table.json'
-    json_str = os.getenv('RPE_TABLE_JSON')
-    json_path = os.getenv('RPE_TABLE_PATH', str(default_json_path))
+    default_json_path = Path(__file__).parent.parent / "rpe_table.json"
+    json_str = os.getenv("RPE_TABLE_JSON")
+    json_path = os.getenv("RPE_TABLE_PATH", str(default_json_path))
 
     if json_str:
         try:
@@ -70,7 +70,7 @@ def load_rpe_table() -> Dict[int, Dict[int, int]]:
             logger.error("RPE table file not found at %s", json_path)
             raise RuntimeError(f"RPE table file not found at {json_path}")
         try:
-            with open(json_path, 'r') as f:
+            with open(json_path, "r") as f:
                 data = json.load(f)
                 logger.info("Loaded RPE table from file: %s", json_path)
         except (OSError, json.JSONDecodeError) as e:
@@ -83,10 +83,11 @@ def load_rpe_table() -> Dict[int, Dict[int, int]]:
         logger.error("Error normalizing RPE table keys")
         raise RuntimeError("Error normalizing RPE table keys") from e
 
+
 _RPE_TABLE_CACHE = None
 
 
-#Возвращает кэшированную таблицу RPE (загружает при первом вызове)
+# Возвращает кэшированную таблицу RPE (загружает при первом вызове)
 def get_rpe_table() -> Dict[int, Dict[int, int]]:
     global _RPE_TABLE_CACHE
     if _RPE_TABLE_CACHE is None:

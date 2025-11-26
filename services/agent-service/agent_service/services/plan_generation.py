@@ -1,20 +1,21 @@
 from __future__ import annotations
 
-import os
+import asyncio
 import json
 import logging
+import os
+import re
 import time
-import asyncio
-from dataclasses import dataclass
 from collections import defaultdict, deque
+from dataclasses import dataclass
 from itertools import count
 from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
+import structlog
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field, field_validator, model_validator
-import re
 
 from ..config import Settings
 from ..prompts import (
@@ -23,8 +24,19 @@ from ..prompts import (
     build_sets_prompt,
     build_summary_rationale_prompt,
 )
+from ..schemas.training_plans import (
+    CalendarPlan,
+    Mesocycle,
+    Microcycle,
+    PlanExercise,
+    PlanSet,
+    PlanWorkout,
+    TrainingPlan,
+)
+from ..schemas.user_data import UserDataInput
 
 # Optional: tolerant JSON parser removed (was used for LM Studio only)
+
 
 def _parse_int_tolerant(value: Any) -> Optional[int]:
     """Parse integers from various user/LLM formats.
@@ -81,7 +93,7 @@ def _parse_int_tolerant(value: Any) -> Optional[int]:
 
 def _load_rpe_table() -> Dict[str, Dict[str, int]]:
     """Load the RPE reference table from disk (or env override)."""
-    logger = logging.getLogger(__name__)
+    logger = structlog.get_logger(__name__)
     candidates: List[Path] = []
     env_path = os.getenv("RPE_TABLE_PATH")
     if env_path:
@@ -106,22 +118,34 @@ def _load_rpe_table() -> Dict[str, Dict[str, int]]:
             for intensity_key, mapping in raw_data.items():
                 if not isinstance(mapping, dict):
                     continue
-                normalized_intensity = str(int(round(intensity_key))) if isinstance(intensity_key, (int, float)) else str(intensity_key)
+                normalized_intensity = (
+                    str(int(round(intensity_key))) if isinstance(intensity_key, (int, float)) else str(intensity_key)
+                )
                 normalized_mapping: Dict[str, int] = {}
                 for effort_key, reps_value in mapping.items():
                     if not isinstance(reps_value, (int, float)):
                         continue
-                    normalized_effort = str(int(round(effort_key))) if isinstance(effort_key, (int, float)) else str(effort_key)
+                    normalized_effort = (
+                        str(int(round(effort_key))) if isinstance(effort_key, (int, float)) else str(effort_key)
+                    )
                     normalized_mapping[normalized_effort] = int(round(reps_value))
                 if normalized_mapping:
                     table[normalized_intensity] = normalized_mapping
             if table:
-                logger.debug("Loaded RPE table from %s with %d intensity rows", candidate, len(table))
+                logger.debug(
+                    "rpe_table_loaded",
+                    path=str(candidate),
+                    intensity_rows=len(table),
+                )
                 return table
         except FileNotFoundError:
             continue
         except Exception as exc:  # pragma: no cover - best effort logging
-            logger.warning("Failed to load RPE table from %s: %s", candidate, exc)
+            logger.warning(
+                "rpe_table_load_failed",
+                path=str(candidate),
+                error=str(exc),
+            )
 
     # HTTP fallback: only environment URL (production)
     http_urls: List[str] = []
@@ -143,7 +167,11 @@ def _load_rpe_table() -> Dict[str, Dict[str, int]]:
                 raw_data = resp.json()
 
             if not isinstance(raw_data, dict):
-                logger.warning("RPE table URL %s returned non-dict payload of type %s", url, type(raw_data).__name__)
+                logger.warning(
+                    "RPE table URL %s returned non-dict payload of type %s",
+                    url,
+                    type(raw_data).__name__,
+                )
                 continue
 
             # Normalize to Dict[str, Dict[str, int]]
@@ -151,12 +179,16 @@ def _load_rpe_table() -> Dict[str, Dict[str, int]]:
             for intensity_key, mapping in raw_data.items():
                 if not isinstance(mapping, dict):
                     continue
-                normalized_intensity = str(int(round(intensity_key))) if isinstance(intensity_key, (int, float)) else str(intensity_key)
+                normalized_intensity = (
+                    str(int(round(intensity_key))) if isinstance(intensity_key, (int, float)) else str(intensity_key)
+                )
                 normalized_mapping: Dict[str, int] = {}
                 for effort_key, reps_value in mapping.items():
                     if not isinstance(reps_value, (int, float)):
                         continue
-                    normalized_effort = str(int(round(effort_key))) if isinstance(effort_key, (int, float)) else str(effort_key)
+                    normalized_effort = (
+                        str(int(round(effort_key))) if isinstance(effort_key, (int, float)) else str(effort_key)
+                    )
                     normalized_mapping[normalized_effort] = int(round(reps_value))
                 if normalized_mapping:
                     table[normalized_intensity] = normalized_mapping
@@ -224,6 +256,8 @@ _GENAI_RATE_LIMIT_SEMAPHORE = asyncio.Semaphore(_GENAI_RATE_LIMIT_CONCURRENCY)
 _GENAI_RATE_LIMIT_LOCK = asyncio.Lock()
 _GENAI_RATE_LIMIT_HISTORY: defaultdict[str, Deque[float]] = defaultdict(deque)
 
+logger = logging.getLogger(__name__)
+
 
 class GenAIUnavailableError(RuntimeError):
     """Raised when the GenAI service quota is exhausted."""
@@ -280,7 +314,6 @@ def _get_genai_client() -> genai.Client:
     return _GENAI_CLIENT
 
 
-
 async def _genai_generate_json(
     *,
     prompt: str,
@@ -309,7 +342,7 @@ async def _genai_generate_json(
                 ),
             )
     except Exception as exc:
-        logging.warning("GenAI request failed: %s", exc)
+        logger.warning("GenAI request failed: %s", exc)
         if _is_quota_or_rate_limit_error(exc):
             raise GenAIUnavailableError("GenAI quota exhausted") from exc
         raise
@@ -318,7 +351,7 @@ async def _genai_generate_json(
     finish_reason = getattr(candidate, "finish_reason", None)
     safety_ratings = getattr(candidate, "safety_ratings", None)
     usage = getattr(response, "usage_metadata", None)
-    logging.debug(
+    logger.debug(
         "GenAI finish_reason=%s safety=%s usage=%s",
         finish_reason,
         safety_ratings,
@@ -334,7 +367,7 @@ async def _genai_generate_json(
     try:
         parsed = json.loads(response_text)
     except Exception as exc:
-        logging.error(
+        logger.error(
             "GenAI JSON parse error: %s | preview=%s",
             exc,
             truncated_preview,
@@ -342,7 +375,7 @@ async def _genai_generate_json(
         raise
 
     if not isinstance(parsed, dict):
-        logging.error("GenAI JSON result is not dict | preview=%s", truncated_preview)
+        logger.error("GenAI JSON result is not dict | preview=%s", truncated_preview)
         raise ValueError("Non-dict GenAI JSON response")
 
     return parsed
@@ -408,9 +441,7 @@ def _apply_set_constraints(
     adjusted_workouts: List[WorkoutSetsDraft] = []
 
     for workout in workouts:
-        desired_exercises, min_sets, max_sets = constraints.get(
-            workout.workout_id, (None, None, None)
-        )
+        desired_exercises, min_sets, max_sets = constraints.get(workout.workout_id, (None, None, None))
 
         copy = workout.model_copy(deep=True)
         exercises = copy.exercises or []
@@ -462,7 +493,16 @@ def _apply_set_constraints(
 
         if changed:
             adjustments.append(
-                f"Workout {copy.workout_id}: sets adjusted from {original_sets} to {total_sets} (min={min_sets or '-'}, max={max_sets or '-'})"
+                (
+                    "Workout %s: sets adjusted from %s to %s (min=%s, max=%s)"
+                    % (
+                        copy.workout_id,
+                        original_sets,
+                        total_sets,
+                        min_sets or "-",
+                        max_sets or "-",
+                    )
+                )
             )
 
         adjusted_workouts.append(copy)
@@ -525,6 +565,7 @@ async def _generate_headers_staged(
 
     # Group workouts by microcycle to reduce per-call JSON size
     from collections import defaultdict as _dd
+
     workouts_by_micro: Dict[int, List[PlanWorkout]] = _dd(list)
     for w in skeleton.workouts:
         workouts_by_micro[w.microcycle_id].append(w)
@@ -580,7 +621,11 @@ async def _generate_headers_staged(
                 item.day_label = original.day_label
             aggregated.append(item)
 
-    logger.info("LLM headers generated (chunked): %d workouts across %d microcycles", len(aggregated), chunks)
+    logger.info(
+        "LLM headers generated (chunked): %d workouts across %d microcycles",
+        len(aggregated),
+        chunks,
+    )
     return aggregated
 
 
@@ -670,6 +715,7 @@ async def _generate_sets_staged(
 
     # Group workouts by microcycle and build context per chunk
     from collections import defaultdict as _dd
+
     workouts_by_micro: Dict[int, List[PlanWorkout]] = _dd(list)
     for w in skeleton.workouts:
         workouts_by_micro[w.microcycle_id].append(w)
@@ -687,12 +733,8 @@ async def _generate_sets_staged(
             exercises = exercises_by_workout.get(workout.id, [])
             if not exercises:
                 continue
-            exercise_lines = ", ".join(
-                f"{ex.exercise_name} (id={ex.exercise_definition_id})" for ex in exercises
-            )
-            workout_context.append(
-                f"Workout {workout.id} {workout.day_label}: {exercise_lines}"
-            )
+            exercise_lines = ", ".join(f"{ex.exercise_name} (id={ex.exercise_definition_id})" for ex in exercises)
+            workout_context.append(f"Workout {workout.id} {workout.day_label}: {exercise_lines}")
 
         prompt = build_sets_prompt(
             user_data=user_data,
@@ -709,10 +751,7 @@ async def _generate_sets_staged(
 
         try:
             for workout_sets in batch.workouts:
-                per_ex_counts = {
-                    ex.exercise_definition_id: len(ex.sets or [])
-                    for ex in workout_sets.exercises or []
-                }
+                per_ex_counts = {ex.exercise_definition_id: len(ex.sets or []) for ex in workout_sets.exercises or []}
                 logger.info(
                     "SETS_STAGE_LLM_OUTPUT | workout_id=%s exercises=%s",
                     workout_sets.workout_id,
@@ -728,10 +767,7 @@ async def _generate_sets_staged(
 
     try:
         for workout_sets in adjusted_workouts:
-            per_ex_counts = {
-                ex.exercise_definition_id: len(ex.sets or [])
-                for ex in workout_sets.exercises or []
-            }
+            per_ex_counts = {ex.exercise_definition_id: len(ex.sets or []) for ex in workout_sets.exercises or []}
             logger.info(
                 "SETS_STAGE_AFTER_CONSTRAINTS | workout_id=%s exercises=%s",
                 workout_sets.workout_id,
@@ -769,16 +805,25 @@ async def _get_available_exercises(settings: "Settings") -> List[Dict[str, Any]]
 
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             resp = await client.get(url)
             resp.raise_for_status()
             data = resp.json()
     except Exception as exc:
-        logger.error("Failed to fetch available exercises: %s", exc)
+        logger.error(
+            "available_exercises_fetch_failed",
+            url=url,
+            error=str(exc),
+        )
         raise RuntimeError("Failed to fetch available exercises") from exc
 
     if not isinstance(data, list):
-        logger.error("Exercises service returned unexpected payload type: %s", type(data).__name__)
+        logger.error(
+            "available_exercises_unexpected_payload",
+            url=url,
+            payload_type=type(data).__name__,
+        )
         raise RuntimeError("Exercises service returned unexpected payload type")
 
     sanitized: List[Dict[str, Any]] = [item for item in data if isinstance(item, dict)]
@@ -788,26 +833,17 @@ async def _get_available_exercises(settings: "Settings") -> List[Dict[str, Any]]
         _EXERCISES_CACHE["expires_at"] = time.time() + _EXERCISES_CACHE_TTL_SECONDS
 
     logger.debug(
-        "Fetched %d available exercises (cached for %ds)",
-        len(sanitized),
-        _EXERCISES_CACHE_TTL_SECONDS,
+        "available_exercises_fetched",
+        count=len(sanitized),
+        ttl_seconds=_EXERCISES_CACHE_TTL_SECONDS,
     )
     return sanitized
 
-from ..schemas.training_plans import (
-    TrainingPlan,
-    CalendarPlan,
-    Mesocycle,
-    Microcycle,
-    PlanWorkout,
-    PlanExercise,
-    PlanSet,
-)
-from ..schemas.user_data import UserDataInput
 
 # LLM response schemas (without IDs - they'll be assigned during normalization)
 class LLMPlanSet(BaseModel):
     """Set configuration for LLM response."""
+
     order_index: int = Field(description="Sequential order starting from 1")
     intensity: Optional[int] = None
     effort: Optional[int] = None
@@ -818,21 +854,25 @@ class LLMPlanSet(BaseModel):
     def _parse_numbers_tolerant(cls, v, info):
         field_name = info.field_name
         parsed = _parse_int_tolerant(v)
-        logger = logging.getLogger(__name__)
         logger.debug(
             "LLMPlanSet field parsing | field=%s raw_value=%s parsed_value=%s raw_type=%s",
-            field_name, repr(v), repr(parsed), type(v).__name__
+            field_name,
+            repr(v),
+            repr(parsed),
+            type(v).__name__,
         )
         return parsed
 
     @model_validator(mode="after")
     def _validate_and_clamp(self):
-        logger = logging.getLogger(__name__)
         logger.debug(
             "LLMPlanSet validation | order_index=%d intensity=%s effort=%s volume=%s",
-            self.order_index, repr(self.intensity), repr(self.effort), repr(self.volume)
+            self.order_index,
+            repr(self.intensity),
+            repr(self.effort),
+            repr(self.volume),
         )
-        
+
         # Clamp to sensible ranges
         if self.intensity is not None:
             self.intensity = max(0, min(100, int(self.intensity)))
@@ -846,45 +886,61 @@ class LLMPlanSet(BaseModel):
         if present < 2:
             logger.error(
                 "LLMPlanSet VALIDATION FAILED | order_index=%d intensity=%s effort=%s volume=%s present=%d",
-                self.order_index, repr(self.intensity), repr(self.effort), repr(self.volume), present
+                self.order_index,
+                repr(self.intensity),
+                repr(self.effort),
+                repr(self.volume),
+                present,
             )
             raise ValueError("At least two of intensity/effort/volume must be provided")
         return self
 
+
 class LLMPlanExercise(BaseModel):
     """Exercise in a workout for LLM response."""
+
     exercise_definition_id: int = Field(description="ID from the allowed exercises list")
     exercise_name: str = Field(description="Exact name from the allowed exercises list")
     order_index: int = Field(description="Sequential order starting from 1")
     sets: List[LLMPlanSet] = Field(description="List of sets for this exercise")
 
+
 class LLMPlanWorkout(BaseModel):
     """Workout in a microcycle for LLM response."""
+
     day_label: str = Field(description="Day label like 'Monday', 'Day 1', etc.")
     order_index: int = Field(description="Sequential order starting from 1")
     exercises: List[LLMPlanExercise] = Field(description="List of exercises in this workout")
 
+
 class LLMMicrocycle(BaseModel):
     """Microcycle (week) in a mesocycle for LLM response."""
+
     name: str = Field(description="Microcycle name")
     order_index: int = Field(description="Sequential order starting from 1")
     days_count: int = Field(description="Number of days in this microcycle")
     plan_workouts: List[LLMPlanWorkout] = Field(description="List of workouts in this microcycle")
 
+
 class LLMMesocycle(BaseModel):
     """Mesocycle (training block) for LLM response."""
+
     name: str = Field(description="Mesocycle name")
     order_index: int = Field(description="Sequential order starting from 1")
     weeks_count: int = Field(description="Number of weeks in this mesocycle")
     microcycles: List[LLMMicrocycle] = Field(description="List of microcycles in this mesocycle")
 
+
 class LLMCalendarPlan(BaseModel):
     """Calendar plan metadata for LLM response."""
+
     name: str = Field(description="Training plan name")
     duration_weeks: int = Field(description="Total duration in weeks")
 
+
 class LLMTrainingPlanResponse(BaseModel):
     """Complete training plan structure for LLM response."""
+
     calendar_plan: LLMCalendarPlan
     mesocycles: List[LLMMesocycle]
     # Optional structured rationale for decisions (in-RU strings)
@@ -892,21 +948,40 @@ class LLMTrainingPlanResponse(BaseModel):
     # Optional concise plan summary in Russian, referencing exact plan details
     plan_summary: Optional[str] = None
 
+
 class LLMPlanRationale(BaseModel):
     """Structured rationale sections in Russian. Keep values concise, plain text."""
+
     goals_interpretation: Optional[str] = Field(default=None, description="Как цели пользователя интерпретированы")
-    periodization: Optional[str] = Field(default=None, description="Почему выбрана такая периодизация и длительность мезо/микроциклов")
-    frequency: Optional[str] = Field(default=None, description="Почему выбрана такая частота тренировок и распределение по неделям")
-    exercise_selection: Optional[str] = Field(default=None, description="Логика выбора упражнений: баланс тяга/жим/ноги/кор, вариативность")
+    periodization: Optional[str] = Field(
+        default=None,
+        description="Почему выбрана такая периодизация и длительность мезо/микроциклов",
+    )
+    frequency: Optional[str] = Field(
+        default=None,
+        description="Почему выбрана такая частота тренировок и распределение по неделям",
+    )
+    exercise_selection: Optional[str] = Field(
+        default=None,
+        description="Логика выбора упражнений: баланс тяга/жим/ноги/кор, вариативность",
+    )
     set_parameters: Optional[str] = Field(default=None, description="Интенсивность/повторения/RPE и соответствие целям")
-    constraints_equipment: Optional[str] = Field(default=None, description="Как учтены ограничения и доступное оборудование")
-    progression: Optional[str] = Field(default=None, description="Как планируется прогрессия и адаптация при нехватке времени/усталости")
+    constraints_equipment: Optional[str] = Field(
+        default=None, description="Как учтены ограничения и доступное оборудование"
+    )
+    progression: Optional[str] = Field(
+        default=None,
+        description="Как планируется прогрессия и адаптация при нехватке времени/усталости",
+    )
+
 
 # Resolve forward refs for plan_rationale
 LLMTrainingPlanResponse.model_rebuild()
 
+
 class OutlineMicrocycle(BaseModel):
     """Explicit microcycle definition used by LLM outline stage."""
+
     name: Optional[str] = Field(default=None, description="Microcycle name")
     days_count: Optional[int] = Field(default=None, description="Number of days in this microcycle")
     workouts_per_microcycle: Optional[int] = Field(
@@ -923,23 +998,26 @@ class OutlineMicrocycle(BaseModel):
 
 class OutlinePerWorkoutTargets(BaseModel):
     """Optional per-workout targets (kept generic and data-only)."""
+
     number_of_exercises: Optional[int] = None
     set_range: Optional[List[int]] = None  # [min_sets, max_sets] per workout
 
 
 class OutlineGuidelines(BaseModel):
     """Dynamic training intents derived by LLM (no hardcoded numbers in code)."""
+
     # Schemas are relaxed to Optional[Dict[str, Any]] to allow initial parsing of schema-like LLM output.
     # The _sanitize_outline_data function is responsible for converting these to the correct types.
     weekly_volume_targets: Optional[Dict[str, Any]] = None  # e.g., {"push": 12, "pull": 14, "legs": 16}
-    intensity_bands: Optional[Dict[str, Any]] = None        # e.g., {"main_lifts": "70-85%", "assistance": "60-75%"}
+    intensity_bands: Optional[Dict[str, Any]] = None  # e.g., {"main_lifts": "70-85%", "assistance": "60-75%"}
     per_workout_targets: Optional[OutlinePerWorkoutTargets] = None
-    focus_areas: Optional[List[str]] = None                  # e.g., ["bench_press_strength"]
+    focus_areas: Optional[List[str]] = None  # e.g., ["bench_press_strength"]
     exercise_categories_allowed: Optional[List[str]] = None  # e.g., ["barbell","dumbbell","bodyweight"]
 
 
 class OutlineMesocycle(BaseModel):
     """High-level mesocycle description with optional explicit microcycles and guidelines."""
+
     name: str = Field(description="Mesocycle name")
     weeks_count: int = Field(description="Number of weeks in this mesocycle")
     microcycles: Optional[List[OutlineMicrocycle]] = Field(
@@ -988,8 +1066,11 @@ class OutlineMesocycle(BaseModel):
 
 class OutlineSpec(BaseModel):
     """High-level training plan outline to guide the final deterministic generation."""
+
     name: str = Field(description="Outline name (plan name)")
-    duration_weeks: Optional[int] = Field(default=None, description="Total duration in weeks (optional; if omitted, infer later)")
+    duration_weeks: Optional[int] = Field(
+        default=None, description="Total duration in weeks (optional; if omitted, infer later)"
+    )
     mesocycles: List[OutlineMesocycle] = Field(description="List of mesocycles with weeks_count and microcycle data")
 
     def total_weeks(self) -> int:
@@ -1034,10 +1115,7 @@ def _meso_micro_schedule(meso_outline: OutlineMesocycle) -> List[OutlineMicrocyc
                 updates["name"] = f"Week {idx}"
             if micro.days_count is None and default_template.days_count is not None:
                 updates["days_count"] = default_template.days_count
-            if (
-                micro.workouts_per_microcycle is None
-                and default_template.workouts_per_microcycle is not None
-            ):
+            if micro.workouts_per_microcycle is None and default_template.workouts_per_microcycle is not None:
                 updates["workouts_per_microcycle"] = default_template.workouts_per_microcycle
             if not micro.day_labels and default_template.day_labels:
                 updates["day_labels"] = list(default_template.day_labels)
@@ -1055,11 +1133,7 @@ def _meso_micro_schedule(meso_outline: OutlineMesocycle) -> List[OutlineMicrocyc
             "workouts_per_microcycle": default_template.workouts_per_microcycle,
             "day_labels": default_template.day_labels,
         }
-        materialized.append(
-            default_template.model_copy(
-                update={k: v for k, v in defaults.items() if v is not None}
-            )
-        )
+        materialized.append(default_template.model_copy(update={k: v for k, v in defaults.items() if v is not None}))
     return materialized
 
 
@@ -1140,9 +1214,7 @@ def _validate_header_exercises(
 ) -> None:
     for ex in exercises:
         if ex.exercise_definition_id not in allowed_map:
-            raise ValueError(
-                f"exercise_definition_id {ex.exercise_definition_id} is not allowed"
-            )
+            raise ValueError(f"exercise_definition_id {ex.exercise_definition_id} is not allowed")
 
 
 def _build_staged_skeleton(outline: OutlineSpec) -> StagedSkeleton:
@@ -1214,9 +1286,7 @@ def _build_staged_skeleton(outline: OutlineSpec) -> StagedSkeleton:
                 if not day_labels:
                     day_labels = [f"Day {i}" for i in range(1, workouts_target + 1)]
                 elif len(day_labels) < workouts_target:
-                    day_labels.extend(
-                        f"Day {i}" for i in range(len(day_labels) + 1, workouts_target + 1)
-                    )
+                    day_labels.extend(f"Day {i}" for i in range(len(day_labels) + 1, workouts_target + 1))
                 elif len(day_labels) > workouts_target:
                     day_labels = day_labels[:workouts_target]
 
@@ -1277,7 +1347,11 @@ def _map_sets_into_plan(
             key = (workout_sets.workout_id, exercise_sets.exercise_definition_id)
             if key not in lookup:
                 raise ValueError(
-                    f"Workout {workout_sets.workout_id} returned sets for unknown exercise_definition_id {exercise_sets.exercise_definition_id}"
+                    "Workout %s returned sets for unknown exercise_definition_id %s"
+                    % (
+                        workout_sets.workout_id,
+                        exercise_sets.exercise_definition_id,
+                    )
                 )
             plan_exercise = lookup[key]
             for idx, set_draft in enumerate(exercise_sets.sets, start=1):
@@ -1291,6 +1365,7 @@ def _map_sets_into_plan(
                 )
                 plan_sets.append(plan_set)
     return plan_sets
+
 
 @dataclass
 class StagedDiagnostics:
@@ -1328,11 +1403,7 @@ def _compute_plan_metrics(
             total_sets += len(sets_for_exercise)
 
             raw_ex = allowed_map.get(ex.exercise_definition_id, {})
-            pattern_raw = (
-                raw_ex.get("movement_type")
-                or raw_ex.get("muscle_group")
-                or raw_ex.get("region")
-            )
+            pattern_raw = raw_ex.get("movement_type") or raw_ex.get("muscle_group") or raw_ex.get("region")
             pattern = str(pattern_raw) if pattern_raw else "unknown"
 
             if sets_for_exercise:
@@ -1349,10 +1420,7 @@ def _compute_plan_metrics(
             "sets": total_sets,
         }
 
-    materialized_volume = {
-        micro_id: dict(patterns)
-        for micro_id, patterns in volume_by_micro.items()
-    }
+    materialized_volume = {micro_id: dict(patterns) for micro_id, patterns in volume_by_micro.items()}
     return materialized_volume, per_workout_stats
 
 
@@ -1363,7 +1431,7 @@ def _validate_against_guidelines(
     per_workout_stats: Dict[int, Dict[str, int]],
 ) -> tuple[List[str], Dict[int, int]]:
     """Compare generated plan against dynamic outline guidelines.
-    
+
     Returns:
         violations: List of validation error messages
         adjustments_dict: Dict[workout_id, ±1] for minor set adjustments
@@ -1394,9 +1462,7 @@ def _validate_against_guidelines(
                     actual = micro_stats.get(pattern, 0)
                     if actual < target_value:
                         diff = target_value - actual
-                        violations.append(
-                            f"Microcycle '{micro.name}' pattern '{pattern}' short by {diff} units"
-                        )
+                        violations.append(f"Microcycle '{micro.name}' pattern '{pattern}' short by {diff} units")
 
         per_workout_targets = guidelines.per_workout_targets
         if per_workout_targets:
@@ -1428,7 +1494,10 @@ def _validate_against_guidelines(
                     if max_sets is not None and stats["sets"] > max_sets:
                         diff = stats["sets"] - max_sets
                         violations.append(
-                            f"Workout '{workout.day_label}' in microcycle '{micro.name}' exceeds guideline by {diff} sets"
+                            (
+                                "Workout '%s' in microcycle '%s' exceeds guideline by %s sets"
+                                % (workout.day_label, micro.name, diff)
+                            )
                         )
                         # Minor adjustment: remove 1 set if diff is 1
                         if diff == 1:
@@ -1485,17 +1554,13 @@ def _apply_minor_adjustments(
                 next_set_id += 1
                 target_sets.append(clone)
                 new_sets.append(clone)
-                fix_logs.append(
-                    f"Workout {workout_id}: added set to exercise {target_ex.exercise_definition_id}"
-                )
+                fix_logs.append(f"Workout {workout_id}: added set to exercise {target_ex.exercise_definition_id}")
         else:
             remove_count = min(abs(delta), len(target_sets))
             for _ in range(remove_count):
                 removed = target_sets.pop()
                 new_sets = [s for s in new_sets if s.id != removed.id]
-                fix_logs.append(
-                    f"Workout {workout_id}: removed set from exercise {target_ex.exercise_definition_id}"
-                )
+                fix_logs.append(f"Workout {workout_id}: removed set from exercise {target_ex.exercise_definition_id}")
 
     updated_plan = plan.model_copy(update={"sets": new_sets})
     return updated_plan, fix_logs
@@ -1537,61 +1602,74 @@ async def _generate_summary_and_rationale_staged(
                         "constraints_equipment": {"type": "string"},
                         "progression": {"type": "string"},
                     },
-                    "required": []
-                }
+                    "required": [],
+                },
             },
-            "required": ["plan_summary","plan_rationale"]
+            "required": ["plan_summary", "plan_rationale"],
         }
         parsed = await _genai_generate_json(prompt=prompt, response_schema=schema, temperature=0.3)
         summary = parsed.get("plan_summary")
         rationale_dict = parsed.get("plan_rationale") or {}
-        rationale = LLMPlanRationale(**{k: (rationale_dict.get(k) or None) for k in [
-            "goals_interpretation","periodization","frequency","exercise_selection","set_parameters","constraints_equipment","progression"
-        ]})
+        rationale = LLMPlanRationale(
+            **{
+                k: (rationale_dict.get(k) or None)
+                for k in [
+                    "goals_interpretation",
+                    "periodization",
+                    "frequency",
+                    "exercise_selection",
+                    "set_parameters",
+                    "constraints_equipment",
+                    "progression",
+                ]
+            }
+        )
         return summary, rationale
     except Exception as exc:
         logger.warning("Summary/Rationale LLM failed: %s", exc)
         return None, None
+
+
 async def _generate_staged_plan(
     user_data: UserDataInput,
     available_exercises: List[Dict[str, Any]],
 ) -> tuple[TrainingPlan, StagedDiagnostics]:
     """Generate training plan using staged pipeline: outline → headers → sets → summary/rationale.
-    
+
     Args:
         user_data: User input data
         available_exercises: Available exercise definitions
-        
+
     Returns:
         (plan, diagnostics) tuple with complete plan and diagnostics including summary/rationale
     """
     logger = logging.getLogger(__name__)
     logger.info("Starting staged plan generation")
-    
+
     # Stage 1: Generate outline
     outline = await _generate_outline_staged(user_data, available_exercises)
     logger.info(f"Outline generated: {outline.name}, {len(outline.mesocycles)} mesocycles")
-    
+
     # Stage 2: Build skeleton from outline
     skeleton = _build_staged_skeleton(outline)
     logger.info(
         f"Skeleton built: {len(skeleton.workouts)} workouts, "
         f"{len(skeleton.microcycles)} microcycles, {len(skeleton.mesocycles)} mesocycles"
     )
-    
+
     headers = await _generate_headers_staged(user_data, skeleton, available_exercises)
     logger.info(f"Headers generated: {len(headers)} workout headers")
-    
+
     # Map headers into plan exercises
     plan_exercises = _map_headers_into_plan(skeleton, headers)
-    
+
     # Stage 4: Generate sets for each workout
     sets_batch = await _generate_sets_staged(user_data, skeleton, plan_exercises, available_exercises)
     logger.info(f"Sets generated: {len(sets_batch)} workout sets")
-    
+
     # Map sets into plan
     plan_sets = _map_sets_into_plan(skeleton, plan_exercises, sets_batch)
-    
+
     # Assemble complete plan
     plan = TrainingPlan(
         calendar_plan=skeleton.calendar_plan,
@@ -1601,29 +1679,25 @@ async def _generate_staged_plan(
         exercises=plan_exercises,
         sets=plan_sets,
     )
-    
+
     # Reconciliation and validation
     allowed_map = _allowed_exercise_ids(available_exercises)
     auto_fix_logs: List[str] = []
-    
+
     vol_by_micro, per_workout_stats = _compute_plan_metrics(plan, allowed_map)
-    violations, minor_adjust = _validate_against_guidelines(
-        skeleton, plan, vol_by_micro, per_workout_stats
-    )
-    
+    violations, minor_adjust = _validate_against_guidelines(skeleton, plan, vol_by_micro, per_workout_stats)
+
     if minor_adjust:
         plan, fix_logs = _apply_minor_adjustments(plan, minor_adjust)
         auto_fix_logs.extend(fix_logs)
         auto_fix_logs = list(dict.fromkeys(auto_fix_logs))
         vol_by_micro, per_workout_stats = _compute_plan_metrics(plan, allowed_map)
-        post_violations, _ = _validate_against_guidelines(
-            skeleton, plan, vol_by_micro, per_workout_stats
-        )
+        post_violations, _ = _validate_against_guidelines(skeleton, plan, vol_by_micro, per_workout_stats)
         violations = list(dict.fromkeys(post_violations))
-    
+
     if violations:
         raise ValueError("Staged reconciliation failed: " + "; ".join(violations))
-    
+
     # Create initial diagnostics
     diagnostics = StagedDiagnostics(
         volume_by_pattern_per_micro=vol_by_micro,
@@ -1632,7 +1706,7 @@ async def _generate_staged_plan(
         auto_fixes=auto_fix_logs,
         raw_llm=None,
     )
-    
+
     # Stage 5: Generate summary and rationale
     summary, rationale = await _generate_summary_and_rationale_staged(
         user_data=user_data,
@@ -1641,11 +1715,11 @@ async def _generate_staged_plan(
         diagnostics=diagnostics,
         available_exercises=available_exercises,
     )
-    
+
     # Update diagnostics with summary/rationale
     diagnostics.plan_summary = summary
     diagnostics.plan_rationale = rationale
-    
+
     logger.info(
         "Staged plan generation complete | violations=%d auto_fixes=%d summary=%s rationale=%s",
         len(violations),
@@ -1653,7 +1727,7 @@ async def _generate_staged_plan(
         "present" if summary else "missing",
         "present" if rationale else "missing",
     )
-    
+
     return plan, diagnostics
 
 
@@ -1748,9 +1822,7 @@ def _sanitize_outline_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(wvt, list):
             parsed = _kv_pairs_to_dict(wvt, _parse_int_tolerant)
             guidelines["weekly_volume_targets"] = {
-                k: int(v)
-                for k, v in parsed.items()
-                if _parse_int_tolerant(v) is not None and k in ALLOWED_VOLUME_KEYS
+                k: int(v) for k, v in parsed.items() if _parse_int_tolerant(v) is not None and k in ALLOWED_VOLUME_KEYS
             }
         elif isinstance(wvt, dict):
             guidelines["weekly_volume_targets"] = {
@@ -1794,7 +1866,6 @@ async def _generate_outline_staged(
     available_exercises: List[Dict[str, Any]],
 ) -> OutlineSpec:
     """Generate high-level plan outline using LLM."""
-    logger = logging.getLogger(__name__)
     preview = _format_available_exercises_preview(available_exercises)
     prompt = build_outline_prompt(user_data=user_data, preview=preview)
     schema = {
@@ -1849,10 +1920,10 @@ async def _generate_outline_staged(
                                         "type": "object",
                                         "properties": {
                                             "key": {"type": "string"},
-                                            "value": {"type": "number"}
+                                            "value": {"type": "number"},
                                         },
-                                        "required": ["key", "value"]
-                                    }
+                                        "required": ["key", "value"],
+                                    },
                                 },
                                 "intensity_bands": {
                                     "type": "array",
@@ -1860,10 +1931,10 @@ async def _generate_outline_staged(
                                         "type": "object",
                                         "properties": {
                                             "key": {"type": "string"},
-                                            "value": {"type": "string"}
+                                            "value": {"type": "string"},
                                         },
-                                        "required": ["key", "value"]
-                                    }
+                                        "required": ["key", "value"],
+                                    },
                                 },
                                 "per_workout_targets": {
                                     "type": "object",
@@ -1873,26 +1944,23 @@ async def _generate_outline_staged(
                                             "type": "array",
                                             "items": {"type": "number"},
                                             "minItems": 2,
-                                            "maxItems": 2
-                                        }
-                                    }
+                                            "maxItems": 2,
+                                        },
+                                    },
                                 },
-                                "focus_areas": {
-                                    "type": "array",
-                                    "items": {"type": "string"}
-                                },
+                                "focus_areas": {"type": "array", "items": {"type": "string"}},
                                 "exercise_categories_allowed": {
                                     "type": "array",
-                                    "items": {"type": "string"}
-                                }
-                            }
+                                    "items": {"type": "string"},
+                                },
+                            },
                         },
                     },
-                    "required": ["name", "weeks_count", "guidelines"]
-                }
-            }
+                    "required": ["name", "weeks_count", "guidelines"],
+                },
+            },
         },
-        "required": ["name", "mesocycles"]
+        "required": ["name", "mesocycles"],
     }
     payload = await _genai_generate_json(
         prompt=prompt,
@@ -1915,7 +1983,9 @@ async def generate_training_plan(user_data: UserDataInput) -> TrainingPlan:
     return plan
 
 
-async def generate_training_plan_with_rationale(user_data: UserDataInput) -> tuple[TrainingPlan, Optional[str]]:
+async def generate_training_plan_with_rationale(
+    user_data: UserDataInput,
+) -> tuple[TrainingPlan, Optional[str]]:
     """Generate a training plan (staged) and return rationale JSON string if available."""
     from ..config import Settings
 
@@ -1930,11 +2000,14 @@ async def generate_training_plan_with_rationale(user_data: UserDataInput) -> tup
             data = getattr(diagnostics.plan_rationale, "__dict__", None)
         if data is not None:
             import json as _json
+
             rationale_json = _json.dumps(data, ensure_ascii=False, indent=2)
     return plan, rationale_json
 
 
-async def generate_training_plan_with_summary(user_data: UserDataInput) -> tuple[TrainingPlan, Optional[str]]:
+async def generate_training_plan_with_summary(
+    user_data: UserDataInput,
+) -> tuple[TrainingPlan, Optional[str]]:
     """Generate a training plan (staged) and return concise summary if available."""
     from ..config import Settings
 
@@ -1942,4 +2015,66 @@ async def generate_training_plan_with_summary(user_data: UserDataInput) -> tuple
     available_exercises = await _get_available_exercises(settings)
     plan, diagnostics = await _generate_staged_plan(user_data, available_exercises)
     summary = diagnostics.plan_summary if diagnostics else None
+    logger.info("Generated training plan with summary")
     return plan, summary
+
+
+def _prepare_plan_context_for_summary(
+    *,
+    user_data: UserDataInput,
+    plan: TrainingPlan,
+    skeleton: StagedSkeleton,
+    diagnostics: StagedDiagnostics,
+    available_exercises: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Build compact context payload for summary/rationale prompts."""
+
+    workouts_by_micro: Dict[int, List[PlanWorkout]] = defaultdict(list)
+    for workout in plan.workouts:
+        workouts_by_micro[workout.microcycle_id].append(workout)
+
+    micro_summaries = []
+    for micro in plan.microcycles:
+        workouts = workouts_by_micro.get(micro.id, [])
+        micro_summaries.append(
+            {
+                "id": micro.id,
+                "name": micro.name,
+                "order": micro.order_index,
+                "days": micro.days_count,
+                "workouts": [w.day_label for w in workouts],
+            }
+        )
+
+    per_workout_stats = diagnostics.per_workout_stats or {}
+    workout_summaries = []
+    for workout in plan.workouts:
+        stats = per_workout_stats.get(workout.id, {})
+        workout_summaries.append(
+            {
+                "id": workout.id,
+                "label": workout.day_label,
+                "microcycle_id": workout.microcycle_id,
+                "exercises": stats.get("exercises", 0),
+                "sets": stats.get("sets", 0),
+            }
+        )
+
+    volume_summary = diagnostics.volume_by_pattern_per_micro or {}
+    available_preview = _format_available_exercises_preview(available_exercises, limit=10)
+
+    return {
+        "user": user_data.model_dump(mode="json"),
+        "plan": {
+            "name": plan.calendar_plan.name,
+            "duration_weeks": plan.calendar_plan.duration_weeks,
+            "mesocycles": len(plan.mesocycles),
+            "microcycles": len(plan.microcycles),
+            "workouts": len(plan.workouts),
+        },
+        "microcycles": micro_summaries,
+        "workouts": workout_summaries,
+        "volume_by_micro": volume_summary,
+        "auto_fixes": diagnostics.auto_fixes,
+        "available_exercises_preview": available_preview,
+    }

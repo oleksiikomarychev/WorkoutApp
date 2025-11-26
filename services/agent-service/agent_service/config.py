@@ -1,5 +1,6 @@
 import os
 
+
 class Settings:
     @property
     def llm_provider(self) -> str:
@@ -57,21 +58,29 @@ class Settings:
     @property
     def user_max_service_url(self):
         return os.getenv("USER_MAX_SERVICE_URL", "http://user-max-service:8003")
-    
+
     @property
-    def exercises_service_url(self):  
+    def exercises_service_url(self):
         return os.getenv("EXERCISES_SERVICE_URL", "http://exercises-service:8002")
-    
+
     @property
     def plans_service_url(self):
         return os.getenv("PLANS_SERVICE_URL", "http://plans-service:8005")
-    
+
     @property
     def rpe_service_url(self):
         return os.getenv("RPE_SERVICE_URL", "http://rpe-service:8001")
-    
+
     @property
     def agent_database_url(self):
         return os.getenv("AGENT_DATABASE_URL")
+
+    @property
+    def celery_task_timeout_seconds(self) -> int:
+        try:
+            return max(30, int(os.getenv("CELERY_TASK_TIMEOUT_SECONDS", "600")))
+        except Exception:
+            return 600
+
 
 settings = Settings()

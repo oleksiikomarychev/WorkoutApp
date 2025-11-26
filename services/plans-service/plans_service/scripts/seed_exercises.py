@@ -1,9 +1,10 @@
+import argparse
 import asyncio
+from typing import Dict, List
 
-from ..dependencies import engine, AsyncSessionLocal
+from ..dependencies import AsyncSessionLocal, engine
 from ..models.calendar import Base
 from ..models.exercises import ExerciseList
-
 
 DEFAULT_EXERCISES: List[Dict[str, str | None]] = [
     {"name": "Приседания со штангой", "muscle_group": "Ноги", "equipment": "Штанга"},
@@ -57,9 +58,7 @@ DEFAULT_EXERCISES: List[Dict[str, str | None]] = [
 ]
 
 
-async def seed(
-    exercises: List[Dict[str, str | None]] = DEFAULT_EXERCISES, upsert: bool = True
-) -> None:
+async def seed(exercises: List[Dict[str, str | None]] = DEFAULT_EXERCISES, upsert: bool = True) -> None:
     """Заполняет таблицу exercise_list начальными данными.
 
     - Если upsert=True: обновляет muscle_group/equipment по совпадению name
@@ -107,9 +106,7 @@ async def seed(
                     created += 1
 
             await db.commit()
-            print(
-                f"Exercises seeding finished: created={created}, updated={updated}, skipped={skipped}"
-            )
+            print(f"Exercises seeding finished: created={created}, updated={updated}, skipped={skipped}")
         except Exception:
             await db.rollback()
             raise

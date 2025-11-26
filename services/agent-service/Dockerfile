@@ -29,7 +29,14 @@ RUN pip install --no-cache-dir \
     "json5>=0.9.25,<0.10.0" \
     "huggingface_hub>=0.25.0,<1.0.0" \
     "pillow>=10.0.0,<11.0.0" \
-    "google-auth>=2.23.0,<3.0.0"
+    "google-auth>=2.23.0,<3.0.0" \
+    "structlog>=24.0.0,<25.0.0" \
+    "asgi-correlation-id>=4.3.1,<5.0.0" \
+    "prometheus-fastapi-instrumentator>=6.1.0,<7.0.0" \
+    "prometheus-client>=0.16.0,<1.0.0" \
+    "sentry-sdk[fastapi]>=2.0.0,<3.0.0" \
+    "celery[redis]>=5.4.0,<6.0.0" \
+    "redis>=5.0.0,<6.0.0"
 # Copy application code
 COPY agent_service /app/agent_service
 COPY alembic /app/alembic
@@ -38,4 +45,4 @@ COPY alembic.ini /app/alembic.ini
 
 EXPOSE 8006
 
-CMD ["sh", "-c", "uvicorn agent_service.main:app --host 0.0.0.0 --port ${PORT:-8006} --log-level ${LOG_LEVEL:-info}"]
+CMD ["sh", "-c", "LOWER_LOG_LEVEL=$(printf '%s' \"${LOG_LEVEL:-info}\" | tr '[:upper:]' '[:lower:]'); uvicorn agent_service.main:app --host 0.0.0.0 --port ${PORT:-8006} --log-level ${LOWER_LOG_LEVEL}"]

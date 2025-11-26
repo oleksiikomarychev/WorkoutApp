@@ -1,9 +1,8 @@
-from logging.config import fileConfig
 import os
+from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool, create_engine
-from sqlalchemy.engine import URL
 from alembic import context
+from sqlalchemy import create_engine
 
 config = context.config
 
@@ -11,8 +10,8 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 try:
-    from workouts_service.database import Base as ServiceBase
     from workouts_service.database import DATABASE_URL as SERVICE_DATABASE_URL
+    from workouts_service.database import Base as ServiceBase
 except Exception:
     ServiceBase = None
     SERVICE_DATABASE_URL = None
@@ -52,17 +51,18 @@ def run_migrations_online() -> None:
     db_url = os.getenv("WORKOUTS_DATABASE_URL")
     if not db_url:
         raise RuntimeError("WORKOUTS_DATABASE_URL environment variable is not set")
-    
+
     # Ensure we're using synchronous driver for migrations
     if "+asyncpg" in db_url:
         db_url = db_url.replace("postgresql+asyncpg", "postgresql+psycopg2")
     elif "+psycopg2" not in db_url:
         # Add psycopg2 driver if not specified
         db_url = db_url.replace("postgresql://", "postgresql+psycopg2://")
-    
+
     # Normalize query params for psycopg2: it doesn't accept 'ssl=true', expects 'sslmode=require'
     try:
-        from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+        from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+
         parsed = urlparse(db_url)
         q = dict(parse_qsl(parsed.query, keep_blank_values=True))
         ssl_val = (q.get("ssl") or "").strip().lower()
@@ -88,9 +88,9 @@ def run_migrations_online() -> None:
     except Exception:
         # Best effort; if parsing fails, proceed with original db_url
         pass
-    
+
     connectable = create_engine(db_url)
-    
+
     with connectable.connect() as connection:
         context.configure(
             connection=connection,
@@ -98,7 +98,7 @@ def run_migrations_online() -> None:
             compare_type=True,
             compare_server_default=True,
         )
-        
+
         with context.begin_transaction():
             context.run_migrations()
 

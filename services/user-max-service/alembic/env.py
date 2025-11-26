@@ -1,8 +1,8 @@
-from logging.config import fileConfig
 import os
+from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
 # Alembic Config
 config = context.config
@@ -13,10 +13,9 @@ if config.config_file_name is not None:
 
 # Import service metadata and resolved DB URL
 try:
-    from user_max_service.database import Base
-    from user_max_service.database import DATABASE_URL
     # Import models so that all tables are registered on Base.metadata
     from user_max_service import models  # noqa: F401
+    from user_max_service.database import DATABASE_URL, Base
 except Exception:
     Base = None
     DATABASE_URL = os.getenv("USER_MAX_DATABASE_URL")
@@ -26,14 +25,12 @@ if Base is not None:
     target_metadata = Base.metadata
 
 # Resolve URL: prefer service's resolved DATABASE_URL, then env DATABASE_URL, then USER_MAX_DATABASE_URL, then config
-DB_URL = (
-    os.getenv("USER_MAX_DATABASE_URL")
-    or config.get_main_option("sqlalchemy.url")
-)
+DB_URL = os.getenv("USER_MAX_DATABASE_URL") or config.get_main_option("sqlalchemy.url")
 if DB_URL:
     # Normalize query params for psycopg2: it doesn't accept 'ssl=true', expects 'sslmode=require'
     try:
-        from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+        from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+
         parsed = urlparse(DB_URL)
         q = dict(parse_qsl(parsed.query, keep_blank_values=True))
         ssl_val = (q.get("ssl") or "").strip().lower()
