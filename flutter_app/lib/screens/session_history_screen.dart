@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:workout_app/models/workout_session.dart';
 import 'package:workout_app/providers/providers.dart';
 import 'package:workout_app/screens/session_log_screen.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 class SessionHistoryScreen extends ConsumerStatefulWidget {
   const SessionHistoryScreen({super.key});
@@ -101,13 +103,16 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final sessionsAsync = ref.watch(completedSessionsProviderFamily(_filterWorkoutId));
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Session History Debug'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+    return AssistantChatHost(
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: 'Session History Debug',
+            onTitleTap: openChat,
+          ),
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             TextField(
@@ -179,6 +184,8 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
           ],
         ),
       ),
+    );
+      },
     );
   }
 }

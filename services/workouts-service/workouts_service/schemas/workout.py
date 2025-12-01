@@ -113,3 +113,18 @@ class WorkoutListResponse(BaseModel):
     class Config:
         from_attributes = True
         json_encoders = {"datetime": lambda v: v.isoformat() if v else None}
+
+
+class WorkoutPlanDetailItem(BaseModel):
+    """Lightweight representation of a workout with exercise IDs for analysis."""
+
+    id: int
+    name: str
+    scheduled_for: Optional[datetime] = None
+    status: Optional[str] = None
+    plan_order_index: Optional[int] = None
+    exercise_ids: List[int] = Field(default_factory=list)
+
+    class Config:
+        from_attributes = True
+        json_encoders = {"datetime": lambda v: v.isoformat() if v else None}

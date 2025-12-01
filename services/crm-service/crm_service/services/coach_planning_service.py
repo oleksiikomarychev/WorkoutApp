@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..metrics import (
-    CRM_AI_MASS_EDIT_REQUESTS_TOTAL,
     CRM_EXERCISE_UPDATES_TOTAL,
     CRM_MASS_EDIT_REQUESTS_TOTAL,
     CRM_WORKOUT_UPDATES_TOTAL,
@@ -202,52 +201,3 @@ async def mass_edit_workouts_for_athlete(
     if total_updates:
         CRM_MASS_EDIT_REQUESTS_TOTAL.inc(total_updates)
     return {"workouts": workout_results, "exercise_instances": exercise_results}
-
-
-async def ai_mass_edit_active_plan_for_athlete(
-    db: AsyncSession,
-    coach_id: str,
-    athlete_id: str,
-    prompt: str,
-    mode: str,
-) -> Any:
-    link = await _ensure_active_link(db, coach_id=coach_id, athlete_id=athlete_id)
-
-    plan = await get_active_plan_for_athlete(db=db, coach_id=coach_id, athlete_id=athlete_id)
-    if not isinstance(plan, dict):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Athlete has no active plan")
-
-    calendar_plan_id = plan.get("calendar_plan_id")
-    if not isinstance(calendar_plan_id, int):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Active plan is missing calendar_plan_id",
-        )
-
-    body = {
-        "plan_id": calendar_plan_id,
-        "mode": mode,
-        "prompt": prompt,
-    }
-
-    data = await _proxy_request_for_athlete(
-        method="POST",
-        base_url=settings.agent_service_url,
-        path="/agent/plan-mass-edit",
-        athlete_id=athlete_id,
-        json_body=body,
-    )
-
-    _log_coach_athlete_event(
-        db=db,
-        link_id=link.id,
-        actor_id=coach_id,
-        event_type="plan_ai_mass_edit",
-        payload={
-            "calendar_plan_id": calendar_plan_id,
-            "mode": mode,
-        },
-    )
-    await db.commit()
-    CRM_AI_MASS_EDIT_REQUESTS_TOTAL.inc()
-    return data

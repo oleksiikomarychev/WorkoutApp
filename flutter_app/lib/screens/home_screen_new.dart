@@ -11,6 +11,8 @@ import 'package:workout_app/screens/debug_screen.dart';
 import 'package:workout_app/screens/coach/coach_dashboard_screen.dart';
 import 'package:workout_app/screens/social/social_feed_screen.dart';
 import 'package:workout_app/widgets/custom_bottom_nav_bar.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
 import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/services/chat_service.dart';
@@ -148,13 +150,16 @@ class _HomeScreenNewState extends ConsumerState<HomeScreenNew> {
     
     final bool showOuterAppBar = _activeTab == HomeTab.debug;
 
-    return Scaffold(
-      appBar: !showOuterAppBar
-          ? null
-          : AppBar(
-              title: Text(_tabTitle(_activeTab)),
-              actions: [
-                PopupMenuButton<String>(
+    return AssistantChatHost(
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: !showOuterAppBar
+              ? null
+              : PrimaryAppBar(
+                  title: _tabTitle(_activeTab),
+                  onTitleTap: openChat,
+                  actions: [
+                    PopupMenuButton<String>(
                   onSelected: (value) async {
                     if (value == 'logout') {
                       // Show confirmation dialog
@@ -212,8 +217,8 @@ class _HomeScreenNewState extends ConsumerState<HomeScreenNew> {
                 ),
               ],
             ),
-      body: _tabBody(_activeTab),
-      bottomNavigationBar: CustomBottomNavBar(
+          body: _tabBody(_activeTab),
+          bottomNavigationBar: CustomBottomNavBar(
         currentIndex: tabs.indexOf(_activeTab).clamp(0, tabs.length - 1),
         onTap: (index) {
           if (index < 0 || index >= tabs.length) return;
@@ -221,6 +226,8 @@ class _HomeScreenNewState extends ConsumerState<HomeScreenNew> {
         },
         items: tabs.map(_navItemFor).toList(),
       ),
+    );
+      },
     );
   }
 }

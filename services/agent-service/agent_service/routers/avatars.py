@@ -11,14 +11,9 @@ from sqlalchemy.orm import Session
 from ..dependencies import get_current_user_id, get_db
 from ..metrics import AVATARS_APPLIED_TOTAL, AVATARS_GENERATED_TOTAL
 from ..models import Avatar
+from ..prompts.avatars import AVATAR_PROMPT_PREFIX
 
 router = APIRouter()
-
-# Global prompt prefix to enforce consistent style
-_AVATAR_PROMPT_PREFIX = (
-    "Style: Apple emoji; Background: total white; Lighting: soft; Framing: centered headshot; "
-    "High quality; Perspective: en face"
-)
 
 
 class AvatarRequest(BaseModel):
@@ -36,8 +31,8 @@ def generate_avatar(req: AvatarRequest, request: Request):
         client = InferenceClient(provider="fal-ai", api_key=hf_token)
         uid = request.headers.get("X-User-Id")
         user_prompt = (req.prompt or "").strip()
-        if _AVATAR_PROMPT_PREFIX:
-            base_prompt = f"{_AVATAR_PROMPT_PREFIX}. {user_prompt}" if user_prompt else _AVATAR_PROMPT_PREFIX
+        if AVATAR_PROMPT_PREFIX:
+            base_prompt = f"{AVATAR_PROMPT_PREFIX}. {user_prompt}" if user_prompt else AVATAR_PROMPT_PREFIX
         else:
             base_prompt = user_prompt
         salted_prompt = base_prompt if not uid else f"{base_prompt} (unique user token: {uid[:8]})"

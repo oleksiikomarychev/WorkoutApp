@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 import '../config/constants/theme_constants.dart';
 import '../models/user_summary.dart';
@@ -15,11 +17,14 @@ class AllUsersScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final usersAsync = ref.watch(allUsersProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('All Users'),
-      ),
-      body: RefreshIndicator(
+    return AssistantChatHost(
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: 'All Users',
+            onTitleTap: openChat,
+          ),
+          body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(allUsersProvider);
           await ref.read(allUsersProvider.future);
@@ -47,6 +52,8 @@ class AllUsersScreen extends ConsumerWidget {
           ),
         ),
       ),
+    );
+      },
     );
   }
 

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
 import 'package:workout_app/services/service_locator.dart' as sl;
 import 'package:workout_app/services/social_service.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 final socialFeedProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final svc = ref.watch(sl.socialServiceProvider);
@@ -15,17 +17,20 @@ class SocialFeedScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final asyncFeed = ref.watch(socialFeedProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Workout Feed'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => ref.refresh(socialFeedProvider),
+    return AssistantChatHost(
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: 'Workout Feed',
+            onTitleTap: openChat,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: () => ref.refresh(socialFeedProvider),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: asyncFeed.when(
+          body: asyncFeed.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(child: Text('Error: $error')),
         data: (posts) {
@@ -98,6 +103,8 @@ class SocialFeedScreen extends ConsumerWidget {
           );
         },
       ),
+        );
+      },
     );
   }
 }

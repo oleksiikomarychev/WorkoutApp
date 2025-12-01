@@ -15,6 +15,9 @@ import 'package:workout_app/config/constants/theme_constants.dart';
 import 'package:workout_app/widgets/floating_header_bar.dart';
 import 'package:workout_app/widgets/plan_analytics_chart.dart';
 import 'package:workout_app/screens/user_profile_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:workout_app/providers/plan_providers.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 class CalendarPlanDetail extends StatefulWidget {
   final CalendarPlan plan;
@@ -641,162 +644,179 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          SafeArea(
-            bottom: false,
-            child: Stack(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(
-                    top: 72,
-                    left: 12,
-                    right: 12,
-                    bottom: 12,
-                  ),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+    return Consumer(
+      builder: (context, ref, _) {
+        return AssistantChatHost(
+          initialMessage:
+              'Открываю ассистента из экрана деталей плана (plan_details). Используй переданный контекст, чтобы анализировать план и управлять макросами.',
+          contextBuilder: () async {
+            return {
+              'screen': 'plan_details',
+              'calendar_plan_id': _currentPlan.id,
+            };
+          },
+          builder: (context, openChat) {
+            return Scaffold(
+              backgroundColor: AppColors.background,
+              body: Stack(
+                children: [
+                  SafeArea(
+                    bottom: false,
+                    child: Stack(
                       children: [
-                        _buildPlanInfo(context),
-                        const SizedBox(height: 12),
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            top: 72,
+                            left: 12,
+                            right: 12,
+                            bottom: 12,
+                          ),
+                          child: SingleChildScrollView(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('Варианты', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                const SizedBox(height: 8),
-                                if (_variantsLoading || _changingVariant)
-                                  const LinearProgressIndicator(minHeight: 2)
-                                else if (_variantsError != null)
-                                  Text(_variantsError!, style: const TextStyle(color: Colors.redAccent))
-                                else
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 6,
-                                    children: [
-                                      InputChip(
-                                        avatar: const Icon(Icons.star, size: 18, color: Colors.orange),
-                                        label: const Text('Оригинал'),
-                                        selected: (() {
-                                          final origId = _variants.firstWhere((v) => v.isOriginal, orElse: () => CalendarPlanSummary(id: _rootPlanId, name: '', durationWeeks: 0, isActive: true, rootPlanId: _rootPlanId, isOriginal: true)).id;
-                                          return _currentPlan.id == origId;
-                                        })(),
-                                        onPressed: () async {
-                                          final orig = _variants.firstWhere(
-                                            (v) => v.isOriginal,
-                                            orElse: () => CalendarPlanSummary(
-                                              id: _rootPlanId,
-                                              name: '',
-                                              durationWeeks: 0,
-                                              isActive: true,
-                                              rootPlanId: _rootPlanId,
-                                              isOriginal: true,
-                                            ),
-                                          );
-                                          if (_currentPlan.id == orig.id) return;
-                                          setState(() => _changingVariant = true);
-                                          try {
-                                            final cached = _variantCache[orig.id];
-                                            final full = cached ?? await PlanApi.getCalendarPlan(orig.id);
-                                            if (!mounted) return;
-                                            _setPlan(full);
-                                            _variantCache[orig.id] = full;
-                                          } catch (e) {
-                                            if (!mounted) return;
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(content: Text('Не удалось загрузить план: $e')),
-                                            );
-                                          } finally {
-                                            if (mounted) setState(() => _changingVariant = false);
-                                          }
-                                        },
-                                      ),
-                                      ..._variants
-                                          .where((v) => !v.isOriginal)
-                                          .map(
-                                            (v) => InputChip(
-                                              avatar: const Icon(Icons.fork_right, size: 18),
-                                              label: Text(v.name),
-                                              selected: v.id == _currentPlan.id,
-                                              onPressed: v.id == _currentPlan.id
-                                                  ? null
-                                                  : () => _switchToVariant(v),
-                                            ),
+                                _buildPlanInfo(context),
+                                const SizedBox(height: 12),
+                                Card(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text('Варианты', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                        const SizedBox(height: 8),
+                                        if (_variantsLoading || _changingVariant)
+                                          const LinearProgressIndicator(minHeight: 2)
+                                        else if (_variantsError != null)
+                                          Text(_variantsError!, style: const TextStyle(color: Colors.redAccent))
+                                        else
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 6,
+                                            children: [
+                                              InputChip(
+                                                avatar: const Icon(Icons.star, size: 18, color: Colors.orange),
+                                                label: const Text('Оригинал'),
+                                                selected: (() {
+                                                  final origId = _variants.firstWhere((v) => v.isOriginal, orElse: () => CalendarPlanSummary(id: _rootPlanId, name: '', durationWeeks: 0, isActive: true, rootPlanId: _rootPlanId, isOriginal: true)).id;
+                                                  return _currentPlan.id == origId;
+                                                })(),
+                                                onPressed: () async {
+                                                  final orig = _variants.firstWhere(
+                                                    (v) => v.isOriginal,
+                                                    orElse: () => CalendarPlanSummary(
+                                                      id: _rootPlanId,
+                                                      name: '',
+                                                      durationWeeks: 0,
+                                                      isActive: true,
+                                                      rootPlanId: _rootPlanId,
+                                                      isOriginal: true,
+                                                    ),
+                                                  );
+                                                  if (_currentPlan.id == orig.id) return;
+                                                  setState(() => _changingVariant = true);
+                                                  try {
+                                                    final cached = _variantCache[orig.id];
+                                                    final full = cached ?? await PlanApi.getCalendarPlan(orig.id);
+                                                    if (!mounted) return;
+                                                    _setPlan(full);
+                                                    _variantCache[orig.id] = full;
+                                                  } catch (e) {
+                                                    if (!mounted) return;
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      SnackBar(content: Text('Не удалось загрузить план: $e')),
+                                                    );
+                                                  } finally {
+                                                    if (mounted) setState(() => _changingVariant = false);
+                                                  }
+                                                },
+                                              ),
+                                              ..._variants
+                                                  .where((v) => !v.isOriginal)
+                                                  .map(
+                                                    (v) => InputChip(
+                                                      avatar: const Icon(Icons.fork_right, size: 18),
+                                                      label: Text(v.name),
+                                                      selected: v.id == _currentPlan.id,
+                                                      onPressed: v.id == _currentPlan.id
+                                                          ? null
+                                                          : () => _switchToVariant(v),
+                                                    ),
+                                                  ),
+                                              ActionChip(
+                                                avatar: const Icon(Icons.add, size: 18),
+                                                label: const Text('Добавить вариант+'),
+                                                onPressed: _createVariantDialog,
+                                              ),
+                                            ],
                                           ),
-                                      ActionChip(
-                                        avatar: const Icon(Icons.add, size: 18),
-                                        label: const Text('Добавить вариант+'),
-                                        onPressed: _createVariantDialog,
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
+                                ),
+                                const SizedBox(height: 12),
+                                _buildAnalyticsSection(context),
+                                const SizedBox(height: 12),
+                                const Text('Mesocycles', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 8),
+                                ..._currentPlan.mesocycles.map((mesocycle) => _buildMesocycleExpansionTile(mesocycle)),
                               ],
                             ),
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        _buildAnalyticsSection(context),
-                        const SizedBox(height: 12),
-                        const Text('Mesocycles', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 8),
-                        ..._currentPlan.mesocycles.map((mesocycle) => _buildMesocycleExpansionTile(mesocycle)),
+                        Align(
+                          alignment: Alignment.topCenter,
+                          child: FloatingHeaderBar(
+                            title: _currentPlan.name,
+                            onTitleTap: openChat,
+                            leading: IconButton(
+                              icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+                              onPressed: () => Navigator.of(context).maybePop(),
+                            ),
+                            actions: [
+                              IconButton(
+                                icon: const Icon(Icons.edit),
+                                tooltip: 'Редактировать план',
+                                onPressed: () async {
+                                  await Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => PlanEditorScreen(plan: _currentPlan),
+                                    ),
+                                  );
+                                  try {
+                                    final refreshed = await PlanApi.getCalendarPlan(_currentPlan.id);
+                                    if (!mounted) return;
+                                    _setPlan(refreshed);
+                                  } catch (e) {
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Не удалось обновить план: $e')),
+                                    );
+                                  }
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.check),
+                                onPressed: () => _applyPlan(context),
+                                tooltip: 'Apply Plan',
+                              ),
+                            ],
+                            onProfileTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+                              );
+                            },
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                ),
-                Align(
-                  alignment: Alignment.topCenter,
-                  child: FloatingHeaderBar(
-                    title: _currentPlan.name,
-                    leading: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
-                      onPressed: () => Navigator.of(context).maybePop(),
-                    ),
-                    actions: [
-                      IconButton(
-                        icon: const Icon(Icons.edit),
-                        tooltip: 'Редактировать план',
-                        onPressed: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => PlanEditorScreen(plan: _currentPlan),
-                            ),
-                          );
-                          try {
-                            final refreshed = await PlanApi.getCalendarPlan(_currentPlan.id);
-                            if (!mounted) return;
-                            _setPlan(refreshed);
-                          } catch (e) {
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Не удалось обновить план: $e')),
-                            );
-                          }
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.check),
-                        onPressed: () => _applyPlan(context),
-                        tooltip: 'Apply Plan',
-                      ),
-                    ],
-                    onProfileTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const UserProfileScreen()),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
   void _setPlan(CalendarPlan plan) {

@@ -12,12 +12,12 @@ import 'package:workout_app/screens/user_profile_screen.dart';
 import 'package:workout_app/services/base_api_service.dart';
 import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
-import 'package:workout_app/widgets/floating_header_bar.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 import '../models/applied_calendar_plan.dart';
 import '../services/plan_service.dart';
 import '../services/api_client.dart';
 import 'active_plan_screen.dart';
-import 'package:workout_app/widgets/assistant_chat_overlay.dart';
 
 // Provider for PlanService
 final planServiceProvider = Provider<PlanService>((ref) => PlanService(apiClient: ref.watch(apiClientProvider)));
@@ -132,7 +132,6 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
   final ScrollController _scrollController = ScrollController();
   final PageController _bannerController = PageController();
   int _bannerIndex = 0;
-  bool _showChatOverlay = false;
   
   Future<List<Map<String, dynamic>>> _fetchActivePlanWorkouts() async {
     final apiClient = ref.read(apiClientProvider);
@@ -249,121 +248,104 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          SafeArea(
-            bottom: false,
-            child: Stack(
-              children: [
-                Consumer(
-          builder: (context, ref, child) {
-            final manualWorkoutsState = ref.watch(manualWorkoutsNotifierProvider);
-
-            Widget buildError(String title, Object error, StackTrace? stackTrace, VoidCallback retry) {
-              _logger.e('$title: $error\n$stackTrace');
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, color: Colors.red, size: 48),
-                    const SizedBox(height: 16),
-                    Text(title, style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 8),
-                    Text(error.toString(), textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(onPressed: retry, icon: const Icon(Icons.refresh), label: const Text('Retry')),
-                  ],
-                ),
-              );
-            }
-
-            return Container(
-              color: AppColors.background,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 72),
-                  _HeroCarousel(
-                    controller: _bannerController,
-                    currentIndex: _bannerIndex,
-                    onPageChanged: (i) => setState(() => _bannerIndex = i),
-                  ),
-                  const SizedBox(height: 24),
-                  Expanded(
-                    child: RefreshIndicator(
-                      onRefresh: () async {
-                        // Refresh both manual workouts and the next planned workout card
-                        ref.invalidate(nextWorkoutProvider);
-                        await Future.wait([
-                          ref.read(manualWorkoutsNotifierProvider.notifier).loadInitial(),
-                          ref.read(nextWorkoutProvider.future),
-                        ]);
-                      },
-                      child: ListView(
-                        controller: _scrollController,
-                        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-                        children: [
-                          _PlansSection(nextWorkoutAsync: ref.watch(nextWorkoutProvider)),
-                          const SizedBox(height: 24),
-                          _LibrarySection(
-                            manualWorkoutsState: manualWorkoutsState,
-                            onRetry: () => ref.read(manualWorkoutsNotifierProvider.notifier).loadInitial(),
-                            onOpenWorkout: (workoutId) async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => WorkoutDetailScreen(workoutId: workoutId),
-                                ),
-                              );
-                              if (!mounted) return;
-                              await ref.read(manualWorkoutsNotifierProvider.notifier).loadInitial();
-                            },
-                            readNotifier: () => ref.read(manualWorkoutsNotifierProvider.notifier),
-                            buildError: buildError,
-                            onCreateWorkout: _showCreateWorkoutDialog,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+    return AssistantChatHost(
+      builder: (context, openChat) {
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: PrimaryAppBar.main(
+            title: 'Workouts',
+            onTitleTap: openChat,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.account_circle_outlined),
+                onPressed: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+                  );
+                },
               ),
-            );
-          },
-            ),
-                Align(
-                  alignment: Alignment.topCenter,
-                  child: FloatingHeaderBar(
-                    title: 'Workouts',
-                    onTitleTap: () {
-                      setState(() {
-                        _showChatOverlay = true;
-                      });
-                    },
-                    onProfileTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const UserProfileScreen()),
-                      );
-                    },
+            ],
+          ),
+          body: SafeArea(
+            bottom: false,
+            child: Consumer(
+              builder: (context, ref, child) {
+                final manualWorkoutsState = ref.watch(manualWorkoutsNotifierProvider);
+
+                Widget buildError(String title, Object error, StackTrace? stackTrace, VoidCallback retry) {
+                  _logger.e('$title: $error\n$stackTrace');
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                        const SizedBox(height: 16),
+                        Text(title, style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 8),
+                        Text(error.toString(), textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(onPressed: retry, icon: const Icon(Icons.refresh), label: const Text('Retry')),
+                      ],
+                    ),
+                  );
+                }
+
+                return Container(
+                  color: AppColors.background,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _HeroCarousel(
+                        controller: _bannerController,
+                        currentIndex: _bannerIndex,
+                        onPageChanged: (i) => setState(() => _bannerIndex = i),
+                      ),
+                      const SizedBox(height: 24),
+                      Expanded(
+                        child: RefreshIndicator(
+                          onRefresh: () async {
+                            // Refresh both manual workouts and the next planned workout card
+                            ref.invalidate(nextWorkoutProvider);
+                            await Future.wait([
+                              ref.read(manualWorkoutsNotifierProvider.notifier).loadInitial(),
+                              ref.read(nextWorkoutProvider.future),
+                            ]);
+                          },
+                          child: ListView(
+                            controller: _scrollController,
+                            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                            children: [
+                              _PlansSection(nextWorkoutAsync: ref.watch(nextWorkoutProvider)),
+                              const SizedBox(height: 24),
+                              _LibrarySection(
+                                manualWorkoutsState: manualWorkoutsState,
+                                onRetry: () => ref.read(manualWorkoutsNotifierProvider.notifier).loadInitial(),
+                                onOpenWorkout: (workoutId) async {
+                                  await Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => WorkoutDetailScreen(workoutId: workoutId),
+                                    ),
+                                  );
+                                  if (!mounted) return;
+                                  await ref.read(manualWorkoutsNotifierProvider.notifier).loadInitial();
+                                },
+                                readNotifier: () => ref.read(manualWorkoutsNotifierProvider.notifier),
+                                buildError: buildError,
+                                onCreateWorkout: _showCreateWorkoutDialog,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
+                );
+              },
             ),
           ),
-          AssistantChatOverlay(
-            visible: _showChatOverlay,
-            onClose: () {
-              setState(() {
-                _showChatOverlay = false;
-              });
-            },
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

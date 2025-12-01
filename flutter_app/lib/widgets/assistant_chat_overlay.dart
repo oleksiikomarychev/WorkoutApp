@@ -50,21 +50,24 @@ class _AssistantChatOverlayState extends State<AssistantChatOverlay> {
 
   Future<void> _trySeedChat() async {
     if (_seeded || !mounted) return;
-    final message = widget.initialMessage?.trim();
-    if (message == null || message.isEmpty) {
-      _seeded = true;
-      return;
-    }
-
     _seeded = true;
+
     final contextPayload = widget.contextBuilder != null ? await widget.contextBuilder!() : null;
-    final enriched = contextPayload == null
-        ? message
-        : '$message\n\nContext: ${contextPayload.toString()}';
 
     await Future.microtask(() {
       final container = ProviderScope.containerOf(context, listen: false);
-      container.read(chatControllerProvider.notifier).sendMessage(enriched);
+      final controller = container.read(chatControllerProvider.notifier);
+
+      // Send structured context first (for backend auto-substitution)
+      if (contextPayload != null) {
+        controller.sendContext(contextPayload);
+      }
+
+      // Then send the initial message (if any)
+      final message = widget.initialMessage?.trim();
+      if (message != null && message.isNotEmpty) {
+        controller.sendMessage(message);
+      }
     });
   }
 
@@ -92,9 +95,12 @@ class _AssistantChatOverlayState extends State<AssistantChatOverlay> {
           const SafeArea(
             child: Padding(
               padding: EdgeInsets.fromLTRB(12, 8, 12, 12),
-              child: ChatScreen(
-                embedded: true,
-                transparentBackground: true,
+              child: Material(
+                type: MaterialType.transparency,
+                child: ChatScreen(
+                  embedded: true,
+                  transparentBackground: true,
+                ),
               ),
             ),
           ),

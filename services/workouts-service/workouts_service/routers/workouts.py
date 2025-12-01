@@ -12,7 +12,11 @@ from ..database import get_db
 from ..dependencies import get_current_user_id
 from ..services.rpc_client import PlansServiceRPC, get_exercise_by_id
 from ..services.workout_service import WorkoutService
-from ..tasks.workout_tasks import shift_schedule_in_plan_task
+from ..tasks.workout_tasks import (
+    applied_plan_mass_edit_sets_task,
+    applied_plan_schedule_shift_task,
+    shift_schedule_in_plan_task,
+)
 
 PLANS_SERVICE_URL = "http://plans-service:8005"  # URL plans-service в docker-сети
 
@@ -66,10 +70,11 @@ async def list_workouts(
     skip: int = 0,
     limit: int = 100,
     type: Optional[str] = None,
+    status: Optional[str] = None,
     applied_plan_id: Optional[int] = Query(None, alias="applied_plan_id"),
     workout_service: WorkoutService = Depends(get_workout_service),
 ):
-    return await workout_service.list_workouts(skip, limit, type=type, applied_plan_id=applied_plan_id)
+    return await workout_service.list_workouts(skip, limit, type=type, status=status, applied_plan_id=applied_plan_id)
 
 
 @router.get("/generated", response_model=List[schemas.workout.WorkoutListResponse])
@@ -202,10 +207,19 @@ async def get_workouts_by_microcycles(
             microcycle_ids=microcycle_ids,
             error=str(e),
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch workouts: {str(e)}",
-        )
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/applied-plans/{applied_plan_id}/details", response_model=List[schemas.workout.WorkoutPlanDetailItem])
+async def get_plan_details_with_exercises(
+    applied_plan_id: int,
+    workout_service: WorkoutService = Depends(get_workout_service),
+):
+    """
+    Fetch all workouts for a plan with exercise IDs included.
+    Designed for plan analysis tools.
+    """
+    return await workout_service.get_plan_details_with_exercises(applied_plan_id)
 
 
 @router.post("/schedule/shift-in-plan")
@@ -325,3 +339,179 @@ async def get_schedule_task_status(task_id: str):
         response.result = result.result
     response.meta = result.info if isinstance(result.info, dict) else None
     return response
+
+
+@router.post("/applied-plans/{applied_plan_id}/mass-edit-sets", response_model=schemas.AppliedPlanMassEditResult)
+async def applied_plan_mass_edit_sets(
+    applied_plan_id: int,
+    command: schemas.AppliedPlanMassEditCommand,
+    workout_service: WorkoutService = Depends(get_workout_service),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Apply mass edit actions to exercise instances/sets for an applied plan.
+
+    This endpoint operates on generated workouts linked to the given applied_plan_id
+    and updates sets stored in exercises-service via its public API.
+    """
+    try:
+        logger.info(
+            "applied_plan_mass_edit_requested",
+            user_id=user_id,
+            applied_plan_id=applied_plan_id,
+            mode=command.mode,
+        )
+        result = await workout_service.apply_applied_plan_mass_edit(applied_plan_id, command)
+        logger.info(
+            "applied_plan_mass_edit_completed",
+            user_id=user_id,
+            applied_plan_id=applied_plan_id,
+            mode=result.mode,
+            workouts_matched=result.workouts_matched,
+            instances_matched=result.instances_matched,
+            sets_matched=result.sets_matched,
+            sets_modified=result.sets_modified,
+        )
+        return result
+    except Exception as e:
+        logger.exception(
+            "applied_plan_mass_edit_error",
+            user_id=user_id,
+            applied_plan_id=applied_plan_id,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to apply mass edit: {str(e)}",
+        )
+
+
+@router.post("/applied-plans/{applied_plan_id}/mass-edit-sets-async", response_model=schemas.TaskSubmissionResponse)
+async def applied_plan_mass_edit_sets_async(
+    applied_plan_id: int,
+    command: schemas.AppliedPlanMassEditCommand,
+    user_id: str = Depends(get_current_user_id),
+):
+    try:
+        logger.info(
+            "applied_plan_mass_edit_async_requested",
+            user_id=user_id,
+            applied_plan_id=applied_plan_id,
+            mode=command.mode,
+        )
+        signature = applied_plan_mass_edit_sets_task.s(
+            user_id=user_id,
+            applied_plan_id=applied_plan_id,
+            command=command.model_dump(),
+        )
+        async_result = signature.apply_async()
+        logger.info(
+            "applied_plan_mass_edit_async_enqueued",
+            user_id=user_id,
+            applied_plan_id=applied_plan_id,
+            task_id=async_result.id,
+        )
+        return schemas.TaskSubmissionResponse(task_id=async_result.id, status=async_result.status)
+    except Exception as e:
+        logger.exception(
+            "applied_plan_mass_edit_async_error",
+            user_id=user_id,
+            applied_plan_id=applied_plan_id,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to enqueue applied plan mass edit task: {str(e)}",
+        )
+
+
+@router.post("/applied-plans/{applied_plan_id}/shift-schedule")
+async def shift_applied_plan_schedule(
+    applied_plan_id: int,
+    command: schemas.AppliedPlanScheduleShiftCommand,
+    workout_service: WorkoutService = Depends(get_workout_service),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Shift scheduled_for dates for workouts in an applied plan starting from a given date.
+
+    This endpoint is primarily used by the mobile client and the assistant to
+    implement operations like "shift all not-yet-completed workouts starting
+    from this week by +1 day" for the current applied plan.
+    """
+
+    try:
+        logger.info(
+            "applied_plan_schedule_shift_requested",
+            user_id=user_id,
+            applied_plan_id=applied_plan_id,
+            from_date=command.from_date.isoformat(),
+            days=command.days,
+            only_future=command.only_future,
+            status_in=command.status_in,
+        )
+        result = await workout_service.shift_applied_plan_schedule_from_date(applied_plan_id, command)
+        logger.info(
+            "applied_plan_schedule_shift_completed",
+            user_id=user_id,
+            applied_plan_id=applied_plan_id,
+            days=command.days,
+            workouts_shifted=result.get("workouts_shifted", 0),
+        )
+        return result
+    except Exception as e:
+        logger.exception(
+            "applied_plan_schedule_shift_error",
+            user_id=user_id,
+            applied_plan_id=applied_plan_id,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to shift applied plan schedule: {str(e)}",
+        )
+
+
+@router.post("/applied-plans/{applied_plan_id}/shift-schedule-async", response_model=schemas.TaskSubmissionResponse)
+async def shift_applied_plan_schedule_async(
+    applied_plan_id: int,
+    command: schemas.AppliedPlanScheduleShiftCommand,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Enqueue applied-plan schedule shift as a Celery task and return task id/status."""
+
+    try:
+        logger.info(
+            "applied_plan_schedule_shift_async_requested",
+            user_id=user_id,
+            applied_plan_id=applied_plan_id,
+            from_date=command.from_date.isoformat(),
+            days=command.days,
+            only_future=command.only_future,
+            status_in=command.status_in,
+        )
+        signature = applied_plan_schedule_shift_task.s(
+            user_id=user_id,
+            applied_plan_id=applied_plan_id,
+            from_date=command.from_date.isoformat(),
+            days=command.days,
+            only_future=command.only_future,
+            status_in=command.status_in,
+        )
+        async_result = signature.apply_async()
+        logger.info(
+            "applied_plan_schedule_shift_async_enqueued",
+            user_id=user_id,
+            applied_plan_id=applied_plan_id,
+            task_id=async_result.id,
+        )
+        return schemas.TaskSubmissionResponse(task_id=async_result.id, status=async_result.status)
+    except Exception as e:
+        logger.exception(
+            "applied_plan_schedule_shift_async_error",
+            user_id=user_id,
+            applied_plan_id=applied_plan_id,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to enqueue applied plan schedule shift task: {str(e)}",
+        )

@@ -68,6 +68,11 @@ class Settings:
         return os.getenv("PLANS_SERVICE_URL", "http://plans-service:8005")
 
     @property
+    def workouts_service_url(self):
+        # Direct URL to workouts-service inside the docker network
+        return os.getenv("WORKOUTS_SERVICE_URL", "http://workouts-service:8004")
+
+    @property
     def rpe_service_url(self):
         return os.getenv("RPE_SERVICE_URL", "http://rpe-service:8001")
 

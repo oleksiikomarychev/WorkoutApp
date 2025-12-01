@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 import '../config/constants/theme_constants.dart';
 import '../models/user_profile.dart';
@@ -21,11 +23,14 @@ class PublicUserProfileScreen extends ConsumerWidget {
     final profileAsync = ref.watch(publicUserProfileProvider(userId));
     final aggregatesAsync = ref.watch(publicProfileAggregatesProvider(userId));
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(initialName ?? 'Profile'),
-      ),
-      body: RefreshIndicator(
+    return AssistantChatHost(
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: initialName ?? 'Profile',
+            onTitleTap: openChat,
+          ),
+          body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(publicUserProfileProvider(userId));
           ref.invalidate(publicProfileAggregatesProvider(userId));
@@ -46,6 +51,8 @@ class PublicUserProfileScreen extends ConsumerWidget {
           },
         ),
       ),
+    );
+      },
     );
   }
 

@@ -53,6 +53,18 @@ class TypingEvent extends ChatEvent {
   final bool isTyping;
 }
 
+/// Emitted when the backend sends a structured mass edit result payload
+/// (type: "mass_edit_result") for tools like applied_plan_mass_edit.
+///
+/// The raw payload is forwarded so higher layers can render a rich preview
+/// card (counts + human-readable filter/actions summary) without the
+/// transport layer knowing domain details.
+class MassEditResultEvent extends ChatEvent {
+  const MassEditResultEvent(this.payload);
+
+  final Map<String, dynamic> payload;
+}
+
 /// Handles WebSocket connectivity, reconnection, and message parsing.
 class ChatService {
   ChatService({
@@ -84,6 +96,7 @@ class ChatService {
   ChatConnectionState _connectionState = ChatConnectionState.disconnected;
   String? _sessionId;
   bool _manuallyClosed = false;
+  Map<String, dynamic>? _pendingContext;
 
   Stream<ChatEvent> get events => _eventController.stream;
   Stream<ChatConnectionState> get connectionStream =>
@@ -151,6 +164,74 @@ class ChatService {
     }
   }
 
+  /// Sends a structured request to apply a previously previewed mass edit
+  /// command for an applied plan. This avoids re-generating the command via
+  /// LLM and instead reuses the exact JSON mass_edit_command payload received
+  /// from the backend.
+  Future<void> sendMassEditApply(Map<String, dynamic> payload) async {
+    if (_channel == null) {
+      throw StateError('Cannot send mass_edit_apply while channel is null');
+    }
+
+    final body = <String, dynamic>{
+      'type': 'mass_edit_apply',
+      'variant': payload['variant'] ?? 'applied_plan',
+      'applied_plan_id': payload['applied_plan_id'],
+      'mass_edit_command': payload['mass_edit_command'],
+    };
+
+    try {
+      _channel!.sink.add(jsonEncode(body));
+    } catch (e) {
+      _eventController.add(ErrorEvent('Failed to send mass_edit_apply: $e'));
+      _scheduleReconnect();
+    }
+  }
+
+  Future<void> sendScheduleShiftApply(Map<String, dynamic> payload) async {
+    if (_channel == null) {
+      throw StateError('Cannot send schedule_shift_apply while channel is null');
+    }
+
+    final body = <String, dynamic>{
+      'type': 'schedule_shift_apply',
+      'variant': payload['variant'] ?? 'applied_schedule_shift',
+      'applied_plan_id': payload['applied_plan_id'],
+      'schedule_shift_command': payload['schedule_shift_command'],
+    };
+
+    try {
+      _channel!.sink.add(jsonEncode(body));
+    } catch (e) {
+      _eventController.add(ErrorEvent('Failed to send schedule_shift_apply: $e'));
+      _scheduleReconnect();
+    }
+  }
+
+  /// Sends structured context payload to the backend.
+  /// This should be called once when the chat overlay opens to provide
+  /// screen-specific context (plan IDs, athlete info, etc.) for auto-substitution.
+  Future<void> sendContext(Map<String, dynamic> context) async {
+    // Remember the latest context; if the socket is not yet connected,
+    // it will be sent as soon as the channel is opened.
+    _pendingContext = context;
+
+    if (_channel == null) {
+      return;
+    }
+
+    final payload = jsonEncode({
+      'type': 'context',
+      'payload': context,
+    });
+
+    try {
+      _channel!.sink.add(payload);
+    } catch (e) {
+      _eventController.add(ErrorEvent('Failed to send context: $e'));
+    }
+  }
+
   void dispose() {
     _manuallyClosed = true;
     _eventController.close();
@@ -182,6 +263,22 @@ class ChatService {
       _currentBackoff = _initialBackoff;
       _lastMessageReceived = DateTime.now();
       _startHeartbeat();
+
+      // If there is pending structured context (e.g. ActivePlanScreen
+      // already built it), send it as soon as the channel is open so
+      // the backend has it before processing slash-commands.
+      final pending = _pendingContext;
+      if (pending != null) {
+        try {
+          final payload = jsonEncode({
+            'type': 'context',
+            'payload': pending,
+          });
+          _channel!.sink.add(payload);
+        } catch (e) {
+          _eventController.add(ErrorEvent('Failed to send pending context: $e'));
+        }
+      }
 
       _channelSubscription = channel.stream.listen(
         _handleIncoming,
@@ -242,6 +339,10 @@ class ChatService {
         case 'pong':
           // Reset the last message time to prevent heartbeat timeout
           _lastMessageReceived = DateTime.now();
+          break;
+        case 'mass_edit_result':
+          // Forward raw payload so UI can show a structured summary card
+          _eventController.add(MassEditResultEvent(payload));
           break;
         default:
           debugPrint('ChatService: Unknown event type: $type');

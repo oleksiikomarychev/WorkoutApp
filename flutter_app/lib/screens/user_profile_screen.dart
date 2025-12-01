@@ -15,6 +15,7 @@ import 'package:workout_app/screens/session_log_screen.dart';
 import 'package:workout_app/config/constants/route_names.dart';
 import 'dart:typed_data';
 import 'package:workout_app/widgets/floating_header_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 import '../widgets/user_profile_view.dart';
 
 const int kActivityWeeks = 48;
@@ -101,6 +102,18 @@ class DayActivity {
     required this.sessionCount,
     required this.volume,
   });
+}
+
+Future<Map<String, dynamic>> _buildProfileChatContext() async {
+  final nowIso = DateTime.now().toUtc().toIso8601String();
+  return <String, dynamic>{
+    'v': 1,
+    'app': 'WorkoutApp',
+    'screen': 'user_profile',
+    'role': 'athlete',
+    'timestamp': nowIso,
+    'entities': <String, dynamic>{},
+  };
 }
 
 Future<UserStats> _calculateStats(WorkoutService workoutService, List<WorkoutSession> sessions) async {
@@ -243,53 +256,59 @@ class UserProfileScreen extends ConsumerWidget {
     final user = FirebaseAuth.instance.currentUser;
     final profileAsync = ref.watch(userProfileProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          SafeArea(
-            bottom: false,
-            child: Stack(
-              children: [
-                RefreshIndicator(
-                  onRefresh: () async {
-                    ref.invalidate(userProfileProvider);
-                    ref.invalidate(profileAggregatesProvider);
-                    ref.invalidate(completedSessionsProvider);
-                    await Future.wait([
-                      ref.read(userProfileProvider.future),
-                      ref.read(profileAggregatesProvider.future),
-                      ref.read(completedSessionsProvider.future),
-                    ]);
-                  },
-                  child: profileAsync.when(
-                    loading: () => const Center(child: CircularProgressIndicator()),
-                    error: (error, _) => _buildErrorState(ref, error),
-                    data: (profile) {
-                      return ref.watch(profileAggregatesProvider).when(
+    return AssistantChatHost(
+      contextBuilder: _buildProfileChatContext,
+      builder: (hostContext, openChat) {
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          body: Stack(
+            children: [
+              SafeArea(
+                bottom: false,
+                child: Stack(
+                  children: [
+                    RefreshIndicator(
+                      onRefresh: () async {
+                        ref.invalidate(userProfileProvider);
+                        ref.invalidate(profileAggregatesProvider);
+                        ref.invalidate(completedSessionsProvider);
+                        await Future.wait([
+                          ref.read(userProfileProvider.future),
+                          ref.read(profileAggregatesProvider.future),
+                          ref.read(completedSessionsProvider.future),
+                        ]);
+                      },
+                      child: profileAsync.when(
                         loading: () => const Center(child: CircularProgressIndicator()),
                         error: (error, _) => _buildErrorState(ref, error),
-                        data: (stats) => _buildContent(context, ref, stats, user, profile),
-                      );
-                    },
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.topCenter,
-                  child: FloatingHeaderBar(
-                    title: 'Account',
-                    leading: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
-                      onPressed: () => Navigator.of(context).maybePop(),
+                        data: (profile) {
+                          return ref.watch(profileAggregatesProvider).when(
+                            loading: () => const Center(child: CircularProgressIndicator()),
+                            error: (error, _) => _buildErrorState(ref, error),
+                            data: (stats) => _buildContent(hostContext, ref, stats, user, profile),
+                          );
+                        },
+                      ),
                     ),
-                    onProfileTap: null,
-                  ),
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: FloatingHeaderBar(
+                        title: 'Account',
+                        leading: IconButton(
+                          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+                          onPressed: () => Navigator.of(hostContext).maybePop(),
+                        ),
+                        onTitleTap: openChat,
+                        onProfileTap: null,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

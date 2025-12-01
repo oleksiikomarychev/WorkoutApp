@@ -5,6 +5,8 @@ import 'package:heroicons/heroicons.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:animations/animations.dart';
 import 'package:intl/intl.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 import '../models/workout.dart';
 import '../models/progression_template.dart';
@@ -178,14 +180,17 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Тренировки'),
-        actions: const [
-          SizedBox(width: 8),
-        ],
-      ),
-      body: RefreshIndicator(
+    return AssistantChatHost(
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: 'Тренировки',
+            onTitleTap: openChat,
+            actions: const [
+              SizedBox(width: 8),
+            ],
+          ),
+          body: RefreshIndicator(
         onRefresh: _refreshWorkouts,
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -332,6 +337,8 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
         onPressed: _showAddWorkoutDialog,
         child: const Icon(Icons.add),
       ),
+        );
+      },
     );
   }
   

@@ -755,6 +755,7 @@ def compute_weak_muscles(
 
     # LLM enrichment
     anomalies: List[int] = []
+    anomaly_details: List[dict] = []
     if use_llm:
         helper = AlgorithmicLLMHelper()
         try:
@@ -762,15 +763,37 @@ def compute_weak_muscles(
             for item, pr in zip(weak, priorities):
                 item["priority"] = pr.get("priority", "medium")
                 item["priority_reason"] = pr.get("reason", "")
-            # Build simple samples for anomalies
-            samples = [
-                {
-                    "date": getattr(um, "date", datetime.utcnow().date()).isoformat(),
-                    "value": float(getattr(um, "max_weight", 0)),
+            # Build samples for anomaly detection and for user-facing explanations
+            samples: List[dict] = []
+            simple_samples: List[dict] = []
+            for um in filtered:
+                d = getattr(um, "date", datetime.utcnow().date()).isoformat()
+                max_w = float(getattr(um, "max_weight", 0))
+                sample: dict = {
+                    "date": d,
+                    "exercise_id": getattr(um, "exercise_id", None),
+                    "exercise_name": getattr(um, "exercise_name", None),
+                    "rep_max": getattr(um, "rep_max", None),
+                    "max_weight": max_w,
                 }
-                for um in filtered
-            ]
-            anomalies = helper.detect_anomalies(samples)
+                v1rm = getattr(um, "verified_1rm", None)
+                if v1rm is not None:
+                    try:
+                        sample["verified_1rm"] = float(v1rm)
+                    except Exception:
+                        pass
+                samples.append(sample)
+                simple_samples.append({"date": d, "value": max_w})
+            anomalies = helper.detect_anomalies(simple_samples)
+            for idx in anomalies:
+                try:
+                    i = int(idx)
+                except (TypeError, ValueError):
+                    continue
+                if 0 <= i < len(samples):
+                    det = dict(samples[i])
+                    det["index"] = i
+                    anomaly_details.append(det)
         except Exception as e:
             logger.warning(f"LLM enrichment failed: {e}")
 
@@ -780,6 +803,7 @@ def compute_weak_muscles(
         "muscle_strength": {k: round(v, 2) for k, v in muscle_strength.items()},
         "trend": trends,
         "anomalies": anomalies,
+        "anomaly_details": anomaly_details,
         "llm_enabled": use_llm,
     }
 

@@ -601,6 +601,88 @@ class ConversationGraph:
                 return True
         return False
 
+    def to_state(self) -> Dict[str, Any]:
+        return {
+            "state_index": self.state_index,
+            "state_completed": {state.value: self.state_completed.get(state, False) for state in self.STATE_FLOW},
+            "context": list(self.context),
+            "collected_data": dict(self.collected_data),
+            "user_id": self.user_id,
+            "autonomy": {
+                "last_missing_requirements": list(self.autonomy.last_missing_requirements),
+                "last_followup_question": self.autonomy.last_followup_question,
+                "validation_warnings": list(self.autonomy.validation_warnings),
+            },
+        }
+
+    @classmethod
+    def from_state(
+        cls,
+        state: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+    ) -> "ConversationGraph":
+        resolved_user_id = user_id or (state or {}).get("user_id")
+        graph = cls(user_id=resolved_user_id)
+
+        if not state:
+            return graph
+
+        state_index = state.get("state_index")
+        if isinstance(state_index, int) and 0 <= state_index < len(graph.STATE_FLOW):
+            graph.state_index = state_index
+
+        stored_completed = state.get("state_completed")
+        if isinstance(stored_completed, dict):
+            for conv_state in graph.STATE_FLOW:
+                value = stored_completed.get(conv_state.value)
+                if isinstance(value, bool):
+                    graph.state_completed[conv_state] = value
+
+        context_entries = state.get("context")
+        if isinstance(context_entries, list):
+            graph.context.clear()
+            for entry in context_entries[-graph.context.maxlen :]:
+                if isinstance(entry, dict):
+                    role = entry.get("role")
+                    content = entry.get("content")
+                    graph.context.append(
+                        {
+                            "role": role if isinstance(role, str) else str(role),
+                            "content": content if isinstance(content, str) else str(content),
+                        }
+                    )
+
+        collected_data = state.get("collected_data")
+        if isinstance(collected_data, dict):
+            graph.collected_data = dict(collected_data)
+
+        autonomy_state = state.get("autonomy")
+        if isinstance(autonomy_state, dict):
+            lmr = autonomy_state.get("last_missing_requirements")
+            if isinstance(lmr, list):
+                graph.autonomy.last_missing_requirements = [str(item) for item in lmr]
+
+            followup = autonomy_state.get("last_followup_question")
+            if followup is None or isinstance(followup, str):
+                graph.autonomy.last_followup_question = followup
+
+            warnings = autonomy_state.get("validation_warnings")
+            if isinstance(warnings, list):
+                graph.autonomy.validation_warnings = [str(item) for item in warnings]
+
+        return graph
+
+
+async def fsm_plan_generator(
+    user_input: str,
+    state: Optional[Dict[str, Any]] = None,
+    *,
+    user_id: Optional[str] = None,
+) -> Tuple[str, bool, Dict[str, Any]]:
+    graph = ConversationGraph.from_state(state, user_id=user_id)
+    reply, done = await graph.process_response(user_input)
+    return reply, done, graph.to_state()
+
 
 # -----------------------------------------------------------------------------
 # LangChain agent utilities (point 8 fix)

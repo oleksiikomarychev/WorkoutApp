@@ -163,7 +163,6 @@ class ExerciseInstanceService:
             workout_ids=[workout_id],
         )
         await self._cache_instance(exercise_instance_key(self.user_id, serialized.get("id")), serialized)
-        await self._cache_instances_list(workout_instances_key(self.user_id, workout_id), [])  # force refresh later
         return serialized
 
     async def update_instance(self, instance_id: int, update_data: schemas.ExerciseInstanceBase) -> dict:
