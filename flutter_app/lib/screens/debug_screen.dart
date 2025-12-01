@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 import '../models/calendar_plan.dart';
 import '../models/exercise_definition.dart';
@@ -73,9 +75,14 @@ class DebugScreen extends StatelessWidget {
       'Coach Athletes (CRM)': (context) => const CoachAthletesScreen(),
     };
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Debug Screen')),
-      body: ListView(
+    return AssistantChatHost(
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: 'Debug Screen',
+            onTitleTap: openChat,
+          ),
+          body: ListView(
         children: [
           ListTile(
             title: const Text('Reset app state'),
@@ -94,7 +101,8 @@ class DebugScreen extends StatelessWidget {
         ],
       ),
     );
-
+      },
+    );
   }
 
 CalendarPlan _stubCalendarPlan() {

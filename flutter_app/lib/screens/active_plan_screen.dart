@@ -22,8 +22,9 @@ import 'package:workout_app/services/rpe_service.dart';
 import 'package:workout_app/widgets/workout_status_helpers.dart';
 import 'package:workout_app/models/exercise_set_dto.dart';
 import 'package:workout_app/providers/chat_provider.dart';
-import 'package:workout_app/widgets/assistant_chat_overlay.dart';
-import 'package:workout_app/widgets/floating_header_bar.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
+import 'package:workout_app/services/agent_mass_edit_service.dart';
 import 'package:workout_app/widgets/plan_analytics_chart.dart';
 import 'package:workout_app/screens/user_profile_screen.dart';
 
@@ -80,7 +81,6 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
   final _logger = LoggerService('ActivePlanScreen');
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  bool _showChatOverlay = false;
   final TextEditingController _intensityCtrl = TextEditingController();
   final TextEditingController _rpeCtrl = TextEditingController();
   final TextEditingController _repsCtrl = TextEditingController();
@@ -121,6 +121,175 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     _repsCtrl.dispose();
     _rangeRefreshTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final planAsync = ref.watch(activePlanProvider);
+    final analyticsAsync = ref.watch(activePlanAnalyticsProvider);
+    final eventsByDay = ref.watch(workoutsByDayProvider);
+
+    return AssistantChatHost(
+      initialMessage:
+          'Открываю ассистента из ActivePlanScreen. Используй переданный структурированный контекст v1 для понимания текущего плана и выбранного дня.',
+      contextBuilder: _buildChatContext,
+      builder: (context, openChat) {
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: PrimaryAppBar.main(
+            title: 'Active Plan',
+            onTitleTap: openChat,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.account_circle_outlined),
+                onPressed: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+                  );
+                },
+              ),
+            ],
+          ),
+          body: SafeArea(
+            child: planAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, stack) => Center(
+                child: Text('Failed to load active plan: $error'),
+              ),
+              data: (plan) {
+                if (plan == null) {
+                  return const Center(child: Text('No active plan'));
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildPlanSummary(context, plan),
+                    const SizedBox(height: 8),
+                    _buildAnalyticsAsyncSection(analyticsAsync),
+                    const SizedBox(height: 8),
+                    _buildCalendar(eventsByDay),
+                    const SizedBox(height: 4),
+                    _buildDayHeader(),
+                    Expanded(child: _buildDayList(eventsByDay)),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> _buildChatContext() async {
+    try {
+      final plan = await ref.read(activePlanProvider.future);
+      final nowIso = DateTime.now().toUtc().toIso8601String();
+      final selectionDate = (_selectedDay ?? _dateOnly(DateTime.now()))
+          .toIso8601String()
+          .split('T')
+          .first;
+
+      final base = <String, dynamic>{
+        'v': 1,
+        'app': 'WorkoutApp',
+        'screen': 'active_plan',
+        'role': 'athlete',
+        'timestamp': nowIso,
+        'default_mass_edit_target': 'applied',
+        'entities': <String, dynamic>{},
+        'selection': <String, dynamic>{
+          'date': selectionDate,
+        },
+      };
+
+      final entities = base['entities'] as Map<String, dynamic>;
+      if (plan != null) {
+        entities['active_applied_plan'] = {
+          'id': plan.id,
+          'calendar_plan_id': plan.calendarPlanId,
+          'name': plan.calendarPlan.name,
+          'status': plan.status ?? 'active',
+          'start_date': plan.startDate?.toIso8601String(),
+          'end_date': plan.endDate.toIso8601String(),
+          'adherence_pct': plan.adherencePct,
+          'planned_sessions_total': plan.plannedSessionsTotal,
+          'actual_sessions_completed': plan.actualSessionsCompleted,
+        };
+
+        entities['calendar_plan'] = {
+          'id': plan.calendarPlan.id,
+          'name': plan.calendarPlan.name,
+          'primary_goal': plan.calendarPlan.primaryGoal,
+          'intended_experience_level':
+              plan.calendarPlan.intendedExperienceLevel,
+          'intended_frequency_per_week':
+              plan.calendarPlan.intendedFrequencyPerWeek,
+        };
+      } else {
+        entities['active_applied_plan'] = null;
+      }
+
+      // Provide lightweight autocomplete data for chat DSL, so the frontend
+      // can suggest aliases like /workout_6 for workouts and /Benchpress for
+      // exercises in the active plan.
+      final workouts = await ref.read(activePlanWorkoutsProvider.future);
+      final autocomplete = <String, dynamic>{};
+
+      if (workouts.isNotEmpty) {
+        final items = <Map<String, dynamic>>[];
+        for (final w in workouts) {
+          final idx = w.planOrderIndex;
+          if (idx == null) continue;
+          final alias = '/workout_${idx + 1}';
+          items.add({
+            'alias': alias,
+            'name': w.name,
+            'plan_order_index': idx,
+          });
+        }
+        if (items.isNotEmpty) {
+          autocomplete['workouts'] = items;
+        }
+      }
+
+      // Global exercise definitions for DSL like /Benchpress. We don't try to
+      // limit them strictly to the current plan here; the backend will still
+      // resolve exercise names to definition IDs.
+      final exSvc = ref.read(exerciseServiceProvider);
+      final defs = await exSvc.getExerciseDefinitions();
+      if (defs.isNotEmpty) {
+        final items = <Map<String, dynamic>>[];
+        for (final d in defs) {
+          if (d.name.isEmpty) continue;
+          final alias = '/${d.name}';
+          items.add({
+            'alias': alias,
+            'name': d.name,
+            'id': d.id,
+          });
+        }
+        if (items.isNotEmpty) {
+          autocomplete['exercises'] = items;
+        }
+      }
+
+      if (autocomplete.isNotEmpty) {
+        base['autocomplete'] = autocomplete;
+      }
+
+      return base;
+    } catch (e, st) {
+      _logger.e('Failed to build assistant context', e, st);
+      return <String, dynamic>{
+        'v': 1,
+        'app': 'WorkoutApp',
+        'screen': 'active_plan',
+        'role': 'athlete',
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+        'error': e.toString(),
+      };
+    }
   }
 
   void _showSnack(BuildContext context, String text) {
@@ -262,13 +431,17 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     if (text == null || text.isEmpty) {
       return;
     }
-    final cmd = '/mass_edit ${plan.calendarPlanId} apply: $text';
     try {
-      await ref.read(chatControllerProvider.notifier).sendMessage(cmd);
+      final svc = ref.read(agentAppliedPlanMassEditServiceProvider);
+      final taskId = await svc.startAppliedPlanMassEdit(
+        appliedPlanId: plan.id,
+        prompt: text,
+        mode: 'apply',
+      );
       if (!mounted) return;
-      setState(() {
-        _showChatOverlay = true;
-      });
+      _showSnack(context, 'AI mass edit started (task: $taskId)');
+      final host = AssistantChatHost.of(context);
+      host?.openChat();
     } catch (e) {
       if (!mounted) return;
       _showSnack(context, 'Failed to send AI mass edit command: $e');
@@ -1172,7 +1345,6 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     }
     return null;
   }
-
   Future<void> _shiftScheduleFromSelectedWeek({required int days}) async {
     if (_isApplying) return;
     setState(() => _isApplying = true);
@@ -1204,260 +1376,6 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     }
   }
 
-  Future<void> _openLlmMassEditDialog(BuildContext context) async {
-    final plan = await ref.read(activePlanProvider.future);
-    if (plan == null) {
-      if (mounted) {
-        _showSnack(context, 'No active plan');
-      }
-      return;
-    }
-
-    final promptController = TextEditingController();
-    bool isLoading = false;
-    String? summary;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setState) {
-            return AlertDialog(
-              title: const Text('AI mass edit'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Опиши, что нужно изменить в плане. ЛЛМ подготовит массовые правки.'),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: promptController,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      hintText: 'Например: Увеличь RPE на 1 и добавь по 1 подходу во всех жимах по понедельникам',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (isLoading) ...[
-                    const Center(child: CircularProgressIndicator()),
-                  ] else if (summary != null) ...[
-                    const Text('Предлагаемые изменения:', style: TextStyle(fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 4),
-                    Text(summary!),
-                  ],
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(false),
-                  child: const Text('Отмена'),
-                ),
-                TextButton(
-                  onPressed: isLoading
-                      ? null
-                      : () async {
-                          final text = promptController.text.trim();
-                          if (text.isEmpty) return;
-                          setState(() {
-                            isLoading = true;
-                            summary = null;
-                          });
-
-                          try {
-                            final agentSvc = ref.read(agentMassEditServiceProvider);
-                            final resp = await agentSvc.planMassEdit(
-                              planId: plan.calendarPlanId,
-                              prompt: text,
-                              mode: 'preview',
-                            );
-
-                            final cmd = resp.massEditCommand;
-                            final operation = cmd['operation'];
-                            final filter = cmd['filter'] as Map<String, dynamic>?;
-                            final actions = cmd['actions'] as Map<String, dynamic>?;
-
-                            final parts = <String>[];
-                            if (operation != null) {
-                              parts.add('operation: $operation');
-                            }
-                            if (filter != null && filter.isNotEmpty) {
-                              parts.add('filter: ${filter.keys.join(', ')}');
-                            }
-                            if (actions != null && actions.isNotEmpty) {
-                              parts.add('actions: ${actions.keys.join(', ')}');
-                            }
-
-                            setState(() {
-                              summary = parts.isEmpty
-                                  ? 'Команда сформирована, но не удалось построить краткое описание.'
-                                  : parts.join(' · ');
-                              isLoading = false;
-                            });
-                          } catch (e) {
-                            setState(() {
-                              isLoading = false;
-                              summary = 'Ошибка: $e';
-                            });
-                          }
-                        },
-                  child: const Text('Сгенерировать'),
-                ),
-                FilledButton(
-                  onPressed: (isLoading || summary == null)
-                      ? null
-                      : () => Navigator.of(ctx).pop(true),
-                  child: const Text('Применить'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (confirmed == true) {
-      try {
-        final agentSvc = ref.read(agentMassEditServiceProvider);
-        await agentSvc.planMassEdit(
-          planId: plan.calendarPlanId,
-          prompt: promptController.text.trim(),
-          mode: 'apply',
-        );
-
-        ref.invalidate(activePlanProvider);
-        ref.invalidate(activePlanWorkoutsProvider);
-        ref.invalidate(activePlanAnalyticsProvider);
-
-        if (mounted) {
-          _showSnack(context, 'AI mass edit applied');
-        }
-      } catch (e) {
-        if (mounted) {
-          _showSnack(context, 'Ошибка применения AI mass edit: $e');
-        }
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final eventsByDay = ref.watch(workoutsByDayProvider);
-    final planAsync = ref.watch(activePlanProvider);
-    final currentPlan = planAsync.value;
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          SafeArea(
-            bottom: false,
-            child: Stack(
-              children: [
-                planAsync.when(
-                  loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (e, st) => Center(child: Text('Error: $e')),
-                  data: (plan) {
-                    if (plan == null) {
-                      return const Center(child: Text('No active plan'));
-                    }
-                    final analyticsAsync = ref.watch(activePlanAnalyticsProvider);
-                    return Column(
-                      children: [
-                        const SizedBox(height: 72),
-                        _buildPlanSummary(context, plan),
-                        const SizedBox(height: 8),
-                        _buildCalendar(eventsByDay),
-                        const SizedBox(height: 8),
-                        _buildAnalyticsAsyncSection(analyticsAsync),
-                        const SizedBox(height: 8),
-                        _buildDayHeader(),
-                        Expanded(child: _buildDayList(eventsByDay)),
-                      ],
-                    );
-                  },
-                ),
-                Align(
-                  alignment: Alignment.topCenter,
-                  child: FloatingHeaderBar(
-                    title: 'Active Plan',
-                    leading: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
-                      onPressed: () => Navigator.of(context).maybePop(),
-                    ),
-                    onTitleTap: () {
-                      setState(() {
-                        _showChatOverlay = true;
-                      });
-                    },
-                    actions: [
-                      PopupMenuButton<String>(
-                        tooltip: 'Show menu',
-                        icon: const Icon(Icons.more_vert),
-                        onSelected: (value) async {
-                          if (value == 'mass_edit') {
-                            await _openMassEditDialog();
-                          } else if (value == 'ai_mass_edit') {
-                            await _openLlmMassEditDialog(context);
-                          } else if (value == 'replace_exercises') {
-                            await _openReplaceDialog();
-                          } else if (value == 'shift_plus_1') {
-                            await _shiftScheduleFromSelectedWeek(days: 1);
-                          }
-                        },
-                        itemBuilder: (ctx) => [
-                          const PopupMenuItem(
-                            value: 'mass_edit',
-                            child: Text('Mass edit'),
-                          ),
-                          const PopupMenuItem(
-                            value: 'ai_mass_edit',
-                            child: Text('AI mass edit'),
-                          ),
-                          const PopupMenuItem(
-                            value: 'replace_exercises',
-                            child: Text('Replace exercises'),
-                          ),
-                          const PopupMenuDivider(),
-                          const PopupMenuItem(
-                            value: 'shift_plus_1',
-                            child: Text('Shift future +1 day (week→end)'),
-                          ),
-                        ],
-                      ),
-                    ],
-                    onProfileTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const UserProfileScreen()),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          AssistantChatOverlay(
-            visible: _showChatOverlay,
-            onClose: () {
-              setState(() {
-                _showChatOverlay = false;
-              });
-            },
-            initialMessage: 'You are editing the active training plan. Ask for changes or explanations.',
-            contextBuilder: () async {
-              final plan = await ref.read(activePlanProvider.future);
-              return {
-                'type': 'active_plan',
-                'plan_id': plan?.id,
-              };
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildPlanSummary(BuildContext context, AppliedCalendarPlan plan) {
     final status = plan.status ?? 'active';
     final planned = plan.plannedSessionsTotal ?? 0;
@@ -1479,9 +1397,109 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
         statusColor = AppColors.primary;
     }
 
-    String statusLabel = status.isNotEmpty
-        ? status[0].toUpperCase() + status.substring(1)
-        : 'Active';
+    final String statusLabel =
+        status.isNotEmpty ? status[0].toUpperCase() + status.substring(1) : 'Active';
+
+    Future<void> _cancelPlan() async {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Cancel active plan?'),
+          content: const Text(
+            'This will stop tracking this applied plan. Existing workouts will remain.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Keep'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Cancel plan'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+
+      final reason = await showDialog<String?>(
+        context: context,
+        builder: (ctx) {
+          String? selected = 'no_time';
+          return AlertDialog(
+            title: const Text('Why are you cancelling?'),
+            content: StatefulBuilder(
+              builder: (ctx, setState) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RadioListTile<String>(
+                      title: const Text('Not enough time'),
+                      value: 'no_time',
+                      groupValue: selected,
+                      onChanged: (v) => setState(() => selected = v),
+                    ),
+                    RadioListTile<String>(
+                      title: const Text('Injury / pain'),
+                      value: 'injury',
+                      groupValue: selected,
+                      onChanged: (v) => setState(() => selected = v),
+                    ),
+                    RadioListTile<String>(
+                      title: const Text('Too hard'),
+                      value: 'too_hard',
+                      groupValue: selected,
+                      onChanged: (v) => setState(() => selected = v),
+                    ),
+                    RadioListTile<String>(
+                      title: const Text('Not enjoyable'),
+                      value: 'not_enjoyable',
+                      groupValue: selected,
+                      onChanged: (v) => setState(() => selected = v),
+                    ),
+                    RadioListTile<String>(
+                      title: const Text('Other / prefer not to say'),
+                      value: 'other',
+                      groupValue: selected,
+                      onChanged: (v) => setState(() => selected = v),
+                    ),
+                  ],
+                );
+              },
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(null),
+                child: const Text('Skip'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(selected),
+                child: const Text('Confirm'),
+              ),
+            ],
+          );
+        },
+      );
+
+      final svc = ref.read(_planServiceProvider);
+      final ok = await svc.cancelAppliedPlan(plan.id, dropoutReason: reason);
+      if (ok) {
+        ref.invalidate(activePlanProvider);
+        ref.invalidate(activePlanWorkoutsProvider);
+        ref.invalidate(activePlanAnalyticsProvider);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Plan cancelled')),
+          );
+        }
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to cancel plan')),
+          );
+        }
+      }
+    }
 
     return Container(
       width: double.infinity,
@@ -1562,104 +1580,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                   'Cancel plan',
                   style: TextStyle(color: Colors.redAccent),
                 ),
-                onPressed: () async {
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Cancel active plan?'),
-                      content: const Text('This will stop tracking this applied plan. Existing workouts will remain.'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(ctx).pop(false),
-                          child: const Text('Keep'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.of(ctx).pop(true),
-                          child: const Text('Cancel plan'),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (confirmed != true) return;
-                  // Ask for dropout reason (optional)
-                  final reason = await showDialog<String?>(
-                    context: context,
-                    builder: (ctx) {
-                      String? selected = 'no_time';
-                      return AlertDialog(
-                        title: const Text('Why are you cancelling?'),
-                        content: StatefulBuilder(
-                          builder: (ctx, setState) {
-                            return Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                RadioListTile<String>(
-                                  title: const Text('Not enough time'),
-                                  value: 'no_time',
-                                  groupValue: selected,
-                                  onChanged: (v) => setState(() => selected = v),
-                                ),
-                                RadioListTile<String>(
-                                  title: const Text('Injury / pain'),
-                                  value: 'injury',
-                                  groupValue: selected,
-                                  onChanged: (v) => setState(() => selected = v),
-                                ),
-                                RadioListTile<String>(
-                                  title: const Text('Too hard'),
-                                  value: 'too_hard',
-                                  groupValue: selected,
-                                  onChanged: (v) => setState(() => selected = v),
-                                ),
-                                RadioListTile<String>(
-                                  title: const Text('Not enjoyable'),
-                                  value: 'not_enjoyable',
-                                  groupValue: selected,
-                                  onChanged: (v) => setState(() => selected = v),
-                                ),
-                                RadioListTile<String>(
-                                  title: const Text('Other / prefer not to say'),
-                                  value: 'other',
-                                  groupValue: selected,
-                                  onChanged: (v) => setState(() => selected = v),
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(null),
-                            child: const Text('Skip'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(selected),
-                            child: const Text('Confirm'),
-                          ),
-                        ],
-                      );
-                    },
-                  );
-
-                  final svc = ref.read(_planServiceProvider);
-                  final ok = await svc.cancelAppliedPlan(plan.id, dropoutReason: reason);
-                  if (ok) {
-                    ref.invalidate(activePlanProvider);
-                    ref.invalidate(activePlanWorkoutsProvider);
-                    ref.invalidate(activePlanAnalyticsProvider);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Plan cancelled')),
-                      );
-                    }
-                  } else {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Failed to cancel plan')),
-                      );
-                    }
-                  }
-                },
+                onPressed: _cancelPlan,
               ),
             ),
           ],

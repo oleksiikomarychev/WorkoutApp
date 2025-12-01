@@ -5,6 +5,8 @@ import 'package:workout_app/providers/macro_providers.dart';
 import 'package:workout_app/screens/macros/macro_editor_screen.dart';
 import 'package:workout_app/screens/macros/macros_preview_screen.dart';
 import 'package:workout_app/providers/plan_providers.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 class MacrosListScreen extends ConsumerWidget {
   final int calendarPlanId;
@@ -15,32 +17,35 @@ class MacrosListScreen extends ConsumerWidget {
     final state = ref.watch(macrosNotifierProvider(calendarPlanId));
     final notifier = ref.read(macrosNotifierProvider(calendarPlanId).notifier);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Plan Macros'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.visibility),
-            tooltip: 'Preview/Apply',
-            onPressed: () async {
-              final active = await ref.read(activeAppliedPlanProvider.future);
-              final id = active?.id;
-              if (id == null) {
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Active plan not found')),
-                );
-                return;
-              }
-              if (!context.mounted) return;
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => MacrosPreviewScreen(appliedPlanId: id)),
-              );
-            },
-          )
-        ],
-      ),
-      body: RefreshIndicator(
+    return AssistantChatHost(
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: 'Plan Macros',
+            onTitleTap: openChat,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.visibility),
+                tooltip: 'Preview/Apply',
+                onPressed: () async {
+                  final active = await ref.read(activeAppliedPlanProvider.future);
+                  final id = active?.id;
+                  if (id == null) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Active plan not found')),
+                    );
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => MacrosPreviewScreen(appliedPlanId: id)),
+                  );
+                },
+              )
+            ],
+          ),
+          body: RefreshIndicator(
         onRefresh: () async => notifier.load(),
         child: state.loading
             ? const Center(child: CircularProgressIndicator())
@@ -132,6 +137,8 @@ class MacrosListScreen extends ConsumerWidget {
         label: const Text('Add Macro'),
         icon: const Icon(Icons.add),
       ),
+    );
+      },
     );
   }
 }

@@ -10,6 +10,21 @@ final exerciseDefinitionsProvider = FutureProvider<List<ExerciseDefinition>>((re
   return svc.getExerciseDefinitions();
 });
 
+final exerciseDefinitionNameMapProvider = Provider<Map<int, String>>((ref) {
+  final defs = ref.watch(exerciseDefinitionsProvider).maybeWhen(
+        data: (d) => d,
+        orElse: () => const <ExerciseDefinition>[],
+      );
+  final map = <int, String>{};
+  for (final e in defs) {
+    final id = e.id;
+    if (id != null) {
+      map[id] = e.name;
+    }
+  }
+  return map;
+});
+
 class TagCatalog {
   final Set<String> movementTypes;
   final Set<String> regions;

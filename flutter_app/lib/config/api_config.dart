@@ -154,7 +154,10 @@ class ApiConfig {
 
   // Chat / Agent endpoints
   static String get chatEndpoint => buildEndpoint('/chat');
-  static String get agentPlanMassEditEndpoint => buildEndpoint('/agent/plan-mass-edit');
+  static String get agentAppliedPlanMassEditEndpoint =>
+      buildEndpoint('/agent/applied-plan-mass-edit');
+  static String agentMassEditTaskStatusEndpoint(String taskId) =>
+      buildEndpoint('/agent/plan-mass-edit/tasks/$taskId');
 
   // Social endpoints (MessengerApp via WorkoutApp gateway)
   static String get socialPostsEndpoint => buildEndpoint('/social/posts');
@@ -206,8 +209,6 @@ class ApiConfig {
       buildEndpoint('/crm/coach/athletes/$athleteId/exercises/$instanceId');
   static String crmCoachMassEditEndpoint(String athleteId) =>
       buildEndpoint('/crm/coach/athletes/$athleteId/workouts/mass-edit');
-  static String crmCoachAiMassEditEndpoint(String athleteId) =>
-      buildEndpoint('/crm/coach/athletes/$athleteId/plan/ai-mass-edit');
 
   // CRM: analytics
   static String get crmAnalyticsMyAthletesEndpoint => buildEndpoint('/crm/analytics/coaches/my/athletes');

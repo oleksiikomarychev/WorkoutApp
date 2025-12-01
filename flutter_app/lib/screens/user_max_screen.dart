@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 import '../config/api_config.dart';
 import '../models/user_max.dart';
@@ -52,6 +54,18 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
     if (response is Map<String, dynamic>) return response;
     if (response is Map) return Map<String, dynamic>.from(response);
     throw const FormatException('Unexpected response for weak muscle analysis');
+  }
+
+  Future<Map<String, dynamic>> _buildChatContext() async {
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    return <String, dynamic>{
+      'v': 1,
+      'app': 'WorkoutApp',
+      'screen': 'user_max',
+      'role': 'athlete',
+      'timestamp': nowIso,
+      'entities': <String, dynamic>{},
+    };
   }
 
   Future<void> _showWeakMuscleAnalysis() async {
@@ -306,18 +320,22 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('User Maxes'),
-        actions: [
-          IconButton(
-            tooltip: 'Анализ слабых мышц',
-            icon: const Icon(Icons.analytics_outlined),
-            onPressed: _showWeakMuscleAnalysis,
+    return AssistantChatHost(
+      contextBuilder: _buildChatContext,
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: 'User Maxes',
+            onTitleTap: openChat,
+            actions: [
+              IconButton(
+                tooltip: 'Анализ слабых мышц',
+                icon: const Icon(Icons.analytics_outlined),
+                onPressed: _showWeakMuscleAnalysis,
+              ),
+            ],
           ),
-        ],
-      ),
-      body: RefreshIndicator(
+          body: RefreshIndicator(
         onRefresh: _refresh,
         child: FutureBuilder<List<UserMax>>(
           future: _futureMaxes,
@@ -371,6 +389,8 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
         },
         child: const Icon(Icons.add),
       ),
+    );
+      },
     );
   }
 

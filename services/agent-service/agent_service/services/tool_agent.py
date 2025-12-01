@@ -1,6 +1,8 @@
+import json
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
+from ..prompts.tool_agent import build_tools_decision_system_prompt
 from .llm_wrapper import generate_structured_output
 
 
@@ -46,23 +48,7 @@ async def _decide_tool_call(
         tools_descriptions.append(f"- {t.name}: {t.description}. Parameters JSON schema: {t.parameters_schema!r}")
     tools_block = "\n".join(tools_descriptions)
 
-    system_prompt = (
-        "You are an AI assistant with access to tools.\n\n"
-        "You MUST respond strictly as JSON matching the given schema.\n\n"
-        "Available tools (each with a JSON parameters schema describing its input):\n"
-        f"{tools_block}\n\n"
-        "If you decide to call a tool, respond as:\n"
-        "{\n"
-        '  "type": "tool_call",\n'
-        '  "tool": "<tool_name>",\n'
-        '  "arguments": { ... }\n'
-        "}\n\n"
-        "If you decide to answer directly, respond as:\n"
-        "{\n"
-        '  "type": "answer",\n'
-        '  "answer": "<final natural language answer>"\n'
-        "}\n"
-    )
+    system_prompt = build_tools_decision_system_prompt(tools_block)
 
     full_prompt = f"{system_prompt}\n\nUser request:\n{user_prompt}"
 
@@ -79,8 +65,10 @@ async def _decide_tool_call(
                 "enum": [t.name for t in tools],
             },
             "arguments": {
-                "type": "object",
-                "additionalProperties": True,
+                "type": "string",
+                "description": (
+                    "JSON object with tool arguments encoded as a string. " "Use '{}' if no arguments are needed."
+                ),
             },
             "answer": {
                 "type": "string",
@@ -145,10 +133,19 @@ async def run_tools_agent(
 
     raw_type = str(decision.get("type") or "").lower()
     tool_name_value = decision.get("tool")
-    arguments_value = decision.get("arguments")
+    arguments_raw = decision.get("arguments")
     answer_value = decision.get("answer")
 
-    if not isinstance(arguments_value, dict):
+    # Parse arguments: prefer dict, but also accept JSON string (for Gemini schema)
+    if isinstance(arguments_raw, dict):
+        arguments_value = arguments_raw
+    elif isinstance(arguments_raw, str):
+        try:
+            parsed = json.loads(arguments_raw)
+            arguments_value = parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            arguments_value = {}
+    else:
         arguments_value = {}
 
     tool_name: Optional[str]

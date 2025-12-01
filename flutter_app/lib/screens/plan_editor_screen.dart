@@ -9,6 +9,7 @@ import 'package:workout_app/screens/exercise_selection_screen.dart';
 import 'package:workout_app/screens/plan_microcycle_editor.dart';
 import 'package:workout_app/widgets/mode_value_control.dart';
 import 'package:workout_app/screens/macros/macros_list_screen.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
 import 'package:workout_app/config/rpe_table.dart' as rpe_table;
 
 class _MicroDiff {
@@ -572,11 +573,11 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
   Widget build(BuildContext context) {
     final plan = widget.plan;
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Редактор: ${plan.name}'),
-        actions: [
-          TextButton.icon(
-            onPressed: () {
+      appBar: PrimaryAppBar(
+        title: 'Редактор: ${plan.name}',
+            actions: [
+              TextButton.icon(
+                onPressed: () {
               final id = plan.id;
               if (id != null) {
                 Navigator.of(context).push(

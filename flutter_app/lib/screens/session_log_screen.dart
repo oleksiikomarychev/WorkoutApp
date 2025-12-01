@@ -7,6 +7,8 @@ import 'package:workout_app/models/workout.dart';
 import 'package:workout_app/models/exercise_instance.dart';
 import 'package:workout_app/models/exercise_set_dto.dart';
 import 'package:workout_app/services/service_locator.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 class SessionLogScreen extends ConsumerStatefulWidget {
   final WorkoutSession session;
@@ -88,14 +90,17 @@ class _SessionLogScreenState extends ConsumerState<SessionLogScreen> {
   Widget build(BuildContext context) {
     final session = widget.session;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Text('Session #${session.id ?? '-'} Logs'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+    return AssistantChatHost(
+      builder: (context, openChat) {
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: PrimaryAppBar(
+            title: 'Session #${session.id ?? '-'} Logs',
+            onTitleTap: openChat,
+          ),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
           _InfoRow(label: 'Workout ID', value: session.workoutId.toString()),
           _InfoRow(label: 'Status', value: session.status),
           _InfoRow(label: 'Started', value: _fmtDate(session.startedAt)),
@@ -129,6 +134,8 @@ class _SessionLogScreenState extends ConsumerState<SessionLogScreen> {
           ),
         ],
       ),
+    );
+      },
     );
   }
 

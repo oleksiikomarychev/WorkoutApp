@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/services/service_locator.dart' as sl;
 import 'package:workout_app/services/messaging_service.dart';
 import 'package:intl/intl.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 class CoachChatScreenArgs {
   final String channelId;
@@ -33,6 +35,24 @@ class _CoachChatScreenState extends ConsumerState<CoachChatScreen> {
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<Map<String, dynamic>> _buildChatContext() async {
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    return <String, dynamic>{
+      'v': 1,
+      'app': 'WorkoutApp',
+      'screen': 'coach_chat',
+      'role': 'coach',
+      'timestamp': nowIso,
+      'entities': <String, dynamic>{
+        'channel': {
+          'id': widget.args.channelId,
+          'title': widget.args.title,
+          'type': 'coach_athlete',
+        },
+      },
+    };
   }
 
   Future<void> _sendMessage() async {
@@ -68,17 +88,23 @@ class _CoachChatScreenState extends ConsumerState<CoachChatScreen> {
     final asyncMessages = ref.watch(_channelMessagesProvider(widget.args.channelId));
     final df = DateFormat('dd.MM HH:mm');
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.args.title),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => ref.refresh(_channelMessagesProvider(widget.args.channelId)),
+    return AssistantChatHost(
+      initialMessage:
+          'Открываю ассистента из CoachChatScreen. Используй контекст v1, чтобы понимать текущий канал коуч–атлет.',
+      contextBuilder: _buildChatContext,
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: widget.args.title,
+            onTitleTap: openChat,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: () => ref.refresh(_channelMessagesProvider(widget.args.channelId)),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: Column(
+          body: Column(
         children: [
           Expanded(
             child: asyncMessages.when(
@@ -148,6 +174,8 @@ class _CoachChatScreenState extends ConsumerState<CoachChatScreen> {
           ),
         ],
       ),
+    );
+      },
     );
   }
 }

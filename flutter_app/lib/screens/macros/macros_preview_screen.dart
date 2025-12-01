@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/providers/macro_preview_providers.dart';
 import 'package:workout_app/providers/macro_context_providers.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 class MacrosPreviewScreen extends ConsumerStatefulWidget {
   final int appliedPlanId;
@@ -86,17 +88,20 @@ class _MacrosPreviewScreenState extends ConsumerState<MacrosPreviewScreen> {
     final preview = st.preview;
     final items = (preview != null ? (preview['preview'] as List? ?? const []) : const []) as List;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Macros Preview (applied_plan_id=${widget.appliedPlanId})'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: st.loading ? null : () => notifier.runPreview(widget.appliedPlanId),
+    return AssistantChatHost(
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: 'Macros Preview (applied_plan_id=${widget.appliedPlanId})',
+            onTitleTap: openChat,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: st.loading ? null : () => notifier.runPreview(widget.appliedPlanId),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: st.loading
+          body: st.loading
           ? const Center(child: CircularProgressIndicator())
           : (st.error != null)
               ? Center(child: Text('Error: ${st.error}'))
@@ -146,10 +151,10 @@ class _MacrosPreviewScreenState extends ConsumerState<MacrosPreviewScreen> {
                         );
                       },
                     ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: FilledButton.icon(
+          bottomNavigationBar: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: FilledButton.icon(
             onPressed: (st.loading || (items.isEmpty)) ? null : () async {
               final confirm = await showDialog<bool>(
                 context: context,
@@ -177,6 +182,8 @@ class _MacrosPreviewScreenState extends ConsumerState<MacrosPreviewScreen> {
           ),
         ),
       ),
+    );
+      },
     );
   }
 }

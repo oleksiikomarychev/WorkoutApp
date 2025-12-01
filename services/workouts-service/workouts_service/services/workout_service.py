@@ -1,7 +1,9 @@
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, List, Optional
 
+import httpx
 import pytz
 import structlog
 from fastapi import HTTPException
@@ -223,20 +225,34 @@ class WorkoutService:
         skip: int = 0,
         limit: int = 100,
         type: Optional[str] = None,
+        status: Optional[str] = None,
         applied_plan_id: Optional[int] = None,
     ) -> list[WorkoutListResponse]:
-        cache_status = type or "all"
-        cached_list = await self._get_cached_workouts_list(cache_status)
-        if cached_list is not None:
-            return [WorkoutListResponse.model_validate(w) for w in cached_list]
+        # Only use cache if no filters other than type are applied
+        use_cache = (applied_plan_id is None) and (status is None)
+
+        if use_cache:
+            cache_status = type or "all"
+            cached_list = await self._get_cached_workouts_list(cache_status)
+            if cached_list is not None:
+                return [WorkoutListResponse.model_validate(w) for w in cached_list]
 
         query = select(models.Workout).where(models.Workout.user_id == self.user_id)
         if type:
             if type not in ["manual", "generated"]:
                 raise HTTPException(status_code=400, detail=f"Invalid workout type: {type}")
             query = query.where(models.Workout.workout_type == type)
+        if status:
+            query = query.where(models.Workout.status == status)
         if applied_plan_id is not None:
             query = query.where(models.Workout.applied_plan_id == applied_plan_id)
+
+        # Apply sorting: completed workouts usually sort by completed_at desc, others by scheduled_for
+        if status == "completed":
+            query = query.order_by(models.Workout.completed_at.desc())
+        else:
+            query = query.order_by(models.Workout.scheduled_for.desc())
+
         query = query.offset(skip).limit(limit)
         result = await self.db.execute(query)
         workouts = result.scalars().all()
@@ -255,7 +271,9 @@ class WorkoutService:
             }
             workout_dicts.append(workout_dict)
 
-        await self._set_cached_workouts_list(cache_status, workout_dicts)
+        if use_cache:
+            cache_status = type or "all"
+            await self._set_cached_workouts_list(cache_status, workout_dicts)
         return [WorkoutListResponse.model_validate(w) for w in workout_dicts]
 
     async def update_workout(self, workout_id: int, payload: WorkoutUpdate) -> WorkoutResponse:
@@ -857,3 +875,800 @@ class WorkoutService:
             logger.error("[SHIFT_SCHEDULE] error: %s", e)
             await self.db.rollback()
             raise
+
+    async def shift_applied_plan_schedule_from_date(
+        self,
+        applied_plan_id: int,
+        cmd: schemas.AppliedPlanScheduleShiftCommand,
+    ) -> dict:
+        """Shift or restructure scheduled_for dates for workouts in an applied plan starting from a calendar date.
+
+        This supports:
+        - Shifting workouts by N days ("shift" mode)
+        - Restructuring gaps between workouts ("set_rest" mode)
+        - Inserting extra rest days via patterns (every N, at index, etc.)
+        - Filtering by date range (from_date, to_date)
+        - Filtering by status and future-only
+        """
+
+        raw_mode = getattr(cmd, "mode", None)
+        mode = "preview" if raw_mode == "preview" else "apply"
+        dry_run = mode == "preview"
+
+        # Short-circuit only if it's a simple shift of 0 days (no-op) in apply mode
+        # AND no other structural changes are requested.
+        if (
+            cmd.action_type == "shift"
+            and cmd.days == 0
+            and cmd.new_rest_days is None
+            and cmd.add_rest_every_n_workouts is None
+            and not cmd.add_rest_at_indices
+            and not dry_run
+        ):
+            return {
+                "workouts_shifted": 0,
+                "days": 0,
+                "action_type": cmd.action_type,
+                "mode": mode,
+            }
+
+        from_dt = cmd.from_date
+        if isinstance(from_dt, datetime):
+            from_dt = self._convert_to_naive_utc(from_dt)
+            from_day_start = datetime(from_dt.year, from_dt.month, from_dt.day)
+        else:
+            from_day_start = from_dt
+
+        stmt = (
+            select(models.Workout)
+            .where(models.Workout.user_id == self.user_id)
+            .where(models.Workout.applied_plan_id == applied_plan_id)
+            .where(models.Workout.scheduled_for != None)  # noqa: E711
+            .where(models.Workout.scheduled_for >= from_day_start)
+        )
+
+        # Apply to_date filter if provided
+        if cmd.to_date:
+            to_dt = cmd.to_date
+            if isinstance(to_dt, datetime):
+                to_dt = self._convert_to_naive_utc(to_dt)
+                # Include the entire 'to_date' day (exclusive of next day start)
+                to_day_end = datetime(to_dt.year, to_dt.month, to_dt.day) + timedelta(days=1)
+                stmt = stmt.where(models.Workout.scheduled_for < to_day_end)
+
+        # Skip completed workouts based on completed_at, and optionally filter by status
+        stmt = stmt.where(models.Workout.completed_at.is_(None))
+        if cmd.status_in:
+            stmt = stmt.where(models.Workout.status.in_(cmd.status_in))
+
+        if cmd.only_future:
+            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+            stmt = stmt.where(models.Workout.scheduled_for >= now_utc)
+
+        stmt = stmt.order_by(models.Workout.scheduled_for.asc())
+        result = await self.db.execute(stmt)
+        workouts: list[models.Workout] = list(result.scalars().all())
+
+        if not workouts:
+            logger.info(
+                "applied_plan_schedule_shift_no_matches",
+                user_id=self.user_id,
+                applied_plan_id=applied_plan_id,
+                from_date=from_day_start.isoformat(),
+                days=cmd.days,
+            )
+            return {
+                "workouts_shifted": 0,
+                "days": cmd.days,
+                "action_type": cmd.action_type,
+                "mode": mode,
+            }
+
+        shifted_ids: list[int] = []
+        shifted_count = 0
+
+        # Capture original dates to calculate gaps correctly
+        original_dates = [w.scheduled_for for w in workouts]
+
+        # 1. Handle the first workout
+        current_date = original_dates[0]
+        if cmd.days != 0:
+            current_date += timedelta(days=int(cmd.days))
+            # Apply change if date is different
+            if workouts[0].scheduled_for != current_date:
+                if not dry_run:
+                    workouts[0].scheduled_for = current_date
+                    if workouts[0].id is not None:
+                        shifted_ids.append(int(workouts[0].id))
+                shifted_count += 1
+
+        # 2. Iterate subsequent workouts
+        for i in range(1, len(workouts)):
+            w = workouts[i]
+
+            # A. Determine Base Gap
+            if cmd.new_rest_days is not None:
+                # Fixed gap mode
+                base_gap = cmd.new_rest_days + 1
+            else:
+                # Preserve original gap logic
+                orig_prev = original_dates[i - 1]
+                orig_curr = original_dates[i]
+                if orig_prev and orig_curr:
+                    base_gap = (orig_curr - orig_prev).days
+                else:
+                    base_gap = 1  # Fallback
+                # Safety: gap should be at least 0 (same day) or 1
+                if base_gap < 0:
+                    base_gap = 0
+
+            # B. Determine Extra Gap (Pattern-based insertion)
+            extra_days = 0
+
+            # Case 1: Every N workouts
+            # i is 0-based index in this list.
+            # "After every 4th workout" usually means after index 3, 7, etc.
+            # If the user says "add rest after every 4 workouts", it means
+            # between workout 4 and 5, there is extra rest.
+            # In 0-indexed list: workout 4 is index 3.
+            # So if (i) % N == 0?
+            # Example: N=2. After 2nd workout (index 1).
+            # We are currently at workout i (index 1). We are determining its date relative to i-1 (index 0).
+            # The gap is BETWEEN i-1 and i.
+            # If we want "rest after 1st workout", that's gap between index 0 and 1.
+            # So if (i) % N == 0?
+            # Let's trace: N=2. Add rest after 2nd workout.
+            # i=0 (1st workout).
+            # i=1 (2nd workout). Gap between 0 and 1. No extra rest yet.
+            # i=2 (3rd workout). Gap between 1 and 2. This is "after 2nd workout".
+            # So if (i) % N == 0 means:
+            # i=2, N=2 -> match. Correct.
+            # i=4, N=2 -> match. Correct (after 4th workout).
+            if cmd.add_rest_every_n_workouts and (i % cmd.add_rest_every_n_workouts == 0):
+                extra_days += cmd.add_rest_days_amount
+
+            # Case 2: Specific indices
+            # "After workout #4" means gap between #4 and #5.
+            # In list, #4 is index 3. #5 is index 4.
+            # We are calculating date for index 4.
+            # So we check if (i-1) + 1 (1-based index of PREVIOUS workout) is in list?
+            # Or if user provided 0-based indices?
+            # Let's assume user thinks 1-based (workout #1, #2...).
+            # If user says "after #4", they mean gap after the 4th workout processed.
+            # i starts at 1.
+            # Previous workout was i-1 (index wise), which is the (i-1)+1 = i-th workout in the sequence.
+            # So if 'i' is in the list of "insert after X"?
+            # Let's define 'add_rest_at_indices' as "1-based index of the workout AFTER WHICH we insert rest".
+            # If i=4 (5th workout), we are calculating gap after 4th workout (i=3).
+            # So if we want to insert rest after 4th workout, we insert it when calculating date for 5th workout.
+            # So we check if (i) is in add_rest_at_indices?
+            # Example: add after #1. List=[1].
+            # i=1 (2nd workout). We want extra gap here.
+            # if 1 in [1] -> True. Correct.
+            if cmd.add_rest_at_indices and i in cmd.add_rest_at_indices:
+                extra_days += cmd.add_rest_days_amount
+
+            target_date = current_date + timedelta(days=base_gap + extra_days)
+
+            # Apply
+            if w.scheduled_for != target_date:
+                if not dry_run:
+                    w.scheduled_for = target_date
+                    if w.id is not None:
+                        shifted_ids.append(int(w.id))
+                shifted_count += 1
+
+            current_date = target_date
+
+        if not dry_run:
+            await self.db.commit()
+            if shifted_ids:
+                await invalidate_workout_cache(self.user_id, workout_ids=shifted_ids)
+
+        logger.info(
+            "applied_plan_schedule_shift_completed",
+            user_id=self.user_id,
+            applied_plan_id=applied_plan_id,
+            from_date=from_day_start.isoformat(),
+            days=cmd.days,
+            workouts_shifted=shifted_count,
+            action_type=cmd.action_type,
+            mode=mode,
+        )
+        return {
+            "workouts_shifted": shifted_count,
+            "days": cmd.days,
+            "action_type": cmd.action_type,
+            "mode": mode,
+        }
+
+    async def apply_applied_plan_mass_edit(
+        self,
+        applied_plan_id: int,
+        cmd: schemas.AppliedPlanMassEditCommand,
+    ) -> schemas.AppliedPlanMassEditResult:
+        """Apply mass edit actions to exercise instances/sets for an applied plan."""
+
+        flt = cmd.filter
+        actions = cmd.actions
+
+        async def create_exercise_instance_for_workout(
+            workout_id: int,
+            spec: schemas.AppliedAddExerciseInstance,
+        ) -> dict | None:
+            """Create a new exercise instance in the given workout via exercises-service.
+
+            This is used by high-level mass edit actions that add new exercises
+            (actions.add_exercise_instances). It mirrors the public
+            /exercises/instances/workouts/{workout_id}/instances endpoint and
+            applies backend fallbacks when no sets are explicitly provided.
+            """
+
+            base_url = os.getenv("EXERCISES_SERVICE_URL")
+            if not base_url:
+                logger.warning("EXERCISES_SERVICE_URL is not set; cannot create exercise instance")
+                return None
+            base_url = base_url.rstrip("/")
+            url = f"{base_url}/exercises/instances/workouts/{workout_id}/instances"
+            headers = {"X-User-Id": self.user_id}
+
+            sets_payload: list[dict] = []
+            # 1) Direct mapping from spec.sets when present
+            for s in spec.sets or []:
+                payload_set: dict[str, Any] = {}
+
+                # Reps are required by exercises-service SetService.normalize_sets.
+                # Use volume as the primary source for reps; if missing, fall back to 1.
+                reps_val: int | None = None
+                if s.volume is not None:
+                    try:
+                        reps_val = int(s.volume)
+                    except Exception:
+                        reps_val = None
+                if reps_val is None:
+                    reps_val = 1
+                payload_set["reps"] = reps_val
+                payload_set["volume"] = reps_val
+
+                if s.intensity is not None:
+                    payload_set["intensity"] = s.intensity
+                if s.weight is not None:
+                    payload_set["weight"] = s.weight
+                if s.effort is not None:
+                    payload_set["effort"] = s.effort
+                if payload_set:
+                    sets_payload.append(payload_set)
+
+            # 2) Backend fallback: if no sets were provided by the LLM, try to
+            #    copy set patterns from the most recent existing instance of
+            #    this exercise (within the same applied plan).
+            if not sets_payload:
+                try:
+                    ex_def_id = int(spec.exercise_definition_id)
+                except Exception:
+                    ex_def_id = None
+                if ex_def_id is not None:
+                    history_list = history_instances_by_ex_def.get(ex_def_id) or []
+                    # Walk from the latest seen instance backwards
+                    for inst in reversed(history_list):
+                        src_sets = inst.get("sets") or []
+                        for s in src_sets:
+                            if not isinstance(s, dict):
+                                continue
+                            payload_set: dict[str, Any] = {}
+                            volume_src = s.get("volume")
+                            if volume_src is None:
+                                volume_src = s.get("reps")
+                            if volume_src is not None:
+                                try:
+                                    v_int = int(volume_src)
+                                    payload_set["volume"] = v_int
+                                    payload_set["reps"] = v_int
+                                except Exception:
+                                    pass
+                            intensity_src = s.get("intensity")
+                            if intensity_src is not None:
+                                payload_set["intensity"] = intensity_src
+                            weight_src = s.get("weight")
+                            if weight_src is None:
+                                weight_src = s.get("working_weight")
+                            if weight_src is not None:
+                                payload_set["weight"] = weight_src
+                            effort_src = s.get("effort")
+                            if effort_src is None:
+                                effort_src = s.get("rpe")
+                            if effort_src is not None:
+                                payload_set["effort"] = effort_src
+                            if payload_set:
+                                sets_payload.append(payload_set)
+                        if sets_payload:
+                            break
+
+            # 3) Final safety: if still nothing, create one minimal visible set
+            if not sets_payload:
+                sets_payload.append({"volume": 1, "reps": 1})
+
+            body: dict[str, Any] = {
+                "exercise_list_id": spec.exercise_definition_id,
+                "sets": sets_payload,
+            }
+            if spec.notes is not None:
+                body["notes"] = spec.notes
+            if spec.order is not None:
+                body["order"] = spec.order
+
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    res = await client.post(url, headers=headers, json=body)
+                    if res.status_code in (200, 201):
+                        data = res.json()
+                        if isinstance(data, dict):
+                            return data
+                    logger.warning(
+                        "applied_mass_edit_create_instance_non_2xx",
+                        status_code=res.status_code,
+                        body=res.text,
+                        workout_id=workout_id,
+                    )
+            except Exception:
+                logger.exception(
+                    "applied_mass_edit_create_instance_failed",
+                    workout_id=workout_id,
+                )
+            return None
+
+        async def fetch_instances_for_workout(workout_id: int) -> list[dict]:
+            base_url = os.getenv("EXERCISES_SERVICE_URL")
+            if not base_url:
+                logger.warning("EXERCISES_SERVICE_URL is not set; cannot fetch instances")
+                return []
+            base_url = base_url.rstrip("/")
+            url = f"{base_url}/exercises/instances/workouts/{workout_id}/instances"
+            headers = {"X-User-Id": self.user_id}
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    res = await client.get(url, headers=headers)
+                    if res.status_code == 200:
+                        data = res.json()
+                        if isinstance(data, list):
+                            return data
+                    logger.warning(
+                        "applied_mass_edit_instances_non_200",
+                        status_code=res.status_code,
+                        body=res.text,
+                        workout_id=workout_id,
+                    )
+            except Exception:
+                logger.exception(
+                    "applied_mass_edit_instances_failed",
+                    workout_id=workout_id,
+                )
+            return []
+
+        async def replace_exercise_instance(inst: dict, new_ex_def_id: int, new_ex_name: str | None = None) -> bool:
+            instance_id = inst.get("id")
+            if not isinstance(instance_id, int):
+                return False
+            base_url = os.getenv("EXERCISES_SERVICE_URL")
+            if not base_url:
+                logger.warning("EXERCISES_SERVICE_URL is not set; cannot replace exercise instance")
+                return False
+            base_url = base_url.rstrip("/")
+            url = f"{base_url}/exercises/instances/{instance_id}"
+            headers = {"X-User-Id": self.user_id}
+
+            sets_payload: list[dict[str, Any]] = []
+            for s in inst.get("sets") or []:
+                if not isinstance(s, dict):
+                    continue
+                payload_set = dict(s)
+                reps_val = payload_set.get("reps")
+                if reps_val is None:
+                    volume_val = payload_set.get("volume")
+                    try:
+                        reps_val = int(volume_val) if volume_val is not None else 1
+                    except Exception:
+                        reps_val = 1
+                    payload_set["reps"] = reps_val
+                payload_set["volume"] = payload_set.get("volume", reps_val)
+                sets_payload.append(payload_set)
+            if not sets_payload:
+                sets_payload.append({"reps": 1, "volume": 1})
+
+            body: dict[str, Any] = {
+                "exercise_list_id": new_ex_def_id,
+                "sets": sets_payload,
+            }
+            if inst.get("notes") is not None:
+                body["notes"] = inst.get("notes")
+            if inst.get("order") is not None:
+                body["order"] = inst.get("order")
+            if new_ex_name:
+                body["exercise_name"] = new_ex_name
+
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    res = await client.put(url, headers=headers, json=body)
+                    if res.status_code in (200, 201):
+                        inst["exercise_list_id"] = new_ex_def_id
+                        return True
+                    logger.warning(
+                        "applied_mass_edit_replace_instance_non_2xx",
+                        status_code=res.status_code,
+                        body=res.text,
+                        instance_id=instance_id,
+                    )
+            except Exception:
+                logger.exception(
+                    "applied_mass_edit_replace_instance_failed",
+                    instance_id=instance_id,
+                )
+            return False
+
+        async def update_set(instance_id: int, set_id: int, payload: dict) -> bool:
+            if not payload:
+                return False
+            base_url = os.getenv("EXERCISES_SERVICE_URL")
+            if not base_url:
+                logger.warning("EXERCISES_SERVICE_URL is not set; cannot update set")
+                return False
+            base_url = base_url.rstrip("/")
+            url = f"{base_url}/exercises/instances/{instance_id}/sets/{set_id}"
+            headers = {"X-User-Id": self.user_id}
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    res = await client.put(url, headers=headers, json=payload)
+                    if res.status_code in (200, 201):
+                        return True
+                    logger.warning(
+                        "applied_mass_edit_update_set_non_2xx",
+                        status_code=res.status_code,
+                        body=res.text,
+                        instance_id=instance_id,
+                        set_id=set_id,
+                    )
+            except Exception:
+                logger.exception(
+                    "applied_mass_edit_update_set_failed",
+                    instance_id=instance_id,
+                    set_id=set_id,
+                )
+            return False
+
+        def _as_float(value: Any) -> float | None:
+            try:
+                if value is None:
+                    return None
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+
+        def _as_int(value: Any) -> int | None:
+            try:
+                if value is None:
+                    return None
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+
+        def set_matches_filters(s: dict) -> bool:
+            intensity_val = _as_float(s.get("intensity"))
+            volume_val = _as_int(s.get("volume") if s.get("volume") is not None else s.get("reps"))
+            weight_val = _as_float(s.get("weight"))
+            effort_src = s.get("effort")
+            if effort_src is None:
+                effort_src = s.get("rpe")
+            effort_val = _as_float(effort_src)
+
+            if flt.intensity_gte is not None and (intensity_val is None or intensity_val < flt.intensity_gte):
+                return False
+            if flt.intensity_lte is not None and (intensity_val is None or intensity_val > flt.intensity_lte):
+                return False
+            if flt.volume_gte is not None and (volume_val is None or volume_val < flt.volume_gte):
+                return False
+            if flt.volume_lte is not None and (volume_val is None or volume_val > flt.volume_lte):
+                return False
+            if flt.weight_gte is not None and (weight_val is None or weight_val < flt.weight_gte):
+                return False
+            if flt.weight_lte is not None and (weight_val is None or weight_val > flt.weight_lte):
+                return False
+            if flt.effort_gte is not None and (effort_val is None or effort_val < flt.effort_gte):
+                return False
+            if flt.effort_lte is not None and (effort_val is None or effort_val > flt.effort_lte):
+                return False
+            return True
+
+        def build_set_update_payload(s: dict) -> dict:
+            payload: dict[str, Any] = {}
+
+            intensity_val = _as_float(s.get("intensity"))
+            if (
+                actions.set_intensity is not None
+                or actions.increase_intensity_by is not None
+                or actions.decrease_intensity_by is not None
+            ):
+                new_intensity = intensity_val or 0.0
+                if actions.set_intensity is not None:
+                    new_intensity = actions.set_intensity
+                if actions.increase_intensity_by is not None:
+                    new_intensity += actions.increase_intensity_by
+                if actions.decrease_intensity_by is not None:
+                    new_intensity -= actions.decrease_intensity_by
+                if intensity_val is None or abs(new_intensity - intensity_val) > 1e-9:
+                    payload["intensity"] = new_intensity
+
+            volume_val = _as_int(s.get("volume") if s.get("volume") is not None else s.get("reps"))
+            if (
+                actions.set_volume is not None
+                or actions.increase_volume_by is not None
+                or actions.decrease_volume_by is not None
+            ):
+                new_volume = volume_val or 0
+                if actions.set_volume is not None:
+                    new_volume = actions.set_volume
+                if actions.increase_volume_by is not None:
+                    new_volume += actions.increase_volume_by
+                if actions.decrease_volume_by is not None:
+                    new_volume -= actions.decrease_volume_by
+                if actions.clamp_non_negative:
+                    new_volume = max(1, int(new_volume))
+                if volume_val is None or int(new_volume) != int(volume_val):
+                    payload["volume"] = int(new_volume)
+                    payload["reps"] = int(new_volume)
+
+            weight_val = _as_float(s.get("weight"))
+            if (
+                actions.set_weight is not None
+                or actions.increase_weight_by is not None
+                or actions.decrease_weight_by is not None
+            ):
+                new_weight = weight_val or 0.0
+                if actions.set_weight is not None:
+                    new_weight = actions.set_weight
+                if actions.increase_weight_by is not None:
+                    new_weight += actions.increase_weight_by
+                if actions.decrease_weight_by is not None:
+                    new_weight -= actions.decrease_weight_by
+                if actions.clamp_non_negative:
+                    new_weight = max(0.0, new_weight)
+                if weight_val is None or abs(new_weight - (weight_val or 0.0)) > 1e-9:
+                    payload["weight"] = new_weight
+
+            effort_src = s.get("effort")
+            if effort_src is None:
+                effort_src = s.get("rpe")
+            effort_val = _as_float(effort_src)
+            if (
+                actions.set_effort is not None
+                or actions.increase_effort_by is not None
+                or actions.decrease_effort_by is not None
+            ):
+                new_effort = effort_val or 0.0
+                if actions.set_effort is not None:
+                    new_effort = actions.set_effort
+                if actions.increase_effort_by is not None:
+                    new_effort += actions.increase_effort_by
+                if actions.decrease_effort_by is not None:
+                    new_effort -= actions.decrease_effort_by
+                # Clamp to [4,10] as per ExerciseSetUpdate constraints when effort is used
+                new_effort = max(4.0, min(10.0, new_effort))
+                if effort_val is None or abs(new_effort - (effort_val or 0.0)) > 1e-9:
+                    payload["effort"] = new_effort
+                    payload["rpe"] = new_effort
+
+            return payload
+
+        # Accumulate history of instances by exercise_definition_id as we scan workouts
+        history_instances_by_ex_def: dict[int, list[dict]] = {}
+
+        # Select workouts in this applied plan for current user
+        stmt = (
+            select(models.Workout)
+            .where(models.Workout.user_id == self.user_id)
+            .where(models.Workout.applied_plan_id == applied_plan_id)
+        )
+        if flt.plan_order_indices:
+            stmt = stmt.where(models.Workout.plan_order_index.in_(flt.plan_order_indices))
+        if flt.from_order_index is not None:
+            stmt = stmt.where(models.Workout.plan_order_index >= flt.from_order_index)
+        if flt.to_order_index is not None:
+            stmt = stmt.where(models.Workout.plan_order_index <= flt.to_order_index)
+        if flt.status_in:
+            stmt = stmt.where(models.Workout.status.in_(flt.status_in))
+        if flt.scheduled_from is not None:
+            stmt = stmt.where(models.Workout.scheduled_for >= flt.scheduled_from)
+        if flt.scheduled_to is not None:
+            stmt = stmt.where(models.Workout.scheduled_for <= flt.scheduled_to)
+        if flt.only_future:
+            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+            stmt = stmt.where(
+                (models.Workout.scheduled_for == None) | (models.Workout.scheduled_for >= now_utc)  # noqa: E711
+            )
+        stmt = stmt.order_by(models.Workout.plan_order_index.asc())
+
+        result = await self.db.execute(stmt)
+        workouts: list[models.Workout] = list(result.scalars().all())
+        if not workouts:
+            return schemas.AppliedPlanMassEditResult(
+                mode=cmd.mode,
+                workouts_matched=0,
+                instances_matched=0,
+                sets_matched=0,
+                sets_modified=0,
+                details=[],
+            )
+
+        workouts_matched = 0
+        instances_matched = 0
+        sets_matched = 0
+        sets_modified = 0
+        details: list[dict] = []
+
+        for w in workouts:
+            instances = await fetch_instances_for_workout(int(w.id))
+
+            # Update history for backend fallbacks (e.g., copying sets from previous workouts)
+            for inst in instances:
+                if not isinstance(inst, dict):
+                    continue
+                hist_ex_def_id = inst.get("exercise_list_id")
+                if isinstance(hist_ex_def_id, int):
+                    history_instances_by_ex_def.setdefault(hist_ex_def_id, []).append(inst)
+
+            workout_instances_matched = 0
+            workout_sets_matched = 0
+            workout_sets_modified = 0
+
+            for inst in instances:
+                if not isinstance(inst, dict):
+                    continue
+                ex_def_id = inst.get("exercise_list_id")
+                if flt.exercise_definition_ids and ex_def_id not in flt.exercise_definition_ids:
+                    continue
+                instance_id = inst.get("id")
+                if not isinstance(instance_id, int):
+                    continue
+                sets = inst.get("sets") or []
+
+                instance_sets_matched = 0
+                instance_sets_modified = 0
+
+                for s in sets:
+                    if not isinstance(s, dict):
+                        continue
+                    if not set_matches_filters(s):
+                        continue
+                    instance_sets_matched += 1
+                    if cmd.mode == "apply":
+                        set_id = s.get("id")
+                        if not isinstance(set_id, int) or set_id <= 0:
+                            continue
+                        payload = build_set_update_payload(s)
+                        if not payload:
+                            continue
+                        if await update_set(instance_id, set_id, payload):
+                            instance_sets_modified += 1
+
+                if instance_sets_matched:
+                    workout_instances_matched += 1
+                    workout_sets_matched += instance_sets_matched
+                    workout_sets_modified += instance_sets_modified
+
+                # Exercise-level replacement (after evaluating set filters)
+                if actions.replace_exercise_definition_id_to is not None:
+                    target_ids = flt.exercise_definition_ids or []
+                    ex_def_id = inst.get("exercise_list_id")
+                    matches_exercise_filter = not target_ids or ex_def_id in target_ids
+                    has_set_filters = any(
+                        value is not None
+                        for value in (
+                            flt.intensity_lte,
+                            flt.intensity_gte,
+                            flt.volume_lte,
+                            flt.volume_gte,
+                            flt.weight_lte,
+                            flt.weight_gte,
+                            flt.effort_lte,
+                            flt.effort_gte,
+                        )
+                    )
+                    should_replace = matches_exercise_filter and (not has_set_filters or instance_sets_matched > 0)
+                    if should_replace:
+                        replacement_sets = len(sets) if sets else 1
+                        replaced = False
+                        if cmd.mode == "apply":
+                            replaced = await replace_exercise_instance(
+                                inst,
+                                actions.replace_exercise_definition_id_to,
+                                actions.replace_exercise_name_to,
+                            )
+                        else:
+                            replaced = True
+                        if replaced:
+                            workout_instances_matched += 1
+                            workout_sets_matched += replacement_sets
+                            if cmd.mode == "apply":
+                                workout_sets_modified += replacement_sets
+
+            # Handle high-level actions that add new exercise instances to this workout
+            added_sets_for_workout = 0
+            added_instances_for_workout = 0
+            if actions.add_exercise_instances:
+                for spec in actions.add_exercise_instances:
+                    if cmd.mode == "apply":
+                        created = await create_exercise_instance_for_workout(int(w.id), spec)
+                        if created:
+                            created_sets = created.get("sets") or []
+                            added_sets_for_workout += len(created_sets)
+                            added_instances_for_workout += 1
+                    else:
+                        # Preview mode: approximate the number of affected sets without mutating state
+                        if spec.sets:
+                            added_sets_for_workout += len(spec.sets)
+                        else:
+                            # If no sets specified, assume at least one set will be created
+                            added_sets_for_workout += 1
+                        added_instances_for_workout += 1
+
+            if added_sets_for_workout:
+                workout_sets_matched += added_sets_for_workout
+                if cmd.mode == "apply":
+                    workout_sets_modified += added_sets_for_workout
+                workout_instances_matched += added_instances_for_workout
+
+            if workout_sets_matched:
+                workouts_matched += 1
+                instances_matched += workout_instances_matched
+                sets_matched += workout_sets_matched
+                sets_modified += workout_sets_modified
+                details.append(
+                    {
+                        "workout_id": int(w.id),
+                        "plan_order_index": int(w.plan_order_index) if w.plan_order_index is not None else None,
+                        "instances_matched": workout_instances_matched,
+                        "sets_matched": workout_sets_matched,
+                        "sets_modified": workout_sets_modified,
+                    }
+                )
+
+        return schemas.AppliedPlanMassEditResult(
+            mode=cmd.mode,
+            workouts_matched=workouts_matched,
+            instances_matched=instances_matched,
+            sets_matched=sets_matched,
+            sets_modified=sets_modified,
+            details=details,
+        )
+
+    async def get_plan_details_with_exercises(
+        self,
+        applied_plan_id: int,
+    ) -> List[schemas.workout.WorkoutPlanDetailItem]:
+        """
+        Fetch all workouts for an applied plan, including their exercise definition IDs.
+        This is optimized for analysis/reporting to avoid N+1 queries.
+        """
+        query = (
+            select(models.Workout)
+            .options(selectinload(models.Workout.exercises))
+            .where(models.Workout.user_id == self.user_id)
+            .where(models.Workout.applied_plan_id == applied_plan_id)
+            .order_by(models.Workout.plan_order_index.asc())
+        )
+        result = await self.db.execute(query)
+        workouts = result.scalars().all()
+
+        items = []
+        for w in workouts:
+            exercise_ids = [ex.exercise_id for ex in w.exercises]
+            items.append(
+                schemas.workout.WorkoutPlanDetailItem(
+                    id=w.id,
+                    name=w.name,
+                    scheduled_for=w.scheduled_for,
+                    status=w.status,
+                    plan_order_index=w.plan_order_index,
+                    exercise_ids=exercise_ids,
+                )
+            )
+        return items

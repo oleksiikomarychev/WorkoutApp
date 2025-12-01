@@ -6,6 +6,8 @@ import 'package:workout_app/models/crm_coach_athlete_link.dart';
 import 'package:workout_app/services/service_locator.dart' as sl;
 import 'package:workout_app/screens/coach/coach_chat_screen.dart';
 import 'package:workout_app/config/constants/route_names.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 final coachRelationshipsStatusFilterProvider = StateProvider<String?>((ref) => null);
 
@@ -38,45 +40,50 @@ class CoachRelationshipsScreen extends ConsumerWidget {
       orElse: () => null,
     );
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Coach ↔ Athletes'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => ref.refresh(coachRelationshipsProvider),
-          ),
-          PopupMenuButton<String?>(
-            icon: const Icon(Icons.filter_list),
-            onSelected: (value) {
-              ref.read(coachRelationshipsStatusFilterProvider.notifier).state = value;
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem<String?>(
-                value: null,
-                child: Text('All'),
+    return AssistantChatHost(
+      initialMessage:
+          'Открываю ассистента из CoachRelationshipsScreen. Используй контекст v1, чтобы понимать фильтр по статусу и приоритетные связи.',
+      contextBuilder: () => _buildCoachRelationshipsChatContext(ref),
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: 'Coach ↔ Athletes',
+            onTitleTap: openChat,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: () => ref.refresh(coachRelationshipsProvider),
               ),
-              PopupMenuItem<String?>(
-                value: 'pending',
-                child: Text('Pending'),
-              ),
-              PopupMenuItem<String?>(
-                value: 'active',
-                child: Text('Active'),
-              ),
-              PopupMenuItem<String?>(
-                value: 'paused',
-                child: Text('Paused'),
-              ),
-              PopupMenuItem<String?>(
-                value: 'ended',
-                child: Text('Ended'),
+              PopupMenuButton<String?>(
+                onSelected: (value) {
+                  ref.read(coachRelationshipsStatusFilterProvider.notifier).state = value;
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem<String?>(
+                    value: null,
+                    child: Text('All'),
+                  ),
+                  const PopupMenuItem<String?>(
+                    value: 'pending',
+                    child: Text('Pending'),
+                  ),
+                  const PopupMenuItem<String?>(
+                    value: 'active',
+                    child: Text('Active'),
+                  ),
+                  const PopupMenuItem<String?>(
+                    value: 'paused',
+                    child: Text('Paused'),
+                  ),
+                  const PopupMenuItem<String?>(
+                    value: 'ended',
+                    child: Text('Ended'),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
-      body: asyncLinks.when(
+          body: asyncLinks.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(child: Text('Error: $error')),
         data: (links) {
@@ -89,43 +96,6 @@ class CoachRelationshipsScreen extends ConsumerWidget {
             return const Center(child: Text('No relationships yet'));
           }
 
-Future<void> _sendNudge(
-  BuildContext context,
-  WidgetRef ref,
-  CoachAthleteLink link,
-  AthleteTrainingSummaryModel? summary,
-) async {
-  final channelId = link.channelId;
-  if (channelId == null || channelId.isEmpty) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Chat channel is not available')),
-      );
-    }
-    return;
-  }
-
-  final days = summary?.daysSinceLastWorkout;
-  final message = days != null && days > 0
-      ? 'Hey ${link.athleteId}, it\'s been $days day${days == 1 ? '' : 's'} since your last workout. Let\'s plan the next session!'
-      : 'Hey ${link.athleteId}, let\'s schedule our next workout soon!';
-
-  try {
-    final messaging = ref.read(sl.messagingServiceProvider);
-    await messaging.sendTextMessage(channelId: channelId, content: message);
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nudge sent')),
-      );
-    }
-  } catch (e) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to send nudge: $e')),
-      );
-    }
-  }
-}
           return RefreshIndicator(
             onRefresh: () async {
               await ref.refresh(coachRelationshipsProvider.future);
@@ -387,6 +357,115 @@ Future<void> _sendNudge(
           );
         },
       ),
+        );
+      },
     );
+  }
+}
+
+Future<void> _sendNudge(
+  BuildContext context,
+  WidgetRef ref,
+  CoachAthleteLink link,
+  AthleteTrainingSummaryModel? summary,
+) async {
+  final channelId = link.channelId;
+  if (channelId == null || channelId.isEmpty) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chat channel is not available')),
+      );
+    }
+    return;
+  }
+
+  final days = summary?.daysSinceLastWorkout;
+  final message = days != null && days > 0
+      ? 'Hey ${link.athleteId}, it\'s been $days day${days == 1 ? '' : 's'} since your last workout. Let\'s plan the next session!'
+      : 'Hey ${link.athleteId}, let\'s schedule our next workout soon!';
+
+  try {
+    final messaging = ref.read(sl.messagingServiceProvider);
+    await messaging.sendTextMessage(channelId: channelId, content: message);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nudge sent')),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send nudge: $e')),
+      );
+    }
+  }
+}
+
+Future<Map<String, dynamic>> _buildCoachRelationshipsChatContext(WidgetRef ref) async {
+  try {
+    final links = await ref.read(coachRelationshipsProvider.future);
+    Map<String, AthleteTrainingSummaryModel>? analyticsMap;
+    try {
+      analyticsMap = await ref.read(coachRelationshipsAnalyticsProvider.future);
+    } catch (_) {}
+
+    final filter = ref.read(coachRelationshipsStatusFilterProvider);
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+
+    final byStatus = <String, int>{};
+    for (final link in links) {
+      final key = link.status.toLowerCase();
+      byStatus[key] = (byStatus[key] ?? 0) + 1;
+    }
+
+    final highlighted = links
+        .where((l) => filter == null || l.status.toLowerCase() == filter)
+        .take(3)
+        .map((link) {
+      final summary = analyticsMap?[link.athleteId];
+      return {
+        'relationship_id': link.id,
+        'athlete_id': link.athleteId,
+        'status': link.status,
+        'channel_id': link.channelId,
+        'note': link.note,
+        'summary': summary == null
+            ? null
+            : {
+                'sessions_12w': summary.sessionsCount,
+                'sessions_per_week': summary.sessionsPerWeek,
+                'plan_adherence': summary.planAdherence,
+                'days_since_last_workout': summary.daysSinceLastWorkout,
+                'active_plan_name': summary.activePlanName,
+              },
+      };
+    }).toList();
+
+    return {
+      'v': 1,
+      'app': 'WorkoutApp',
+      'screen': 'coach_relationships',
+      'role': 'coach',
+      'timestamp': nowIso,
+      'entities': {
+        'relationships_summary': {
+          'total': links.length,
+          'by_status': byStatus,
+        },
+        'highlighted_relationships': highlighted,
+      },
+      'selection': {
+        'status_filter': filter,
+      },
+    };
+  } catch (e) {
+    return {
+      'v': 1,
+      'app': 'WorkoutApp',
+      'screen': 'coach_relationships',
+      'role': 'coach',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'error': e.toString(),
+    };
   }
 }

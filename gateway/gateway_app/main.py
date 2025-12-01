@@ -718,6 +718,7 @@ plans_mesocycles_router = APIRouter(prefix="/api/v1/plans/mesocycles")
 plans_templates_router = APIRouter(prefix="/api/v1/plans/mesocycle-templates")
 analytics_router = APIRouter(prefix="/api/v1")
 crm_router = APIRouter(prefix="/api/v1/crm")
+agent_router = APIRouter(prefix="/api/v1/agent")
 
 
 def _date_key_from_iso(iso_str: str) -> str:
@@ -1018,24 +1019,6 @@ async def get_profile_aggregates(
     if inm and inm == etag:
         return Response(status_code=304)
     return JSONResponse(content=content, headers={"ETag": etag})
-
-
-# Agent-service proxies
-@app.post("/api/v1/agent/plan-mass-edit")
-async def agent_plan_mass_edit(request: Request) -> Response:
-    """Proxy LLM-driven plan mass edit to agent-service.
-
-    Gateway path:   /api/v1/agent/plan-mass-edit
-    Upstream path:  {AGENT_SERVICE_URL}/agent/plan-mass-edit
-    """
-
-    headers = _forward_headers(request)
-    user = getattr(request.state, "user", None)
-    if isinstance(user, dict) and user.get("uid"):
-        # agent-service relies on this header in some endpoints
-        headers["X-User-Id"] = str(user["uid"])
-    target_url = f"{AGENT_SERVICE_URL}/agent/plan-mass-edit"
-    return await _proxy_request(request, target_url, headers)
 
 
 # Avatars proxy to agent-service
@@ -1697,6 +1680,22 @@ async def get_schedule_task_status_proxy(task_id: str, request: Request) -> Resp
     return await _proxy_request(request, target_url, headers)
 
 
+@workouts_router.post("/applied-plans/{applied_plan_id}/mass-edit-sets")
+async def applied_plan_mass_edit_sets_proxy(applied_plan_id: int, request: Request) -> Response:
+    """Proxy sync applied-plan mass edit to workouts-service."""
+    headers = _forward_headers(request)
+    target_url = f"{WORKOUTS_SERVICE_URL}/workouts/applied-plans/{applied_plan_id}/mass-edit-sets"
+    return await _proxy_request(request, target_url, headers)
+
+
+@workouts_router.post("/applied-plans/{applied_plan_id}/mass-edit-sets-async")
+async def applied_plan_mass_edit_sets_async_proxy(applied_plan_id: int, request: Request) -> Response:
+    """Proxy async applied-plan mass edit (Celery) to workouts-service."""
+    headers = _forward_headers(request)
+    target_url = f"{WORKOUTS_SERVICE_URL}/workouts/applied-plans/{applied_plan_id}/mass-edit-sets-async"
+    return await _proxy_request(request, target_url, headers)
+
+
 @analytics_router.get("/profile/me")
 async def proxy_profile_me(request: Request) -> Response:
     headers = _forward_headers(request)
@@ -1775,6 +1774,22 @@ async def proxy_crm_analytics(path: str = "", request: Request = None) -> Respon
         raise HTTPException(status_code=500, detail="Request context missing")
     headers = _forward_headers(request)
     target_url = f"{CRM_SERVICE_URL}/crm/analytics{path}"
+    return await _proxy_request(request, target_url, headers)
+
+
+@agent_router.post("/applied-plan-mass-edit")
+async def proxy_agent_applied_plan_mass_edit(request: Request) -> Response:
+    """Proxy /agent/applied-plan-mass-edit to agent-service.
+
+    Gateway path: /api/v1/agent/applied-plan-mass-edit
+    Upstream:     {AGENT_SERVICE_URL}/agent/applied-plan-mass-edit
+    """
+
+    if AGENT_SERVICE_URL is None:
+        raise HTTPException(status_code=503, detail="Agent service URL is not configured")
+
+    headers = _forward_headers(request)
+    target_url = f"{AGENT_SERVICE_URL}/agent/applied-plan-mass-edit"
     return await _proxy_request(request, target_url, headers)
 
 

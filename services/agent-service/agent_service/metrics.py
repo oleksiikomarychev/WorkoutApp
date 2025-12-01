@@ -25,3 +25,8 @@ AVATARS_APPLIED_TOTAL = Counter(
     "avatars_applied_total",
     "Number of avatar apply operations",
 )
+
+PLAN_ANALYSIS_REQUESTED_TOTAL = Counter(
+    "plan_analysis_requested_total",
+    "Number of AI plan analysis requests",
+)

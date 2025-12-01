@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import 'package:workout_app/services/analytics_service.dart';
 import 'package:workout_app/services/plan_service.dart';
 import 'package:workout_app/services/service_locator.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 class AnalyticsScreen extends ConsumerStatefulWidget {
   const AnalyticsScreen({super.key});
@@ -68,6 +70,25 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
     }
   }
 
+  Future<Map<String, dynamic>> _buildChatContext() async {
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    return <String, dynamic>{
+      'v': 1,
+      'app': 'WorkoutApp',
+      'screen': 'analytics',
+      'role': 'athlete',
+      'timestamp': nowIso,
+      'entities': <String, dynamic>{
+        'active_plan': _planId != null
+            ? {
+                'id': _planId,
+                'name': _planName,
+              }
+            : null,
+      },
+    };
+  }
+
   Future<void> _fetch() async {
     if (_metricX == null || _metricY == null) {
       setState(() => _error = 'Выберите две метрики');
@@ -108,11 +129,15 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   Widget build(BuildContext context) {
     final df = DateFormat('dd.MM.yyyy');
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Аналитика плана ${_planName ?? ''}'.trim()),
-      ),
-      body: _loadingPlan
+    return AssistantChatHost(
+      contextBuilder: _buildChatContext,
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: 'Аналитика плана ${_planName ?? ''}'.trim(),
+            onTitleTap: openChat,
+          ),
+          body: _loadingPlan
           ? const Center(child: CircularProgressIndicator())
           : Padding(
               padding: const EdgeInsets.all(12.0),
@@ -168,6 +193,8 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                 ],
               ),
             ),
+        );
+      },
     );
   }
 

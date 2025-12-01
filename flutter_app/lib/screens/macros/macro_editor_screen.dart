@@ -9,6 +9,8 @@ import 'package:workout_app/screens/macros/widgets/condition_builder.dart';
 import 'package:workout_app/screens/macros/widgets/action_builder.dart';
 import 'package:workout_app/screens/macros/widgets/duration_selector.dart';
 import 'package:workout_app/screens/macros/widgets/macro_human_preview.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 class MacroEditorScreen extends ConsumerStatefulWidget {
   final PlanMacro initial;
@@ -132,18 +134,21 @@ class _MacroEditorScreenState extends ConsumerState<MacroEditorScreen> {
     final actionType = (_action['type'] ?? '').toString();
     final showDuration = actionType != 'Inject_Mesocycle';
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.initial.id == null ? 'Создать макрос' : 'Редактировать макрос'),
-        actions: [
-          IconButton(
-            onPressed: _save,
-            icon: const Icon(Icons.save),
-            tooltip: 'Сохранить',
-          )
-        ],
-      ),
-      body: Form(
+    return AssistantChatHost(
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: widget.initial.id == null ? 'Создать макрос' : 'Редактировать макрос',
+            onTitleTap: openChat,
+            actions: [
+              IconButton(
+                onPressed: _save,
+                icon: const Icon(Icons.save),
+                tooltip: 'Сохранить',
+              )
+            ],
+          ),
+          body: Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -280,6 +285,8 @@ class _MacroEditorScreenState extends ConsumerState<MacroEditorScreen> {
           ],
         ),
       ),
+    );
+      },
     );
   }
 }

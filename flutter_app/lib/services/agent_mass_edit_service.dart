@@ -1,52 +1,53 @@
 import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/services/api_client.dart';
 import 'package:workout_app/services/base_api_service.dart';
+import 'package:workout_app/services/logger_service.dart';
 
-class AgentPlanMassEditResponse {
-  final Map<String, dynamic> plan;
-  final Map<String, dynamic> massEditCommand;
+class AgentAppliedPlanMassEditService extends BaseApiService {
+  AgentAppliedPlanMassEditService(ApiClient apiClient) : super(apiClient);
 
-  AgentPlanMassEditResponse({
-    required this.plan,
-    required this.massEditCommand,
-  });
+  final LoggerService _logger = LoggerService('AgentAppliedPlanMassEditService');
 
-  factory AgentPlanMassEditResponse.fromJson(Map<String, dynamic> json) {
-    return AgentPlanMassEditResponse(
-      plan: Map<String, dynamic>.from(json['plan'] as Map),
-      massEditCommand:
-          Map<String, dynamic>.from(json['mass_edit_command'] as Map),
-    );
-  }
-}
-
-class AgentMassEditService extends BaseApiService {
-  AgentMassEditService(ApiClient apiClient) : super(apiClient);
-
-  Future<AgentPlanMassEditResponse> planMassEdit({
-    required int planId,
+  /// Starts an applied-plan mass edit job via agent-service and returns Celery task id.
+  Future<String> startAppliedPlanMassEdit({
+    required int appliedPlanId,
     required String prompt,
-    String mode = 'preview',
+    String mode = 'apply',
   }) async {
-    final payload = <String, dynamic>{
-      'plan_id': planId,
-      'prompt': prompt,
-      'mode': mode,
-    };
+    try {
+      final payload = <String, dynamic>{
+        'applied_plan_id': appliedPlanId,
+        'mode': mode,
+        'prompt': prompt,
+      };
 
-    final json = await apiClient.post(
-      ApiConfig.agentPlanMassEditEndpoint,
-      payload,
-      context: 'AgentMassEditService.planMassEdit',
-    );
+      final json = await apiClient.post(
+        ApiConfig.agentAppliedPlanMassEditEndpoint,
+        payload,
+        context: 'AgentAppliedPlanMassEditService.startAppliedPlanMassEdit',
+      );
 
-    if (json is Map<String, dynamic>) {
-      return AgentPlanMassEditResponse.fromJson(json);
+      if (json is Map<String, dynamic>) {
+        final taskId = json['task_id'];
+        if (taskId is String && taskId.isNotEmpty) {
+          return taskId;
+        }
+        throw ApiException(
+          'Missing task_id in agent applied mass edit response',
+          statusCode: 0,
+          rawResponse: json.toString(),
+        );
+      }
+
+      throw ApiException(
+        'Invalid response from agent applied mass edit endpoint',
+        statusCode: 0,
+        rawResponse: json.toString(),
+      );
+    } catch (e, st) {
+      _logger.e('Failed to start applied plan mass edit: $e', e, st);
+      rethrow;
     }
-    throw ApiException(
-      'Invalid response from agent mass edit endpoint',
-      statusCode: 0,
-      rawResponse: json.toString(),
-    );
   }
 }
+

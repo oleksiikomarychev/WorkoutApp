@@ -4,6 +4,8 @@ import 'package:workout_app/models/crm_coach_athlete_link.dart';
 import 'package:workout_app/services/service_locator.dart' as sl;
 import 'package:workout_app/config/constants/route_names.dart';
 import 'package:workout_app/screens/coach/coach_chat_screen.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 final myCoachesProvider = FutureProvider<List<CoachAthleteLink>>((ref) async {
   final svc = ref.watch(sl.crmRelationshipsServiceProvider);
@@ -30,17 +32,20 @@ class MyCoachesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final asyncLinks = ref.watch(myCoachesProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Coaches'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => ref.refresh(myCoachesProvider),
+    return AssistantChatHost(
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: 'My Coaches',
+            onTitleTap: openChat,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: () => ref.refresh(myCoachesProvider),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: asyncLinks.when(
+          body: asyncLinks.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(child: Text('Error: $error')),
         data: (links) {
@@ -96,6 +101,8 @@ class MyCoachesScreen extends ConsumerWidget {
           );
         },
       ),
+        );
+      },
     );
   }
 }

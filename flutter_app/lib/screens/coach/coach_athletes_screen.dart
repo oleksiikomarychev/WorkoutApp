@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/models/crm_analytics.dart';
 import 'package:workout_app/services/service_locator.dart' as sl;
 import 'package:workout_app/screens/coach_athlete_plan_screen.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 final coachAthletesAnalyticsProvider = FutureProvider<CoachAthletesAnalyticsModel>((ref) async {
   final svc = ref.watch(sl.crmAnalyticsServiceProvider);
@@ -40,11 +42,17 @@ class CoachAthletesScreen extends ConsumerWidget {
     final minAdherence = ref.watch(minPlanAdherenceProvider);
     final sortOption = ref.watch(sortOptionProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Athletes'),
-      ),
-      body: asyncData.when(
+    return AssistantChatHost(
+      initialMessage:
+          'Открываю ассистента из CoachAthletesScreen. Используй переданный контекст v1, чтобы понимать выбранные фильтры и приоритетных атлетов.',
+      contextBuilder: () => _buildCoachAthletesChatContext(ref),
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: 'My Athletes',
+            onTitleTap: openChat,
+          ),
+          body: asyncData.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(child: Text('Error: $error')),
         data: (analytics) {
@@ -91,6 +99,8 @@ class CoachAthletesScreen extends ConsumerWidget {
           );
         },
       ),
+        );
+      },
     );
   }
 }
@@ -395,5 +405,85 @@ class _RpeMiniChart extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+Future<Map<String, dynamic>> _buildCoachAthletesChatContext(WidgetRef ref) async {
+  try {
+    final analytics = await ref.read(coachAthletesAnalyticsProvider.future);
+    final segmentFilter = ref.read(segmentFilterProvider);
+    final minSessions = ref.read(minSessionsPerWeekProvider);
+    final minAdherence = ref.read(minPlanAdherenceProvider);
+    final sortOption = ref.read(sortOptionProvider);
+
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final segmentCounts = <String, int>{};
+    for (final athlete in analytics.athletes) {
+      final key = (athlete.segment ?? 'unknown').toLowerCase();
+      segmentCounts[key] = (segmentCounts[key] ?? 0) + 1;
+    }
+
+    List<AthleteTrainingSummaryModel> filtered = analytics.athletes.where((a) {
+      final segOk = segmentFilter == null || a.segment == segmentFilter;
+      final sessOk = (a.sessionsPerWeek ?? 0) >= minSessions;
+      final adhOk = (a.planAdherence ?? 0) >= minAdherence;
+      return segOk && sessOk && adhOk;
+    }).toList();
+
+    filtered.sort((a, b) {
+      switch (sortOption) {
+        case _CoachAthleteSort.sessionsPerWeek:
+          return (b.sessionsPerWeek ?? -1).compareTo(a.sessionsPerWeek ?? -1);
+        case _CoachAthleteSort.planAdherence:
+          return (b.planAdherence ?? -1).compareTo(a.planAdherence ?? -1);
+        case _CoachAthleteSort.recentlyActive:
+        default:
+          final aDays = a.daysSinceLastWorkout ?? 9999;
+          final bDays = b.daysSinceLastWorkout ?? 9999;
+          return aDays.compareTo(bDays);
+      }
+    });
+
+    final topAthletes = filtered.take(3).map((athlete) {
+      return {
+        'athlete_id': athlete.athleteId,
+        'segment': athlete.segment,
+        'sessions_per_week': athlete.sessionsPerWeek,
+        'plan_adherence': athlete.planAdherence,
+        'days_since_last_workout': athlete.daysSinceLastWorkout,
+        'active_plan_name': athlete.activePlanName,
+      };
+    }).toList();
+
+    return {
+      'v': 1,
+      'app': 'WorkoutApp',
+      'screen': 'coach_athletes',
+      'role': 'coach',
+      'timestamp': nowIso,
+      'entities': {
+        'summary': {
+          'total_athletes': analytics.totalAthletes,
+          'active_links': analytics.activeLinks,
+          'segment_counts': segmentCounts,
+        },
+        'top_filtered_athletes': topAthletes,
+      },
+      'selection': {
+        'segment_filter': segmentFilter,
+        'min_sessions_per_week': minSessions,
+        'min_plan_adherence': minAdherence,
+        'sort': sortOption.name,
+      },
+    };
+  } catch (e) {
+    return {
+      'v': 1,
+      'app': 'WorkoutApp',
+      'screen': 'coach_athletes',
+      'role': 'coach',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'error': e.toString(),
+    };
   }
 }

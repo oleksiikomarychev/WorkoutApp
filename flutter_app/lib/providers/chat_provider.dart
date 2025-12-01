@@ -12,6 +12,8 @@ class ChatState {
     required this.isTyping,
     required this.sessionId,
     required this.errorMessage,
+    required this.lastMassEditResult,
+    required this.contextPayload,
   });
 
   factory ChatState.initial() => const ChatState(
@@ -20,6 +22,8 @@ class ChatState {
         isTyping: false,
         sessionId: null,
         errorMessage: null,
+        lastMassEditResult: null,
+        contextPayload: null,
       );
 
   static const Object _noValue = Object();
@@ -29,6 +33,8 @@ class ChatState {
   final bool isTyping;
   final String? sessionId;
   final String? errorMessage;
+  final Map<String, dynamic>? lastMassEditResult;
+  final Map<String, dynamic>? contextPayload;
 
   ChatState copyWith({
     List<ChatMessage>? messages,
@@ -36,6 +42,8 @@ class ChatState {
     bool? isTyping,
     Object? sessionId = _noValue,
     Object? errorMessage = _noValue,
+    Object? lastMassEditResult = _noValue,
+    Object? contextPayload = _noValue,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -46,6 +54,12 @@ class ChatState {
       errorMessage: identical(errorMessage, _noValue)
           ? this.errorMessage
           : errorMessage as String?,
+      lastMassEditResult: identical(lastMassEditResult, _noValue)
+          ? this.lastMassEditResult
+          : lastMassEditResult as Map<String, dynamic>?,
+      contextPayload: identical(contextPayload, _noValue)
+          ? this.contextPayload
+          : contextPayload as Map<String, dynamic>?,
     );
   }
 }
@@ -80,6 +94,12 @@ class ChatController extends StateNotifier<ChatState> {
   Future<void> sendMessage(String content) async {
     if (content.trim().isEmpty) return;
     await _service.sendMessage(content.trim());
+  }
+
+  /// Sends structured context to the backend for auto-substitution of plan IDs, etc.
+  Future<void> sendContext(Map<String, dynamic> context) async {
+    state = state.copyWith(contextPayload: context);
+    await _service.sendContext(context);
   }
 
   Future<void> retry() async {
@@ -118,7 +138,29 @@ class ChatController extends StateNotifier<ChatState> {
         state = state.copyWith(errorMessage: message, isTyping: false);
       case TypingEvent(:final isTyping):
         state = state.copyWith(isTyping: isTyping);
+      case MassEditResultEvent(:final payload):
+        state = state.copyWith(
+          lastMassEditResult: payload,
+          errorMessage: null,
+        );
     }
+  }
+
+  void clearMassEditResult() {
+    state = state.copyWith(lastMassEditResult: null);
+  }
+
+  /// Applies a previously previewed mass edit command (for an applied plan)
+  /// by sending a structured "mass_edit_apply" request over WebSocket.
+  ///
+  /// The payload is expected to be the raw mass_edit_result event body
+  /// received from the backend (and stored in ChatState.lastMassEditResult).
+  Future<void> applyMassEditFromPreview(Map<String, dynamic> payload) async {
+    await _service.sendMassEditApply(payload);
+  }
+
+  Future<void> applyScheduleShiftFromPreview(Map<String, dynamic> payload) async {
+    await _service.sendScheduleShiftApply(payload);
   }
 
   void _handleConnectionState(ChatConnectionState value) {

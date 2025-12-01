@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import 'package:workout_app/models/workout_session.dart';
 import 'package:workout_app/providers/providers.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 class WorkoutSessionHistoryScreen extends ConsumerStatefulWidget {
   final int workoutId;
@@ -82,18 +84,21 @@ class _WorkoutSessionHistoryScreenState extends ConsumerState<WorkoutSessionHist
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Session History'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _isLoading ? null : _load,
+    return AssistantChatHost(
+      builder: (context, openChat) {
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: PrimaryAppBar(
+            title: 'Session History',
+            onTitleTap: openChat,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: _isLoading ? null : _load,
+              ),
+            ],
           ),
-        ],
-      ),
-      body: _isLoading
+          body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
@@ -103,6 +108,8 @@ class _WorkoutSessionHistoryScreenState extends ConsumerState<WorkoutSessionHist
                       itemCount: _sessions.length,
                       itemBuilder: (_, i) => _tile(_sessions[i]),
                     ),
+        );
+      },
     );
   }
 }

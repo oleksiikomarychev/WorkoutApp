@@ -9,6 +9,8 @@ import 'package:workout_app/models/microcycle.dart';
 import 'package:workout_app/screens/exercise_selection_screen.dart';
 import 'package:workout_app/services/api_client.dart';
 import 'package:workout_app/config/api_config.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 import '../services/rpe_service.dart';
 
 class ExerciseWithSets {
@@ -326,19 +328,22 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create Calendar Plan'),
-        actions: [
-          TextButton(
-            onPressed: _isSaving ? null : _savePlan,
-            child: _isSaving
-                ? const CircularProgressIndicator()
-                : const Text('Save', style: TextStyle(color: Colors.white)),
+    return AssistantChatHost(
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: 'Create Calendar Plan',
+            onTitleTap: openChat,
+            actions: [
+              TextButton(
+                onPressed: _isSaving ? null : _savePlan,
+                child: _isSaving
+                    ? const CircularProgressIndicator()
+                    : const Text('Save', style: TextStyle(color: Colors.white)),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: Padding(
+          body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -373,6 +378,8 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
           ],
         ),
       ),
+    );
+      },
     );
   }
 

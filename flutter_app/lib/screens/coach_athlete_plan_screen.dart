@@ -9,6 +9,8 @@ import 'package:workout_app/models/exercise_instance.dart';
 import 'package:workout_app/providers/coach_plan_providers.dart';
 import 'package:workout_app/services/service_locator.dart';
 import 'package:workout_app/services/crm_coach_mass_edit_service.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 
 class CoachAthletePlanScreen extends ConsumerStatefulWidget {
   final String athleteId;
@@ -30,58 +32,60 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
     final workoutsAsync = ref.watch(coachActivePlanWorkoutsProvider(widget.athleteId));
     final eventsByDay = ref.watch(coachWorkoutsByDayProvider(widget.athleteId));
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.athleteName ?? 'Athlete ${widget.athleteId}'),
-        actions: [
-          PopupMenuButton<String>(
-            tooltip: 'Массовые правки плана атлета',
-            onSelected: (value) async {
-              if (value == 'mass_edit') {
-                await _openCoachMassEditDialog();
-              } else if (value == 'ai_mass_edit') {
-                await _openCoachAiMassEditDialog(context);
-              }
-            },
-            itemBuilder: (ctx) => [
-              const PopupMenuItem(
-                value: 'mass_edit',
-                child: Text('Mass edit (notes/day)'),
-              ),
-              const PopupMenuItem(
-                value: 'ai_mass_edit',
-                child: Text('AI mass edit плана'),
+    return AssistantChatHost(
+      initialMessage:
+          'Открываю ассистента из CoachAthletePlanScreen. Используй контекст v1, чтобы понимать текущего атлета, его активный план и выбранный день.',
+      contextBuilder: _buildChatContext,
+      builder: (context, openChat) {
+        return Scaffold(
+          appBar: PrimaryAppBar(
+            title: widget.athleteName ?? 'Athlete ${widget.athleteId}',
+            onTitleTap: openChat,
+            actions: [
+              PopupMenuButton<String>(
+                tooltip: 'Массовые правки плана атлета',
+                onSelected: (value) async {
+                  if (value == 'mass_edit') {
+                    await _openCoachMassEditDialog();
+                  }
+                },
+                itemBuilder: (ctx) => const [
+                  PopupMenuItem(
+                    value: 'mass_edit',
+                    child: Text('Mass edit (notes/day)'),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
-      body: planAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('Failed to load plan: $err')),
-        data: (plan) {
-          if (plan == null) {
-            return const Center(child: Text('У атлета нет активного плана'));
-          }
-          return RefreshIndicator(
-            onRefresh: () async {
-              ref.invalidate(coachActivePlanProvider(widget.athleteId));
-              ref.invalidate(coachActivePlanWorkoutsProvider(widget.athleteId));
-              await Future.delayed(const Duration(milliseconds: 200));
+          body: planAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, _) => Center(child: Text('Failed to load plan: $err')),
+            data: (plan) {
+              if (plan == null) {
+                return const Center(child: Text('У атлета нет активного плана'));
+              }
+              return RefreshIndicator(
+                onRefresh: () async {
+                  ref.invalidate(coachActivePlanProvider(widget.athleteId));
+                  ref.invalidate(coachActivePlanWorkoutsProvider(widget.athleteId));
+                  await Future.delayed(const Duration(milliseconds: 200));
+                },
+                child: ListView(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  children: [
+                    _buildPlanSummary(plan),
+                    const SizedBox(height: 12),
+                    _buildCalendar(eventsByDay),
+                    const SizedBox(height: 12),
+                    _buildWorkoutsSection(workoutsAsync, eventsByDay),
+                  ],
+                ),
+              );
             },
-            child: ListView(
-              padding: const EdgeInsets.only(bottom: 24),
-              children: [
-                _buildPlanSummary(plan),
-                const SizedBox(height: 12),
-                _buildCalendar(eventsByDay),
-                const SizedBox(height: 12),
-                _buildWorkoutsSection(workoutsAsync, eventsByDay),
-              ],
-            ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -155,6 +159,65 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
         ),
       ),
     );
+  }
+
+  Future<Map<String, dynamic>> _buildChatContext() async {
+    try {
+      final plan = await ref.read(coachActivePlanProvider(widget.athleteId).future);
+      final nowIso = DateTime.now().toUtc().toIso8601String();
+      final selectionDate = _selectedDay.toIso8601String().split('T').first;
+
+      final base = <String, dynamic>{
+        'v': 1,
+        'app': 'WorkoutApp',
+        'screen': 'coach_athlete_plan',
+        'role': 'coach',
+        'timestamp': nowIso,
+        'default_mass_edit_target': 'applied',
+        'entities': <String, dynamic>{},
+        'selection': <String, dynamic>{
+          'athlete_id': widget.athleteId,
+          'athlete_name': widget.athleteName,
+          'date': selectionDate,
+        },
+      };
+
+      final entities = base['entities'] as Map<String, dynamic>;
+      if (plan != null) {
+        entities['active_applied_plan'] = {
+          'id': plan.id,
+          'calendar_plan_id': plan.calendarPlanId,
+          'name': plan.calendarPlan.name,
+          'status': plan.status ?? 'active',
+          'start_date': plan.startDate?.toIso8601String(),
+          'end_date': plan.endDate.toIso8601String(),
+          'adherence_pct': plan.adherencePct,
+          'planned_sessions_total': plan.plannedSessionsTotal,
+          'actual_sessions_completed': plan.actualSessionsCompleted,
+        };
+
+        entities['calendar_plan'] = {
+          'id': plan.calendarPlan.id,
+          'name': plan.calendarPlan.name,
+          'primary_goal': plan.calendarPlan.primaryGoal,
+          'intended_experience_level':
+              plan.calendarPlan.intendedExperienceLevel,
+          'intended_frequency_per_week':
+              plan.calendarPlan.intendedFrequencyPerWeek,
+        };
+      }
+
+      return base;
+    } catch (e) {
+      return <String, dynamic>{
+        'v': 1,
+        'app': 'WorkoutApp',
+        'screen': 'coach_athlete_plan',
+        'role': 'coach',
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+        'error': e.toString(),
+      };
+    }
   }
 
   Widget _buildCalendar(Map<DateTime, List<Workout>> eventsByDay) {
@@ -643,150 +706,6 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Ошибка mass edit: $e')),
         );
-      }
-    }
-  }
-
-  Future<void> _openCoachAiMassEditDialog(BuildContext context) async {
-    final plan = await ref.read(coachActivePlanProvider(widget.athleteId).future);
-    if (plan == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('У атлета нет активного плана')),
-        );
-      }
-      return;
-    }
-
-    final promptController = TextEditingController();
-    bool isLoading = false;
-    String? summary;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setState) {
-            return AlertDialog(
-              title: const Text('AI mass edit плана атлета'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Опишите, что нужно изменить в плане этого атлета.'),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: promptController,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      hintText:
-                          'Например: снизь объём ног на 20% и увеличь интенсивность жимов на 5%',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (isLoading) ...[
-                    const Center(child: CircularProgressIndicator()),
-                  ] else if (summary != null) ...[
-                    const Text('Предлагаемые изменения:',
-                        style: TextStyle(fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 4),
-                    Text(summary!),
-                  ],
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(false),
-                  child: const Text('Отмена'),
-                ),
-                TextButton(
-                  onPressed: isLoading
-                      ? null
-                      : () async {
-                          final text = promptController.text.trim();
-                          if (text.isEmpty) return;
-                          setState(() {
-                            isLoading = true;
-                            summary = null;
-                          });
-
-                          try {
-                            final svc = ref.read(crmCoachMassEditServiceProvider);
-                            final resp = await svc.aiMassEditPlan(
-                              athleteId: widget.athleteId,
-                              prompt: text,
-                              mode: 'preview',
-                            );
-
-                            final cmd = resp.massEditCommand;
-                            final operation = cmd['operation'];
-                            final filter = cmd['filter'] as Map<String, dynamic>?;
-                            final actions = cmd['actions'] as Map<String, dynamic>?;
-
-                            final parts = <String>[];
-                            if (operation != null) {
-                              parts.add('operation: $operation');
-                            }
-                            if (filter != null && filter.isNotEmpty) {
-                              parts.add('filter: ${filter.keys.join(', ')}');
-                            }
-                            if (actions != null && actions.isNotEmpty) {
-                              parts.add('actions: ${actions.keys.join(', ')}');
-                            }
-
-                            setState(() {
-                              summary = parts.isEmpty
-                                  ? 'Команда сформирована, но не удалось построить краткое описание.'
-                                  : parts.join(' · ');
-                              isLoading = false;
-                            });
-                          } catch (e) {
-                            setState(() {
-                              isLoading = false;
-                              summary = 'Ошибка: $e';
-                            });
-                          }
-                        },
-                  child: const Text('Сгенерировать'),
-                ),
-                FilledButton(
-                  onPressed: (isLoading || summary == null)
-                      ? null
-                      : () => Navigator.of(ctx).pop(true),
-                  child: const Text('Применить'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (confirmed == true) {
-      try {
-        final svc = ref.read(crmCoachMassEditServiceProvider);
-        await svc.aiMassEditPlan(
-          athleteId: widget.athleteId,
-          prompt: promptController.text.trim(),
-          mode: 'apply',
-        );
-
-        ref.invalidate(coachActivePlanProvider(widget.athleteId));
-        ref.invalidate(coachActivePlanWorkoutsProvider(widget.athleteId));
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('AI mass edit применён к плану атлета')),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Ошибка применения AI mass edit: $e')),
-          );
-        }
       }
     }
   }

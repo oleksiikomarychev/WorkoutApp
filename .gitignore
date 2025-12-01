@@ -33,3 +33,5 @@ flutter_app/.metadata
 .gitignore
 # Ignore Firebase service account
 Workout App Auth Firebase Service Account.json
+#services/agent-service/agent_service/prompts
+services/calendar_plans.json
