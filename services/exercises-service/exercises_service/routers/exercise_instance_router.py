@@ -60,6 +60,18 @@ async def update_exercise_instance(
     return schemas.ExerciseInstanceResponse.model_validate(updated)
 
 
+@router.patch("/{instance_id}", response_model=schemas.ExerciseInstanceResponse)
+async def patch_exercise_instance(
+    instance_id: int,
+    instance_update: schemas.ExerciseInstanceCoachUpdate,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    service = ExerciseInstanceService(db, SetService(), user_id)
+    updated = await service.update_instance(instance_id, instance_update)
+    return schemas.ExerciseInstanceResponse.model_validate(updated)
+
+
 @router.put("/{instance_id}/sets/{set_id}", response_model=schemas.ExerciseInstanceResponse)
 async def update_exercise_set(
     instance_id: int,

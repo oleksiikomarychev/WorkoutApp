@@ -46,7 +46,7 @@ async def _fetch_sessions_for_athlete(athlete_id: str, weeks: int) -> List[dict]
 
 async def _fetch_active_plan_for_athlete(athlete_id: str) -> tuple[int | None, str | None]:
     base_url = settings.plans_service_url.rstrip("/")
-    url = f"{base_url}/applied-plans/active"
+    url = f"{base_url}/plans/applied-plans/active"
     headers = {"X-User-Id": athlete_id}
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(url, headers=headers, follow_redirects=True)
@@ -163,6 +163,44 @@ def _aggregate_plan_metrics(
         rpe_distribution = None
 
     return avg_intensity, avg_effort, rpe_distribution, total_volume
+
+
+def _aggregate_muscle_metrics_from_actual(
+    plan_items: list[dict],
+) -> tuple[dict[str, float] | None, dict[str, float] | None]:
+    """Aggregate actual volume by muscle group and individual muscles.
+
+    Expects workouts-service to encode per-workout actual metrics with keys:
+    - "muscle_group:<group>" -> volume
+    - "muscle:<muscle_key>"  -> volume
+    """
+
+    group_totals: dict[str, float] = {}
+    muscle_totals: dict[str, float] = {}
+
+    for it in plan_items:
+        actual = it.get("actual_metrics")
+        if not isinstance(actual, dict):
+            continue
+
+        for key, value in actual.items():
+            try:
+                v = float(value)
+            except Exception:
+                continue
+
+            if key.startswith("muscle_group:"):
+                mg = key.split(":", 1)[1]
+                if not mg:
+                    continue
+                group_totals[mg] = group_totals.get(mg, 0.0) + v
+            elif key.startswith("muscle:"):
+                m = key.split(":", 1)[1]
+                if not m:
+                    continue
+                muscle_totals[m] = muscle_totals.get(m, 0.0) + v
+
+    return (group_totals or None, muscle_totals or None)
 
 
 def _classify_athlete_segment(
@@ -421,6 +459,8 @@ async def get_athlete_detailed_analytics(
     avg_effort: float | None = None
     rpe_distribution: dict[str, float] | None = None
     plan_adherence: float | None = None
+    muscle_volume_by_group: dict[str, float] | None = None
+    muscle_volume_by_muscle: dict[str, float] | None = None
 
     if plan_id is not None:
         plan_items = await _fetch_plan_items_for_athlete(
@@ -430,6 +470,7 @@ async def get_athlete_detailed_analytics(
             now=generated_at,
         )
         avg_intensity, avg_effort, rpe_distribution, total_volume = _aggregate_plan_metrics(plan_items)
+        muscle_volume_by_group, muscle_volume_by_muscle = _aggregate_muscle_metrics_from_actual(plan_items)
 
         planned_workout_ids = {int(it.get("workout_id")) for it in plan_items if it.get("workout_id") is not None}
         finished_workout_ids: set[int] = set()
@@ -510,4 +551,6 @@ async def get_athlete_detailed_analytics(
         avg_intensity=avg_intensity,
         avg_effort=avg_effort,
         rpe_distribution=rpe_distribution,
+        muscle_volume_by_group=muscle_volume_by_group,
+        muscle_volume_by_muscle=muscle_volume_by_muscle,
     )

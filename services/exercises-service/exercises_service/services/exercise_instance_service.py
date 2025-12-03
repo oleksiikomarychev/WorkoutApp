@@ -38,6 +38,28 @@ class ExerciseInstanceService:
             normalized_sets = self.set_service.normalize_sets_for_frontend(instance.get("sets", []))
             return {**instance, "sets": normalized_sets}
 
+        exercise_def_payload: dict | None = None
+        # Avoid triggering lazy-loads in async context: only read relationship
+        # if it has already been loaded on the instance.
+        try:
+            raw_rel = None
+            if hasattr(instance, "__dict__") and "exercise_definition" in instance.__dict__:
+                raw_rel = instance.__dict__["exercise_definition"]
+            if raw_rel is not None:
+                exercise_def_payload = {
+                    "id": raw_rel.id,
+                    "name": raw_rel.name,
+                    "muscle_group": raw_rel.muscle_group,
+                    "equipment": raw_rel.equipment,
+                    "target_muscles": raw_rel.target_muscles,
+                    "synergist_muscles": raw_rel.synergist_muscles,
+                    "movement_type": raw_rel.movement_type,
+                    "region": raw_rel.region,
+                }
+        except Exception:
+            # Best-effort only; if relationship is not safely accessible, skip it.
+            exercise_def_payload = None
+
         return {
             "id": instance.id,
             "exercise_list_id": instance.exercise_list_id,
@@ -47,6 +69,7 @@ class ExerciseInstanceService:
             "workout_id": instance.workout_id,
             "user_max_id": instance.user_max_id,
             "user_id": getattr(instance, "user_id", self.user_id),
+            "exercise_definition": exercise_def_payload,
         }
 
     async def _cache_instance(self, cache_key: str, payload: dict) -> None:

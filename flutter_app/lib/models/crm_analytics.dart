@@ -168,6 +168,8 @@ class AthleteDetailedAnalyticsModel {
   final double? avgIntensity;
   final double? avgEffort;
   final Map<String, double>? rpeDistribution;
+  final Map<String, double>? muscleVolumeByGroup;
+  final Map<String, double>? muscleVolumeByMuscle;
 
   AthleteDetailedAnalyticsModel({
     required this.athleteId,
@@ -185,6 +187,8 @@ class AthleteDetailedAnalyticsModel {
     required this.avgIntensity,
     required this.avgEffort,
     required this.rpeDistribution,
+    required this.muscleVolumeByGroup,
+    required this.muscleVolumeByMuscle,
   });
 
   factory AthleteDetailedAnalyticsModel.fromJson(Map<String, dynamic> json) {
@@ -213,6 +217,12 @@ class AthleteDetailedAnalyticsModel {
       avgEffort: (json['avg_effort'] as num?)?.toDouble(),
       rpeDistribution: (json['rpe_distribution'] as Map<String, dynamic>?)
           ?.map((key, value) => MapEntry(key, (value as num).toDouble())),
+      muscleVolumeByGroup:
+          (json['muscle_volume_by_group'] as Map<String, dynamic>?)
+              ?.map((key, value) => MapEntry(key, (value as num).toDouble())),
+      muscleVolumeByMuscle:
+          (json['muscle_volume_by_muscle'] as Map<String, dynamic>?)
+              ?.map((key, value) => MapEntry(key, (value as num).toDouble())),
     );
   }
 }

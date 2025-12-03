@@ -268,6 +268,7 @@ class WorkoutService:
                 "scheduled_for": workout.scheduled_for,
                 "status": workout.status,
                 "workout_type": workout.workout_type,
+                "notes": workout.notes,
             }
             workout_dicts.append(workout_dict)
 
@@ -275,6 +276,34 @@ class WorkoutService:
             cache_status = type or "all"
             await self._set_cached_workouts_list(cache_status, workout_dicts)
         return [WorkoutListResponse.model_validate(w) for w in workout_dicts]
+
+    async def _recalculate_plan_order(self, applied_plan_id: int) -> None:
+        # Fetch all workouts for the plan
+        result = await self.db.execute(
+            select(models.Workout)
+            .where(models.Workout.applied_plan_id == applied_plan_id)
+            .where(models.Workout.user_id == self.user_id)
+        )
+        workouts = result.scalars().all()
+
+        # Sort by scheduled_for.
+        # If scheduled_for is missing, put at the end (datetime.max)
+        # Use current plan_order_index as tie-breaker to maintain stability
+        def sort_key(w):
+            dt = w.scheduled_for
+            if dt is None:
+                # Use a far future date for unscheduled workouts so they go to the end
+                dt = datetime.max.replace(tzinfo=None)
+            elif dt.tzinfo is not None:
+                dt = dt.replace(tzinfo=None)
+            return dt, w.plan_order_index or 0
+
+        workouts.sort(key=sort_key)
+
+        # Update indices
+        for idx, workout in enumerate(workouts):
+            if workout.plan_order_index != idx:
+                workout.plan_order_index = idx
 
     async def update_workout(self, workout_id: int, payload: WorkoutUpdate) -> WorkoutResponse:
         # Fetch the ORM model directly (not the Pydantic response)
@@ -288,10 +317,21 @@ class WorkoutService:
         if not item:
             raise WorkoutNotFoundException(workout_id)
 
+        original_scheduled_for = item.scheduled_for
+
         # Update attributes on the ORM model
         data = payload.model_dump(exclude_unset=True)
         for k, v in data.items():
             setattr(item, k, v)
+
+        # If scheduled_for changed and this is part of a plan, reorder the plan
+        if (
+            item.applied_plan_id is not None
+            and "scheduled_for" in data
+            and data["scheduled_for"] != original_scheduled_for
+        ):
+            await self.db.flush()
+            await self._recalculate_plan_order(item.applied_plan_id)
 
         await self.db.commit()
         result = await self.db.execute(

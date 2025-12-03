@@ -1,9 +1,27 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from enum import Enum
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class EffortType(str, Enum):
+    RPE = "RPE"
+    RIR = "RIR"
+
+
+class ExerciseSet(BaseModel):
+    id: Optional[int] = Field(None, description="ID of the set within the instance")
+    weight: Optional[float] = Field(None, ge=0, description="Weight in kg")
+    volume: Optional[int] = Field(None, ge=1, description="Volume")
+    intensity: Optional[int] = Field(None, description="Intensity, % of 1RM")
+    effort_type: Optional[EffortType] = Field(None, description="Type of effort")
+    effort: Optional[int] = Field(None, description="Effort value")
+
+    class Config:
+        extra = "allow"
 
 
 class CoachWorkoutUpdate(BaseModel):
@@ -22,6 +40,16 @@ class CoachWorkoutUpdate(BaseModel):
 class CoachExerciseInstanceUpdate(BaseModel):
     notes: Optional[str] = None
     order: Optional[int] = None
+    exercise_list_id: Optional[int] = None
+    sets: Optional[List[ExerciseSet]] = None
+
+
+class CoachExerciseInstanceCreate(BaseModel):
+    exercise_list_id: int
+    sets: List[ExerciseSet] = []
+    notes: Optional[str] = None
+    order: Optional[int] = None
+    user_max_id: Optional[int] = None
 
 
 class CoachWorkoutMassEditWorkoutItem(BaseModel):

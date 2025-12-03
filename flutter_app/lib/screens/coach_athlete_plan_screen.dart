@@ -6,11 +6,15 @@ import 'package:workout_app/config/constants/theme_constants.dart';
 import 'package:workout_app/models/applied_calendar_plan.dart';
 import 'package:workout_app/models/workout.dart';
 import 'package:workout_app/models/exercise_instance.dart';
+import 'package:workout_app/models/plan_analytics.dart';
+import 'package:workout_app/models/exercise_definition.dart';
+import 'package:workout_app/models/exercise_set_dto.dart';
 import 'package:workout_app/providers/coach_plan_providers.dart';
 import 'package:workout_app/services/service_locator.dart';
 import 'package:workout_app/services/crm_coach_mass_edit_service.dart';
 import 'package:workout_app/widgets/primary_app_bar.dart';
 import 'package:workout_app/widgets/assistant_chat_host.dart';
+import 'package:workout_app/widgets/plan_analytics_chart.dart';
 
 class CoachAthletePlanScreen extends ConsumerStatefulWidget {
   final String athleteId;
@@ -26,11 +30,16 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = _dateOnly(DateTime.now());
 
+  final List<String> _metrics = const ['sets_count', 'volume_sum', 'intensity_avg', 'effort_avg'];
+  String _metricX = 'effort_avg';
+  String _metricY = 'effort_avg';
+
   @override
   Widget build(BuildContext context) {
     final planAsync = ref.watch(coachActivePlanProvider(widget.athleteId));
     final workoutsAsync = ref.watch(coachActivePlanWorkoutsProvider(widget.athleteId));
     final eventsByDay = ref.watch(coachWorkoutsByDayProvider(widget.athleteId));
+    final analyticsAsync = ref.watch(coachActivePlanAnalyticsProvider(widget.athleteId));
 
     return AssistantChatHost(
       initialMessage:
@@ -76,6 +85,8 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                   children: [
                     _buildPlanSummary(plan),
                     const SizedBox(height: 12),
+                    _buildAnalyticsSection(analyticsAsync),
+                    const SizedBox(height: 12),
                     _buildCalendar(eventsByDay),
                     const SizedBox(height: 12),
                     _buildWorkoutsSection(workoutsAsync, eventsByDay),
@@ -86,6 +97,130 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
           ),
         );
       },
+    );
+  }
+
+  Widget _buildAnalyticsSection(AsyncValue<PlanAnalyticsResponse?> analyticsAsync) {
+    return analyticsAsync.when(
+      loading: () => const SizedBox(
+        height: 240,
+        child: Center(child: CircularProgressIndicator()),
+      ),
+      error: (err, _) => SizedBox(
+        height: 240,
+        child: Center(child: Text('Не удалось загрузить аналитику плана: $err')),
+      ),
+      data: (resp) {
+        final points = _mapAnalyticsResponse(resp);
+        final totals = resp?.totals;
+        return _buildActiveAnalyticsSection(points, totals: totals);
+      },
+    );
+  }
+
+  String _metricLabel(String m) {
+    switch (m) {
+      case 'sets_count':
+        return 'Сеты';
+      case 'volume_sum':
+        return 'Повторения';
+      case 'intensity_avg':
+        return 'Интенсивность (ср.)';
+      case 'effort_avg':
+        return 'Усилие (RPE ср.)';
+      default:
+        return m;
+    }
+  }
+
+  List<PlanAnalyticsPoint> _mapAnalyticsResponse(PlanAnalyticsResponse? resp) {
+    if (resp == null) return const [];
+    final items = List.of(resp.items);
+    items.sort((a, b) {
+      final ao = a.orderIndex ?? 1 << 30;
+      final bo = b.orderIndex ?? 1 << 30;
+      if (ao != bo) return ao.compareTo(bo);
+      return a.workoutId.compareTo(b.workoutId);
+    });
+    int order = 0;
+    return items.map((item) {
+      final label = item.date != null
+          ? DateFormat('MMM d').format(item.date!.toLocal())
+          : (item.orderIndex != null ? 'Day ${item.orderIndex}' : '#${order + 1}');
+      return PlanAnalyticsPoint(
+        order: order++,
+        label: label,
+        values: item.metrics,
+        actualValues: item.actualMetrics,
+      );
+    }).toList(growable: false);
+  }
+
+  Widget _buildActiveAnalyticsSection(List<PlanAnalyticsPoint> analytics, {Map<String, double>? totals}) {
+    return Card(
+      elevation: 1,
+      color: Colors.white,
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _metricX,
+                    decoration: const InputDecoration(labelText: 'Ось X'),
+                    items: _metrics
+                        .map((m) => DropdownMenuItem<String>(value: m, child: Text(_metricLabel(m))))
+                        .toList(),
+                    onChanged: (v) => setState(() => _metricX = v ?? _metricX),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _metricY,
+                    decoration: const InputDecoration(labelText: 'Ось Y'),
+                    items: _metrics
+                        .map((m) => DropdownMenuItem<String>(value: m, child: Text(_metricLabel(m))))
+                        .toList(),
+                    onChanged: (v) => setState(() => _metricY = v ?? _metricY),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (totals != null && totals.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: totals.entries.map((entry) {
+                    final label = _metricLabel(entry.key);
+                    final value = entry.value;
+                    return Chip(
+                      label: Text('$label: ${value.toStringAsFixed(2)}'),
+                    );
+                  }).toList(),
+                ),
+              ),
+            SizedBox(
+              height: 240,
+              child: PlanAnalyticsChart(
+                points: analytics,
+                metricX: _metricX,
+                metricY: _metricY,
+                emptyText: 'Нет аналитики по плану',
+                showScatterAxisTitles: false,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -452,8 +587,24 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(workout.name, style: AppTextStyles.titleMedium),
-                Text(_timeOrDate(workout), style: AppTextStyles.bodySmall),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(workout.name, style: AppTextStyles.titleMedium),
+                          Text(_timeOrDate(workout), style: AppTextStyles.bodySmall),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline),
+                      tooltip: 'Добавить упражнение',
+                      onPressed: workout.id == null ? null : () => _addExerciseInstance(workout),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 12),
                 if (exercises.isEmpty)
                   const Text('Нет данных по упражнениям в этой тренировке')
@@ -466,6 +617,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                       itemBuilder: (_, index) {
                         final ex = exercises[index];
                         return ListTile(
+                          contentPadding: EdgeInsets.zero,
                           title: Text(ex.exerciseDefinition?.name ?? 'Exercise ${ex.exerciseListId}'),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -476,10 +628,20 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                               Text('Sets: ${ex.sets.length}'),
                             ],
                           ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.edit),
-                            onPressed: ex.id == null ? null : () => _editExerciseInstance(ex),
-                            tooltip: 'Редактировать упражнение',
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit),
+                                onPressed: ex.id == null ? null : () => _editExerciseInstance(ex),
+                                tooltip: 'Редактировать',
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                onPressed: ex.id == null ? null : () => _deleteExerciseInstance(ex),
+                                tooltip: 'Удалить',
+                              ),
+                            ],
                           ),
                         );
                       },
@@ -493,70 +655,248 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
     );
   }
 
-  Future<void> _editExerciseInstance(ExerciseInstance instance) async {
+  Future<void> _addExerciseInstance(Workout workout) async {
+    await _showExerciseEditor(workout: workout);
+  }
+
+  Future<void> _deleteExerciseInstance(ExerciseInstance instance) async {
     if (instance.id == null) return;
-    final notesCtrl = TextEditingController(text: instance.notes ?? '');
-    final orderCtrl = TextEditingController(text: instance.order?.toString() ?? '');
-    final result = await showDialog<Map<String, dynamic>>(
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить упражнение?'),
+        content: Text('Вы уверены, что хотите удалить ${instance.exerciseDefinition?.name ?? 'упражнение'} из тренировки?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Отмена')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      final svc = ref.read(crmCoachServiceProvider);
+      await svc.deleteExerciseInstance(
+        athleteId: widget.athleteId,
+        instanceId: instance.id!,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Упражнение удалено')));
+        Navigator.of(context).pop(); // Close bottom sheet if needed
+        ref.invalidate(coachActivePlanWorkoutsProvider(widget.athleteId));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка при удалении: $e')));
+      }
+    }
+  }
+
+  Future<void> _editExerciseInstance(ExerciseInstance instance) async {
+    await _showExerciseEditor(instance: instance);
+  }
+
+  Future<void> _showExerciseEditor({Workout? workout, ExerciseInstance? instance}) async {
+    final isEdit = instance != null;
+    final workoutId = workout?.id ?? instance?.workoutId;
+    if (workoutId == null) return;
+
+    // Fetch definitions
+    List<ExerciseDefinition> definitions = [];
+    try {
+      definitions = await ref.read(exerciseServiceProvider).getExerciseDefinitions();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error loading exercises: $e')));
+      return;
+    }
+    
+    // Sort definitions by name
+    definitions.sort((a, b) => a.name.compareTo(b.name));
+
+    // Initial state
+    int? selectedExerciseId = instance?.exerciseListId ?? (definitions.isNotEmpty ? definitions.first.id : null);
+    String notes = instance?.notes ?? '';
+    int? order = instance?.order;
+    // Create mutable copy of sets
+    List<ExerciseSetDto> sets = List.from(instance?.sets ?? []);
+    // Ensure at least one set for new exercise
+    if (!isEdit && sets.isEmpty) {
+      sets.add(const ExerciseSetDto(reps: 10, weight: 20, rpe: 8));
+    }
+
+    if (!mounted) return;
+
+    await showDialog(
       context: context,
       builder: (ctx) {
-        return AlertDialog(
-          title: Text('Упражнение ${instance.exerciseDefinition?.name ?? instance.exerciseListId}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: notesCtrl,
-                decoration: const InputDecoration(labelText: 'Заметка для упражнения'),
-                maxLines: 3,
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text(isEdit ? 'Редактировать упражнение' : 'Добавить упражнение'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Exercise Selector
+                      DropdownButtonFormField<int>(
+                        value: selectedExerciseId,
+                        isExpanded: true,
+                        items: definitions.map((d) => DropdownMenuItem(
+                          value: d.id,
+                          child: Text(d.name, overflow: TextOverflow.ellipsis),
+                        )).toList(),
+                        onChanged: (val) => setState(() => selectedExerciseId = val),
+                        decoration: const InputDecoration(labelText: 'Упражнение'),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        initialValue: notes,
+                        decoration: const InputDecoration(labelText: 'Заметки'),
+                        onChanged: (val) => notes = val,
+                        maxLines: 2,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        initialValue: order?.toString() ?? '',
+                        decoration: const InputDecoration(labelText: 'Порядок (Order)'),
+                        keyboardType: TextInputType.number,
+                        onChanged: (val) => order = int.tryParse(val),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Сеты', style: TextStyle(fontWeight: FontWeight.bold)),
+                          IconButton(
+                            icon: const Icon(Icons.add_circle_outline),
+                            onPressed: () => setState(() {
+                              // Copy previous set values if exists
+                              final last = sets.isNotEmpty ? sets.last : const ExerciseSetDto(reps: 10, weight: 20, rpe: 8);
+                              sets.add(last.copyWith(id: null)); 
+                            }),
+                            tooltip: 'Добавить сет',
+                          )
+                        ],
+                      ),
+                      if (sets.isEmpty)
+                        const Text('Нет сетов', style: TextStyle(color: Colors.grey)),
+                        
+                      ...sets.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final set = entry.value;
+                        return Card(
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Row(
+                              children: [
+                                SizedBox(width: 20, child: Text('${index + 1}')),
+                                Expanded(
+                                  child: TextFormField(
+                                    initialValue: set.reps.toString(),
+                                    decoration: const InputDecoration(labelText: 'Reps', isDense: true, contentPadding: EdgeInsets.all(8)),
+                                    keyboardType: TextInputType.number,
+                                    onChanged: (v) {
+                                      sets[index] = set.copyWith(reps: int.tryParse(v) ?? 0);
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextFormField(
+                                    initialValue: set.weight.toString(),
+                                    decoration: const InputDecoration(labelText: 'Kg', isDense: true, contentPadding: EdgeInsets.all(8)),
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    onChanged: (v) {
+                                      sets[index] = set.copyWith(weight: double.tryParse(v) ?? 0.0);
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextFormField(
+                                    initialValue: set.rpe?.toString() ?? '',
+                                    decoration: const InputDecoration(labelText: 'RPE', isDense: true, contentPadding: EdgeInsets.all(8)),
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    onChanged: (v) {
+                                      sets[index] = set.copyWith(rpe: double.tryParse(v));
+                                    },
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.close, size: 16, color: Colors.redAccent),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () => setState(() => sets.removeAt(index)),
+                                )
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ],
+                  ),
+                ),
               ),
-              TextField(
-                controller: orderCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Порядок'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Отмена')),
-            FilledButton(
-              onPressed: () {
-                final payload = <String, dynamic>{};
-                final trimmedNotes = notesCtrl.text.trim();
-                if (trimmedNotes.isNotEmpty) {
-                  payload['notes'] = trimmedNotes;
-                } else {
-                  payload['notes'] = null;
-                }
-                final parsedOrder = int.tryParse(orderCtrl.text.trim());
-                if (parsedOrder != null) {
-                  payload['order'] = parsedOrder;
-                }
-                Navigator.of(ctx).pop(payload);
-              },
-              child: const Text('Сохранить'),
-            ),
-          ],
+              actions: [
+                TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Отмена')),
+                FilledButton(
+                  onPressed: () async {
+                    if (selectedExerciseId == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Выберите упражнение')));
+                      return;
+                    }
+                    
+                    try {
+                      final svc = ref.read(crmCoachServiceProvider);
+                      final payload = {
+                        'exercise_list_id': selectedExerciseId,
+                        'notes': notes.isEmpty ? null : notes,
+                        if (order != null) 'order': order,
+                        'sets': sets.map((s) => s.toFormData()).toList(),
+                      };
+
+                      if (isEdit) {
+                        await svc.updateExerciseInstance(
+                          athleteId: widget.athleteId,
+                          instanceId: instance.id!,
+                          payload: payload,
+                        );
+                      } else {
+                        await svc.createExerciseInstance(
+                          athleteId: widget.athleteId,
+                          workoutId: workoutId,
+                          payload: payload,
+                        );
+                      }
+                      if (mounted) {
+                         Navigator.of(ctx).pop();
+                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isEdit ? 'Обновлено' : 'Создано')));
+                         // Refresh data
+                         ref.invalidate(coachActivePlanWorkoutsProvider(widget.athleteId));
+                         // Close the bottom sheet to avoid showing stale data
+                         Navigator.of(context).pop(); 
+                      }
+                    } catch (e) {
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+                    }
+                  },
+                  child: const Text('Сохранить'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
-    if (result == null || result.isEmpty) return;
-    try {
-      final svc = ref.read(crmCoachServiceProvider);
-      await svc.updateExerciseInstance(
-        athleteId: widget.athleteId,
-        instanceId: instance.id!,
-        payload: result,
-      );
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Упражнение обновлено')));
-      }
-      ref.invalidate(coachActivePlanWorkoutsProvider(widget.athleteId));
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
-      }
-    }
   }
 
   Future<void> _openCoachMassEditDialog() async {

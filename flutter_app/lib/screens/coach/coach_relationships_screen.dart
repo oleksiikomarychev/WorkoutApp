@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:workout_app/models/crm_analytics.dart';
 import 'package:workout_app/models/crm_coach_athlete_link.dart';
 import 'package:workout_app/services/service_locator.dart' as sl;
+import 'package:workout_app/providers/providers.dart';
 import 'package:workout_app/screens/coach/coach_chat_screen.dart';
 import 'package:workout_app/config/constants/route_names.dart';
 import 'package:workout_app/widgets/primary_app_bar.dart';
@@ -35,8 +36,15 @@ class CoachRelationshipsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final asyncLinks = ref.watch(coachRelationshipsProvider);
     final analyticsAsync = ref.watch(coachRelationshipsAnalyticsProvider);
+    final allUsersAsync = ref.watch(allUsersProvider);
     final analyticsMap = analyticsAsync.maybeWhen(
       data: (value) => value,
+      orElse: () => null,
+    );
+    final usersMap = allUsersAsync.maybeWhen(
+      data: (users) => {
+        for (final u in users) u.userId: u,
+      },
       orElse: () => null,
     );
 
@@ -110,8 +118,9 @@ class CoachRelationshipsScreen extends ConsumerWidget {
                 final status = link.status.toUpperCase();
                 final statusLower = link.status.toLowerCase();
                 final summary = analyticsMap?[link.athleteId];
+                final athleteName = usersMap?[link.athleteId]?.displayName ?? link.athleteId;
                 return ListTile(
-                  title: Text('Athlete: ${link.athleteId}'),
+                  title: Text('Athlete: $athleteName'),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -218,28 +227,37 @@ class CoachRelationshipsScreen extends ConsumerWidget {
                             ),
                           ],
                         )
-                      : Column(
+                      : Row(
                           mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            TextButton.icon(
+                            IconButton(
                               icon: const Icon(Icons.chat_bubble_outline),
-                              label: const Text('Chat'),
+                              tooltip: 'Chat',
                               onPressed: hasChannel
                                   ? () {
                                       Navigator.of(context).pushNamed(
                                         RouteNames.coachChat,
                                         arguments: CoachChatScreenArgs(
                                           channelId: link.channelId!,
-                                          title: link.athleteId,
+                                          title: athleteName,
                                         ),
                                       );
                                     }
                                   : null,
                             ),
-                            TextButton.icon(
+                            IconButton(
+                              icon: const Icon(Icons.insights_outlined),
+                              tooltip: 'Analytics',
+                              onPressed: () {
+                                Navigator.of(context).pushNamed(
+                                  RouteNames.coachAthleteDetail,
+                                  arguments: link.athleteId,
+                                );
+                              },
+                            ),
+                            IconButton(
                               icon: const Icon(Icons.notifications_active_outlined),
-                              label: const Text('Nudge'),
+                              tooltip: 'Nudge',
                               onPressed: (statusLower == 'active' && hasChannel)
                                   ? () => _sendNudge(context, ref, link, summary)
                                   : null,

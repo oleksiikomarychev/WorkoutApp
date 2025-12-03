@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/models/crm_analytics.dart';
 import 'package:workout_app/services/service_locator.dart' as sl;
+import 'package:workout_app/config/constants/route_names.dart';
 import 'package:workout_app/screens/coach_athlete_plan_screen.dart';
 import 'package:workout_app/widgets/primary_app_bar.dart';
 import 'package:workout_app/widgets/assistant_chat_host.dart';
@@ -253,6 +254,16 @@ class _AthleteCard extends ConsumerWidget {
                       title,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.insights_outlined),
+                    tooltip: 'View detailed analytics',
+                    onPressed: () {
+                      Navigator.of(context).pushNamed(
+                        RouteNames.coachAthleteDetail,
+                        arguments: athlete.athleteId,
+                      );
+                    },
                   ),
                   if (athlete.segment != null)
                     Container(

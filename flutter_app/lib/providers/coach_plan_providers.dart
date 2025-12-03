@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/models/applied_calendar_plan.dart';
 import 'package:workout_app/models/workout.dart';
+import 'package:workout_app/models/plan_analytics.dart';
 import 'package:workout_app/services/service_locator.dart';
 import 'package:workout_app/services/crm_coach_service.dart';
 
@@ -26,6 +27,12 @@ final coachActivePlanWorkoutsProvider = FutureProvider.autoDispose.family<List<W
     return ad.compareTo(bd);
   });
   return workouts;
+});
+
+final coachActivePlanAnalyticsProvider =
+    FutureProvider.autoDispose.family<PlanAnalyticsResponse?, String>((ref, athleteId) async {
+  final svc = ref.watch(crmCoachServiceProvider);
+  return await svc.getAthleteActivePlanAnalytics(athleteId);
 });
 
 final coachWorkoutsByDayProvider = Provider.autoDispose.family<Map<DateTime, List<Workout>>, String>((ref, athleteId) {

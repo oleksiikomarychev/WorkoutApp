@@ -12,7 +12,7 @@ class Settings:
 
     @property
     def exercises_service_url(self) -> str:
-        return os.getenv("EXERCISES_SERVICE_URL", "http://exercises-service:8003")
+        return os.getenv("EXERCISES_SERVICE_URL", "http://exercises-service:8002")
 
     @property
     def agent_service_url(self) -> str:

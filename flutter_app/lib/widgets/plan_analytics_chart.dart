@@ -7,11 +7,13 @@ class PlanAnalyticsPoint {
   final int order;
   final String label;
   final Map<String, double> values;
+  final Map<String, double>? actualValues;
 
   const PlanAnalyticsPoint({
     required this.order,
     required this.label,
     required this.values,
+    this.actualValues,
   });
 }
 
@@ -46,18 +48,25 @@ class PlanAnalyticsChart extends StatelessWidget {
 
   Widget _buildLineChart() {
     final spots = <FlSpot>[];
+    final actualSpots = <FlSpot>[];
     final labels = <String>[];
     for (var i = 0; i < points.length; i++) {
       final point = points[i];
       final value = point.values[metricX] ?? 0;
       spots.add(FlSpot(i.toDouble(), value));
+      
+      if (point.actualValues != null && point.actualValues!.containsKey(metricX)) {
+        final act = point.actualValues![metricX]!;
+        actualSpots.add(FlSpot(i.toDouble(), act));
+      }
+      
       labels.add(point.label);
     }
     if (spots.isEmpty) {
       return Center(child: Text(emptyText));
     }
 
-    final yValues = spots.map((e) => e.y).toList();
+    final yValues = spots.map((e) => e.y).followedBy(actualSpots.map((e) => e.y)).toList();
     final minY = yValues.reduce(math.min);
     final maxY = yValues.reduce(math.max);
     final span = maxY - minY;
@@ -112,19 +121,37 @@ class PlanAnalyticsChart extends StatelessWidget {
                 .map(
                   (spot) => LineTooltipItem(
                     spot.y.toStringAsFixed(2),
-                    const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                    TextStyle(
+                      color: spot.barIndex == 1 ? Colors.greenAccent : Colors.white, 
+                      fontWeight: FontWeight.w600
+                    ),
                   ),
                 )
                 .toList(),
           ),
         ),
         lineBarsData: [
+          // Planned (Blue)
           LineChartBarData(
             spots: spots,
             isCurved: true,
-            color: Colors.blue,
+            color: Colors.blue.shade300,
             dotData: const FlDotData(show: false),
+            dashArray: [5, 5], // Dashed for planned
+            belowBarData: BarAreaData(show: false),
           ),
+          // Actual (Green)
+          if (actualSpots.isNotEmpty)
+            LineChartBarData(
+              spots: actualSpots,
+              isCurved: true,
+              color: Colors.green,
+              dotData: const FlDotData(show: true),
+              belowBarData: BarAreaData(
+                show: true,
+                color: Colors.green.withOpacity(0.1),
+              ),
+            ),
         ],
       ),
     );
