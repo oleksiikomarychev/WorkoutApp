@@ -1852,7 +1852,12 @@ extension _APAnalytics on _ActivePlanScreenState {
       final label = item.date != null
           ? DateFormat('MMM d').format(item.date!.toLocal())
           : (item.orderIndex != null ? 'Day ${item.orderIndex}' : '#${order + 1}');
-      return PlanAnalyticsPoint(order: order++, label: label, values: item.metrics);
+      return PlanAnalyticsPoint(
+        order: order++,
+        label: label,
+        values: item.metrics,
+        actualValues: item.actualMetrics,
+      );
     }).toList(growable: false);
   }
 

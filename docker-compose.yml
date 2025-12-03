@@ -87,6 +87,9 @@ services:
     environment:
       - CRM_DATABASE_URL=${CRM_DATABASE_URL}
       - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET}
+      - WORKOUTS_SERVICE_URL=http://workouts-service:8004
+      - PLANS_SERVICE_URL=http://plans-service:8005
+      - EXERCISES_SERVICE_URL=http://exercises-service:8002
       - APP_ENV=${APP_ENV}
       - SENTRY_DSN=${SENTRY_DSN}
       - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}

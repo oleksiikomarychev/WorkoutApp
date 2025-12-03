@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 import httpx
+import structlog
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,8 @@ from ..metrics import (
 from ..models.relationships import CoachAthleteLink
 from ..schemas.coach_planning import CoachWorkoutsMassEditRequest
 from .relationships_service import _log_coach_athlete_event
+
+logger = structlog.get_logger(__name__)
 
 
 class CoachAthleteLinkInactiveError(HTTPException):
@@ -71,6 +74,37 @@ async def _proxy_request_for_athlete(
         return None
 
 
+async def _fetch_exercise_instances_for_workout(workout_id: int, athlete_id: str) -> list[dict]:
+    """Fetch exercise instances for a given workout from exercises-service.
+
+    Returns an empty list on any non-200 response or JSON parsing issue.
+    """
+    print(f"DEBUG: Fetching instances for workout {workout_id}, athlete {athlete_id}")
+    base_url = settings.exercises_service_url.rstrip("/")
+    url = f"{base_url}/exercises/instances/workouts/{workout_id}/instances"
+    timeout = httpx.Timeout(10.0, connect=5.0)
+    headers = {"X-User-Id": athlete_id}
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(url, headers=headers, follow_redirects=True)
+        logger.info(
+            "fetched_exercise_instances",
+            workout_id=workout_id,
+            status_code=resp.status_code,
+            count=len(resp.json()) if resp.status_code == 200 and isinstance(resp.json(), list) else 0,
+        )
+        print(f"DEBUG: Fetched instances for workout {workout_id}: status={resp.status_code}")
+        if resp.status_code != 200:
+            return []
+        data = resp.json() or []
+        if isinstance(data, list):
+            return data
+    except Exception as e:
+        print(f"DEBUG: Error fetching instances for workout {workout_id}: {e}")
+        return []
+    return []
+
+
 async def get_active_plan_for_athlete(
     db: AsyncSession,
     coach_id: str,
@@ -80,8 +114,32 @@ async def get_active_plan_for_athlete(
     return await _proxy_request_for_athlete(
         method="GET",
         base_url=settings.plans_service_url,
-        path="/applied-plans/active",
+        path="/plans/applied-plans/active",
         athlete_id=athlete_id,
+    )
+
+
+async def get_active_plan_analytics_for_athlete(
+    db: AsyncSession,
+    coach_id: str,
+    athlete_id: str,
+    group_by: str | None = None,
+) -> Any:
+    """Fetch analytics for athlete's active applied plan from plans-service."""
+    await _ensure_active_link(db, coach_id=coach_id, athlete_id=athlete_id)
+    plan = await get_active_plan_for_athlete(db=db, coach_id=coach_id, athlete_id=athlete_id)
+    if not isinstance(plan, dict) or not plan.get("id"):
+        return None
+    applied_plan_id = plan["id"]
+    params: dict[str, Any] | None = None
+    if group_by:
+        params = {"group_by": group_by}
+    return await _proxy_request_for_athlete(
+        method="GET",
+        base_url=settings.plans_service_url,
+        path=f"/plans/applied-plans/{applied_plan_id}/analytics",
+        athlete_id=athlete_id,
+        params=params,
     )
 
 
@@ -97,13 +155,27 @@ async def get_active_plan_workouts_for_athlete(
     data = await _proxy_request_for_athlete(
         method="GET",
         base_url=settings.workouts_service_url,
-        path="/workouts",
+        path="/workouts/",
         athlete_id=athlete_id,
         params={"applied_plan_id": applied_plan_id},
     )
-    if isinstance(data, list):
-        return data
-    return []
+    print(f"DEBUG: Got workouts data type: {type(data)}")
+    if not isinstance(data, list):
+        print(f"DEBUG: Workouts data is not a list: {data}")
+        return []
+
+    enriched: list[dict] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        wid = item.get("id")
+        if isinstance(wid, int):
+            instances = await _fetch_exercise_instances_for_workout(wid, athlete_id=athlete_id)
+            # Frontend ожидает поле exercise_instances, совместимое с ExerciseInstance
+            item["exercise_instances"] = instances
+        enriched.append(item)
+
+    return enriched
 
 
 async def update_workout_for_athlete(
@@ -115,7 +187,7 @@ async def update_workout_for_athlete(
 ) -> Any:
     link = await _ensure_active_link(db, coach_id=coach_id, athlete_id=athlete_id)
     data = await _proxy_request_for_athlete(
-        method="PATCH",
+        method="PUT",
         base_url=settings.workouts_service_url,
         path=f"/workouts/{workout_id}",
         athlete_id=athlete_id,
@@ -172,7 +244,7 @@ async def mass_edit_workouts_for_athlete(
     exercise_results: list[Any] = []
 
     for item in request.workouts or []:
-        body = item.update.model_dump(exclude_none=True)
+        body = item.update.model_dump(mode="json", exclude_none=True)
         if not body:
             continue
         result = await update_workout_for_athlete(
@@ -185,7 +257,7 @@ async def mass_edit_workouts_for_athlete(
         workout_results.append(result)
 
     for item in request.exercise_instances or []:
-        body = item.update.model_dump(exclude_none=True)
+        body = item.update.model_dump(mode="json", exclude_none=True)
         if not body:
             continue
         result = await update_exercise_instance_for_athlete(
@@ -201,3 +273,52 @@ async def mass_edit_workouts_for_athlete(
     if total_updates:
         CRM_MASS_EDIT_REQUESTS_TOTAL.inc(total_updates)
     return {"workouts": workout_results, "exercise_instances": exercise_results}
+
+
+async def create_exercise_instance_for_athlete(
+    db: AsyncSession,
+    coach_id: str,
+    athlete_id: str,
+    workout_id: int,
+    payload: dict[str, Any],
+) -> Any:
+    link = await _ensure_active_link(db, coach_id=coach_id, athlete_id=athlete_id)
+    data = await _proxy_request_for_athlete(
+        method="POST",
+        base_url=settings.exercises_service_url,
+        path=f"/exercises/instances/workouts/{workout_id}/instances",
+        athlete_id=athlete_id,
+        json_body=payload,
+    )
+    _log_coach_athlete_event(
+        db=db,
+        link_id=link.id,
+        actor_id=coach_id,
+        event_type="exercise_instance_created",
+        payload={"workout_id": workout_id, "instance_id": data.get("id")},
+    )
+    await db.commit()
+    return data
+
+
+async def delete_exercise_instance_for_athlete(
+    db: AsyncSession,
+    coach_id: str,
+    athlete_id: str,
+    instance_id: int,
+) -> None:
+    link = await _ensure_active_link(db, coach_id=coach_id, athlete_id=athlete_id)
+    await _proxy_request_for_athlete(
+        method="DELETE",
+        base_url=settings.exercises_service_url,
+        path=f"/exercises/instances/{instance_id}",
+        athlete_id=athlete_id,
+    )
+    _log_coach_athlete_event(
+        db=db,
+        link_id=link.id,
+        actor_id=coach_id,
+        event_type="exercise_instance_deleted",
+        payload={"instance_id": instance_id},
+    )
+    await db.commit()

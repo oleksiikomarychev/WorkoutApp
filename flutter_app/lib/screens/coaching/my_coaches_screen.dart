@@ -80,20 +80,35 @@ class MyCoachesScreen extends ConsumerWidget {
                       Text('Channel: ${link.channelId ?? 'not created'}'),
                     ],
                   ),
-                  trailing: TextButton.icon(
-                    icon: const Icon(Icons.chat_bubble_outline),
-                    label: const Text('Chat'),
-                    onPressed: hasChannel
-                        ? () {
-                            Navigator.of(context).pushNamed(
-                              RouteNames.coachChat,
-                              arguments: CoachChatScreenArgs(
-                                channelId: link.channelId!,
-                                title: link.coachId,
-                              ),
-                            );
-                          }
-                        : null,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.insights_outlined),
+                        tooltip: 'My analytics',
+                        onPressed: () {
+                          Navigator.of(context).pushNamed(
+                            RouteNames.coachAthleteDetail,
+                            arguments: link.athleteId,
+                          );
+                        },
+                      ),
+                      TextButton.icon(
+                        icon: const Icon(Icons.chat_bubble_outline),
+                        label: const Text('Chat'),
+                        onPressed: hasChannel
+                            ? () {
+                                Navigator.of(context).pushNamed(
+                                  RouteNames.coachChat,
+                                  arguments: CoachChatScreenArgs(
+                                    channelId: link.channelId!,
+                                    title: link.coachId,
+                                  ),
+                                );
+                              }
+                            : null,
+                      ),
+                    ],
                   ),
                 );
               },

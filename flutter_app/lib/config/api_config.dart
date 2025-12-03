@@ -203,8 +203,12 @@ class ApiConfig {
       buildEndpoint('/crm/coach/athletes/$athleteId/active-plan');
   static String crmCoachActivePlanWorkoutsEndpoint(String athleteId) =>
       buildEndpoint('/crm/coach/athletes/$athleteId/active-plan/workouts');
+  static String crmCoachActivePlanAnalyticsEndpoint(String athleteId) =>
+      buildEndpoint('/crm/coach/athletes/$athleteId/active-plan/analytics');
   static String crmCoachWorkoutEndpoint(String athleteId, int workoutId) =>
       buildEndpoint('/crm/coach/athletes/$athleteId/workouts/$workoutId');
+  static String crmCoachWorkoutExercisesEndpoint(String athleteId, int workoutId) =>
+      buildEndpoint('/crm/coach/athletes/$athleteId/workouts/$workoutId/exercises');
   static String crmCoachExerciseEndpoint(String athleteId, int instanceId) =>
       buildEndpoint('/crm/coach/athletes/$athleteId/exercises/$instanceId');
   static String crmCoachMassEditEndpoint(String athleteId) =>

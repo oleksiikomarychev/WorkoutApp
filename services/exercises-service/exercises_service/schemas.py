@@ -91,7 +91,17 @@ class ExerciseInstanceResponse(ExerciseInstanceBase):
     id: int
     workout_id: Optional[int] = None
     user_max_id: Optional[int] = None
-    # exercise_definition: Optional[ExerciseListResponse] = None
+    exercise_definition: Optional[ExerciseListResponse] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ExerciseInstanceCoachUpdate(BaseModel):
+    notes: Optional[str] = None
+    order: Optional[int] = None
+    exercise_list_id: Optional[int] = None
+    sets: Optional[List[ExerciseSet]] = None
 
     class Config:
         from_attributes = True

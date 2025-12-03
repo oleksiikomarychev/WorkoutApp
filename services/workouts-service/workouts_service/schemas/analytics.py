@@ -11,6 +11,7 @@ class PlanAnalyticsItem(BaseModel):
     order_index: Optional[int] = None
     date: Optional[datetime] = None
     metrics: Dict[str, float]
+    actual_metrics: Optional[Dict[str, float]] = None
 
 
 class PlanAnalyticsResponse(BaseModel):

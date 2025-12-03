@@ -45,6 +45,8 @@ class AthleteDetailedAnalyticsResponse(BaseModel):
     avg_intensity: Optional[float] = None
     avg_effort: Optional[float] = None
     rpe_distribution: Optional[dict[str, float]] = None
+    muscle_volume_by_group: Optional[dict[str, float]] = None
+    muscle_volume_by_muscle: Optional[dict[str, float]] = None
 
 
 class CoachAthletesAnalyticsResponse(BaseModel):

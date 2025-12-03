@@ -5,12 +5,14 @@ class PlanAnalyticsItem {
   final int? orderIndex;
   final DateTime? date;
   final Map<String, double> metrics;
+  final Map<String, double>? actualMetrics;
 
   const PlanAnalyticsItem({
     required this.workoutId,
     this.orderIndex,
     this.date,
     required this.metrics,
+    this.actualMetrics,
   });
 
   factory PlanAnalyticsItem.fromJson(Map<String, dynamic> json) {
@@ -22,11 +24,23 @@ class PlanAnalyticsItem {
         if (parsed != null) metrics[key] = parsed;
       });
     }
+
+    final rawActual = json['actual_metrics'];
+    Map<String, double>? actualMetrics;
+    if (rawActual is Map<String, dynamic>) {
+      actualMetrics = {};
+      rawActual.forEach((key, value) {
+        final parsed = _toDouble(value);
+        if (parsed != null) actualMetrics![key] = parsed;
+      });
+    }
+
     return PlanAnalyticsItem(
       workoutId: (json['workout_id'] as num).toInt(),
       orderIndex: (json['order_index'] as num?)?.toInt(),
       date: _parseDate(json['date']),
       metrics: UnmodifiableMapView(metrics),
+      actualMetrics: actualMetrics != null ? UnmodifiableMapView(actualMetrics) : null,
     );
   }
 

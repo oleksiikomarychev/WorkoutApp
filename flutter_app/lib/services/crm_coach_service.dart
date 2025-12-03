@@ -2,6 +2,7 @@ import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/models/applied_calendar_plan.dart';
 import 'package:workout_app/models/workout.dart';
 import 'package:workout_app/models/exercise_instance.dart';
+import 'package:workout_app/models/plan_analytics.dart';
 import 'package:workout_app/services/api_client.dart';
 import 'package:workout_app/services/base_api_service.dart';
 import 'package:workout_app/services/logger_service.dart';
@@ -37,6 +38,31 @@ class CrmCoachService extends BaseApiService {
       return const [];
     } catch (e, st) {
       handleError('Failed to fetch athlete workouts', e, st);
+    }
+  }
+
+  Future<PlanAnalyticsResponse?> getAthleteActivePlanAnalytics(
+    String athleteId, {
+    String groupBy = 'order',
+  }) async {
+    try {
+      final endpoint = ApiConfig.crmCoachActivePlanAnalyticsEndpoint(athleteId);
+      final query = <String, String>{};
+      if (groupBy.isNotEmpty) {
+        query['group_by'] = groupBy;
+      }
+      final response = await apiClient.get(
+        endpoint,
+        queryParams: query.isEmpty ? null : query,
+        context: 'CrmCoachService.getAthleteActivePlanAnalytics',
+      );
+      if (response is Map<String, dynamic>) {
+        return PlanAnalyticsResponse.fromJson(response);
+      }
+      return null;
+    } catch (e, st) {
+      handleError('Failed to fetch athlete active plan analytics', e, st);
+      return null;
     }
   }
 
@@ -85,6 +111,42 @@ class CrmCoachService extends BaseApiService {
       throw Exception('Unexpected response when updating exercise instance');
     } catch (e, st) {
       handleError('Failed to update exercise instance', e, st);
+    }
+  }
+
+  Future<ExerciseInstance> createExerciseInstance({
+    required String athleteId,
+    required int workoutId,
+    required Map<String, dynamic> payload,
+  }) async {
+    try {
+      final endpoint = ApiConfig.crmCoachWorkoutExercisesEndpoint(athleteId, workoutId);
+      final response = await apiClient.post(
+        endpoint,
+        payload,
+        context: 'CrmCoachService.createExerciseInstance',
+      );
+      if (response is Map<String, dynamic>) {
+        return ExerciseInstance.fromJson(response);
+      }
+      throw Exception('Unexpected response when creating exercise instance');
+    } catch (e, st) {
+      handleError('Failed to create exercise instance', e, st);
+    }
+  }
+
+  Future<void> deleteExerciseInstance({
+    required String athleteId,
+    required int instanceId,
+  }) async {
+    try {
+      final endpoint = ApiConfig.crmCoachExerciseEndpoint(athleteId, instanceId);
+      await apiClient.delete(
+        endpoint,
+        context: 'CrmCoachService.deleteExerciseInstance',
+      );
+    } catch (e, st) {
+      handleError('Failed to delete exercise instance', e, st);
     }
   }
 }

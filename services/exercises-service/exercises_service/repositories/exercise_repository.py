@@ -1,6 +1,7 @@
 from exercises_service.models import ExerciseInstance, ExerciseList
 from sqlalchemy import and_, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 
 class ExerciseRepository:
@@ -14,10 +15,14 @@ class ExerciseRepository:
 
     @staticmethod
     async def get_exercise_instance(db: AsyncSession, instance_id: int, user_id: str):
-        query = select(ExerciseInstance).where(
-            and_(
-                ExerciseInstance.id == instance_id,
-                ExerciseInstance.user_id == user_id,
+        query = (
+            select(ExerciseInstance)
+            .options(selectinload(ExerciseInstance.exercise_definition))
+            .where(
+                and_(
+                    ExerciseInstance.id == instance_id,
+                    ExerciseInstance.user_id == user_id,
+                )
             )
         )
         result = await db.execute(query)
@@ -94,7 +99,9 @@ class ExerciseRepository:
     @staticmethod
     async def get_instances_by_workout(db: AsyncSession, workout_id: int, user_id: str):
         result = await db.execute(
-            select(ExerciseInstance).filter(
+            select(ExerciseInstance)
+            .options(selectinload(ExerciseInstance.exercise_definition))
+            .filter(
                 and_(
                     ExerciseInstance.workout_id == workout_id,
                     ExerciseInstance.user_id == user_id,
