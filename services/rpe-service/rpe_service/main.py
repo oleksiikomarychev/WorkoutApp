@@ -1,5 +1,4 @@
 import logging
-from typing import Dict
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
@@ -25,12 +24,12 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="rpe-service", version="0.1.0")
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
-# Регистрация роутов
+
 router = APIRouter(prefix="/rpe")
 
 
 @app.get("/health")
-def health() -> Dict[str, str]:
+def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
@@ -43,7 +42,7 @@ def get_current_user_id(x_user_id: str | None = Header(default=None, alias="X-Us
 
 
 @router.get("/table", tags=["Utils"])
-def get_rpe_table(user_id: str = Depends(get_current_user_id)) -> Dict[int, Dict[int, int]]:
+def get_rpe_table(user_id: str = Depends(get_current_user_id)) -> dict[int, dict[int, int]]:
     try:
         logger.info("Serving RPE table")
         return cached_rpe_table()
@@ -75,17 +74,14 @@ async def compute_rpe_set(
             max_weight = payload.max_weight
         provided = [p is not None for p in (intensity, effort, volume)]
         if sum(provided) >= 2:
-            # Case 1: intensity + effort -> fill volume
             if intensity is not None and effort is not None and volume is None:
                 try:
                     volume = get_volume(table, intensity=intensity, effort=effort)
                 except (IntensityNotFoundError, EffortNotFoundError):
-                    # Fallback: snap to nearest available intensity/effort for a valid volume
                     try:
-                        # nearest intensity row
                         nearest_int = min(table.keys(), key=lambda x: abs(x - int(intensity)))
                         mapping = table[nearest_int]
-                        # nearest effort key
+
                         nearest_eff = min(mapping.keys(), key=lambda k: abs(k - int(effort)))
                         volume = mapping[nearest_eff]
                         logger.warning(
@@ -102,12 +98,10 @@ async def compute_rpe_set(
                     except Exception:
                         raise
 
-            # Case 2: volume + effort -> fill intensity
             elif volume is not None and effort is not None and intensity is None:
                 try:
                     intensity = get_intensity(table, volume=volume, effort=effort)
                 except VolumeNotFoundError:
-                    # Fallback: choose intensity row where reps at given effort is closest to volume
                     candidates = []
                     ekey = int(effort)
                     for i, mapping in table.items():
@@ -126,16 +120,13 @@ async def compute_rpe_set(
                             volume,
                         )
 
-            # Case 3: volume + intensity -> fill effort
             elif volume is not None and intensity is not None and effort is None:
                 try:
                     effort = get_effort(table, volume=volume, intensity=intensity)
                 except (IntensityNotFoundError, VolumeNotFoundError):
-                    # Fallback: snap intensity to nearest row, then choose effort
-                    # whose reps is closest to volume
                     nearest_int = min(table.keys(), key=lambda x: abs(x - int(intensity)))
                     mapping = table[nearest_int]
-                    # pick effort whose reps is closest to requested volume
+
                     nearest_eff, reps = min(mapping.items(), key=lambda kv: abs(kv[1] - int(volume)))
                     logger.warning(
                         "Adjusted (intensity,volume)->effort using nearest match | "
@@ -175,6 +166,6 @@ if __name__ == "__main__":
 
     uvicorn.run(app, host="0.0.0.0", port=8001)
 
-# Логирование зарегистрированных роутов
+
 for route in app.routes:
     logger.info(f"Registered route: {route.path} ({route.methods})")

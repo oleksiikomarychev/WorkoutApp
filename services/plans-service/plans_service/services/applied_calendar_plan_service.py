@@ -3,11 +3,12 @@ import math
 import os
 import urllib.parse
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 import structlog
+from backend_common.http_client import ServiceClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -55,7 +56,7 @@ class AppliedCalendarPlanService:
             headers["X-User-Id"] = user_id
         return headers
 
-    async def _fetch_user_maxes(self, exercise_ids: List[int]) -> List[Dict]:
+    async def _fetch_user_maxes(self, exercise_ids: list[int]) -> list[dict]:
         if not exercise_ids:
             return []
         base = "http://user-max-service:8003/user-max"
@@ -73,16 +74,16 @@ class AppliedCalendarPlanService:
                         return data
                     else:
                         return []
-                except Exception:
+                except (httpx.RequestError, ValueError):
                     return []
 
             tasks = [fetch_one(ex_id) for ex_id in exercise_ids]
             results = await asyncio.gather(*tasks)
-            # Flatten the list of lists
+
             user_maxes = [max for sublist in results for max in sublist]
             return user_maxes
 
-    async def _fetch_user_maxes_by_ids(self, user_max_ids: List[int]) -> List[Dict]:
+    async def _fetch_user_maxes_by_ids(self, user_max_ids: list[int]) -> list[dict]:
         if not user_max_ids:
             return []
         headers = self._auth_headers()
@@ -91,18 +92,17 @@ class AppliedCalendarPlanService:
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
                 url = f"{base}/user-max/by-ids"
-                params = {"ids": user_max_ids}  # Pass as list to get multiple query parameters
+                params = {"ids": user_max_ids}
                 response = await client.get(url, params=params, headers=headers)
                 response.raise_for_status()
                 data = response.json()
                 if isinstance(data, list):
                     return data
-            except Exception:
-                pass
+            except (httpx.RequestError, ValueError):
+                logger.warning("_fetch_user_maxes_by_ids_failed", user_max_ids=user_max_ids, exc_info=True)
         return []
 
     async def _ensure_exercises_present(self, exercise_ids: set[int]) -> None:
-        """Ensure exercises exist by checking via the exercises-service API."""
         if not exercise_ids:
             return
 
@@ -116,7 +116,7 @@ class AppliedCalendarPlanService:
                     response = await client.get(url, headers=headers)
                     if response.status_code == 200:
                         continue
-                except Exception:
+                except httpx.RequestError:
                     continue
         return
 
@@ -146,7 +146,8 @@ class AppliedCalendarPlanService:
                         continue
                     meta[ex_id] = item
                 return meta
-        except Exception:
+        except (httpx.RequestError, ValueError):
+            logger.warning("_fetch_exercise_metadata_failed", exercise_ids=list(exercise_ids), exc_info=True)
             return {}
 
     def _build_exercise_scope(self, exercise_meta: dict[int, dict[str, Any]]) -> dict[str, dict[str, set[int]]]:
@@ -170,8 +171,8 @@ class AppliedCalendarPlanService:
         }
 
     async def _generate_workouts_via_rpc(
-        self, applied_plan_id: int, workouts: List[Dict[str, Any]], compute: ApplyPlanComputeSettings
-    ) -> Optional[List[int]]:
+        self, applied_plan_id: int, workouts: list[dict[str, Any]], compute: ApplyPlanComputeSettings
+    ) -> list[int] | None:
         bases = [os.getenv("WORKOUTS_SERVICE_URL", "http://localhost:8004")]
         headers = self._auth_headers()
 
@@ -183,7 +184,6 @@ class AppliedCalendarPlanService:
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             for base in bases:
-                # Try only the path without /api/v1
                 paths = ["workouts/workout-generation/generate"]
                 for path in paths:
                     url = urllib.parse.urljoin(base, path)
@@ -219,7 +219,7 @@ class AppliedCalendarPlanService:
                             status_code=e.response.status_code,
                             body=e.response.text,
                         )
-                    except Exception as e:
+                    except httpx.RequestError as e:
                         logger.error("apply_plan_rpc_failed", url=url, error=str(e))
 
         logger.warning("apply_plan_rpc_all_failed", applied_plan_id=applied_plan_id)
@@ -227,18 +227,13 @@ class AppliedCalendarPlanService:
 
     async def _create_instances_for_workouts(
         self,
-        workout_ids: List[int],
-        workouts_to_generate: List[Dict[str, Any]],
+        workout_ids: list[int],
+        workouts_to_generate: list[dict[str, Any]],
     ) -> None:
-        """Create exercise instances in exercises-service for generated workouts.
-
-        We use the exact computed payload used to generate workouts to materialize
-        instances immediately, so clients always fetch real exercise_instances.
-        """
         if not workout_ids or not workouts_to_generate:
             return
         base = os.getenv("EXERCISES_SERVICE_URL", "http://exercises-service:8002")
-        # Ensure base has no trailing slash issues in joins
+
         headers = self._auth_headers()
         async with httpx.AsyncClient(timeout=20.0) as client:
             for idx, workout_id in enumerate(workout_ids):
@@ -251,10 +246,8 @@ class AppliedCalendarPlanService:
                     for s in ex.get("sets") or []:
                         sets_payload.append(
                             {
-                                # exercises-service requires 'reps' in SetService.normalize_sets
                                 "reps": s.get("volume"),
                                 "weight": s.get("working_weight"),
-                                # keep extra for traceability/UI
                                 "rpe": s.get("effort"),
                                 "effort": s.get("effort"),
                                 "effort_type": "RPE",
@@ -272,17 +265,17 @@ class AppliedCalendarPlanService:
                     url = f"{base}/exercises/instances/workouts/{workout_id}/instances"
                     try:
                         res = await client.post(url, json=instance_payload, headers=headers)
-                        # Do not raise on error to avoid aborting entire plan; just continue
+
                         if res.status_code not in (200, 201):
                             print(
                                 f"[APPLY_PLAN] Failed to create instance for workout {workout_id}: "
                                 f"status={res.status_code} body={res.text}"
                             )
-                    except Exception as e:
+                    except httpx.RequestError as e:
                         print(f"[APPLY_PLAN] Exception creating instance for workout {workout_id}: {e}")
 
     async def apply_plan(
-        self, plan_id: int, compute: ApplyPlanComputeSettings, user_max_ids: List[int]
+        self, plan_id: int, compute: ApplyPlanComputeSettings, user_max_ids: list[int]
     ) -> AppliedCalendarPlanResponse:
         try:
             user_id = self._require_user_id()
@@ -356,16 +349,16 @@ class AppliedCalendarPlanService:
             user_max_by_exercise: dict[int, dict] = {}
             for um in selected_user_maxes:
                 ex_id = um.get("exercise_id")
-                if isinstance(ex_id, int):
-                    user_max_by_exercise[ex_id] = _pick_preferred(user_max_by_exercise.get(ex_id), um)
+                if ex_id is not None:
+                    user_max_by_exercise[int(ex_id)] = _pick_preferred(user_max_by_exercise.get(int(ex_id)), um)
 
             missing_exercises = required_exercises - set(user_max_by_exercise.keys())
             if missing_exercises:
                 fetched = await self._fetch_user_maxes(list(missing_exercises))
                 for um in fetched or []:
                     ex_id = um.get("exercise_id")
-                    if isinstance(ex_id, int):
-                        user_max_by_exercise[ex_id] = _pick_preferred(user_max_by_exercise.get(ex_id), um)
+                    if ex_id is not None:
+                        user_max_by_exercise[int(ex_id)] = _pick_preferred(user_max_by_exercise.get(int(ex_id)), um)
 
             user_maxes = list(user_max_by_exercise.values())
             await self._ensure_exercises_present(required_exercises)
@@ -382,7 +375,7 @@ class AppliedCalendarPlanService:
             )
             await self.db.execute(stmt)
 
-            start_date = compute.start_date or datetime.now(timezone.utc)
+            start_date = compute.start_date or datetime.now(UTC)
             applied_plan = AppliedCalendarPlan(
                 calendar_plan_id=plan_id,
                 start_date=start_date,
@@ -576,7 +569,6 @@ class AppliedCalendarPlanService:
                     except Exception as e:
                         print(f"[APPLY_PLAN] Non-fatal: failed to create some instances: {e}")
 
-            # Planned sessions = number of workouts we attempted to generate
             try:
                 applied_plan.planned_sessions_total = len(workouts_to_generate)
             except Exception:
@@ -623,7 +615,7 @@ class AppliedCalendarPlanService:
         except Exception:
             raise
 
-    async def get_applied_plan_by_id(self, plan_id: int) -> Optional[AppliedCalendarPlan]:
+    async def get_applied_plan_by_id(self, plan_id: int) -> AppliedCalendarPlan | None:
         try:
             user_id = self._require_user_id()
             stmt = (
@@ -645,9 +637,81 @@ class AppliedCalendarPlanService:
             result = await self.db.execute(stmt)
             return result.scalars().first()
         except Exception:
+            logger.exception("get_applied_plan_by_id_failed", plan_id=plan_id)
             return None
 
-    async def get_user_applied_plans(self) -> List[AppliedCalendarPlanResponse]:
+    async def get_flattened_plan_workouts(self, applied_plan_id: int) -> list[dict[str, Any]]:
+        plan = await self.get_applied_plan_by_id(applied_plan_id)
+        if not plan or not plan.calendar_plan:
+            return []
+
+        mesocycles = sorted(
+            plan.calendar_plan.mesocycles or [],
+            key=lambda m: (m.order_index if m.order_index is not None else 0, m.id),
+        )
+
+        flattened_workouts = []
+        current_global_index = 0
+
+        for meso in mesocycles:
+            meso_name = meso.name or "Unnamed Meso"
+
+            microcycles = sorted(
+                meso.microcycles or [],
+                key=lambda mc: (mc.order_index if mc.order_index is not None else 0, mc.id),
+            )
+
+            for micro in microcycles:
+                micro_name = micro.name or "Microcycle"
+
+                p_workouts = sorted(
+                    micro.plan_workouts or [],
+                    key=lambda pw: (pw.order_index if pw.order_index is not None else 0, pw.id),
+                )
+
+                for pw in p_workouts:
+                    exercises_data = []
+                    for ex in pw.exercises or []:
+                        sets_data = []
+                        for s in ex.sets or []:
+                            sets_data.append(
+                                {
+                                    "volume": s.volume,
+                                    "intensity": s.intensity,
+                                    "effort": s.effort,
+                                    "working_weight": s.working_weight,
+                                    "tempo": s.tempo,
+                                    "rest_seconds": s.rest_seconds,
+                                }
+                            )
+                        exercises_data.append(
+                            {
+                                "exercise_definition_id": ex.exercise_definition_id,
+                                "sets": sets_data,
+                                "notes": ex.notes,
+                            }
+                        )
+
+                    flattened_workouts.append(
+                        {
+                            "plan_workout_id": pw.id,
+                            "name": pw.name,
+                            "day_label": pw.day_label,
+                            "order_index": pw.order_index,
+                            "meso_name": meso_name,
+                            "micro_name": micro_name,
+                            "micro_id": micro.id,
+                            "micro_days_count": micro.days_count,
+                            "meso_id": meso.id,
+                            "exercises": exercises_data,
+                            "global_index": current_global_index,
+                        }
+                    )
+                    current_global_index += 1
+
+        return flattened_workouts
+
+    async def get_user_applied_plans(self) -> list[AppliedCalendarPlanResponse]:
         try:
             user_id = self._require_user_id()
             stmt = (
@@ -711,10 +775,10 @@ class AppliedCalendarPlanService:
 
             return response
         except Exception:
+            logger.exception("get_user_applied_plans_failed")
             return []
 
-    async def get_active_plan(self) -> Optional[AppliedCalendarPlan]:
-        """Get the currently active plan with applied hierarchy"""
+    async def get_active_plan(self) -> AppliedCalendarPlan | None:
         user_id = self._require_user_id()
         stmt = (
             select(AppliedCalendarPlan)
@@ -735,10 +799,7 @@ class AppliedCalendarPlanService:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
-    async def advance_current_index(self, applied_plan_id: int, by: int = 1) -> Optional[int]:
-        """Advance current_workout_index for the applied plan by N (default 1).
-        Caps at last workout index + 1. Returns new index or None if plan not found.
-        """
+    async def advance_current_index(self, applied_plan_id: int, by: int = 1) -> int | None:
         try:
             user_id = self._require_user_id()
             stmt = (
@@ -756,7 +817,7 @@ class AppliedCalendarPlanService:
             current = int(getattr(plan, "current_workout_index", 0) or 0)
             try:
                 step = int(by)
-            except Exception:
+            except (TypeError, ValueError):
                 step = 1
             max_idx = 0
             try:
@@ -765,10 +826,10 @@ class AppliedCalendarPlanService:
                         (int(w.order_index) for w in plan.workouts if w.order_index is not None),
                         default=0,
                     )
-            except Exception:
+            except (TypeError, ValueError):
                 max_idx = 0
             new_val = current + (step if step > 0 else 1)
-            # allow pointer to move just past the last workout
+
             cap = max_idx + 1
             if new_val > cap:
                 new_val = cap
@@ -776,19 +837,15 @@ class AppliedCalendarPlanService:
             await self.db.commit()
             return new_val
         except Exception:
+            logger.exception("advance_current_index_failed", applied_plan_id=applied_plan_id)
             return None
 
     async def cancel_applied_plan(
         self,
         applied_plan_id: int,
         *,
-        dropout_reason: Optional[str] = None,
-    ) -> Optional[AppliedCalendarPlan]:
-        """Mark an applied plan as cancelled/dropped for the current user.
-
-        Sets is_active = False, status = 'cancelled' (if not already set),
-        dropped_at = now and optionally updates dropout_reason.
-        """
+        dropout_reason: str | None = None,
+    ) -> AppliedCalendarPlan | None:
         user_id = self._require_user_id()
         try:
             stmt = select(AppliedCalendarPlan).where(
@@ -801,7 +858,7 @@ class AppliedCalendarPlanService:
                 return None
 
             plan.is_active = False
-            # сохраняем существующий статус, если он уже задан явно
+
             if not plan.status:
                 plan.status = "cancelled"
             if dropout_reason:
@@ -813,18 +870,17 @@ class AppliedCalendarPlanService:
             return plan
         except Exception:
             await self.db.rollback()
+            logger.exception("cancel_applied_plan_failed", applied_plan_id=applied_plan_id)
             return None
 
     def _apply_normalization(
         self,
         effective_1rms: dict[int, float],
-        value: Optional[float],
-        unit: Optional[str],
-        rules: Optional[list[dict]] = None,
-        exercise_scope: Optional[dict[str, dict[str, set[int]]]] = None,
+        value: float | None,
+        unit: str | None,
+        rules: list[dict] | None = None,
+        exercise_scope: dict[str, dict[str, set[int]]] | None = None,
     ) -> None:
-        """Apply normalization to the effective 1RMs."""
-
         def _apply_to_exercises(exercise_ids: list[int], adj_value: float, adj_unit: str) -> None:
             normalized_unit = (adj_unit or "").lower()
             if normalized_unit in {"percentage", "%"}:
@@ -886,10 +942,10 @@ class AppliedCalendarPlanService:
         applied_plan_id: int,
         *,
         mode: str,
-        template_id: Optional[int] = None,
-        source_mesocycle_id: Optional[int] = None,
-        placement: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        template_id: int | None = None,
+        source_mesocycle_id: int | None = None,
+        placement: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         try:
             stmt = (
                 select(AppliedCalendarPlan)
@@ -906,7 +962,7 @@ class AppliedCalendarPlanService:
 
             headers = self._auth_headers()
 
-            workouts_to_generate: List[Dict[str, Any]] = []
+            workouts_to_generate: list[dict[str, Any]] = []
             eff_mode = mode or ""
             if not eff_mode:
                 eff_mode = (
@@ -933,18 +989,17 @@ class AppliedCalendarPlanService:
                 if poi is not None:
                     try:
                         anchor_index = int(poi)
-                    except Exception:
+                    except (TypeError, ValueError):
                         anchor_index = -1
                 if anchor_index < 0 and mode_str == "Insert_After_Workout":
                     return {"applied": False, "reason": "invalid_plan_order_index"}
                 if anchor_index < 0 and mode_str == "Insert_After_Mesocycle":
                     try:
                         m_idx = int(placement.get("mesocycle_index"))
-                    except Exception:
+                    except (TypeError, ValueError):
                         m_idx = None
                     if m_idx is not None and m_idx >= 0:
                         try:
-                            # Compute cumulative workout counts per mesocycle from base CalendarPlan
                             from ..models.calendar import CalendarPlan as _CP
                             from ..models.calendar import Mesocycle as _M
                             from ..models.calendar import Microcycle as _MC
@@ -960,7 +1015,7 @@ class AppliedCalendarPlanService:
                             )
                             res_cp = await self.db.execute(stmt_cp)
                             cp = res_cp.scalars().first()
-                            cum = []  # cumulative workout counts end index for each meso (exclusive)
+                            cum = []
                             total = 0
                             if cp and cp.mesocycles:
                                 for ms in sorted(cp.mesocycles, key=lambda x: (x.order_index or 0, x.id)):
@@ -973,12 +1028,9 @@ class AppliedCalendarPlanService:
                                     total += w_count
                                     cum.append(total)
                             if cum:
-                                # After mesocycle m_idx means before the first
-                                # workout of m_idx+1 -> insert_pos = cum[m_idx]
                                 if m_idx < len(cum):
-                                    anchor_index = cum[m_idx] - 1  # after last workout of this meso
+                                    anchor_index = cum[m_idx] - 1
                                 else:
-                                    # out of range -> append to end
                                     anchor_index = -1
                         except Exception:
                             anchor_index = -1
@@ -992,12 +1044,11 @@ class AppliedCalendarPlanService:
                 generate_workouts=True,
                 start_date=None,
             )
-            # Determine baseline_date for scheduling inserted workouts and shifting subsequent ones
-            baseline_date: Optional[datetime] = None
+
+            baseline_date: datetime | None = None
             try:
-                # fetch existing workouts from workouts-service to inspect scheduled_for
                 existing_ws = await self._fetch_workouts_for_applied_plan(plan.id)
-                # Partition by order index relative to insert_pos
+
                 fut = [
                     w
                     for w in existing_ws
@@ -1017,14 +1068,13 @@ class AppliedCalendarPlanService:
                     )
                 ]
 
-                def _parse(dt: str) -> Optional[datetime]:
+                def _parse(dt: str) -> datetime | None:
                     try:
                         return datetime.fromisoformat(dt)
-                    except Exception:
+                    except ValueError:
                         return None
 
                 if fut:
-                    # minimal future date at/after insert_pos
                     fds = sorted(
                         [_parse(w.get("scheduled_for")) for w in fut if _parse(w.get("scheduled_for")) is not None]
                     )
@@ -1043,20 +1093,17 @@ class AppliedCalendarPlanService:
             except Exception:
                 baseline_date = None
 
-            # Populate plan_order_index and scheduled_for for inserted workouts
             try:
                 if baseline_date is None:
-                    # fall back to today at 9am to make them visible in UI
                     baseline_date = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
                 for i, w in enumerate(workouts_to_generate):
                     w["plan_order_index"] = insert_pos + i
-                    # preserve time of baseline across all inserted
+
                     dt = baseline_date + timedelta(days=i)
                     w["scheduled_for"] = dt.isoformat()
             except Exception:
-                pass
+                logger.exception("inject_mesocycle_schedule_generation_failed", applied_plan_id=applied_plan_id)
 
-            # Shift existing workouts remotely before creating new ones to avoid conflicts
             shift_count = len(workouts_to_generate)
             shift_summary = None
             if shift_count:
@@ -1072,16 +1119,16 @@ class AppliedCalendarPlanService:
                     )
                 except Exception:
                     shift_summary = None
-                # Block on shift failure: do not proceed to generation if shift did not succeed
+
                 ok = False
                 try:
                     if isinstance(shift_summary, dict):
                         ac = int(shift_summary.get("affected_count") or 0)
-                        # we allow zero if реально нет будущих записей, но если в плане есть хвост, это ошибка
+
                         ok = ac >= 0
                     else:
                         ok = False
-                except Exception:
+                except (TypeError, ValueError):
                     ok = False
                 if not ok:
                     logger.warning(
@@ -1099,9 +1146,7 @@ class AppliedCalendarPlanService:
                         "shift_summary": shift_summary,
                     }
 
-            # Compute working weights for generated workouts if enabled
             if compute.compute_weights:
-                # Collect required exercise IDs
                 required_exercise_ids: set[int] = set()
                 for w in workouts_to_generate:
                     for ex in w.get("exercises") or []:
@@ -1109,13 +1154,13 @@ class AppliedCalendarPlanService:
                         if isinstance(ex_id, int):
                             required_exercise_ids.add(ex_id)
 
-                # 1) Primary source: user_max_ids selected at plan apply
                 selected_user_maxes = []
                 try:
                     um_ids = getattr(plan, "user_max_ids", None)
                     if um_ids:
                         selected_user_maxes = await self._fetch_user_maxes_by_ids(list(um_ids))
-                except Exception:
+                except Exception as e:
+                    logger.exception("_fetch_user_maxes_by_ids_failed", exc_info=e)
                     selected_user_maxes = []
 
                 def _pick_preferred(existing: dict | None, candidate: dict | None) -> dict | None:
@@ -1125,11 +1170,11 @@ class AppliedCalendarPlanService:
                         return candidate
                     try:
                         ew = float(existing.get("max_weight") or 0)
-                    except Exception:
+                    except (TypeError, ValueError):
                         ew = 0.0
                     try:
                         cw = float(candidate.get("max_weight") or 0)
-                    except Exception:
+                    except (TypeError, ValueError):
                         cw = 0.0
                     return candidate if cw >= ew else existing
 
@@ -1137,34 +1182,33 @@ class AppliedCalendarPlanService:
                 for um in selected_user_maxes or []:
                     try:
                         exid = int(um.get("exercise_id"))
-                    except Exception:
+                    except (TypeError, ValueError):
                         continue
                     user_max_by_ex[exid] = _pick_preferred(user_max_by_ex.get(exid), um) or um
 
-                # 2) Fill gaps by fetching by exercise_id
                 missing_exercises = required_exercise_ids - set(user_max_by_ex.keys())
                 if missing_exercises:
                     fetched = await self._fetch_user_maxes(list(missing_exercises))
                     for um in fetched or []:
                         try:
                             exid = int(um.get("exercise_id"))
-                        except Exception:
+                        except (TypeError, ValueError):
                             continue
                         if exid not in user_max_by_ex:
                             user_max_by_ex[exid] = um
 
-                # Build effective 1RMs strictly from the chosen set
                 effective_1rms: dict[int, float] = {}
                 for exid, um in user_max_by_ex.items():
                     try:
                         true_1rm = await workout_calculation.WorkoutCalculator.get_true_1rm_from_user_max(
                             um, headers=headers
                         )
-                    except Exception:
+                    except Exception as e:
+                        logger.exception("get_true_1rm_from_user_max_failed", exc_info=e)
                         true_1rm = None
                     try:
                         eff = float(true_1rm) if true_1rm is not None else float(um.get("max_weight") or 0)
-                    except Exception:
+                    except (TypeError, ValueError):
                         eff = 0.0
                     effective_1rms[exid] = eff
 
@@ -1180,7 +1224,6 @@ class AppliedCalendarPlanService:
                         return math.ceil(ratio) * step
                     return round(ratio) * step
 
-                # Fill missing triplets and compute working_weight
                 for w in workouts_to_generate:
                     for ex in w.get("exercises") or []:
                         ex_id = ex.get("exercise_id")
@@ -1199,14 +1242,14 @@ class AppliedCalendarPlanService:
                                 elif volume is not None and intensity is not None and effort is None:
                                     effort = await get_effort(volume=volume, intensity=intensity, headers=headers)
                                     s["effort"] = effort
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.exception("calculate_set_values_failed", exc_info=e)
 
                             weight = None
                             try:
                                 if eff_1rm is not None and intensity is not None:
                                     weight = _round_to_step(float(eff_1rm) * (float(intensity) / 100.0))
-                            except Exception:
+                            except (TypeError, ValueError):
                                 weight = None
                             s["working_weight"] = weight
 
@@ -1214,13 +1257,11 @@ class AppliedCalendarPlanService:
             if not workout_ids:
                 return {"applied": False, "reason": "workout_generation_failed"}
 
-            # Shift linear list to make room in applied plan representation
             for w in sorted(plan.workouts or [], key=lambda w: w.order_index, reverse=True):
                 if w.order_index >= insert_pos:
                     w.order_index = w.order_index + len(workout_ids)
             await self.db.flush()
 
-            # Create hierarchy: one AppliedMesocycle and one AppliedMicrocycle to contain inserted workouts
             from ..models.calendar import (
                 AppliedMesocycle,
                 AppliedMicrocycle,
@@ -1228,7 +1269,6 @@ class AppliedCalendarPlanService:
                 AppliedWorkout,
             )
 
-            # Compute new meso order_index: append as last
             meso_order = 0
             try:
                 stmt_m = (
@@ -1239,7 +1279,8 @@ class AppliedCalendarPlanService:
                 r_m = await self.db.execute(stmt_m)
                 last_m = r_m.scalars().first()
                 meso_order = int(getattr(last_m, "order_index", -1) or -1) + 1 if last_m else 0
-            except Exception:
+            except Exception as e:
+                logger.exception("fetch_applied_mesocycle_order_failed", exc_info=e)
                 meso_order = 0
             a_meso = AppliedMesocycle(
                 applied_plan_id=plan.id,
@@ -1273,23 +1314,21 @@ class AppliedCalendarPlanService:
             await self.db.flush()
             try:
                 await self._create_instances_for_workouts(workout_ids, workouts_to_generate)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.exception("_create_instances_for_workouts_failed", exc_info=e)
 
-            # Adjust current_workout_index if insertion is before current pointer
             try:
                 cur = int(getattr(plan, "current_workout_index", 0) or 0)
                 if insert_pos <= cur:
                     plan.current_workout_index = cur + len(workout_ids)
-            except Exception:
+            except (TypeError, ValueError):
                 pass
             await self.db.commit()
-            # Recalculate end_date to reflect extended plan length
+
             try:
-                # Reload plan to ensure we have current state
                 await self.db.refresh(plan)
                 total_days = 0
-                # Prefer using the base calendar plan structure if available to estimate days per microcycle
+
                 try:
                     from ..models.calendar import CalendarPlan
                     from ..models.calendar import Mesocycle as _M
@@ -1308,36 +1347,35 @@ class AppliedCalendarPlanService:
                                 if mc.days_count is not None:
                                     total_days += int(mc.days_count)
                                 else:
-                                    # Fallback: assume 1 day per planned workout entry if unspecified
                                     total_days += max(1, len(getattr(mc, "plan_workouts", []) or []))
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.exception("fetch_calendar_plan_failed", exc_info=e)
                 if total_days <= 0:
-                    # Fallback approximation: one workout per day over all applied workouts
                     try:
                         applied_workouts_count = len(plan.workouts or [])
-                    except Exception:
+                    except TypeError:
                         applied_workouts_count = 0
                     total_days = max(1, applied_workouts_count)
                 if plan.start_date is not None:
                     plan.end_date = plan.start_date + timedelta(days=total_days)
-                    # Ensure naive datetime to match existing convention
+
                     plan.end_date = plan.end_date.replace(tzinfo=None)
                     await self.db.commit()
-            except Exception:
-                # Non-fatal if we fail to recalc end_date
-                pass
+            except Exception as e:
+                logger.exception("update_plan_end_date_failed", exc_info=e)
+
             return {
                 "applied": True,
                 "inserted": len(workout_ids),
                 "start_index": insert_pos,
                 "workout_ids": workout_ids,
             }
-        except Exception:
+        except Exception as e:
+            logger.exception("apply_plan_failed", exc_info=e)
             return {"applied": False, "reason": "exception"}
 
-    def _build_workouts_from_template_response(self, tpl_resp) -> List[Dict[str, Any]]:
-        out: List[Dict[str, Any]] = []
+    def _build_workouts_from_template_response(self, tpl_resp) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
         try:
             for mc in sorted((tpl_resp.microcycles or []), key=lambda m: (m.order_index or 0)):
                 schedule = mc.schedule or {}
@@ -1346,11 +1384,11 @@ class AppliedCalendarPlanService:
                 def _key(x):
                     try:
                         return int(str(x[0]).strip().split()[-1])
-                    except Exception:
+                    except (TypeError, ValueError):
                         return 0
 
                 for day_key, day_items in sorted(items, key=_key):
-                    workout_exercises: List[Dict[str, Any]] = []
+                    workout_exercises: list[dict[str, Any]] = []
                     for item in day_items or []:
                         ex_id = item.get("exercise_id") or item.get("exercise_list_id")
                         if ex_id is None:
@@ -1376,7 +1414,7 @@ class AppliedCalendarPlanService:
                         try:
                             day_idx = int(str(day_key).strip().split()[-1])
                             w_name = f"{tpl_resp.name}: Day {day_idx}"
-                        except Exception:
+                        except (TypeError, ValueError):
                             w_name = f"{tpl_resp.name}: {str(day_key)}"
                         out.append(
                             {
@@ -1387,26 +1425,17 @@ class AppliedCalendarPlanService:
                             }
                         )
         except Exception:
+            logger.exception("_build_workouts_from_template_response_failed")
             return []
         return out
 
-    async def _fetch_workouts_for_applied_plan(self, applied_plan_id: int) -> List[Dict[str, Any]]:
-        """Fetch workouts list from workouts-service for the given applied plan.
-        Returns list of dicts with at least id, plan_order_index, scheduled_for.
-        """
+    async def _fetch_workouts_for_applied_plan(self, applied_plan_id: int) -> list[dict[str, Any]]:
         base = os.getenv("WORKOUTS_SERVICE_URL", "http://localhost:8004")
         headers = self._auth_headers()
         url = urllib.parse.urljoin(base + "/", f"workouts/?applied_plan_id={applied_plan_id}")
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                res = await client.get(url, headers=headers)
-                if res.status_code == 200:
-                    data = res.json()
-                    if isinstance(data, list):
-                        return data
-        except Exception:
-            pass
-        return []
+        async with ServiceClient(timeout=15.0) as client:
+            data = await client.get_json(url, headers=headers, default=[], applied_plan_id=applied_plan_id)
+        return data if isinstance(data, list) else []
 
     async def _shift_schedule_via_rpc(
         self,
@@ -1415,10 +1444,10 @@ class AppliedCalendarPlanService:
         from_order_index: int,
         delta_days: int,
         delta_index: int,
-        exclude_ids: List[int],
+        exclude_ids: list[int],
         only_future: bool,
-        baseline_date: Optional[datetime],
-    ) -> Optional[Dict[str, Any]]:
+        baseline_date: datetime | None,
+    ) -> dict[str, Any] | None:
         base = os.getenv("WORKOUTS_SERVICE_URL", "http://localhost:8004")
         headers = self._auth_headers()
         path = "workouts/schedule/shift-in-plan"
@@ -1432,23 +1461,20 @@ class AppliedCalendarPlanService:
             "only_future": only_future,
             "baseline_date": baseline_date.isoformat() if baseline_date is not None else None,
         }
-        try:
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                res = await client.post(url, json=payload, headers=headers)
-                if res.status_code == 200:
-                    return res.json()
-        except Exception:
-            pass
-        return None
+        async with ServiceClient(timeout=20.0) as client:
+            resp = await client.post(
+                url, headers=headers, json=payload, expected_status=200, applied_plan_id=applied_plan_id
+            )
+        return resp.data if resp.success else None
 
     async def get_plan_analytics(
         self,
         applied_plan_id: int,
         *,
-        from_date: Optional[str] = None,
-        to_date: Optional[str] = None,
-        group_by: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        from_date: str | None = None,
+        to_date: str | None = None,
+        group_by: str | None = None,
+    ) -> dict[str, Any]:
         base = os.getenv("WORKOUTS_SERVICE_URL", "http://localhost:8004")
         headers = self._auth_headers()
         path = "workouts/analytics/in-plan"
@@ -1460,13 +1486,12 @@ class AppliedCalendarPlanService:
             params["to"] = to_date
         if group_by:
             params["group_by"] = group_by
-        try:
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                res = await client.get(url, params=params, headers=headers)
-                res.raise_for_status()
-                data = res.json()
-        except Exception as exc:
-            raise ValueError(f"Failed to fetch analytics: {exc}") from exc
+        params["include_actual"] = "true"
+        async with ServiceClient(timeout=20.0) as client:
+            resp = await client.get(url, headers=headers, params=params, applied_plan_id=applied_plan_id)
+        if not resp.success:
+            raise ValueError(f"Failed to fetch analytics: status={resp.status_code}")
+        data = resp.data
 
         items = data.get("items") if isinstance(data, dict) else None
         if not isinstance(items, list):
@@ -1477,7 +1502,7 @@ class AppliedCalendarPlanService:
                 if value is None:
                     return 0.0
                 return float(value)
-            except Exception:
+            except (TypeError, ValueError):
                 return 0.0
 
         effort_values = []
@@ -1497,7 +1522,7 @@ class AppliedCalendarPlanService:
             volume_sum += _safe_float(metrics.get("volume_sum"))
             sets_sum += _safe_float(metrics.get("sets_count"))
 
-        def _avg(values: List[float]) -> float:
+        def _avg(values: list[float]) -> float:
             return sum(values) / len(values) if values else 0.0
 
         totals = {
@@ -1509,7 +1534,7 @@ class AppliedCalendarPlanService:
         data["totals"] = totals
         return data
 
-    async def _build_workouts_from_existing_mesocycle(self, mesocycle_id: int) -> List[Dict[str, Any]]:
+    async def _build_workouts_from_existing_mesocycle(self, mesocycle_id: int) -> list[dict[str, Any]]:
         stmt = (
             select(Mesocycle)
             .options(
@@ -1524,12 +1549,12 @@ class AppliedCalendarPlanService:
         src = res.scalars().first()
         if not src:
             return []
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for mc in sorted(src.microcycles or [], key=lambda m: (m.order_index or 0, m.id)):
             for pw in sorted(mc.plan_workouts or [], key=lambda w: (w.order_index or 0, w.id)):
-                workout_exercises: List[Dict[str, Any]] = []
+                workout_exercises: list[dict[str, Any]] = []
                 for ex in sorted(pw.exercises or [], key=lambda e: (e.order_index or 0, e.id)):
-                    sets: List[Dict[str, Any]] = []
+                    sets: list[dict[str, Any]] = []
                     for s in sorted(ex.sets or [], key=lambda z: (z.order_index or 0, z.id)):
                         sets.append(
                             {
@@ -1544,7 +1569,6 @@ class AppliedCalendarPlanService:
                         )
                     workout_exercises.append({"exercise_id": ex.exercise_definition_id, "sets": sets})
                 if workout_exercises:
-                    # Build a friendly workout name using day label or fallback to order index (1-based)
                     try:
                         dl = str(getattr(pw, "day_label", "")).strip() or None
                     except Exception:

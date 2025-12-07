@@ -111,7 +111,7 @@ class PublicUserProfileScreen extends ConsumerWidget {
         ProfileCompletedWorkoutsSection(
           sessions: stats.completedSessions,
           onSessionTap: (session) {
-            // Публичный профиль: просто показываем лог, как и для себя
+
             Navigator.of(context).pushNamed(
               '/session-log',
               arguments: session,
@@ -157,7 +157,7 @@ class PublicUserProfileScreen extends ConsumerWidget {
       await svc.requestCoaching(coachId: profile.userId, note: noteController.text.trim());
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Request sent')), 
+          const SnackBar(content: Text('Request sent')),
         );
       }
     } catch (e) {

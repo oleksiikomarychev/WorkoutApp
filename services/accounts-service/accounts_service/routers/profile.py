@@ -94,11 +94,6 @@ async def get_profile_by_id(
     user_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> ProfileResponse:
-    """Get profile for arbitrary user by user_id.
-
-    This endpoint does not rely on authentication and can be used by other
-    services (e.g., CRM) to display public-facing information about users.
-    """
     data = await ensure_profile_and_settings(db, user_id)
     return build_profile_response(data)
 

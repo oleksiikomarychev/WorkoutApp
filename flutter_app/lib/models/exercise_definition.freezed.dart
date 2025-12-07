@@ -1,13 +1,13 @@
 // coverage:ignore-file
-// GENERATED CODE - DO NOT MODIFY BY HAND
-// ignore_for_file: type=lint
-// ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
+
+
+
 
 part of 'exercise_definition.dart';
 
-// **************************************************************************
-// FreezedGenerator
-// **************************************************************************
+
+
+
 
 T _$identity<T>(T value) => value;
 
@@ -18,7 +18,7 @@ ExerciseDefinition _$ExerciseDefinitionFromJson(Map<String, dynamic> json) {
   return _ExerciseDefinition.fromJson(json);
 }
 
-/// @nodoc
+
 mixin _$ExerciseDefinition {
   int? get id => throw _privateConstructorUsedError;
   String get name => throw _privateConstructorUsedError;
@@ -35,17 +35,17 @@ mixin _$ExerciseDefinition {
   String? get region => throw _privateConstructorUsedError;
   double? get oneRepMax => throw _privateConstructorUsedError;
 
-  /// Serializes this ExerciseDefinition to a JSON map.
+
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
-  /// Create a copy of ExerciseDefinition
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @JsonKey(includeFromJson: false, includeToJson: false)
   $ExerciseDefinitionCopyWith<ExerciseDefinition> get copyWith =>
       throw _privateConstructorUsedError;
 }
 
-/// @nodoc
+
 abstract class $ExerciseDefinitionCopyWith<$Res> {
   factory $ExerciseDefinitionCopyWith(
           ExerciseDefinition value, $Res Function(ExerciseDefinition) then) =
@@ -63,7 +63,7 @@ abstract class $ExerciseDefinitionCopyWith<$Res> {
       double? oneRepMax});
 }
 
-/// @nodoc
+
 class _$ExerciseDefinitionCopyWithImpl<$Res, $Val extends ExerciseDefinition>
     implements $ExerciseDefinitionCopyWith<$Res> {
   _$ExerciseDefinitionCopyWithImpl(this._value, this._then);
@@ -73,8 +73,8 @@ class _$ExerciseDefinitionCopyWithImpl<$Res, $Val extends ExerciseDefinition>
   // ignore: unused_field
   final $Res Function($Val) _then;
 
-  /// Create a copy of ExerciseDefinition
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -129,7 +129,7 @@ class _$ExerciseDefinitionCopyWithImpl<$Res, $Val extends ExerciseDefinition>
   }
 }
 
-/// @nodoc
+
 abstract class _$$ExerciseDefinitionImplCopyWith<$Res>
     implements $ExerciseDefinitionCopyWith<$Res> {
   factory _$$ExerciseDefinitionImplCopyWith(_$ExerciseDefinitionImpl value,
@@ -149,7 +149,7 @@ abstract class _$$ExerciseDefinitionImplCopyWith<$Res>
       double? oneRepMax});
 }
 
-/// @nodoc
+
 class __$$ExerciseDefinitionImplCopyWithImpl<$Res>
     extends _$ExerciseDefinitionCopyWithImpl<$Res, _$ExerciseDefinitionImpl>
     implements _$$ExerciseDefinitionImplCopyWith<$Res> {
@@ -157,8 +157,8 @@ class __$$ExerciseDefinitionImplCopyWithImpl<$Res>
       $Res Function(_$ExerciseDefinitionImpl) _then)
       : super(_value, _then);
 
-  /// Create a copy of ExerciseDefinition
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -213,7 +213,7 @@ class __$$ExerciseDefinitionImplCopyWithImpl<$Res>
   }
 }
 
-/// @nodoc
+
 @JsonSerializable()
 class _$ExerciseDefinitionImpl implements _ExerciseDefinition {
   const _$ExerciseDefinitionImpl(
@@ -314,8 +314,8 @@ class _$ExerciseDefinitionImpl implements _ExerciseDefinition {
       region,
       oneRepMax);
 
-  /// Create a copy of ExerciseDefinition
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   @pragma('vm:prefer-inline')
@@ -370,8 +370,8 @@ abstract class _ExerciseDefinition implements ExerciseDefinition {
   @override
   double? get oneRepMax;
 
-  /// Create a copy of ExerciseDefinition
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @override
   @JsonKey(includeFromJson: false, includeToJson: false)
   _$$ExerciseDefinitionImplCopyWith<_$ExerciseDefinitionImpl> get copyWith =>

@@ -73,7 +73,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
   Future<void> _openMassReplaceDialog() async {
     if (_selectedMicrocycleIds.isEmpty) return;
 
-    // Build lookup for selected microcycles
+
     final idToMicro = <int, Microcycle>{};
     for (final meso in widget.plan.mesocycles) {
       for (final micro in meso.microcycles) {
@@ -83,7 +83,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
       }
     }
 
-    // Unique exercises across selection
+
     final Map<int, String> unique = {};
     final Map<int, int> counts = {};
     for (final micro in idToMicro.values) {
@@ -98,7 +98,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
     final exerciseIdsSorted = unique.keys.toList()..sort((a, b) => unique[a]!.toLowerCase().compareTo(unique[b]!.toLowerCase()));
 
     final TextEditingController dayCtrl = TextEditingController();
-    Set<int> selectedSources = exerciseIdsSorted.toSet(); // default: all
+    Set<int> selectedSources = exerciseIdsSorted.toSet();
     ExerciseDefinition? target;
     String? error;
 
@@ -247,7 +247,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
       }
     }
 
-    final diffs = <Map<String, dynamic>>[]; // {name, ex, sets}
+    final diffs = <Map<String, dynamic>>[];
     int totalEx = 0, totalSets = 0;
     for (final id in validIds) {
       final micro = idToMicro[id];
@@ -511,7 +511,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
               if (rpe != null) {
                 ne = _clampEffort(rpe);
               } else {
-                // invalid combo; apply fix if requested
+
                 invalid += 1;
                 final strategy = fixStrategy ?? 'none';
                 if (strategy == 'fixReps') {
@@ -781,7 +781,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
   }
 
   Future<void> _openMassEditDialog() async {
-    // New mode/value state per parameter
+
     bool intensityEnabled = false;
     bool effortEnabled = false;
     bool volumeEnabled = false;
@@ -791,7 +791,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
     RecalcTarget recalcTarget = RecalcTarget.auto;
     final dayCtrl = TextEditingController();
 
-    // Build unique exercises across the entire plan for multi-select filter
+
     final Map<int, String> unique = {};
     final Map<int, int> counts = {};
     for (final meso in widget.plan.mesocycles) {
@@ -806,7 +806,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
     }
     final exerciseIdsSorted = unique.keys.toList()
       ..sort((a, b) => (unique[a] ?? '').toLowerCase().compareTo((unique[b] ?? '').toLowerCase()));
-    Set<int> selectedExerciseIds = exerciseIdsSorted.toSet(); // default: all
+    Set<int> selectedExerciseIds = exerciseIdsSorted.toSet();
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1032,10 +1032,10 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
     String? fixStrategy,
   }) async {
     if (_selectedMicrocycleIds.isEmpty) return;
-    // Validate ownership first
+
     final validIds = await _mesoService.validateMicrocycles(_selectedMicrocycleIds.toList());
 
-    // Build lookup
+
     final idToMicro = <int, Microcycle>{};
     for (final meso in widget.plan.mesocycles) {
       for (final micro in meso.microcycles) {
@@ -1043,7 +1043,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
       }
     }
 
-    // Compute diffs (with ability to recompute inside dialog)
+
     var diffs = <_MicroDiff>[];
     int sumTotal = 0, sumChanged = 0, sumI = 0, sumE = 0, sumV = 0, sumInvalid = 0;
     void recompute() {
@@ -1210,7 +1210,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
         );
       }
 
-      // Build a map id -> microcycle reference
+
       final idToMicro = <int, Microcycle>{};
       for (final meso in widget.plan.mesocycles) {
         for (final micro in meso.microcycles) {
@@ -1224,7 +1224,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
         final micro = idToMicro[id];
         if (micro == null) { failed++; continue; }
 
-        // Apply changes in-memory copy
+
         final changed = _applySetParamsToMicro(
           micro,
           intensityMode: intensityMode,
@@ -1279,7 +1279,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
       if (mode == null || val == null) return orig;
       if (mode == 'set') return val.round();
       if (mode == 'offset') {
-        if (orig == null) return orig; // skip if no original
+        if (orig == null) return orig;
         return (orig + val).round();
       }
       if (mode == 'scale') {
@@ -1293,7 +1293,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
     int? _clampVolume(int? v) => v == null ? null : (v < 1 ? 1 : v);
     for (int wi = 0; wi < micro.planWorkouts.length; wi++) {
       final w = micro.planWorkouts[wi];
-      // Optional filter by day index (Day N)
+
       if (dayIndex != null) {
         final label = w.dayLabel.trim().toLowerCase();
         int? d;

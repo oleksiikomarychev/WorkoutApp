@@ -1,12 +1,11 @@
 import argparse
 import asyncio
-from typing import Dict, List
 
 from ..dependencies import AsyncSessionLocal, engine
 from ..models.calendar import Base
 from ..models.exercises import ExerciseList
 
-DEFAULT_EXERCISES: List[Dict[str, str | None]] = [
+DEFAULT_EXERCISES: list[dict[str, str | None]] = [
     {"name": "Приседания со штангой", "muscle_group": "Ноги", "equipment": "Штанга"},
     {"name": "Жим лёжа", "muscle_group": "Грудь", "equipment": "Штанга"},
     {"name": "Становая тяга", "muscle_group": "Спина", "equipment": "Штанга"},
@@ -58,16 +57,15 @@ DEFAULT_EXERCISES: List[Dict[str, str | None]] = [
 ]
 
 
-async def seed(exercises: List[Dict[str, str | None]] = DEFAULT_EXERCISES, upsert: bool = True) -> None:
+async def seed(exercises: list[dict[str, str | None]] = DEFAULT_EXERCISES, upsert: bool = True) -> None:
     """Заполняет таблицу exercise_list начальными данными.
 
     - Если upsert=True: обновляет muscle_group/equipment по совпадению name
     - Если upsert=False: добавляет только отсутствующие (по name)
     """
-    # Создаём таблицы при необходимости (безопасно)
+
     Base.metadata.create_all(bind=engine)
 
-    # Use async context manager for database session
     async with AsyncSessionLocal() as db:
         created = 0
         updated = 0

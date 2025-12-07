@@ -59,7 +59,7 @@ class _SessionLogScreenState extends ConsumerState<SessionLogScreen> {
     try {
       final svc = ref.read(workoutServiceProvider);
       final w = await svc.getWorkoutWithDetails(widget.session.workoutId);
-      // Ensure exercise names are present: fetch definitions by exercise_list_id when needed
+
       final instances = w.exerciseInstances;
       final ids = instances.map((e) => e.exerciseListId).toSet().toList();
       if (ids.isNotEmpty) {
@@ -80,7 +80,7 @@ class _SessionLogScreenState extends ConsumerState<SessionLogScreen> {
         _workout = w;
       });
     } catch (_) {
-      // Best-effort; leave _workout null
+
     } finally {
       if (mounted) setState(() => _loading = false);
     }

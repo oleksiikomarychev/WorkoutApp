@@ -82,7 +82,7 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
     }
     if (placement['mesocycle_index'] != null) {
       final idx0 = int.tryParse(placement['mesocycle_index'].toString());
-      if (idx0 != null) _mesocycleIndex = (idx0 + 1).toString(); // convert 0-based -> 1-based for UI
+      if (idx0 != null) _mesocycleIndex = (idx0 + 1).toString();
     }
     _conflict = (params['on_conflict'] ?? _conflict).toString();
   }
@@ -112,8 +112,8 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
         if (_eq.isNotEmpty) focus['equipment'] = _eq.toList();
         if (focus.isNotEmpty) map['params']['default_focus_tags'] = focus;
       }
-      // Emit placement; mesocycle_index must be 0-based in JSON
-      final uiIdx = int.tryParse(_mesocycleIndex) ?? 1; // 1-based in UI
+
+      final uiIdx = int.tryParse(_mesocycleIndex) ?? 1;
       final zeroIdx = (uiIdx - 1).clamp(0, 1000000);
       map['params']['placement'] = {
         'mode': _placement,
@@ -293,7 +293,7 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
                     final label = m.name.isNotEmpty ? m.name : 'Мезоцикл ${(i + 1)}';
                     items.add(DropdownMenuItem(value: m.id.toString(), child: Text('$label (ID ${m.id})')));
                   }
-                  // add manual option always
+
                   items.add(const DropdownMenuItem(value: 'manual', child: Text('Другой (ввести ID)')));
                   final current = _sourceMesocycleId.isEmpty ? null : _sourceMesocycleId;
                   return Column(
@@ -306,7 +306,7 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
                         onChanged: (v) {
                           setState(() {
                             if (v == 'manual') {
-                              // keep current manual value
+
                             } else {
                               _sourceMesocycleId = (v ?? '').trim();
                             }
@@ -495,11 +495,11 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
                       final label = meso[i].name.isNotEmpty ? '$idx. ${meso[i].name}' : 'Мезоцикл $idx';
                       items.add(DropdownMenuItem(value: idx, child: Text(label)));
                     }
-                    // normalize current selection into range
+
                     final currentIdx = int.tryParse(_mesocycleIndex) ?? 1;
                     final normalized = currentIdx.clamp(1, items.length).toString();
                     if (normalized != _mesocycleIndex) {
-                      // keep state consistent without spamming emits
+
                       _mesocycleIndex = normalized;
                     }
                     return Row(

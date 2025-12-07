@@ -1,10 +1,10 @@
-import json
 import os
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Set, Tuple
+from datetime import UTC, datetime
 
 import httpx
 import structlog
+from backend_common.cache import CacheHelper, CacheMetrics
+from backend_common.http_client import ServiceClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -36,64 +36,31 @@ INTERNAL_GATEWAY_SECRET = (os.getenv("INTERNAL_GATEWAY_SECRET") or "").strip()
 
 
 class SessionService:
-    def __init__(self, db: AsyncSession, user_max_client: Optional[UserMaxClient] = None, user_id: str = None):
+    def __init__(self, db: AsyncSession, user_max_client: UserMaxClient | None = None, user_id: str = None):
         self.db = db
         self.user_max_client = user_max_client or UserMaxClient()
         self.user_id = user_id
+        self._cache = CacheHelper(
+            get_redis=get_redis,
+            metrics=CacheMetrics(
+                hits=SESSION_CACHE_HITS_TOTAL,
+                misses=SESSION_CACHE_MISSES_TOTAL,
+                errors=SESSION_CACHE_ERRORS_TOTAL,
+            ),
+            default_ttl=SESSION_DETAIL_TTL_SECONDS,
+        )
 
-    async def _get_cached_session(self, session_id: int) -> Optional[dict]:
-        redis = await get_redis()
-        if not redis:
-            return None
-        key = session_detail_key(self.user_id, session_id)
-        try:
-            cached_value = await redis.get(key)
-            if cached_value:
-                SESSION_CACHE_HITS_TOTAL.inc()
-                return json.loads(cached_value)
-            SESSION_CACHE_MISSES_TOTAL.inc()
-        except Exception as exc:
-            SESSION_CACHE_ERRORS_TOTAL.inc()
-            logger.warning("session_cache_get_failed", key=key, error=str(exc))
-        return None
+    async def _get_cached_session(self, session_id: int) -> dict | None:
+        return await self._cache.get(session_detail_key(self.user_id, session_id))
 
     async def _set_cached_session(self, session_id: int, payload: dict) -> None:
-        redis = await get_redis()
-        if not redis:
-            return
-        key = session_detail_key(self.user_id, session_id)
-        try:
-            await redis.set(key, json.dumps(payload), ex=SESSION_DETAIL_TTL_SECONDS)
-        except Exception as exc:
-            SESSION_CACHE_ERRORS_TOTAL.inc()
-            logger.warning("session_cache_set_failed", key=key, error=str(exc))
+        await self._cache.set(session_detail_key(self.user_id, session_id), payload)
 
-    async def _get_cached_session_list(self) -> Optional[List[dict]]:
-        redis = await get_redis()
-        if not redis:
-            return None
-        key = session_list_key(self.user_id)
-        try:
-            cached_value = await redis.get(key)
-            if cached_value:
-                SESSION_CACHE_HITS_TOTAL.inc()
-                return json.loads(cached_value)
-            SESSION_CACHE_MISSES_TOTAL.inc()
-        except Exception as exc:
-            SESSION_CACHE_ERRORS_TOTAL.inc()
-            logger.warning("session_list_cache_get_failed", key=key, error=str(exc))
-        return None
+    async def _get_cached_session_list(self) -> list[dict] | None:
+        return await self._cache.get(session_list_key(self.user_id))
 
-    async def _set_cached_session_list(self, payload: List[dict]) -> None:
-        redis = await get_redis()
-        if not redis:
-            return
-        key = session_list_key(self.user_id)
-        try:
-            await redis.set(key, json.dumps(payload), ex=SESSION_DETAIL_TTL_SECONDS)
-        except Exception as exc:
-            SESSION_CACHE_ERRORS_TOTAL.inc()
-            logger.warning("session_list_cache_set_failed", key=key, error=str(exc))
+    async def _set_cached_session_list(self, payload: list[dict]) -> None:
+        await self._cache.set(session_list_key(self.user_id), payload)
 
     async def start_workout_session(self, workout_id: int, started_at: datetime | None = None) -> WorkoutSession:
         result = await self.db.execute(
@@ -114,9 +81,9 @@ class SessionService:
             return active
 
         if started_at is None:
-            started_at = datetime.now(timezone.utc)
+            started_at = datetime.now(UTC)
         elif started_at.tzinfo is None:
-            started_at = started_at.replace(tzinfo=timezone.utc)
+            started_at = started_at.replace(tzinfo=UTC)
 
         naive_started_at = started_at.replace(tzinfo=None)
 
@@ -140,14 +107,20 @@ class SessionService:
         await invalidate_session_cache(self.user_id, session_ids=[session.id])
         return session
 
-    async def _serialize_session(self, session: WorkoutSession) -> dict:
+    def _serialize_session(self, session: WorkoutSession) -> dict:
+        started_at = session.started_at
+        finished_at = session.finished_at
+        if isinstance(started_at, datetime):
+            started_at = started_at.isoformat()
+        if isinstance(finished_at, datetime):
+            finished_at = finished_at.isoformat()
         return {
             "id": session.id,
             "workout_id": session.workout_id,
             "user_id": session.user_id,
             "status": session.status,
-            "started_at": session.started_at,
-            "finished_at": session.finished_at,
+            "started_at": started_at,
+            "finished_at": finished_at,
             "progress": session.progress,
             "macro_suggestion": session.macro_suggestion,
         }
@@ -191,7 +164,7 @@ class SessionService:
             await self._set_cached_session_list(serialized)
         return sessions
 
-    async def get_all_sessions(self) -> List[WorkoutSession]:
+    async def get_all_sessions(self) -> list[WorkoutSession]:
         cached_list = await self._get_cached_session_list()
         if cached_list is not None:
             return [WorkoutSession(**payload) for payload in cached_list]
@@ -206,9 +179,6 @@ class SessionService:
         return sessions
 
     async def get_session_by_id(self, session_id: int) -> WorkoutSession | None:
-        cached = await self._get_cached_session(session_id)
-        if cached:
-            return WorkoutSession(**cached)
         result = await self.db.execute(
             select(WorkoutSession)
             .filter(WorkoutSession.id == session_id)
@@ -226,7 +196,7 @@ class SessionService:
         if session.status == "finished":
             return session
 
-        finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        finished_at = datetime.now(UTC).replace(tzinfo=None)
         session.status = "finished"
         session.finished_at = finished_at
         result = await self.db.execute(
@@ -258,7 +228,7 @@ class SessionService:
 
         content = f"Completed workout #{workout_id}"
 
-        attachment: Dict[str, object] = {"type": "workout_session"}
+        attachment: dict[str, object] = {"type": "workout_session"}
         try:
             if session.started_at and session.finished_at:
                 try:
@@ -267,16 +237,16 @@ class SessionService:
                     duration_seconds = (finished - started).total_seconds()
                     if duration_seconds > 0:
                         attachment["duration_minutes"] = int(duration_seconds // 60)
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     pass
-        except Exception:
+        except (TypeError, AttributeError):
             pass
 
         attachments = []
         if len(attachment) > 1:
             attachments.append(attachment)
 
-        payload: Dict[str, object] = {
+        payload: dict[str, object] = {
             "content": content,
             "scope": "public",
             "context_resource": {
@@ -291,11 +261,12 @@ class SessionService:
         async with httpx.AsyncClient(timeout=timeout) as client:
             try:
                 await client.post(url, headers=headers, json=payload)
-            except Exception:
+            except httpx.RequestError as exc:
                 logger.warning(
-                    "_post_social_workout_completion: request failed | workout_id=%s session_id=%s",
+                    "_post_social_workout_completion: request failed | workout_id=%s session_id=%s error=%s",
                     workout_id,
                     session.id,
+                    exc,
                 )
                 return
 
@@ -310,15 +281,8 @@ class SessionService:
         if not session:
             raise SessionNotFoundException(session_id)
 
-        raw_progress = session.progress or {}
-        if not isinstance(raw_progress, dict):
-            raw_progress = {}
-        progress = dict(raw_progress)
-
-        raw_completed = progress.get("completed")
-        if not isinstance(raw_completed, dict):
-            raw_completed = {}
-        completed_map = dict(raw_completed)
+        progress = dict(session.progress or {})
+        completed_map = dict(progress.get("completed") or {})
 
         key = str(int(instance_id))
         current_list = list(completed_map.get(key) or [])
@@ -340,60 +304,43 @@ class SessionService:
 
     async def _prepare_user_max_payload(
         self, workout: Workout, session: WorkoutSession, finished_at: datetime
-    ) -> Optional[list[dict]]:
-        """Build payload for user-max-service using exercises-service sets.
-
-        Rationale: Manual workouts store sets in exercises-service, not in
-        workouts-service tables. Session progress tracks completion by exercise
-        instance/set IDs from exercises-service. Therefore we fetch instances
-        by workout_id from exercises-service and filter by completed sets.
-        """
+    ) -> list[dict] | None:
         completed_map = self._extract_completed_sets(session)
+        total_completed_sets = sum(len(v) for v in completed_map.values())
         logger.info(
-            "_prepare_user_max_payload | workout_id=%s session_id=%s completed_map=%s",
+            "_prepare_user_max_payload | workout_id=%s session_id=%s completed_instances=%d completed_sets=%d",
+            workout.id,
+            session.id,
+            len(completed_map),
+            total_completed_sets,
+        )
+        logger.debug(
+            "_prepare_user_max_payload_detail | workout_id=%s session_id=%s completed_map=%s",
             workout.id,
             session.id,
             completed_map,
         )
 
-        # Fetch instances with sets from exercises-service
         instances = await self._fetch_instances_from_exercises_service(workout.id)
 
-        entries: Dict[Tuple[int, int], float] = {}
-        if instances:
-            for inst in instances:
-                try:
-                    instance_id = int(inst.get("id")) if inst.get("id") is not None else None
-                except Exception:
-                    instance_id = None
-                # Get only sets that are marked completed for this instance
-                completed_set_ids: Set[int] = set()
-                if instance_id is not None:
-                    completed_set_ids = completed_map.get(instance_id, set())
-                if not completed_set_ids:
+        entries: dict[tuple[int, int], float] = {}
+        for inst in instances:
+            instance_id = int(inst["id"])
+            completed_set_ids = completed_map.get(instance_id, set())
+            if not completed_set_ids:
+                continue
+
+            exercise_id = int(inst["exercise_list_id"])
+            for s in inst.get("sets") or []:
+                sid = int(s["id"])
+                if sid not in completed_set_ids:
                     continue
-
-                try:
-                    exercise_id = int(inst.get("exercise_list_id"))
-                except Exception:
-                    # Skip if exercise id is invalid
+                entry = self._build_entry_from_dict(exercise_id, s)
+                if not entry:
                     continue
+                key = (entry["exercise_id"], entry["rep_max"])
+                entries[key] = max(entries.get(key, 0.0), entry["max_weight"])
 
-                for s in inst.get("sets") or []:
-                    try:
-                        sid = int(s.get("id"))
-                    except Exception:
-                        continue
-                    if sid not in completed_set_ids:
-                        continue
-                    entry = self._build_entry_from_dict(exercise_id, s)
-                    if not entry:
-                        continue
-                    key = (entry["exercise_id"], entry["rep_max"])
-                    entries[key] = max(entries.get(key, 0.0), entry["max_weight"])
-
-        # Fallback: if still no entries and workouts-service has embedded sets,
-        # try to build from those (generated workouts path)
         if not entries and workout.exercises:
             for exercise in workout.exercises:
                 completed_set_ids = completed_map.get(exercise.id)
@@ -434,88 +381,59 @@ class SessionService:
         )
         return payload
 
-    async def _compute_macro_suggestion(self, applied_plan_id: int) -> Optional[dict]:
-        """Call plans-service run-macros and return a compact suggestion payload for the client UI."""
+    async def _compute_macro_suggestion(self, applied_plan_id: int) -> dict | None:
         base_url = os.getenv("PLANS_SERVICE_URL", "http://plans-service:8005").rstrip("/")
         url = f"{base_url}/plans/applied-plans/{applied_plan_id}/run-macros"
         headers = {"X-User-Id": self.user_id}
-        try:
-            async with httpx.AsyncClient(timeout=6.0) as client:
-                res = await client.post(url, headers=headers)
-                if res.status_code != 200:
-                    logger.warning(
-                        "SessionService.run-macros non-200 | applied_plan_id=%s status=%s body=%s",
-                        applied_plan_id,
-                        res.status_code,
-                        res.text,
-                    )
-                    return None
-                data = res.json() or {}
-                preview = data.get("preview") or []
-                # Summarize planned plan-level changes and patches
-                inject_count = 0
-                for item in preview:
-                    for ch in item.get("plan_changes") or []:
-                        if ch.get("type") == "Inject_Mesocycle":
-                            inject_count += 1
-                has_patches = any((item.get("patches") for item in preview))
-                if inject_count == 0 and not has_patches:
-                    return None
-                return {
-                    "applied_plan_id": applied_plan_id,
-                    "summary": {
-                        "inject_mesocycles": inject_count,
-                        "has_patches": bool(has_patches),
-                    },
-                    "apply_url": f"/api/v1/plans/applied-plans/{applied_plan_id}/apply-macros",
-                    "method": "POST",
-                }
-        except Exception:
-            logger.exception(
-                "SessionService._compute_macro_suggestion failed | applied_plan_id=%s",
-                applied_plan_id,
-            )
+
+        async with ServiceClient(timeout=6.0) as client:
+            resp = await client.post(url, headers=headers, expected_status=200, applied_plan_id=applied_plan_id)
+        if not resp.success:
             return None
 
-    def _extract_completed_sets(self, session: WorkoutSession) -> Dict[int, Set[int]]:
-        raw_progress = session.progress if isinstance(session.progress, dict) else {}
-        raw_completed = raw_progress.get("completed") if isinstance(raw_progress.get("completed"), dict) else {}
-        result: Dict[int, Set[int]] = {}
-        for instance_id_raw, set_ids in raw_completed.items():
+        data = resp.data or {}
+        preview = data.get("preview") or []
+
+        inject_count = 0
+        for item in preview:
+            for ch in item.get("plan_changes") or []:
+                if ch.get("type") == "Inject_Mesocycle":
+                    inject_count += 1
+        has_patches = any(item.get("patches") for item in preview)
+        if inject_count == 0 and not has_patches:
+            return None
+        return {
+            "applied_plan_id": applied_plan_id,
+            "summary": {
+                "inject_mesocycles": inject_count,
+                "has_patches": bool(has_patches),
+            },
+            "apply_url": f"/api/v1/plans/applied-plans/{applied_plan_id}/apply-macros",
+            "method": "POST",
+        }
+
+    def _extract_completed_sets(self, session: WorkoutSession) -> dict[int, set[int]]:
+        progress = session.progress or {}
+        completed = progress.get("completed", {})
+        result: dict[int, set[int]] = {}
+        for instance_id_raw, set_ids in completed.items():
             try:
                 instance_id = int(instance_id_raw)
             except (TypeError, ValueError):
                 continue
             if not isinstance(set_ids, list):
                 continue
-            parsed_ids: Set[int] = set()
-            for sid in set_ids:
-                try:
-                    parsed_ids.add(int(sid))
-                except (TypeError, ValueError):
-                    continue
+            parsed_ids = {int(sid) for sid in set_ids if isinstance(sid, int | str)}
             if parsed_ids:
                 result[instance_id] = parsed_ids
         return result
 
-    def _build_entry(self, exercise_id: int, w_set: WorkoutSet) -> Optional[dict]:
-        reps = self._safe_int(w_set.volume)
-        if reps is None or reps <= 0:
-            logger.debug(
-                "_build_entry: invalid reps | exercise_id=%s set_id=%s volume=%s",
-                exercise_id,
-                w_set.id,
-                w_set.volume,
-            )
+    def _build_entry(self, exercise_id: int, w_set: WorkoutSet) -> dict | None:
+        reps = int(w_set.volume) if w_set.volume else 0
+        if reps <= 0:
             return None
-        weight = self._safe_float(w_set.working_weight)
-        if weight is None or weight <= 0:
-            logger.debug(
-                "_build_entry: invalid weight | exercise_id=%s set_id=%s working_weight=%s",
-                exercise_id,
-                w_set.id,
-                w_set.working_weight,
-            )
+        weight = float(w_set.working_weight) if w_set.working_weight else 0.0
+        if weight <= 0:
             return None
         rir = self._estimate_rir(w_set.effort)
         rep_max = reps + rir
@@ -536,18 +454,14 @@ class SessionService:
             "max_weight": weight,
         }
 
-    def _build_entry_from_dict(self, exercise_id: int, s: dict) -> Optional[dict]:
-        """Build entry from an exercises-service set dict.
+    def _build_entry_from_dict(self, exercise_id: int, s: dict) -> dict | None:
+        reps = int(s["reps"])
+        if reps <= 0:
+            return None
+        weight = float(s["weight"])
+        if weight <= 0:
+            return None
 
-        Expected keys: 'reps', 'weight', and either 'effort' or 'rpe'.
-        """
-        reps = self._safe_int(s.get("reps"))
-        if reps is None or reps <= 0:
-            return None
-        weight = self._safe_float(s.get("weight"))
-        if weight is None or weight <= 0:
-            return None
-        # Prefer latest user-entered RPE over any stale 'effort' saved from templates
         effort_val = s.get("rpe")
         if effort_val is None:
             effort_val = s.get("effort")
@@ -560,7 +474,7 @@ class SessionService:
             "max_weight": weight,
         }
 
-    def _estimate_rir(self, effort_value: Optional[float]) -> int:
+    def _estimate_rir(self, effort_value: float | None) -> int:
         if effort_value is None:
             return 0
         try:
@@ -573,18 +487,6 @@ class SessionService:
             rir = max(0.0, 10.0 - eff)
         return max(0, min(round(rir), 10))
 
-    def _safe_int(self, value: Optional[float]) -> Optional[int]:
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
-
-    def _safe_float(self, value: Optional[float]) -> Optional[float]:
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return None
-
     async def _fetch_instances_from_exercises_service(self, workout_id: int) -> list[dict]:
         base_url = os.getenv("EXERCISES_SERVICE_URL")
         if not base_url:
@@ -593,13 +495,6 @@ class SessionService:
         base_url = base_url.rstrip("/")
         url = f"{base_url}/exercises/instances/workouts/{workout_id}/instances"
         headers = {"X-User-Id": self.user_id}
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                res = await client.get(url, headers=headers)
-                if res.status_code == 200:
-                    data = res.json()
-                    if isinstance(data, list):
-                        return data
-        except Exception:
-            logger.exception("Failed to fetch instances from exercises-service for workout_id=%s", workout_id)
-        return []
+        async with ServiceClient(timeout=5.0) as client:
+            data = await client.get_json(url, headers=headers, default=[], workout_id=workout_id)
+        return data if isinstance(data, list) else []

@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, constr
 
 
 class MicrocycleTemplateDto(BaseModel):
-    id: Optional[int] = None
+    id: int | None = None
     name: str = Field(..., max_length=255)
-    notes: Optional[constr(max_length=255)] = None
+    notes: constr(max_length=255) | None = None
     order_index: int = Field(default=0, ge=0)
-    days_count: Optional[int] = Field(default=None, ge=1, le=31)
-    schedule: Optional[Dict[str, List[Dict[str, Any]]]] = None
+    days_count: int | None = Field(default=None, ge=1, le=31)
+    schedule: dict[str, list[dict[str, Any]]] | None = None
 
     class Config:
         from_attributes = True
@@ -34,8 +34,8 @@ class PlacementDto(BaseModel):
         ...,
         description="Placement mode: Insert_After_Mesocycle | Insert_After_Workout | Append_To_End",
     )
-    mesocycle_index: Optional[int] = Field(default=None, ge=1)
-    workout_id: Optional[int] = Field(default=None, ge=1)
+    mesocycle_index: int | None = Field(default=None, ge=1)
+    workout_id: int | None = Field(default=None, ge=1)
 
 
 class InstantiateFromTemplateRequest(BaseModel):
@@ -52,37 +52,37 @@ class InstantiateFromExistingRequest(BaseModel):
 
 class MesocycleTemplateCreate(BaseModel):
     name: str = Field(..., max_length=255)
-    notes: Optional[constr(max_length=255)] = None
-    weeks_count: Optional[int] = Field(default=None, ge=0)
-    microcycle_length_days: Optional[int] = Field(default=None, ge=1, le=14)
-    normalization_value: Optional[float] = Field(default=None)
-    normalization_unit: Optional[str] = Field(default=None)
+    notes: constr(max_length=255) | None = None
+    weeks_count: int | None = Field(default=None, ge=0)
+    microcycle_length_days: int | None = Field(default=None, ge=1, le=14)
+    normalization_value: float | None = Field(default=None)
+    normalization_unit: str | None = Field(default=None)
     is_public: bool = Field(default=False)
-    microcycles: List[MicrocycleTemplateDto] = Field(default_factory=list)
+    microcycles: list[MicrocycleTemplateDto] = Field(default_factory=list)
 
 
 class MesocycleTemplateUpdate(BaseModel):
-    name: Optional[str] = Field(default=None, max_length=255)
-    notes: Optional[constr(max_length=255)] = None
-    weeks_count: Optional[int] = Field(default=None, ge=0)
-    microcycle_length_days: Optional[int] = Field(default=None, ge=1, le=14)
-    normalization_value: Optional[float] = Field(default=None)
-    normalization_unit: Optional[str] = Field(default=None)
-    is_public: Optional[bool] = None
-    microcycles: Optional[List[MicrocycleTemplateDto]] = None
+    name: str | None = Field(default=None, max_length=255)
+    notes: constr(max_length=255) | None = None
+    weeks_count: int | None = Field(default=None, ge=0)
+    microcycle_length_days: int | None = Field(default=None, ge=1, le=14)
+    normalization_value: float | None = Field(default=None)
+    normalization_unit: str | None = Field(default=None)
+    is_public: bool | None = None
+    microcycles: list[MicrocycleTemplateDto] | None = None
 
 
 class MesocycleTemplateResponse(BaseModel):
     id: int
     user_id: str
     name: str
-    notes: Optional[str]
-    weeks_count: Optional[int]
-    microcycle_length_days: Optional[int]
-    normalization_value: Optional[float]
-    normalization_unit: Optional[str]
+    notes: str | None
+    weeks_count: int | None
+    microcycle_length_days: int | None
+    normalization_value: float | None
+    normalization_unit: str | None
     is_public: bool
-    microcycles: List[MicrocycleTemplateDto] = Field(default_factory=list)
+    microcycles: list[MicrocycleTemplateDto] = Field(default_factory=list)
 
     class Config:
         from_attributes = True

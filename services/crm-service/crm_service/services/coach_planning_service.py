@@ -75,10 +75,6 @@ async def _proxy_request_for_athlete(
 
 
 async def _fetch_exercise_instances_for_workout(workout_id: int, athlete_id: str) -> list[dict]:
-    """Fetch exercise instances for a given workout from exercises-service.
-
-    Returns an empty list on any non-200 response or JSON parsing issue.
-    """
     print(f"DEBUG: Fetching instances for workout {workout_id}, athlete {athlete_id}")
     base_url = settings.exercises_service_url.rstrip("/")
     url = f"{base_url}/exercises/instances/workouts/{workout_id}/instances"
@@ -125,7 +121,6 @@ async def get_active_plan_analytics_for_athlete(
     athlete_id: str,
     group_by: str | None = None,
 ) -> Any:
-    """Fetch analytics for athlete's active applied plan from plans-service."""
     await _ensure_active_link(db, coach_id=coach_id, athlete_id=athlete_id)
     plan = await get_active_plan_for_athlete(db=db, coach_id=coach_id, athlete_id=athlete_id)
     if not isinstance(plan, dict) or not plan.get("id"):
@@ -171,7 +166,7 @@ async def get_active_plan_workouts_for_athlete(
         wid = item.get("id")
         if isinstance(wid, int):
             instances = await _fetch_exercise_instances_for_workout(wid, athlete_id=athlete_id)
-            # Frontend ожидает поле exercise_instances, совместимое с ExerciseInstance
+
             item["exercise_instances"] = instances
         enriched.append(item)
 

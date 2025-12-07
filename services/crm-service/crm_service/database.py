@@ -1,16 +1,14 @@
-import os
-
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from backend_common.database import (
+    create_async_engine_and_session,
+    ensure_asyncpg_url,
+    get_required_env_url,
+)
 from sqlalchemy.orm import declarative_base
 
-DATABASE_URL = os.getenv("CRM_DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError("CRM_DATABASE_URL environment variable is required")
+DATABASE_URL = get_required_env_url("CRM_DATABASE_URL")
 
 # Ensure we use an async driver for SQLAlchemy's asyncio extension
-if DATABASE_URL.startswith("postgresql://") and "+asyncpg" not in DATABASE_URL:
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+DATABASE_URL = ensure_asyncpg_url(DATABASE_URL)
 
-engine = create_async_engine(DATABASE_URL, future=True, echo=False)
-AsyncSessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False)
+engine, AsyncSessionLocal = create_async_engine_and_session(DATABASE_URL, expire_on_commit=False)
 Base = declarative_base()

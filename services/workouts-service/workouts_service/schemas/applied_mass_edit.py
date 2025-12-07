@@ -7,8 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class AppliedPlanExerciseFilter(BaseModel):
-    """Filter describing which workouts/exercises/sets should be edited."""
-
     plan_order_indices: list[int] | None = Field(default=None, description="Exact plan order indices to target")
     from_order_index: int | None = Field(
         default=None,
@@ -41,7 +39,6 @@ class AppliedPlanExerciseFilter(BaseModel):
         description="Target only exercises with these definition IDs",
     )
 
-    # Set-level filters
     intensity_lte: float | None = Field(default=None, description="Match sets with intensity <= value")
     intensity_gte: float | None = Field(default=None, description="Match sets with intensity >= value")
     volume_lte: int | None = Field(default=None, description="Match sets with reps/volume <= value")
@@ -52,7 +49,7 @@ class AppliedPlanExerciseFilter(BaseModel):
     effort_gte: float | None = Field(default=None, description="Match sets with effort/RPE >= value")
 
     @model_validator(mode="after")
-    def validate_indexes(cls, values: "AppliedPlanExerciseFilter") -> "AppliedPlanExerciseFilter":
+    def validate_indexes(cls, values: AppliedPlanExerciseFilter) -> AppliedPlanExerciseFilter:
         if (
             values.plan_order_indices is None
             and values.from_order_index is None
@@ -60,7 +57,6 @@ class AppliedPlanExerciseFilter(BaseModel):
             and values.scheduled_from is None
             and values.scheduled_to is None
         ):
-            # At least some scope must be provided to avoid editing every workout in plan accidentally.
             raise ValueError(
                 "AppliedPlanExerciseFilter must define plan_order_indices or an order/date range to scope edits"
             )
@@ -68,8 +64,6 @@ class AppliedPlanExerciseFilter(BaseModel):
 
 
 class AppliedAddExerciseSet(BaseModel):
-    """Definition of a single set for a newly added exercise instance."""
-
     volume: int | None = Field(default=None, ge=1, description="Reps/volume for the new set")
     intensity: float | None = Field(default=None, description="Intensity (%% of 1RM) for the new set")
     weight: float | None = Field(default=None, ge=0, description="Working weight in kg for the new set")
@@ -77,8 +71,6 @@ class AppliedAddExerciseSet(BaseModel):
 
 
 class AppliedAddExerciseInstance(BaseModel):
-    """Specification of a new exercise instance to create in matched workouts."""
-
     exercise_definition_id: int = Field(..., ge=1, description="Exercise definition (exercise_list) id to add")
     notes: str | None = Field(default=None, description="Optional notes for the new exercise instance")
     order: int | None = Field(default=None, ge=0, description="Optional order index within the workout")
@@ -92,8 +84,6 @@ class AppliedAddExerciseInstance(BaseModel):
 
 
 class AppliedPlanExerciseActions(BaseModel):
-    """Operations applied to each matched set."""
-
     model_config = ConfigDict(extra="forbid")
 
     set_intensity: float | None = Field(default=None, description="Override intensity value")
@@ -114,7 +104,6 @@ class AppliedPlanExerciseActions(BaseModel):
 
     clamp_non_negative: bool = Field(default=True, description="Prevent volume/weight from dropping below zero")
 
-    # Exercise-level replacement (applied plan)
     replace_exercise_definition_id_to: int | None = Field(
         default=None,
         ge=1,
@@ -125,7 +114,6 @@ class AppliedPlanExerciseActions(BaseModel):
         description="Optional human-readable exercise name to store for transparency",
     )
 
-    # High-level operations that can create new exercise instances in matched workouts
     add_exercise_instances: list[AppliedAddExerciseInstance] | None = Field(
         default=None,
         description=(
@@ -135,8 +123,7 @@ class AppliedPlanExerciseActions(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_actions(cls, values: "AppliedPlanExerciseActions") -> "AppliedPlanExerciseActions":
-        # Ensure at least one action is provided
+    def validate_actions(cls, values: AppliedPlanExerciseActions) -> AppliedPlanExerciseActions:
         has_action = any(
             getattr(values, field) is not None
             for field in (
@@ -169,8 +156,6 @@ class AppliedPlanMassEditCommand(BaseModel):
 
 
 class AppliedPlanMassEditResult(BaseModel):
-    """Summary returned to clients after mass edit execution."""
-
     mode: Literal["preview", "apply"]
     workouts_matched: int
     instances_matched: int
@@ -183,14 +168,6 @@ class AppliedPlanMassEditResult(BaseModel):
 
 
 class AppliedPlanScheduleShiftCommand(BaseModel):
-    """Command to shift or restructure scheduled_for dates for workouts in an applied plan.
-
-    Supports two modes via action_type:
-    - "shift": Shift all matched workouts by `days` (can be negative).
-    - "set_rest": restructuring the schedule so that the gap between consecutive matched workouts
-      becomes `new_rest_days`.
-    """
-
     from_date: datetime = Field(
         ...,
         description="Start date (inclusive) from which workouts should be shifted/restructured",

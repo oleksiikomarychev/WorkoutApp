@@ -23,7 +23,7 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
   @override
   void initState() {
     super.initState();
-    // No initial manual load; provider handles initial fetch
+
   }
 
   @override
@@ -43,7 +43,7 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
 
     final workoutId = int.tryParse(raw);
     if (workoutId == null) {
-      // Invalid input -> clear filter
+
       setState(() {
         _filterWorkoutId = null;
       });

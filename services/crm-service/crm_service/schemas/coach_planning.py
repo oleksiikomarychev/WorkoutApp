@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -13,43 +13,43 @@ class EffortType(str, Enum):
 
 
 class ExerciseSet(BaseModel):
-    id: Optional[int] = Field(None, description="ID of the set within the instance")
-    weight: Optional[float] = Field(None, ge=0, description="Weight in kg")
-    volume: Optional[int] = Field(None, ge=1, description="Volume")
-    intensity: Optional[int] = Field(None, description="Intensity, % of 1RM")
-    effort_type: Optional[EffortType] = Field(None, description="Type of effort")
-    effort: Optional[int] = Field(None, description="Effort value")
+    id: int | None = Field(None, description="ID of the set within the instance")
+    weight: float | None = Field(None, ge=0, description="Weight in kg")
+    volume: int | None = Field(None, ge=1, description="Volume")
+    intensity: int | None = Field(None, description="Intensity, % of 1RM")
+    effort_type: EffortType | None = Field(None, description="Type of effort")
+    effort: int | None = Field(None, description="Effort value")
 
     class Config:
         extra = "allow"
 
 
 class CoachWorkoutUpdate(BaseModel):
-    name: Optional[str] = None
-    notes: Optional[str] = None
-    status: Optional[str] = None
-    scheduled_for: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    started_at: Optional[datetime] = None
-    duration_seconds: Optional[int] = None
-    location: Optional[str] = None
-    readiness_score: Optional[int] = None
-    rpe_session: Optional[float] = None
+    name: str | None = None
+    notes: str | None = None
+    status: str | None = None
+    scheduled_for: datetime | None = None
+    completed_at: datetime | None = None
+    started_at: datetime | None = None
+    duration_seconds: int | None = None
+    location: str | None = None
+    readiness_score: int | None = None
+    rpe_session: float | None = None
 
 
 class CoachExerciseInstanceUpdate(BaseModel):
-    notes: Optional[str] = None
-    order: Optional[int] = None
-    exercise_list_id: Optional[int] = None
-    sets: Optional[List[ExerciseSet]] = None
+    notes: str | None = None
+    order: int | None = None
+    exercise_list_id: int | None = None
+    sets: list[ExerciseSet] | None = None
 
 
 class CoachExerciseInstanceCreate(BaseModel):
     exercise_list_id: int
-    sets: List[ExerciseSet] = []
-    notes: Optional[str] = None
-    order: Optional[int] = None
-    user_max_id: Optional[int] = None
+    sets: list[ExerciseSet] = []
+    notes: str | None = None
+    order: int | None = None
+    user_max_id: int | None = None
 
 
 class CoachWorkoutMassEditWorkoutItem(BaseModel):
@@ -63,8 +63,8 @@ class CoachWorkoutMassEditExerciseItem(BaseModel):
 
 
 class CoachWorkoutsMassEditRequest(BaseModel):
-    workouts: Optional[list[CoachWorkoutMassEditWorkoutItem]] = None
-    exercise_instances: Optional[list[CoachWorkoutMassEditExerciseItem]] = None
+    workouts: list[CoachWorkoutMassEditWorkoutItem] | None = None
+    exercise_instances: list[CoachWorkoutMassEditExerciseItem] | None = None
 
 
 class CoachPlanAiMassEditRequest(BaseModel):

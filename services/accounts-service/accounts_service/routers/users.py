@@ -1,5 +1,3 @@
-from typing import List
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,12 +8,12 @@ from ..services.users_service import list_users
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("/all", response_model=List[UserSummaryResponse])
+@router.get("/all", response_model=list[UserSummaryResponse])
 async def get_all_users(
     db: AsyncSession = Depends(get_db),
     limit: int = 100,
     offset: int = 0,
-) -> List[UserSummaryResponse]:
+) -> list[UserSummaryResponse]:
     rows = await list_users(db, limit=limit, offset=offset)
     return [
         UserSummaryResponse(

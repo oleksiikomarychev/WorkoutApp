@@ -1,13 +1,13 @@
 // coverage:ignore-file
-// GENERATED CODE - DO NOT MODIFY BY HAND
-// ignore_for_file: type=lint
-// ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
+
+
+
 
 part of 'exercise_instance.dart';
 
-// **************************************************************************
-// FreezedGenerator
-// **************************************************************************
+
+
+
 
 T _$identity<T>(T value) => value;
 
@@ -18,7 +18,7 @@ ExerciseInstance _$ExerciseInstanceFromJson(Map<String, dynamic> json) {
   return _ExerciseInstance.fromJson(json);
 }
 
-/// @nodoc
+
 mixin _$ExerciseInstance {
   int? get id => throw _privateConstructorUsedError;
   @JsonKey(name: 'exercise_list_id')
@@ -37,17 +37,17 @@ mixin _$ExerciseInstance {
   @JsonKey(includeFromJson: false, includeToJson: false)
   int? get localId => throw _privateConstructorUsedError;
 
-  /// Serializes this ExerciseInstance to a JSON map.
+
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
-  /// Create a copy of ExerciseInstance
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @JsonKey(includeFromJson: false, includeToJson: false)
   $ExerciseInstanceCopyWith<ExerciseInstance> get copyWith =>
       throw _privateConstructorUsedError;
 }
 
-/// @nodoc
+
 abstract class $ExerciseInstanceCopyWith<$Res> {
   factory $ExerciseInstanceCopyWith(
           ExerciseInstance value, $Res Function(ExerciseInstance) then) =
@@ -68,7 +68,7 @@ abstract class $ExerciseInstanceCopyWith<$Res> {
   $ExerciseDefinitionCopyWith<$Res>? get exerciseDefinition;
 }
 
-/// @nodoc
+
 class _$ExerciseInstanceCopyWithImpl<$Res, $Val extends ExerciseInstance>
     implements $ExerciseInstanceCopyWith<$Res> {
   _$ExerciseInstanceCopyWithImpl(this._value, this._then);
@@ -78,8 +78,8 @@ class _$ExerciseInstanceCopyWithImpl<$Res, $Val extends ExerciseInstance>
   // ignore: unused_field
   final $Res Function($Val) _then;
 
-  /// Create a copy of ExerciseInstance
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -133,8 +133,8 @@ class _$ExerciseInstanceCopyWithImpl<$Res, $Val extends ExerciseInstance>
     ) as $Val);
   }
 
-  /// Create a copy of ExerciseInstance
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @override
   @pragma('vm:prefer-inline')
   $ExerciseDefinitionCopyWith<$Res>? get exerciseDefinition {
@@ -149,7 +149,7 @@ class _$ExerciseInstanceCopyWithImpl<$Res, $Val extends ExerciseInstance>
   }
 }
 
-/// @nodoc
+
 abstract class _$$ExerciseInstanceImplCopyWith<$Res>
     implements $ExerciseInstanceCopyWith<$Res> {
   factory _$$ExerciseInstanceImplCopyWith(_$ExerciseInstanceImpl value,
@@ -173,7 +173,7 @@ abstract class _$$ExerciseInstanceImplCopyWith<$Res>
   $ExerciseDefinitionCopyWith<$Res>? get exerciseDefinition;
 }
 
-/// @nodoc
+
 class __$$ExerciseInstanceImplCopyWithImpl<$Res>
     extends _$ExerciseInstanceCopyWithImpl<$Res, _$ExerciseInstanceImpl>
     implements _$$ExerciseInstanceImplCopyWith<$Res> {
@@ -181,8 +181,8 @@ class __$$ExerciseInstanceImplCopyWithImpl<$Res>
       $Res Function(_$ExerciseInstanceImpl) _then)
       : super(_value, _then);
 
-  /// Create a copy of ExerciseInstance
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -237,7 +237,7 @@ class __$$ExerciseInstanceImplCopyWithImpl<$Res>
   }
 }
 
-/// @nodoc
+
 
 @JsonSerializable(explicitToJson: true)
 class _$ExerciseInstanceImpl extends _ExerciseInstance
@@ -345,8 +345,8 @@ class _$ExerciseInstanceImpl extends _ExerciseInstance
       order,
       localId);
 
-  /// Create a copy of ExerciseInstance
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   @pragma('vm:prefer-inline')
@@ -405,8 +405,8 @@ abstract class _ExerciseInstance extends ExerciseInstance {
   @JsonKey(includeFromJson: false, includeToJson: false)
   int? get localId;
 
-  /// Create a copy of ExerciseInstance
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @override
   @JsonKey(includeFromJson: false, includeToJson: false)
   _$$ExerciseInstanceImplCopyWith<_$ExerciseInstanceImpl> get copyWith =>

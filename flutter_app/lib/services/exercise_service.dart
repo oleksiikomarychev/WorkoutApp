@@ -13,9 +13,9 @@ class ExerciseService extends BaseApiService {
 
   ExerciseService(this._apiClient) : super(_apiClient);
 
-  // --- ExerciseDefinition Methods ---
 
-  /// Fetches all exercise definitions from the API
+
+
   Future<List<ExerciseDefinition>> getExerciseDefinitions() async {
     try {
       final response = await _apiClient.get(
@@ -40,7 +40,7 @@ class ExerciseService extends BaseApiService {
     }
   }
 
-  /// Fetches muscles enum with labels and groups
+
   Future<List<MuscleInfo>> getMuscles() async {
     try {
       final response = await _apiClient.get(
@@ -61,19 +61,19 @@ class ExerciseService extends BaseApiService {
     }
   }
 
-  /// Fetches multiple exercise definitions by their IDs
+
   Future<List<ExerciseDefinition>> getExercisesByIds(List<int> ids) async {
     try {
       if (ids.isEmpty) return [];
-      
+
       final endpoint = '${ApiConfig.exerciseDefinitionsEndpoint}?ids=${ids.join(',')}';
       _logger.d('Fetching exercise definitions | endpoint=$endpoint');
-      
+
       final response = await _apiClient.get(
         endpoint,
         context: 'ExerciseService.getExercisesByIds',
       );
-      
+
       if (response is List) {
         return response
             .whereType<Map<String, dynamic>>()
@@ -90,7 +90,7 @@ class ExerciseService extends BaseApiService {
     }
   }
 
-  /// Fetches a single exercise definition by ID
+
   Future<ExerciseDefinition> getExerciseDefinition(int id) async {
     try {
       final endpoint = ApiConfig.exerciseDefinitionByIdEndpoint(id.toString());
@@ -99,7 +99,7 @@ class ExerciseService extends BaseApiService {
         endpoint,
         context: 'ExerciseService.getExerciseDefinition',
       );
-      
+
       if (response is Map<String, dynamic>) {
         return ExerciseDefinition.fromJson(response);
       } else {
@@ -113,7 +113,7 @@ class ExerciseService extends BaseApiService {
     }
   }
 
-  /// Creates a new exercise definition
+
   Future<ExerciseDefinition> createExerciseDefinition(ExerciseDefinition exercise) async {
     try {
       final endpoint = ApiConfig.exerciseDefinitionsEndpoint;
@@ -124,7 +124,7 @@ class ExerciseService extends BaseApiService {
         body,
         context: 'ExerciseService.createExerciseDefinition',
       );
-      
+
       if (response is Map<String, dynamic>) {
         return ExerciseDefinition.fromJson(response);
       } else {
@@ -137,14 +137,14 @@ class ExerciseService extends BaseApiService {
       rethrow;
     }
   }
-  
-  /// Updates an existing exercise definition
+
+
   Future<ExerciseDefinition> updateExerciseDefinition(ExerciseDefinition exercise) async {
     try {
       if (exercise.id == null) {
         throw Exception('Cannot update exercise definition without an ID');
       }
-      
+
       final endpoint = ApiConfig.exerciseDefinitionByIdEndpoint(exercise.id.toString());
       final body = exercise.toJson();
       _logger.d('Updating exercise definition | endpoint=$endpoint | body=$body');
@@ -153,7 +153,7 @@ class ExerciseService extends BaseApiService {
         body,
         context: 'ExerciseService.updateExerciseDefinition',
       );
-      
+
       if (response is Map<String, dynamic>) {
         return ExerciseDefinition.fromJson(response);
       } else {
@@ -167,7 +167,7 @@ class ExerciseService extends BaseApiService {
     }
   }
 
-  /// Deletes an exercise definition by ID
+
   Future<bool> deleteExerciseDefinition(int id) async {
     try {
       final endpoint = ApiConfig.exerciseDefinitionByIdEndpoint(id.toString());
@@ -183,15 +183,15 @@ class ExerciseService extends BaseApiService {
     }
   }
 
-  /// Fetches progression templates
+
   Future<List<ProgressionTemplate>> getTemplates() async {
-    // TODO: Implement actual API call
+
     return [];
   }
 
-  // --- ExerciseInstance Methods ---
 
-  /// Fetches an exercise instance by ID
+
+
   Future<ExerciseInstance> getExerciseInstance(int id) async {
     try {
       final endpoint = ApiConfig.exerciseInstanceByIdEndpoint(id.toString());
@@ -200,7 +200,7 @@ class ExerciseService extends BaseApiService {
         endpoint,
         context: 'ExerciseService.getExerciseInstance',
       );
-      
+
       if (response is Map<String, dynamic>) {
         return ExerciseInstance.fromJson(response);
       } else {
@@ -214,7 +214,7 @@ class ExerciseService extends BaseApiService {
     }
   }
 
-  /// Creates a new exercise instance in a workout
+
   Future<ExerciseInstance> createExerciseInstance(ExerciseInstance instance) async {
     try {
       final endpoint = ApiConfig.getInstancesByWorkoutEndpoint(instance.workoutId.toString());
@@ -225,7 +225,7 @@ class ExerciseService extends BaseApiService {
         body,
         context: 'ExerciseService.createExerciseInstance',
       );
-      
+
       if (response is Map<String, dynamic>) {
         return ExerciseInstance.fromJson(response);
       } else {
@@ -239,13 +239,13 @@ class ExerciseService extends BaseApiService {
     }
   }
 
-  /// Updates an existing exercise instance
+
   Future<ExerciseInstance> updateExerciseInstance(ExerciseInstance instance) async {
     try {
       if (instance.id == null) {
         throw Exception('Cannot update exercise instance without an ID');
       }
-      
+
       final endpoint = ApiConfig.exerciseInstanceByIdEndpoint(instance.id.toString());
       final payload = instance.toJson();
       _logger.d('PUT ExerciseInstance | endpoint=$endpoint | body=$payload');
@@ -254,7 +254,7 @@ class ExerciseService extends BaseApiService {
         payload,
         context: 'ExerciseService.updateExerciseInstance',
       );
-      
+
       if (response is Map<String, dynamic>) {
         return ExerciseInstance.fromJson(response);
       } else {
@@ -268,7 +268,7 @@ class ExerciseService extends BaseApiService {
     }
   }
 
-  /// Deletes an exercise instance by ID
+
   Future<bool> deleteExerciseInstance(int id) async {
     try {
       final endpoint = ApiConfig.exerciseInstanceByIdEndpoint(id.toString());

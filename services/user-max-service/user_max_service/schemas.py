@@ -1,5 +1,4 @@
 from datetime import date
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -10,24 +9,22 @@ class UserMaxBase(BaseModel):
     max_weight: float
     rep_max: int
     date: date
-    true_1rm: Optional[float] = None
-    verified_1rm: Optional[float] = None
-    source: Optional[str] = None
+    true_1rm: float | None = None
+    verified_1rm: float | None = None
+    source: str | None = None
 
     class Config:
         from_attributes = True
 
 
 class UserMaxCreate(BaseModel):
-    """Request schema for creating UserMax (without exercise_name)"""
-
     exercise_id: int
     max_weight: float
     rep_max: int
     date: date
-    true_1rm: Optional[float] = None
-    verified_1rm: Optional[float] = None
-    source: Optional[str] = None
+    true_1rm: float | None = None
+    verified_1rm: float | None = None
+    source: str | None = None
 
 
 class UserMaxResponse(UserMaxBase):
@@ -42,14 +39,8 @@ class UserMax(UserMaxBase):
         from_attributes = True
 
 
-# Не имеет rep_max, чтобы обновлять только max_weight в рамках прописанного
-# ПМ (повторного максимума).
-# При желании указать другой rep_max пользователь создает отдельный user_max
-# с другим ПМ (повторным максимум).
-# При достижении нового пользовательского максимума в рамках ПМ (повторного
-# максимума) автоматически обновляется max_weight.
 class UserMaxUpdate(BaseModel):
-    max_weight: Optional[int] = Field(gt=0)
+    max_weight: int | None = Field(gt=0)
 
 
 class UserMaxBulkResponse(UserMaxBase):

@@ -4,30 +4,27 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-# Alembic Config
 config = context.config
 
-# Logging
+
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Import service metadata and resolved DB URL
+
 try:
-    # Import models so that all tables are registered on Base.metadata
     from user_max_service import models  # noqa: F401
     from user_max_service.database import DATABASE_URL, Base
 except Exception:
     Base = None
     DATABASE_URL = os.getenv("USER_MAX_DATABASE_URL")
 
-# target metadata
+
 if Base is not None:
     target_metadata = Base.metadata
 
-# Resolve URL: prefer service's resolved DATABASE_URL, then env DATABASE_URL, then USER_MAX_DATABASE_URL, then config
+
 DB_URL = os.getenv("USER_MAX_DATABASE_URL") or config.get_main_option("sqlalchemy.url")
 if DB_URL:
-    # Normalize query params for psycopg2: it doesn't accept 'ssl=true', expects 'sslmode=require'
     try:
         from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -36,16 +33,16 @@ if DB_URL:
         ssl_val = (q.get("ssl") or "").strip().lower()
         sslmode = (q.get("sslmode") or "").strip().lower()
         changed = False
-        # Drop unsupported channel_binding for psycopg2
+
         if "channel_binding" in q:
             q.pop("channel_binding", None)
             changed = True
-        # Map asyncpg-style 'ssl' to psycopg2 'sslmode'
+
         if ssl_val:
             if ssl_val in {"true", "1", "require"} and not sslmode:
                 q["sslmode"] = "require"
                 changed = True
-            # Remove 'ssl' param entirely for psycopg2
+
             q.pop("ssl", None)
             changed = True
         if changed:

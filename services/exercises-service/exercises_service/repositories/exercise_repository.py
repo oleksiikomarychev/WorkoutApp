@@ -33,6 +33,12 @@ class ExerciseRepository:
         return await db.get(ExerciseList, exercise_list_id)
 
     @staticmethod
+    async def get_exercise_definition_by_name(db: AsyncSession, name: str):
+        query = select(ExerciseList).where(ExerciseList.name == name)
+        result = await db.execute(query)
+        return result.scalars().first()
+
+    @staticmethod
     async def create_exercise_definition(db, exercise: dict):
         db_exercise = ExerciseList(**exercise)
         db.add(db_exercise)
@@ -72,11 +78,9 @@ class ExerciseRepository:
 
     @staticmethod
     async def delete_exercise_definition(db, exercise_list_id: int):
-        # Удаляем все связанные экземпляры упражнений
         stmt_instances = delete(ExerciseInstance).where(ExerciseInstance.exercise_list_id == exercise_list_id)
         await db.execute(stmt_instances)
 
-        # Удаляем само определение
         stmt_definition = delete(ExerciseList).where(ExerciseList.id == exercise_list_id)
         result = await db.execute(stmt_definition)
         await db.commit()
@@ -84,7 +88,6 @@ class ExerciseRepository:
 
     @staticmethod
     async def update_exercise_definition(db, db_exercise, update_data: dict):
-        # If db_exercise is an integer (ID), fetch the actual ORM object
         if isinstance(db_exercise, int):
             db_exercise = await ExerciseRepository.get_exercise_definition(db, db_exercise)
             if not db_exercise:

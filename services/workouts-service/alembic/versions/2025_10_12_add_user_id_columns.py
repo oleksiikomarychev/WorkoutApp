@@ -8,7 +8,6 @@ Create Date: 2025-10-12 00:00:00.000000
 
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "2025_10_12_add_user_id"
 down_revision = "c1d2e3f4a5b6"
 branch_labels = None

@@ -9,11 +9,16 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml /app/
-COPY gateway_app /app/gateway_app
-
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir .
+    && pip install --no-cache-dir poetry
+
+COPY gateway/pyproject.toml /app/pyproject.toml
+COPY libs/backend-common /libs/backend-common
+
+RUN poetry config virtualenvs.create false \
+    && poetry install --no-interaction --no-ansi --only main --no-root
+
+COPY gateway/gateway_app /app/gateway_app
 
 EXPOSE 8000
 

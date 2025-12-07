@@ -23,22 +23,22 @@ import 'package:workout_app/config/constants/route_names.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Load environment variables
+
+
   await dotenv.load(fileName: 'assets/env/app.env');
-  
-  // Initialize Firebase
+
+
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  
-  // Configure Firebase Auth Emulator for local development
-  // Uncomment the following lines to use the emulator in debug mode:
-  // if (kDebugMode) {
-  //   final authService = AuthService();
-  //   authService.useAuthEmulator(host: 'localhost', port: 9099);
-  // }
-  
+
+
+
+
+
+
+
+
   runApp(
     const ProviderScope(
       child: MyApp(),
@@ -74,7 +74,7 @@ class MyApp extends ConsumerWidget {
           Locale('en'),
           Locale('ru'),
         ],
-        // Use AuthGate to handle authentication-based routing
+
         home: const AuthGate(),
         onGenerateRoute: (settings) {
           switch (settings.name) {

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List, Optional
-
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,7 +42,7 @@ class TemplateService:
             raise HTTPException(status_code=404, detail="Plan not found")
         return plan
 
-    async def list_templates(self) -> List[MesocycleTemplateResponse]:
+    async def list_templates(self) -> list[MesocycleTemplateResponse]:
         stmt = (
             select(MesocycleTemplate)
             .where((MesocycleTemplate.user_id == self.user_id) | (MesocycleTemplate.is_public.is_(True)))
@@ -75,7 +73,7 @@ class TemplateService:
         )
         self.db.add(tpl)
         await self.db.flush()
-        # microcycles
+
         for mc in payload.microcycles or []:
             self.db.add(
                 MicrocycleTemplate(
@@ -115,7 +113,6 @@ class TemplateService:
             tpl.is_public = payload.is_public
         await self.db.flush()
         if payload.microcycles is not None:
-            # replace all microcycles
             stmt_mc = select(MicrocycleTemplate).where(MicrocycleTemplate.mesocycle_template_id == tpl.id)
             res_mc = await self.db.execute(stmt_mc)
             for mc in res_mc.scalars().all():
@@ -174,30 +171,24 @@ class TemplateService:
         )
 
     async def instantiate_into_plan(self, plan_id: int, body: InstantiateFromTemplateRequest) -> int:
-        # returns created mesocycle id
         await self._require_plan(plan_id)
-        # load template (public or owned)
+
         stmt = select(MesocycleTemplate).where(MesocycleTemplate.id == body.template_id)
         res = await self.db.execute(stmt)
         tpl = res.scalars().first()
         if not tpl or (not tpl.is_public and tpl.user_id != self.user_id):
             raise HTTPException(status_code=404, detail="Template not found")
 
-        # compute insertion order_index based on placement
         insert_after_index: int | None = None
         if body.placement.mode == PlacementMode.Insert_After_Mesocycle:
-            insert_after_index = max(0, int((body.placement.mesocycle_index or 0)))
+            insert_after_index = max(0, int(body.placement.mesocycle_index or 0))
         elif body.placement.mode == PlacementMode.Insert_After_Workout:
-            # Map workout to mesocycle index by order
             insert_after_index = await self._resolve_mesocycle_index_by_workout(plan_id, body.placement.workout_id)
         else:
-            # Append to end: after last index
             insert_after_index = await self._get_last_mesocycle_index(plan_id)
 
-        # shift forward if needed
         await self._shift_mesocycles(plan_id, after_index=insert_after_index)
 
-        # create mesocycle
         new_meso = Mesocycle(
             calendar_plan_id=plan_id,
             name=tpl.name,
@@ -210,7 +201,6 @@ class TemplateService:
         self.db.add(new_meso)
         await self.db.flush()
 
-        # create microcycles + schedule
         for tm in tpl.microcycles:
             mc = Microcycle(
                 mesocycle_id=new_meso.id,
@@ -225,11 +215,11 @@ class TemplateService:
             self.db.add(mc)
             await self.db.flush()
             schedule = tm.schedule_json or {}
-            # iterate days in order
+
             for raw_day, items in schedule.items():
                 try:
                     day_idx = int(str(raw_day).strip().split()[-1])
-                except Exception:
+                except (ValueError, IndexError):
                     day_idx = None
                 if day_idx is None:
                     continue
@@ -256,7 +246,7 @@ class TemplateService:
                         self.db.add(
                             PlanSet(
                                 plan_exercise_id=pe.id,
-                                order_index=0,  # will be reindexed by natural order
+                                order_index=0,
                                 intensity=s.get("intensity"),
                                 effort=s.get("effort"),
                                 volume=s.get("volume"),
@@ -267,9 +257,8 @@ class TemplateService:
         return new_meso.id
 
     async def instantiate_from_existing(self, plan_id: int, body: InstantiateFromExistingRequest) -> int:
-        """Clone existing mesocycle (of the same user) by id into target plan with placement policy."""
         await self._require_plan(plan_id)
-        # Load source mesocycle with full graph, enforce ownership by user
+
         stmt = (
             select(Mesocycle)
             .options(
@@ -287,9 +276,8 @@ class TemplateService:
         if not src:
             raise HTTPException(status_code=404, detail="Source mesocycle not found or access denied")
 
-        # placement anchor
         if body.placement.mode == PlacementMode.Insert_After_Mesocycle:
-            insert_after_index = max(0, int((body.placement.mesocycle_index or 0)))
+            insert_after_index = max(0, int(body.placement.mesocycle_index or 0))
         elif body.placement.mode == PlacementMode.Insert_After_Workout:
             insert_after_index = await self._resolve_mesocycle_index_by_workout(plan_id, body.placement.workout_id)
         else:
@@ -297,13 +285,11 @@ class TemplateService:
 
         await self._shift_mesocycles(plan_id, after_index=insert_after_index)
 
-        # Create mesocycle clone
         weeks_count = src.weeks_count
         try:
-            # fallback if null
             if weeks_count is None:
                 weeks_count = len(src.microcycles or [])
-        except Exception:
+        except TypeError:
             weeks_count = 0
         new_meso = Mesocycle(
             calendar_plan_id=plan_id,
@@ -319,7 +305,6 @@ class TemplateService:
         self.db.add(new_meso)
         await self.db.flush()
 
-        # Clone microcycles graph in order
         for mc_src in sorted(src.microcycles or [], key=lambda m: (m.order_index, m.id)):
             mc_new = Microcycle(
                 mesocycle_id=new_meso.id,
@@ -333,7 +318,7 @@ class TemplateService:
             )
             self.db.add(mc_new)
             await self.db.flush()
-            # Workouts
+
             for pw_src in sorted(mc_src.plan_workouts or [], key=lambda w: (w.order_index, w.id)):
                 pw_new = PlanWorkout(
                     microcycle_id=mc_new.id,
@@ -342,7 +327,7 @@ class TemplateService:
                 )
                 self.db.add(pw_new)
                 await self.db.flush()
-                # Exercises
+
                 for ex_src in sorted(pw_src.exercises or [], key=lambda e: (e.order_index, e.id)):
                     ex_new = PlanExercise(
                         plan_workout_id=pw_new.id,
@@ -352,7 +337,7 @@ class TemplateService:
                     )
                     self.db.add(ex_new)
                     await self.db.flush()
-                    # Sets
+
                     for s_src in sorted(ex_src.sets or [], key=lambda s: (s.order_index, s.id)):
                         self.db.add(
                             PlanSet(
@@ -378,10 +363,10 @@ class TemplateService:
         last = res.scalars().first()
         return last.order_index if last else 0
 
-    async def _resolve_mesocycle_index_by_workout(self, plan_id: int, workout_id: Optional[int]) -> int:
+    async def _resolve_mesocycle_index_by_workout(self, plan_id: int, workout_id: int | None) -> int:
         if not workout_id:
             return await self._get_last_mesocycle_index(plan_id)
-        # Find applied plan of this user that references the workout, and derive mesocycle order_index
+
         stmt = (
             select(AppliedMesocycle.order_index)
             .select_from(AppliedWorkout)
@@ -398,12 +383,11 @@ class TemplateService:
         if row and row[0] is not None:
             try:
                 return int(row[0])
-            except Exception:
+            except (TypeError, ValueError):
                 pass
         return await self._get_last_mesocycle_index(plan_id)
 
     async def _shift_mesocycles(self, plan_id: int, after_index: int) -> None:
-        # Increment order_index for mesocycles with order_index > after_index
         stmt = (
             select(Mesocycle)
             .where(Mesocycle.calendar_plan_id == plan_id)

@@ -1,9 +1,6 @@
-from typing import List, Optional
-
 from pydantic import BaseModel
 
 
-# CalendarPlan schema
 class CalendarPlanCreate(BaseModel):
     name: str
     duration_weeks: int
@@ -16,7 +13,6 @@ class CalendarPlan(CalendarPlanCreate):
         from_attributes = True
 
 
-# Mesocycle schema
 class MesocycleCreate(BaseModel):
     name: str
     order_index: int
@@ -31,7 +27,6 @@ class Mesocycle(MesocycleCreate):
         from_attributes = True
 
 
-# Microcycle schema
 class MicrocycleCreate(BaseModel):
     name: str
     order_index: int
@@ -46,7 +41,6 @@ class Microcycle(MicrocycleCreate):
         from_attributes = True
 
 
-# PlanWorkout schema
 class PlanWorkoutCreate(BaseModel):
     day_label: str
     order_index: int
@@ -60,7 +54,6 @@ class PlanWorkout(PlanWorkoutCreate):
         from_attributes = True
 
 
-# PlanExercise schema
 class PlanExerciseCreate(BaseModel):
     exercise_definition_id: int
     exercise_name: str
@@ -75,12 +68,11 @@ class PlanExercise(PlanExerciseCreate):
         from_attributes = True
 
 
-# PlanSet schema
 class PlanSetCreate(BaseModel):
     order_index: int
-    intensity: Optional[int] = None
-    effort: Optional[int] = None
-    volume: Optional[int] = None
+    intensity: int | None = None
+    effort: int | None = None
+    volume: int | None = None
 
 
 class PlanSet(PlanSetCreate):
@@ -91,21 +83,20 @@ class PlanSet(PlanSetCreate):
         from_attributes = True
 
 
-# Full training plan schema
 class TrainingPlan(BaseModel):
     calendar_plan: CalendarPlan
-    mesocycles: List[Mesocycle]
-    microcycles: List[Microcycle]
-    workouts: List[PlanWorkout]
-    exercises: List[PlanExercise]
-    sets: List[PlanSet]
+    mesocycles: list[Mesocycle]
+    microcycles: list[Microcycle]
+    workouts: list[PlanWorkout]
+    exercises: list[PlanExercise]
+    sets: list[PlanSet]
 
 
 class TrainingPlanWithRationale(BaseModel):
     plan: TrainingPlan
-    plan_rationale: Optional[str] = None
+    plan_rationale: str | None = None
 
 
 class TrainingPlanWithSummary(BaseModel):
     plan: TrainingPlan
-    plan_summary: Optional[str] = None
+    plan_summary: str | None = None

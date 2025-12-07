@@ -18,14 +18,14 @@ class ModeValueControl extends StatelessWidget {
   final List<ParamMode> allowedModes;
   final Map<ParamMode, String> modeTitles;
 
-  // Display helpers
+
   final String Function(ParamMode, double) displayTextBuilder;
   final double Function(ParamMode) stepForMode;
 
-  // Constraints for SET mode
+
   final double? setMin;
   final double? setMax;
-  // Constraints for SCALE mode
+
   final double? scaleMin;
 
   const ModeValueControl({
@@ -49,7 +49,7 @@ class ModeValueControl extends StatelessWidget {
     String _labelForMode(ParamMode m) {
       final fromMap = modeTitles[m];
       if (fromMap != null) return fromMap;
-      // Safe fallback without using enum .name (older Dart)
+
       final s = m.toString();
       final idx = s.indexOf('.');
       return idx >= 0 ? s.substring(idx + 1) : s;
@@ -89,7 +89,7 @@ class ModeValueControl extends StatelessWidget {
         const SizedBox(height: 6),
         Row(
           children: [
-            const SizedBox(width: 48), // align with switch
+            const SizedBox(width: 48),
             FilledButton.tonal(
               onPressed: enabled
                   ? () {

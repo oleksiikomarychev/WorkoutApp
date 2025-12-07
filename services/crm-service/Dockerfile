@@ -7,17 +7,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PORT=8008
 
-# Copy project metadata and sources
-COPY pyproject.toml /app/pyproject.toml
-COPY crm_service /app/crm_service
+# Copy project metadata and shared backend-common library
+COPY services/crm-service/pyproject.toml /app/pyproject.toml
+COPY libs/backend-common /libs/backend-common
 
-# Install dependencies (editable install)
+# Install dependencies via Poetry
 RUN pip install --no-cache-dir -U pip && \
-    pip install --no-cache-dir -e .
+    pip install --no-cache-dir poetry && \
+    poetry config virtualenvs.create false && \
+    poetry install --no-interaction --no-ansi --only main --no-root
 
-# Alembic config and migrations
-COPY alembic.ini /app/alembic.ini
-COPY alembic /app/alembic
+# Copy application sources and Alembic config
+COPY services/crm-service/crm_service /app/crm_service
+COPY services/crm-service/alembic.ini /app/alembic.ini
+COPY services/crm-service/alembic /app/alembic
 RUN mkdir -p /app/alembic/versions
 
 EXPOSE 8008

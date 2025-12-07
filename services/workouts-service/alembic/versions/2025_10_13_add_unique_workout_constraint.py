@@ -9,7 +9,6 @@ Create Date: 2025-10-13 01:00:00.000000
 import sqlalchemy as sa
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "2025_10_13_unique_workout"
 down_revision = "60d14a510cba"
 branch_labels = None
@@ -17,8 +16,6 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Add unique constraint to prevent duplicate workouts from the same applied plan
-    # This ensures idempotency when the client retries requests
     op.create_index(
         "ix_workouts_unique_plan_order",
         "workouts",

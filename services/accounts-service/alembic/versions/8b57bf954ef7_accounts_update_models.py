@@ -9,7 +9,6 @@ recreates a no-op placeholder so Alembic can resolve the revision graph.
 import sqlalchemy as sa  # noqa: F401
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "8b57bf954ef7"
 down_revision = "20251123_display_name_not_null"
 branch_labels = None

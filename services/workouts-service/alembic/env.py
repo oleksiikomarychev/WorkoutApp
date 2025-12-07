@@ -52,14 +52,11 @@ def run_migrations_online() -> None:
     if not db_url:
         raise RuntimeError("WORKOUTS_DATABASE_URL environment variable is not set")
 
-    # Ensure we're using synchronous driver for migrations
     if "+asyncpg" in db_url:
         db_url = db_url.replace("postgresql+asyncpg", "postgresql+psycopg2")
     elif "+psycopg2" not in db_url:
-        # Add psycopg2 driver if not specified
         db_url = db_url.replace("postgresql://", "postgresql+psycopg2://")
 
-    # Normalize query params for psycopg2: it doesn't accept 'ssl=true', expects 'sslmode=require'
     try:
         from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -68,25 +65,23 @@ def run_migrations_online() -> None:
         ssl_val = (q.get("ssl") or "").strip().lower()
         sslmode = (q.get("sslmode") or "").strip().lower()
         changed = False
-        # Drop unsupported channel_binding for psycopg2
+
         if "channel_binding" in q:
             q.pop("channel_binding", None)
             changed = True
-        # Map asyncpg-style 'ssl' to psycopg2 'sslmode'
+
         if ssl_val:
-            # Treat any non-false value as require
             if ssl_val in {"true", "1", "require"}:
                 if not sslmode:
                     q["sslmode"] = "require"
                     changed = True
-            # Remove 'ssl' param entirely for psycopg2
+
             q.pop("ssl", None)
             changed = True
-        # Rebuild URL if changed
+
         if changed:
             db_url = urlunparse(parsed._replace(query=urlencode(q, doseq=True)))
     except Exception:
-        # Best effort; if parsing fails, proceed with original db_url
         pass
 
     connectable = create_engine(db_url)

@@ -147,7 +147,7 @@ class _HomeScreenNewState extends ConsumerState<HomeScreenNew> {
     final theme = Theme.of(context);
     final mediaQuery = MediaQuery.of(context);
     final bottomPadding = mediaQuery.padding.bottom;
-    
+
     final bool showOuterAppBar = _activeTab == HomeTab.debug;
 
     return AssistantChatHost(
@@ -162,7 +162,7 @@ class _HomeScreenNewState extends ConsumerState<HomeScreenNew> {
                     PopupMenuButton<String>(
                   onSelected: (value) async {
                     if (value == 'logout') {
-                      // Show confirmation dialog
+
                       final shouldLogout = await showDialog<bool>(
                         context: context,
                         builder: (context) => AlertDialog(
@@ -188,7 +188,7 @@ class _HomeScreenNewState extends ConsumerState<HomeScreenNew> {
                             await chat.disconnect();
                           } catch (_) {}
                           await FirebaseAuth.instance.signOut();
-                          // AuthGate will automatically redirect to SignInScreen
+
                         } catch (e) {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(

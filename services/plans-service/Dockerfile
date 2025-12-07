@@ -9,11 +9,12 @@ WORKDIR /app
 # Install system dependencies for PostgreSQL client
 RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml /app/
-COPY plans_service /app/plans_service
+COPY services/plans-service/pyproject.toml /app/pyproject.toml
+COPY services/plans-service/plans_service /app/plans_service
+COPY libs/backend-common /libs/backend-common
 RUN pip install --upgrade pip && pip install -e .
-COPY alembic.ini /app/
-COPY alembic /app/alembic
+COPY services/plans-service/alembic.ini /app/
+COPY services/plans-service/alembic /app/alembic
 
 ENV HOST=0.0.0.0 PORT=8005
 

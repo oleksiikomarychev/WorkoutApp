@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -9,7 +8,7 @@ from pydantic import BaseModel, Field
 class SettingsResponse(BaseModel):
     unit_system: str
     locale: str
-    timezone: Optional[str] = None
+    timezone: str | None = None
     notifications_enabled: bool
     created_at: datetime
     updated_at: datetime
@@ -17,94 +16,94 @@ class SettingsResponse(BaseModel):
 
 class ProfileResponse(BaseModel):
     user_id: str
-    display_name: Optional[str] = None
-    bio: Optional[str] = None
-    photo_url: Optional[str] = None
-    bodyweight_kg: Optional[float] = None
-    height_cm: Optional[float] = None
-    age: Optional[int] = None
-    sex: Optional[str] = None
-    training_experience_years: Optional[float] = None
-    training_experience_level: Optional[str] = None
-    primary_default_goal: Optional[str] = None
-    training_environment: Optional[str] = None
-    weekly_gain_coef: Optional[float] = None
-    last_active_at: Optional[datetime] = None
+    display_name: str | None = None
+    bio: str | None = None
+    photo_url: str | None = None
+    bodyweight_kg: float | None = None
+    height_cm: float | None = None
+    age: int | None = None
+    sex: str | None = None
+    training_experience_years: float | None = None
+    training_experience_level: str | None = None
+    primary_default_goal: str | None = None
+    training_environment: str | None = None
+    weekly_gain_coef: float | None = None
+    last_active_at: datetime | None = None
     is_public: bool
     created_at: datetime
     updated_at: datetime
     settings: SettingsResponse
-    coaching: Optional["CoachingProfileResponse"] = None
+    coaching: CoachingProfileResponse | None = None
 
 
 class UserSummaryResponse(BaseModel):
     user_id: str
-    display_name: Optional[str] = None
-    photo_url: Optional[str] = None
+    display_name: str | None = None
+    photo_url: str | None = None
     is_public: bool
     created_at: datetime
-    last_active_at: Optional[datetime] = None
+    last_active_at: datetime | None = None
 
 
 class CoachingRatePlan(BaseModel):
-    type: Optional[str] = None
-    currency: Optional[str] = None
-    amount_minor: Optional[int] = None
+    type: str | None = None
+    currency: str | None = None
+    amount_minor: int | None = None
 
 
 class CoachingProfileResponse(BaseModel):
     enabled: bool
     accepting_clients: bool
-    tagline: Optional[str] = None
-    description: Optional[str] = None
-    specializations: List[str] = Field(default_factory=list)
-    languages: List[str] = Field(default_factory=list)
-    experience_years: Optional[int] = None
-    timezone: Optional[str] = None
-    rate_plan: Optional[CoachingRatePlan] = None
+    tagline: str | None = None
+    description: str | None = None
+    specializations: list[str] = Field(default_factory=list)
+    languages: list[str] = Field(default_factory=list)
+    experience_years: int | None = None
+    timezone: str | None = None
+    rate_plan: CoachingRatePlan | None = None
     created_at: datetime
     updated_at: datetime
 
 
 class CoachingRatePlanUpdate(BaseModel):
-    type: Optional[str] = None
-    currency: Optional[str] = None
-    amount_minor: Optional[int] = None
+    type: str | None = None
+    currency: str | None = None
+    amount_minor: int | None = None
 
 
 class CoachingProfileUpdateRequest(BaseModel):
-    enabled: Optional[bool] = None
-    accepting_clients: Optional[bool] = None
-    tagline: Optional[str] = None
-    description: Optional[str] = None
-    specializations: Optional[List[str]] = None
-    languages: Optional[List[str]] = None
-    experience_years: Optional[int] = None
-    timezone: Optional[str] = None
-    rate_plan: Optional[CoachingRatePlanUpdate] = None
+    enabled: bool | None = None
+    accepting_clients: bool | None = None
+    tagline: str | None = None
+    description: str | None = None
+    specializations: list[str] | None = None
+    languages: list[str] | None = None
+    experience_years: int | None = None
+    timezone: str | None = None
+    rate_plan: CoachingRatePlanUpdate | None = None
 
 
 class ProfileUpdateRequest(BaseModel):
-    display_name: Optional[str] = None
-    bio: Optional[str] = None
-    photo_url: Optional[str] = None
-    is_public: Optional[bool] = None
-    bodyweight_kg: Optional[float] = None
-    height_cm: Optional[float] = None
-    age: Optional[int] = None
-    sex: Optional[str] = None
-    training_experience_years: Optional[float] = None
-    training_experience_level: Optional[str] = None
-    primary_default_goal: Optional[str] = None
-    training_environment: Optional[str] = None
-    weekly_gain_coef: Optional[float] = None
+    display_name: str | None = None
+    bio: str | None = None
+    photo_url: str | None = None
+    is_public: bool | None = None
+    bodyweight_kg: float | None = None
+    height_cm: float | None = None
+    age: int | None = None
+    sex: str | None = None
+    training_experience_years: float | None = None
+    training_experience_level: str | None = None
+    primary_default_goal: str | None = None
+    training_environment: str | None = None
+    weekly_gain_coef: float | None = None
 
 
 class SettingsUpdateRequest(BaseModel):
-    unit_system: Optional[str] = None
-    locale: Optional[str] = None
-    timezone: Optional[str] = None
-    notifications_enabled: Optional[bool] = None
+    unit_system: str | None = None
+    locale: str | None = None
+    timezone: str | None = None
+    notifications_enabled: bool | None = None
 
 
 ProfileResponse.model_rebuild()

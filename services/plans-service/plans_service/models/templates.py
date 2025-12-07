@@ -20,7 +20,7 @@ class MesocycleTemplate(Base):
     weeks_count = Column(Integer, nullable=True)
     microcycle_length_days = Column(Integer, nullable=True)
     normalization_value = Column(Integer, nullable=True)
-    normalization_unit = Column(String(16), nullable=True)  # 'kg' | '%'
+    normalization_unit = Column(String(16), nullable=True)
 
     is_public = Column(Boolean, nullable=False, default=False)
 
@@ -54,7 +54,6 @@ class MicrocycleTemplate(Base):
     order_index = Column(Integer, nullable=False, default=0)
     days_count = Column(Integer, nullable=True)
 
-    # Schedule JSON: mapping of day -> list of exercises with sets
     schedule_json = Column(JSON, nullable=True)
 
     mesocycle_template = relationship("MesocycleTemplate", back_populates="microcycles")

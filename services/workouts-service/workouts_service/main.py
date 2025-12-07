@@ -1,10 +1,6 @@
-import uuid
-
 import structlog
-from asgi_correlation_id import CorrelationIdMiddleware
-from fastapi import FastAPI
+from backend_common.fastapi_app import create_service_app
 from fastapi.responses import JSONResponse
-from prometheus_fastapi_instrumentator import Instrumentator
 
 from .exceptions import NotFoundException
 from .logging_config import configure_logging
@@ -17,9 +13,11 @@ from .routers.workouts import router as workouts_router
 configure_logging()
 logger = structlog.get_logger(__name__)
 
-app = FastAPI(title="workouts-service", version="0.1.0")
-
-Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+app = create_service_app(
+    title="workouts-service",
+    version="0.1.0",
+    enable_cors=False,
+)
 
 
 @app.exception_handler(NotFoundException)
@@ -49,10 +47,3 @@ app.include_router(workouts_router, prefix="/workouts")
 app.include_router(sessions_router, prefix="/workouts")
 app.include_router(workout_generation_router, prefix="/workouts")
 app.include_router(analytics_router, prefix="/workouts")
-
-app.add_middleware(
-    CorrelationIdMiddleware,
-    header_name="X-Request-ID",
-    generator=lambda: str(uuid.uuid4()),
-    update_request_header=True,
-)

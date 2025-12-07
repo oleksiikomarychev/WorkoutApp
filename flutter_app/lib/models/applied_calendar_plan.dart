@@ -112,7 +112,7 @@ class AppliedCalendarPlan {
   final CalendarPlan calendarPlan;
   final List<UserMax> userMaxes;
   final NextWorkoutSummary? nextWorkout;
-   // Progress and dropout
+
   final String? status;
   final int? plannedSessionsTotal;
   final int? actualSessionsCompleted;

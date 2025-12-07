@@ -1,13 +1,13 @@
 // coverage:ignore-file
-// GENERATED CODE - DO NOT MODIFY BY HAND
-// ignore_for_file: type=lint
-// ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
+
+
+
 
 part of 'exercise_set_dto.dart';
 
-// **************************************************************************
-// FreezedGenerator
-// **************************************************************************
+
+
+
 
 T _$identity<T>(T value) => value;
 
@@ -18,7 +18,7 @@ ExerciseSetDto _$ExerciseSetDtoFromJson(Map<String, dynamic> json) {
   return _ExerciseSetDto.fromJson(json);
 }
 
-/// @nodoc
+
 mixin _$ExerciseSetDto {
   int? get id => throw _privateConstructorUsedError;
   int get reps => throw _privateConstructorUsedError;
@@ -27,25 +27,25 @@ mixin _$ExerciseSetDto {
   int? get order => throw _privateConstructorUsedError;
   @JsonKey(name: 'exercise_instance')
   int? get exerciseInstanceId =>
-      throw _privateConstructorUsedError; // Accept legacy 'volume' from UI but do not serialize it to API
+      throw _privateConstructorUsedError;
   @JsonKey(
       includeFromJson: true, includeToJson: false, fromJson: _volumeFromJson)
   int? get volume =>
-      throw _privateConstructorUsedError; // Local-only identifier used by UI
+      throw _privateConstructorUsedError;
   @JsonKey(includeFromJson: false, includeToJson: false)
   int? get localId => throw _privateConstructorUsedError;
 
-  /// Serializes this ExerciseSetDto to a JSON map.
+
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
-  /// Create a copy of ExerciseSetDto
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @JsonKey(includeFromJson: false, includeToJson: false)
   $ExerciseSetDtoCopyWith<ExerciseSetDto> get copyWith =>
       throw _privateConstructorUsedError;
 }
 
-/// @nodoc
+
 abstract class $ExerciseSetDtoCopyWith<$Res> {
   factory $ExerciseSetDtoCopyWith(
           ExerciseSetDto value, $Res Function(ExerciseSetDto) then) =
@@ -66,7 +66,7 @@ abstract class $ExerciseSetDtoCopyWith<$Res> {
       @JsonKey(includeFromJson: false, includeToJson: false) int? localId});
 }
 
-/// @nodoc
+
 class _$ExerciseSetDtoCopyWithImpl<$Res, $Val extends ExerciseSetDto>
     implements $ExerciseSetDtoCopyWith<$Res> {
   _$ExerciseSetDtoCopyWithImpl(this._value, this._then);
@@ -76,8 +76,8 @@ class _$ExerciseSetDtoCopyWithImpl<$Res, $Val extends ExerciseSetDto>
   // ignore: unused_field
   final $Res Function($Val) _then;
 
-  /// Create a copy of ExerciseSetDto
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -127,7 +127,7 @@ class _$ExerciseSetDtoCopyWithImpl<$Res, $Val extends ExerciseSetDto>
   }
 }
 
-/// @nodoc
+
 abstract class _$$ExerciseSetDtoImplCopyWith<$Res>
     implements $ExerciseSetDtoCopyWith<$Res> {
   factory _$$ExerciseSetDtoImplCopyWith(_$ExerciseSetDtoImpl value,
@@ -150,7 +150,7 @@ abstract class _$$ExerciseSetDtoImplCopyWith<$Res>
       @JsonKey(includeFromJson: false, includeToJson: false) int? localId});
 }
 
-/// @nodoc
+
 class __$$ExerciseSetDtoImplCopyWithImpl<$Res>
     extends _$ExerciseSetDtoCopyWithImpl<$Res, _$ExerciseSetDtoImpl>
     implements _$$ExerciseSetDtoImplCopyWith<$Res> {
@@ -158,8 +158,8 @@ class __$$ExerciseSetDtoImplCopyWithImpl<$Res>
       _$ExerciseSetDtoImpl _value, $Res Function(_$ExerciseSetDtoImpl) _then)
       : super(_value, _then);
 
-  /// Create a copy of ExerciseSetDto
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -209,7 +209,7 @@ class __$$ExerciseSetDtoImplCopyWithImpl<$Res>
   }
 }
 
-/// @nodoc
+
 
 @JsonSerializable(explicitToJson: true)
 class _$ExerciseSetDtoImpl extends _ExerciseSetDto
@@ -247,12 +247,12 @@ class _$ExerciseSetDtoImpl extends _ExerciseSetDto
   @override
   @JsonKey(name: 'exercise_instance')
   final int? exerciseInstanceId;
-// Accept legacy 'volume' from UI but do not serialize it to API
+
   @override
   @JsonKey(
       includeFromJson: true, includeToJson: false, fromJson: _volumeFromJson)
   final int? volume;
-// Local-only identifier used by UI
+
   @override
   @JsonKey(includeFromJson: false, includeToJson: false)
   final int? localId;
@@ -298,8 +298,8 @@ class _$ExerciseSetDtoImpl extends _ExerciseSetDto
   int get hashCode => Object.hash(runtimeType, id, reps, weight, rpe, order,
       exerciseInstanceId, volume, localId);
 
-  /// Create a copy of ExerciseSetDto
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   @pragma('vm:prefer-inline')
@@ -348,17 +348,17 @@ abstract class _ExerciseSetDto extends ExerciseSetDto {
   @override
   @JsonKey(name: 'exercise_instance')
   int?
-      get exerciseInstanceId; // Accept legacy 'volume' from UI but do not serialize it to API
+      get exerciseInstanceId;
   @override
   @JsonKey(
       includeFromJson: true, includeToJson: false, fromJson: _volumeFromJson)
-  int? get volume; // Local-only identifier used by UI
+  int? get volume;
   @override
   @JsonKey(includeFromJson: false, includeToJson: false)
   int? get localId;
 
-  /// Create a copy of ExerciseSetDto
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @override
   @JsonKey(includeFromJson: false, includeToJson: false)
   _$$ExerciseSetDtoImplCopyWith<_$ExerciseSetDtoImpl> get copyWith =>

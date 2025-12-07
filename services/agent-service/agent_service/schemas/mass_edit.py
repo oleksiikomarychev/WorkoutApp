@@ -1,11 +1,9 @@
-from typing import Any, Dict, Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
 class AgentPlanMassEditRequest(BaseModel):
-    """Запрос на запуск mass edit плана через ЛЛМ."""
-
     plan_id: int = Field(..., ge=1, description="ID календарного плана пользователя")
     mode: Literal["preview", "apply"] = Field(
         default="apply",
@@ -20,11 +18,6 @@ class AgentPlanMassEditRequest(BaseModel):
 
 
 class AgentAppliedPlanMassEditRequest(BaseModel):
-    """Запрос на запуск mass edit уже применённого (applied) плана через ЛЛМ.
-
-    Работает поверх сгенерированных тренировок и их сетов.
-    """
-
     applied_plan_id: int = Field(..., ge=1, description="ID applied-плана пользователя")
     mode: Literal["preview", "apply"] = Field(
         default="apply",
@@ -39,8 +32,6 @@ class AgentAppliedPlanMassEditRequest(BaseModel):
 
 
 class AgentAppliedPlanScheduleShiftRequest(BaseModel):
-    """Запрос на сдвиг или перепланирование расписания applied-плана."""
-
     applied_plan_id: int = Field(..., ge=1, description="ID applied-плана пользователя")
     from_date: str = Field(
         ...,
@@ -73,10 +64,8 @@ class AgentAppliedPlanScheduleShiftRequest(BaseModel):
 
 
 class AgentPlanMassEditResponse(BaseModel):
-    """Ответ agent-service: обновлённый план и использованная команда mass edit."""
-
-    plan: Dict[str, Any] = Field(..., description="CalendarPlanResponse из plans-service")
-    mass_edit_command: Dict[str, Any] = Field(
+    plan: dict[str, Any] = Field(..., description="CalendarPlanResponse из plans-service")
+    mass_edit_command: dict[str, Any] = Field(
         ...,
         description="PlanMassEditCommand, который построил ЛЛМ",
     )
@@ -86,7 +75,7 @@ class AgentPlanMassEditToolResponse(BaseModel):
     decision_type: Literal["tool_call", "answer", "error"] = Field(...)
     tool_name: str | None = Field(default=None)
     assistant_message: str | None = Field(default=None)
-    tool_arguments: Dict[str, Any] = Field(default_factory=dict)
-    plan: Dict[str, Any] | None = Field(default=None)
-    mass_edit_command: Dict[str, Any] | None = Field(default=None)
-    raw_decision: Dict[str, Any] | None = Field(default=None)
+    tool_arguments: dict[str, Any] = Field(default_factory=dict)
+    plan: dict[str, Any] | None = Field(default=None)
+    mass_edit_command: dict[str, Any] | None = Field(default=None)
+    raw_decision: dict[str, Any] | None = Field(default=None)

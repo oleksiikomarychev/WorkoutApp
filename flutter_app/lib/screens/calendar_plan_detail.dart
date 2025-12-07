@@ -235,7 +235,7 @@ class _SingleSelectSheetState<T> extends State<_SingleSelectSheet<T>> {
 }
 
 class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
-  // Current/Original plan state for inline variant switching
+
   late final CalendarPlan _originalPlan;
   late CalendarPlan _currentPlan;
   late final int _rootPlanId;
@@ -247,12 +247,12 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   Map<String, List<UserMax>> _userMaxesByName = {};
   Set<int> _planExerciseDefinitionIds = {};
   Set<String> _planExerciseNames = {};
-  // Variants state
+
   List<CalendarPlanSummary> _variants = const [];
   bool _variantsLoading = false;
   String? _variantsError;
 
-  // Analytics state (plan-derived)
+
   final List<String> _metrics = const ['sets', 'volume', 'intensity', 'effort'];
   String _metricX = 'effort';
   String _metricY = 'effort';
@@ -260,7 +260,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   _TimeBucket _timeBucket = _TimeBucket.microcycle;
   bool _analyticsExpanded = true;
 
-  // Filters/meta
+
   late final ApiClient _apiClient;
   late final ExerciseService _exerciseService;
   List<ExerciseDefinition> _exerciseDefs = [];
@@ -343,7 +343,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
           final full = await PlanApi.getCalendarPlan(v.id);
           _variantCache[v.id] = full;
         } catch (_) {
-          // ignore individual prefetch errors
+
         }
       }
     } finally {
@@ -503,7 +503,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       setState(() {
         _variants = list;
         _variantsLoading = false;
-        // If we opened on дочернем варианте, найдём и зафиксируем оригинал
+
         final orig = _variants.where((v) => v.isOriginal).cast<CalendarPlanSummary?>().firstWhere(
               (v) => v != null,
               orElse: () => null,
@@ -512,7 +512,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
           _originalPlan = _variantCache[orig.id] ?? _originalPlan;
         }
       });
-      // Prefetch full variant payloads in background for faster switching (optional)
+
       // ignore: unawaited_futures
       _prefetchAllVariants();
     } catch (e) {
@@ -990,14 +990,14 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       return points;
     }
 
-    // Calendar week aggregation (real weeks from startDate + microcycle lengths)
+
     int? _tryParseDayNumber(String key) {
       final match = RegExp(r'\\d+').firstMatch(key);
       if (match == null) return null;
       return int.tryParse(match.group(0)!);
     }
 
-    final startDate = plan.startDate; // may be null
+    final startDate = plan.startDate;
     final sessions = <({Map<String, double> values, double dayOffset})>[];
     double cumulativeDays = 0.0;
 
@@ -1006,7 +1006,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       for (final micro in microcycles) {
         final workouts = _sortedWorkouts(micro);
 
-        // Estimate microcycle length in days
+
         double microLen = (micro.daysCount?.toDouble()) ?? 0.0;
         if (microLen <= 0 && plan.durationWeeks > 0 && totalMicrocyclesCount > 0) {
           microLen = (plan.durationWeeks * 7) / totalMicrocyclesCount;
@@ -1015,7 +1015,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
           microLen = workouts.length.toDouble();
         }
         if (microLen <= 0) {
-          microLen = 7.0; // final fallback
+          microLen = 7.0;
         }
 
         final n = workouts.length;
@@ -1037,7 +1037,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       weeks = plan.durationWeeks;
     } else {
       weeks = (cumulativeDays / 7).ceil();
-      if (weeks <= 0) weeks = sessions.length; // final fallback
+      if (weeks <= 0) weeks = sessions.length;
     }
     if (weeks <= 0) return points;
 
@@ -1590,7 +1590,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   }
 
   Future<void> _fetchAnalytics() async {
-    // No-op: analytics are precomputed from plan structure.
+
   }
 
 

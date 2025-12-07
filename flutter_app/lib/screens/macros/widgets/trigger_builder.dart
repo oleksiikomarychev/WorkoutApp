@@ -14,14 +14,14 @@ class TriggerBuilder extends ConsumerStatefulWidget {
 class _TriggerBuilderState extends ConsumerState<TriggerBuilder> {
   final _formKey = GlobalKey<FormState>();
   late String _metric;
-  // Selected exercises
+
   final Set<int> _selectedExerciseIds = {};
 
   @override
   void initState() {
     super.initState();
     _metric = (widget.initial['metric'] ?? '').toString();
-    // Backward-compat: init from exercise_id or exercise_ids
+
     if (widget.initial['exercise_id'] is int) {
       _selectedExerciseIds.add(widget.initial['exercise_id'] as int);
     }

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import List
 
 import httpx
 from sqlalchemy import select
@@ -18,7 +17,7 @@ from ..schemas.analytics import (
 )
 
 
-async def _fetch_sessions_for_athlete(athlete_id: str, weeks: int) -> List[dict]:
+async def _fetch_sessions_for_athlete(athlete_id: str, weeks: int) -> list[dict]:
     base_url = settings.workouts_service_url.rstrip("/")
     url = f"{base_url}/workouts/sessions/history/all"
     headers = {"X-User-Id": athlete_id}
@@ -30,7 +29,7 @@ async def _fetch_sessions_for_athlete(athlete_id: str, weeks: int) -> List[dict]
         if not isinstance(data, list):
             return []
     cutoff = datetime.utcnow() - timedelta(weeks=weeks)
-    sessions: List[dict] = []
+    sessions: list[dict] = []
     for s in data:
         started_at = s.get("started_at")
         if not started_at:
@@ -78,6 +77,7 @@ async def _fetch_plan_items_for_athlete(
         "applied_plan_id": applied_plan_id,
         "from": cutoff.isoformat(),
         "to": now.isoformat(),
+        "include_actual": "true",
     }
 
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -168,16 +168,8 @@ def _aggregate_plan_metrics(
 def _aggregate_muscle_metrics_from_actual(
     plan_items: list[dict],
 ) -> tuple[dict[str, float] | None, dict[str, float] | None]:
-    """Aggregate actual volume by muscle group and individual muscles.
-
-    Expects workouts-service to encode per-workout actual metrics with keys:
-    - "muscle_group:<group>" -> volume
-    - "muscle:<muscle_key>"  -> volume
-    """
-
     group_totals: dict[str, float] = {}
     muscle_totals: dict[str, float] = {}
-
     for it in plan_items:
         actual = it.get("actual_metrics")
         if not isinstance(actual, dict):
@@ -244,10 +236,10 @@ async def get_coach_athletes_analytics(
     stmt = select(CoachAthleteLink).where(CoachAthleteLink.coach_id == coach_id)
     stmt = stmt.offset(offset).limit(limit)
     res = await db.execute(stmt)
-    links: List[CoachAthleteLink] = list(res.scalars().all())
+    links: list[CoachAthleteLink] = list(res.scalars().all())
 
     generated_at = datetime.utcnow()
-    summaries: List[AthleteTrainingSummary] = []
+    summaries: list[AthleteTrainingSummary] = []
 
     for link in links:
         athlete_id = link.athlete_id
@@ -417,11 +409,6 @@ async def get_athlete_detailed_analytics(
     weeks: int,
     inactive_after_days: int,
 ) -> AthleteDetailedAnalyticsResponse:
-    """Подробная аналитика по одному атлету с трендом по неделям.
-
-    Доступ: сам атлет или его тренер (активная связь в CoachAthleteLink).
-    """
-
     if current_user_id != athlete_id:
         stmt = select(CoachAthleteLink).where(
             CoachAthleteLink.coach_id == current_user_id,
@@ -488,11 +475,9 @@ async def get_athlete_detailed_analytics(
             completed_in_plan = len(planned_workout_ids & finished_workout_ids)
             plan_adherence = float(completed_in_plan) / float(len(planned_workout_ids))
 
-    # Тренд по неделям: считаем недели от cutoff до now
     trends: dict[datetime, AthleteTrendPoint] = {}
     cutoff = generated_at - timedelta(weeks=weeks)
 
-    # Считаем сессии по неделям
     for s in sessions:
         dt = s.get("_parsed_started_at")
         if not isinstance(dt, datetime):
@@ -506,7 +491,6 @@ async def get_athlete_detailed_analytics(
         else:
             existing.sessions_count += 1
 
-    # Объем по неделям из плановой аналитики
     for it in plan_items:
         date_raw = it.get("date")
         if not date_raw:

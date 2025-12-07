@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -15,9 +14,9 @@ class CoachAthleteStatus(str, Enum):
 
 
 class CoachAthleteLinkBase(BaseModel):
-    athlete_id: Optional[str] = Field(None, description="ID подопечного (атлета)")
-    coach_id: Optional[str] = Field(None, description="ID тренера")
-    note: Optional[str] = Field(None, description="Сообщение при запросе коучинга")
+    athlete_id: str | None = Field(None, description="ID подопечного (атлета)")
+    coach_id: str | None = Field(None, description="ID тренера")
+    note: str | None = Field(None, description="Сообщение при запросе коучинга")
 
 
 class CoachAthleteLinkCreate(CoachAthleteLinkBase):
@@ -26,7 +25,7 @@ class CoachAthleteLinkCreate(CoachAthleteLinkBase):
 
 class CoachAthleteLinkStatusUpdate(BaseModel):
     status: CoachAthleteStatus
-    ended_reason: Optional[str] = None
+    ended_reason: str | None = None
 
 
 class CoachAthleteLinkResponse(BaseModel):
@@ -34,12 +33,12 @@ class CoachAthleteLinkResponse(BaseModel):
     coach_id: str
     athlete_id: str
     status: CoachAthleteStatus
-    note: Optional[str] = None
-    channel_id: Optional[str] = None
+    note: str | None = None
+    channel_id: str | None = None
     created_at: datetime
     updated_at: datetime
-    ended_at: Optional[datetime] = None
-    ended_reason: Optional[str] = None
+    ended_at: datetime | None = None
+    ended_reason: str | None = None
 
     class Config:
         from_attributes = True
@@ -47,7 +46,7 @@ class CoachAthleteLinkResponse(BaseModel):
 
 class CoachAthleteTagBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
-    color: Optional[str] = Field(None, max_length=32)
+    color: str | None = Field(None, max_length=32)
 
 
 class CoachAthleteTagCreate(CoachAthleteTagBase):
@@ -55,18 +54,18 @@ class CoachAthleteTagCreate(CoachAthleteTagBase):
 
 
 class CoachAthleteTagUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=128)
-    color: Optional[str] = Field(None, max_length=32)
-    is_active: Optional[bool] = None
-    is_global: Optional[bool] = Field(None, description="Изменение скоупа тега")
+    name: str | None = Field(None, min_length=1, max_length=128)
+    color: str | None = Field(None, max_length=32)
+    is_active: bool | None = None
+    is_global: bool | None = Field(None, description="Изменение скоупа тега")
 
 
 class CoachAthleteTagResponse(BaseModel):
     id: int
     name: str
-    color: Optional[str]
+    color: str | None
     is_global: bool
-    owner_id: Optional[str]
+    owner_id: str | None
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -81,7 +80,7 @@ class CoachAthleteTagAssignRequest(BaseModel):
 
 class CoachAthleteNoteBase(BaseModel):
     text: str = Field(..., min_length=1, max_length=10_000)
-    note_type: Optional[str] = Field(None, description="Категория заметки (progress, risk и т.п.)")
+    note_type: str | None = Field(None, description="Категория заметки (progress, risk и т.п.)")
     pinned: bool = Field(False, description="Закреплена ли заметка")
 
 
@@ -90,9 +89,9 @@ class CoachAthleteNoteCreate(CoachAthleteNoteBase):
 
 
 class CoachAthleteNoteUpdate(BaseModel):
-    text: Optional[str] = Field(None, min_length=1, max_length=10_000)
-    note_type: Optional[str] = Field(None, description="Категория заметки")
-    pinned: Optional[bool] = Field(None, description="Флаг закрепления")
+    text: str | None = Field(None, min_length=1, max_length=10_000)
+    note_type: str | None = Field(None, description="Категория заметки")
+    pinned: bool | None = Field(None, description="Флаг закрепления")
 
 
 class CoachAthleteNoteResponse(BaseModel):
@@ -100,7 +99,7 @@ class CoachAthleteNoteResponse(BaseModel):
     link_id: int
     author_id: str
     text: str
-    note_type: Optional[str] = None
+    note_type: str | None = None
     pinned: bool
     created_at: datetime
     updated_at: datetime

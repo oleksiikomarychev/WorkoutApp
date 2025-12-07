@@ -1,0 +1,385 @@
+services:
+  rpe-service:
+    image: docker.io/oleksiikomarychev/workoutapp-rpe-service:latest
+    container_name: rpe-service
+    env_file:
+      - .env
+    environment:
+      - RPE_TABLE_PATH=/app/rpe_table.json
+      - APP_ENV=${APP_ENV}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+    ports:
+      - "8001:8001"
+    restart: always
+    networks:
+      - workout-net
+
+  plans-celery-worker:
+    image: docker.io/oleksiikomarychev/workoutapp-plans-service:latest
+    command: >-
+      sh -c "celery -A plans_service.celery_app worker
+      -Q plans.tasks
+      --loglevel=${CELERY_LOG_LEVEL:-info}"
+    env_file:
+      - .env
+    environment:
+      - PLANS_DATABASE_URL=${PLANS_DATABASE_URL}
+      - WORKOUTS_SERVICE_URL=http://workouts-service:8004
+      - EXERCISES_SERVICE_URL=http://exercises-service:8002
+      - APP_ENV=${APP_ENV}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - CELERY_PLANS_QUEUE=plans.tasks
+    depends_on:
+      redis:
+        condition: service_healthy
+      plans-service:
+        condition: service_started
+    restart: always
+    networks:
+      - workout-net
+
+  agent-celery-worker:
+    image: docker.io/oleksiikomarychev/workoutapp-agent-service:latest
+    command: >-
+      sh -c "celery -A agent_service.celery_app worker
+      -Q agent.llm,agent.tools
+      --loglevel=${CELERY_LOG_LEVEL:-info}"
+    env_file:
+      - .env
+    environment:
+      - AGENT_DATABASE_URL=${AGENT_DATABASE_URL}
+      - RPE_TABLE_URL=http://rpe-service:8001/rpe/table
+      - EXERCISES_SERVICE_URL=http://exercises-service:8002
+      - PLANS_SERVICE_URL=http://plans-service:8005
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
+      - APP_ENV=${APP_ENV}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - CELERY_PLAN_QUEUE=agent.llm
+      - CELERY_TOOLS_QUEUE=agent.tools
+    depends_on:
+      redis:
+        condition: service_healthy
+      agent-service:
+        condition: service_started
+    restart: always
+    networks:
+      - workout-net
+
+  crm-service:
+    image: docker.io/oleksiikomarychev/workoutapp-crm-service:latest
+    container_name: crm-service
+    env_file:
+      - .env
+    environment:
+      - CRM_DATABASE_URL=${CRM_DATABASE_URL}
+      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET}
+      - WORKOUTS_SERVICE_URL=http://workouts-service:8004
+      - PLANS_SERVICE_URL=http://plans-service:8005
+      - EXERCISES_SERVICE_URL=http://exercises-service:8002
+      - APP_ENV=${APP_ENV}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+    ports:
+      - "8008:8008"
+    restart: always
+    networks:
+      - workout-net
+
+  plans-service:
+    image: docker.io/oleksiikomarychev/workoutapp-plans-service:latest
+    container_name: plans-service
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=${PLANS_DATABASE_URL}
+      - PLANS_DATABASE_URL=${PLANS_DATABASE_URL}
+      - ENABLE_EXERCISES_ROUTER=true
+      - WORKOUTS_SERVICE_URL=http://workouts-service:8004
+      - EXERCISES_SERVICE_URL=http://exercises-service:8002
+      - CORS_ORIGINS=*
+      - APP_ENV=${APP_ENV}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+      - PLANS_REDIS_HOST=redis
+      - PLANS_REDIS_PORT=6379
+      - PLANS_REDIS_DB=0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - CELERY_PLANS_QUEUE=plans.tasks
+    volumes:
+      - plans_data:/app/data
+    ports:
+      - "8005:8005"
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - workout-net
+
+  exercises-service:
+    image: docker.io/oleksiikomarychev/workoutapp-exercises-service:latest
+    container_name: exercises-service
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=${EXERCISES_DATABASE_URL}
+      - PYTHONPATH=/app
+      - APP_ENV=${APP_ENV}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+      - EXERCISES_REDIS_HOST=redis
+      - EXERCISES_REDIS_PORT=6379
+      - EXERCISES_REDIS_DB=0
+    volumes:
+      - exercises_data:/app/data
+    ports:
+      - "8002:8002"
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - workout-net
+
+  gateway:
+    image: docker.io/oleksiikomarychev/workoutapp-gateway:latest
+    container_name: api-gateway
+    env_file:
+      - .env
+    environment:
+      RPE_SERVICE_URL: "http://rpe-service:8001"
+      EXERCISES_SERVICE_URL: "http://exercises-service:8002"
+      USER_MAX_SERVICE_URL: "http://user-max-service:8003"
+      WORKOUTS_SERVICE_URL: "http://workouts-service:8004"
+      PLANS_SERVICE_URL: "http://plans-service:8005"
+      AGENT_SERVICE_URL: "http://agent-service:8006"
+      ACCOUNTS_SERVICE_URL: "http://accounts-service:8007"
+      SOCIAL_API_URL: "http://messenger-gateway:8000/api/v1/social"
+      MESSAGING_API_URL: "http://messenger-gateway:8000/api/v1/messaging"
+      MESSENGER_APP_ID: "workout-tracker"
+      INTERNAL_GATEWAY_SECRET: ${INTERNAL_GATEWAY_SECRET}
+      CRM_SERVICE_URL: "http://crm-service:8008"
+      MONO_WORKOUTS: "true"
+      FIREBASE_CREDENTIALS_BASE64: "${FIREBASE_CREDENTIALS_BASE64}"
+      FIREBASE_PROJECT_ID: "${FIREBASE_PROJECT_ID}"
+      FIREBASE_AUTH_EMULATOR_HOST: "host.docker.internal:9099"
+      APP_ENV: ${APP_ENV}
+      SENTRY_DSN: ${SENTRY_DSN}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE}
+    ports:
+      - "8000:8000"
+    depends_on:
+      exercises-service:
+        condition: service_healthy
+      user-max-service:
+        condition: service_healthy
+      rpe-service:
+        condition: service_healthy
+      plans-service:
+        condition: service_healthy
+      workouts-service:
+        condition: service_healthy
+      accounts-service:
+        condition: service_healthy
+    restart: always
+    networks:
+      - workout-net
+      - default
+      - workout-network
+
+  user-max-service:
+    image: docker.io/oleksiikomarychev/workoutapp-user-max-service:latest
+    container_name: user-max-service
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=${USER_MAX_DATABASE_URL}
+      - EXERCISES_SERVICE_URL=http://exercises-service:8002
+      - APP_ENV=${APP_ENV}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+    volumes:
+      - user_max_data:/app/data
+    ports:
+      - "8003:8003"
+    restart: always
+    networks:
+      - workout-net
+
+  workouts-service:
+    image: docker.io/oleksiikomarychev/workoutapp-workouts-service:latest
+    container_name: workouts-service
+    env_file:
+      - .env
+    environment:
+      - WORKOUTS_DATABASE_URL=${WORKOUTS_DATABASE_URL}
+      - PLANS_SERVICE_URL=http://plans-service:8005
+      - EXERCISES_SERVICE_URL=http://exercises-service:8002
+      - RPE_SERVICE_URL=http://rpe-service:8001
+      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET}
+      - USER_MAX_SERVICE_URL=http://user-max-service:8003
+      - APP_ENV=${APP_ENV}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+      - WORKOUTS_REDIS_HOST=redis
+      - WORKOUTS_REDIS_PORT=6379
+      - WORKOUTS_REDIS_DB=0
+    volumes:
+      - workouts_data:/app/data
+    ports:
+      - "8004:8004"
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - workout-net
+
+  workouts-celery-worker:
+    image: docker.io/oleksiikomarychev/workoutapp-workouts-service:latest
+    command: >-
+      sh -c "celery -A workouts_service.celery_app worker
+      -Q workouts.tasks
+      --loglevel=${CELERY_LOG_LEVEL:-info}"
+    env_file:
+      - .env
+    environment:
+      - WORKOUTS_DATABASE_URL=${WORKOUTS_DATABASE_URL}
+      - PLANS_SERVICE_URL=http://plans-service:8005
+      - EXERCISES_SERVICE_URL=http://exercises-service:8002
+      - RPE_SERVICE_URL=http://rpe-service:8001
+      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET}
+      - USER_MAX_SERVICE_URL=http://user-max-service:8003
+      - APP_ENV=${APP_ENV}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+      - WORKOUTS_REDIS_HOST=redis
+      - WORKOUTS_REDIS_PORT=6379
+      - WORKOUTS_REDIS_DB=0
+      - CELERY_BROKER_URL=redis://redis:6379/3
+      - CELERY_RESULT_BACKEND=redis://redis:6379/4
+      - CELERY_WORKOUTS_QUEUE=workouts.tasks
+    depends_on:
+      redis:
+        condition: service_healthy
+      workouts-service:
+        condition: service_started
+    restart: always
+    networks:
+      - workout-net
+
+  agent-service:
+    image: docker.io/oleksiikomarychev/workoutapp-agent-service:latest
+    env_file:
+      - .env
+    environment:
+      - LLM_SPLIT_GENERATION=1
+      - AGENT_DATABASE_URL=${AGENT_DATABASE_URL}
+      - RPE_TABLE_URL=http://rpe-service:8001/rpe/table
+      - EXERCISES_SERVICE_URL=http://exercises-service:8002
+      - PLANS_SERVICE_URL=http://plans-service:8005
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
+      - APP_ENV=${APP_ENV}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - CELERY_PLAN_QUEUE=agent.llm
+      - CELERY_TOOLS_QUEUE=agent.tools
+    ports:
+      - "8006:8006"
+    depends_on:
+      - user-max-service
+      - exercises-service
+      - plans-service
+    restart: always
+    networks:
+      - workout-net
+
+  accounts-service:
+    image: docker.io/oleksiikomarychev/workoutapp-accounts-service:latest
+    container_name: accounts-service
+    env_file:
+      - .env
+    environment:
+      - ACCOUNTS_DATABASE_URL=${ACCOUNTS_DATABASE_URL}
+      - APP_ENV=${APP_ENV}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+    ports:
+      - "8007:8007"
+    restart: always
+    networks:
+      - workout-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - workout-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+    restart: always
+    networks:
+      - workout-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana.ini:/etc/grafana/grafana.ini:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    restart: always
+    networks:
+      - workout-net
+
+volumes:
+  exercises_data:
+  user_max_data:
+  workouts_data:
+  plans_data:
+  grafana_data:
+  redis_data:
+
+networks:
+  workout-net:
+    driver: bridge
+  workout-network:
+    external: true

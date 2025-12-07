@@ -54,12 +54,12 @@ class PlanAnalyticsChart extends StatelessWidget {
       final point = points[i];
       final value = point.values[metricX] ?? 0;
       spots.add(FlSpot(i.toDouble(), value));
-      
+
       if (point.actualValues != null && point.actualValues!.containsKey(metricX)) {
         final act = point.actualValues![metricX]!;
         actualSpots.add(FlSpot(i.toDouble(), act));
       }
-      
+
       labels.add(point.label);
     }
     if (spots.isEmpty) {
@@ -122,7 +122,7 @@ class PlanAnalyticsChart extends StatelessWidget {
                   (spot) => LineTooltipItem(
                     spot.y.toStringAsFixed(2),
                     TextStyle(
-                      color: spot.barIndex == 1 ? Colors.greenAccent : Colors.white, 
+                      color: spot.barIndex == 1 ? Colors.greenAccent : Colors.white,
                       fontWeight: FontWeight.w600
                     ),
                   ),
@@ -131,16 +131,16 @@ class PlanAnalyticsChart extends StatelessWidget {
           ),
         ),
         lineBarsData: [
-          // Planned (Blue)
+
           LineChartBarData(
             spots: spots,
             isCurved: true,
             color: Colors.blue.shade300,
             dotData: const FlDotData(show: false),
-            dashArray: [5, 5], // Dashed for planned
+            dashArray: [5, 5],
             belowBarData: BarAreaData(show: false),
           ),
-          // Actual (Green)
+
           if (actualSpots.isNotEmpty)
             LineChartBarData(
               spots: actualSpots,

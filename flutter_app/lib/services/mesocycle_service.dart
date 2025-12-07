@@ -11,7 +11,7 @@ class MesocycleService extends BaseApiService {
   @override
   MesocycleService({required this.apiClient}) : super(apiClient);
 
-  // Mesocycles
+
   Future<List<Mesocycle>> listMesocycles(int planId) async {
     return await getList<Mesocycle>(
       ApiConfig.listMesocyclesEndpoint(planId.toString()),

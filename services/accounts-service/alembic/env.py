@@ -4,31 +4,28 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-# Alembic Config
 config = context.config
 
-# Logging
+
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Import service metadata and DB URL
+
 try:
     from accounts_service.database import DATABASE_URL, Base  # type: ignore
 except Exception:
     Base = None
     DATABASE_URL = os.getenv("ACCOUNTS_DATABASE_URL")
 
-# target metadata
+
 if Base is not None:
     target_metadata = Base.metadata
 else:
     target_metadata = None
 
-# Resolve URL: prefer env ACCOUNTS_DATABASE_URL, then alembic.ini
+
 DB_URL = os.getenv("ACCOUNTS_DATABASE_URL") or DATABASE_URL or config.get_main_option("sqlalchemy.url")
 if DB_URL:
-    # Alembic должен использовать sync-драйвер, даже если приложение async
-    # Меняем asyncpg -> psycopg2 при необходимости
     try:
         if DB_URL.startswith("postgresql+asyncpg://"):
             DB_URL = DB_URL.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
@@ -37,7 +34,6 @@ if DB_URL:
     except Exception:
         pass
 
-    # Нормализуем query-параметры для psycopg2 (ssl/sslmode и т.п.)
     try:
         from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 

@@ -33,7 +33,7 @@ class _ExerciseSelectionScreenState extends ConsumerState<ExerciseSelectionScree
 
   Future<void> _loadExercises() async {
     try {
-      // Use correct service provider
+
       final exerciseService = ref.read(exerciseServiceProvider);
       final exercises = await exerciseService.getExerciseDefinitions();
       setState(() {
@@ -80,7 +80,7 @@ class _ExerciseSelectionScreenState extends ConsumerState<ExerciseSelectionScree
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  const SizedBox(width: 48), // To balance the BackButton
+                  const SizedBox(width: 48),
                 ],
               ),
             ),

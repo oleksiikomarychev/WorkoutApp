@@ -3,12 +3,10 @@ import logging
 import math
 import os
 from pathlib import Path
-from typing import Dict
 
 logger = logging.getLogger(__name__)
 
 
-# Преобразует строковые значения словаря в целые числа
 def _normalize_int_keys(d):
     if isinstance(d, dict):
         out = {}
@@ -22,7 +20,6 @@ def _normalize_int_keys(d):
     return d
 
 
-# Округляет значение до ближайшего кратного
 def round_to_step(value: float, step: float, mode: str) -> float:
     if step <= 0:
         return value
@@ -34,8 +31,7 @@ def round_to_step(value: float, step: float, mode: str) -> float:
     return round(ratio) * step
 
 
-# Проверяет структуру таблицы RPE на соответствие ожидаемому формату
-def validate_rpe_table(table: Dict) -> bool:
+def validate_rpe_table(table: dict) -> bool:
     if not isinstance(table, dict):
         return False
     for intensity, efforts in table.items():
@@ -52,8 +48,7 @@ def validate_rpe_table(table: Dict) -> bool:
     return True
 
 
-# Загружает таблицу RPE из JSON-файла или переменной окружения
-def load_rpe_table() -> Dict[int, Dict[int, int]]:
+def load_rpe_table() -> dict[int, dict[int, int]]:
     default_json_path = Path(__file__).parent.parent / "rpe_table.json"
     json_str = os.getenv("RPE_TABLE_JSON")
     json_path = os.getenv("RPE_TABLE_PATH", str(default_json_path))
@@ -70,7 +65,7 @@ def load_rpe_table() -> Dict[int, Dict[int, int]]:
             logger.error("RPE table file not found at %s", json_path)
             raise RuntimeError(f"RPE table file not found at {json_path}")
         try:
-            with open(json_path, "r") as f:
+            with open(json_path) as f:
                 data = json.load(f)
                 logger.info("Loaded RPE table from file: %s", json_path)
         except (OSError, json.JSONDecodeError) as e:
@@ -87,8 +82,7 @@ def load_rpe_table() -> Dict[int, Dict[int, int]]:
 _RPE_TABLE_CACHE = None
 
 
-# Возвращает кэшированную таблицу RPE (загружает при первом вызове)
-def get_rpe_table() -> Dict[int, Dict[int, int]]:
+def get_rpe_table() -> dict[int, dict[int, int]]:
     global _RPE_TABLE_CACHE
     if _RPE_TABLE_CACHE is None:
         _RPE_TABLE_CACHE = load_rpe_table()

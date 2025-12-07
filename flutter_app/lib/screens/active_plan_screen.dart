@@ -87,21 +87,21 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
   bool _useIntensity = false;
   bool _useRpe = false;
   bool _useReps = false;
-  String _intensityMode = 'set'; // set | offset | scale
-  String _repsMode = 'set'; // set | offset | scale
+  String _intensityMode = 'set';
+  String _repsMode = 'set';
   String _rpeMode = 'set';
   String _recalcTarget = 'auto';
   String _fixStrategy = 'none';
   bool _isApplying = false;
   final Set<int> _selectedExerciseIds = <int>{};
   Map<int, String> _exerciseNames = <int, String>{};
-  String _rangeMode = 'future'; // future | cycles
+  String _rangeMode = 'future';
   final Set<int> _selectedMesoIds = <int>{};
   final Set<int> _selectedMicroIds = <int>{};
   Map<int, List<int>> _microToGlobalIndices = <int, List<int>>{};
-  // Caches for the lifetime of the Mass Edit dialog
-  final Map<int, Set<int>> _exerciseIdsByWorkout = <int, Set<int>>{}; // workoutId -> set of exerciseListIds
-  final Map<int, String> _exerciseNameCache = <int, String>{}; // exerciseListId -> name
+
+  final Map<int, Set<int>> _exerciseIdsByWorkout = <int, Set<int>>{};
+  final Map<int, String> _exerciseNameCache = <int, String>{};
   Timer? _rangeRefreshTimer;
 
   final List<String> _metrics = const ['sets_count', 'volume_sum', 'intensity_avg', 'effort_avg'];
@@ -230,9 +230,9 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
         entities['active_applied_plan'] = null;
       }
 
-      // Provide lightweight autocomplete data for chat DSL, so the frontend
-      // can suggest aliases like /workout_6 for workouts and /Benchpress for
-      // exercises in the active plan.
+
+
+
       final workouts = await ref.read(activePlanWorkoutsProvider.future);
       final autocomplete = <String, dynamic>{};
 
@@ -253,9 +253,9 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
         }
       }
 
-      // Global exercise definitions for DSL like /Benchpress. We don't try to
-      // limit them strictly to the current plan here; the backend will still
-      // resolve exercise names to definition IDs.
+
+
+
       final exSvc = ref.read(exerciseServiceProvider);
       final defs = await exSvc.getExerciseDefinitions();
       if (defs.isNotEmpty) {
@@ -304,12 +304,12 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     return list.where((w) {
       final dt = w.scheduledFor;
       if (dt == null) return false;
-      if (dt.isBefore(now)) return false; // only future
+      if (dt.isBefore(now)) return false;
       return dt.isAfter(s.subtract(const Duration(seconds: 1))) && dt.isBefore(e.add(const Duration(seconds: 1)));
     }).toList();
   }
 
-  // Build mapping microcycleId -> list of global plan indices (1-based) across entire plan order
+
   Map<int, List<int>> _buildMicroToGlobalIndexMap(AppliedCalendarPlan plan) {
     final map = <int, List<int>>{};
     int idx = 1;
@@ -335,7 +335,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     final now = DateTime.now();
     return list.where((w) {
       final dt = w.scheduledFor;
-      if (dt == null || dt.isBefore(now)) return false; // only future
+      if (dt == null || dt.isBefore(now)) return false;
       final idx = w.planOrderIndex;
       if (idx == null) return false;
       return indices.contains(idx);
@@ -375,7 +375,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     });
   }
 
-  // Warm-up caches for exercise IDs and names by fetching details once for provided workouts
+
   Future<void> _warmupExerciseCaches(Iterable<Workout> workouts) async {
     final workoutSvc = ref.read(workoutServiceProvider);
     for (final w in workouts) {
@@ -394,7 +394,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
         }
         _exerciseIdsByWorkout[wid] = ids;
       } catch (_) {
-        // ignore errors in warm-up; they'll be retried on demand
+
       }
     }
   }
@@ -457,7 +457,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
   }) {
     _rangeRefreshTimer?.cancel();
     _rangeRefreshTimer = Timer(delay, () {
-      // ignore returned future
+
       _refreshExerciseNamesForSelection(
         plan: plan,
         start: start,
@@ -509,7 +509,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     final start = (_selectedDay ?? DateTime.now()).monday;
     final end = plan.endDate;
     _microToGlobalIndices = _buildMicroToGlobalIndexMap(plan);
-    // Warm-up caches once for all future workouts to speed up first use
+
     final futureWorkouts = await _filterWorkoutsByRange(start, end);
     await _warmupExerciseCaches(futureWorkouts);
     if (_exerciseNames.isEmpty) {
@@ -538,7 +538,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                 children: [
                   Text('Mass edit (from ${DateFormat('MMM d').format(start)} to ${DateFormat('MMM d').format(end)})', style: AppTextStyles.titleMedium),
                   const SizedBox(height: 8),
-                  // Range selection: future vs meso/micro cycles
+
                   Row(
                     children: [
                       const Text('Range:'),
@@ -548,7 +548,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                         onChanged: (v) async {
                           setModalState(() { _rangeMode = v ?? 'future'; });
                           if (_rangeMode == 'cycles' && _selectedMicroIds.isEmpty) {
-                            // preselect all microcycles by default
+
                             final allMicroIds = <int>{};
                             for (final m in plan.calendarPlan.mesocycles) {
                               for (final mc in m.microcycles) { allMicroIds.add(mc.id); }
@@ -568,7 +568,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                   ),
                   if (_rangeMode == 'cycles') ...[
                     const SizedBox(height: 6),
-                    // Mesocycle/Microcycle selection UI
+
                     SizedBox(
                       height: 200,
                       child: Scrollbar(
@@ -796,7 +796,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
         });
       },
     );
-    // Clear caches when dialog is closed to avoid stale memory and force fresh warm-up next time
+
     setState(() {
       _exerciseIdsByWorkout.clear();
       _exerciseNameCache.clear();
@@ -1003,7 +1003,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
 
     Set<int> selectedSource = <int>{};
     ExerciseDefinition? target;
-    bool preserveIntensity = true; // default per user preference
+    bool preserveIntensity = true;
 
     await showModalBottomSheet(
       context: context,
@@ -1233,11 +1233,11 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
           for (final set in inst.sets) {
             double newWeight = set.weight;
             if (preserveIntensity) {
-              double? intensity; // percent
+              double? intensity;
               if (sourceOneRm != null && sourceOneRm > 0 && set.weight > 0) {
                 intensity = (set.weight / sourceOneRm) * 100.0;
               } else if (set.rpe != null) {
-                // derive via RPE table if reps+RPE are known
+
                 final calc = await rpeSvc.calculateIntensity(set.reps, set.rpe!);
                 if (calc != null) intensity = calc;
               }

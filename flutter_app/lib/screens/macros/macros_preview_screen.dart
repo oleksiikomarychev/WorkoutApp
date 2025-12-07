@@ -53,7 +53,7 @@ List<Widget> _buildGroupedPatchesWithDiffs(List patches, String Function(int) wn
         addDiff('volume', 'reps');
         addDiff('weight', 'weight');
         addDiff('working_weight', 'weight');
-        // structural actions
+
         if (changes['action'] == 'add_set') {
           diffs.add('add set');
         } else if (changes['action'] == 'remove_set') {
@@ -115,7 +115,7 @@ class _MacrosPreviewScreenState extends ConsumerState<MacrosPreviewScreen> {
                         final matched = (it['matched_workouts'] as List? ?? const []) as List;
                         String _wname(int id) => ctxData?.workoutNames[id] ?? '#$id';
                         String _ename(int? id) => id == null ? '-' : (ctxData?.exerciseNames[id] ?? '#$id');
-                        // Counters
+
                         final perWorkoutCounts = <int, int>{};
                         for (final p in patches) {
                           final mp = (p as Map).cast<String, dynamic>();
@@ -173,7 +173,7 @@ class _MacrosPreviewScreenState extends ConsumerState<MacrosPreviewScreen> {
                 final res = ref.read(macroPreviewNotifierProvider).applyResult;
                 final msg = res != null ? 'Applied: ${res['applied']}\nErrors: ${(res['errors'] ?? []).length}' : 'Done';
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-                // Auto-refresh preview after apply
+
                 await notifier.runPreview(widget.appliedPlanId);
               }
             },
@@ -189,7 +189,7 @@ class _MacrosPreviewScreenState extends ConsumerState<MacrosPreviewScreen> {
 }
 
 List<Widget> _buildGroupedPatches(List patches, String Function(int) wname, String Function(int?) ename) {
-  // Build: workoutId -> exerciseId -> list of sets
+
   final Map<int, Map<int?, List<Map<String, dynamic>>>> grouped = {};
   for (final p in patches) {
     final mp = (p as Map).cast<String, dynamic>();

@@ -1,6 +1,5 @@
 import logging
 import os
-from typing import Dict, List, Optional
 
 import httpx
 
@@ -9,15 +8,14 @@ logger = logging.getLogger(__name__)
 
 class WorkoutCalculator:
     @staticmethod
-    async def get_true_1rm_from_user_max(user_max: Dict) -> Optional[float]:
-        """Вычисляет 1ПМ на основе пользовательского максимума."""
+    async def get_true_1rm_from_user_max(user_max: dict) -> float | None:
         if not user_max:
             return None
         max_weight = user_max.get("max_weight")
         rep_max = user_max.get("rep_max")
         if max_weight is None or rep_max is None:
             return None
-        # Формула Эпли: 1ПМ = вес * (1 + 0.0333 * повторения)
+
         return max_weight * (1 + 0.0333 * rep_max)
 
     async def _get_base_candidates(self) -> list[str]:
@@ -36,11 +34,11 @@ class WorkoutCalculator:
                 unique.append(c)
         return unique
 
-    async def _fetch_user_maxes(self, exercise_ids: List[int]) -> List[Dict]:
+    async def _fetch_user_maxes(self, exercise_ids: list[int]) -> list[dict]:
         if not exercise_ids:
             return []
         headers = {"Content-Type": "application/json"}
-        # Inject service auth if available
+
         svc_token = os.getenv("SERVICE_TOKEN") or os.getenv("USER_MAX_SERVICE_TOKEN")
         if svc_token:
             headers["Authorization"] = f"Bearer {svc_token}"
@@ -60,7 +58,6 @@ class WorkoutCalculator:
                     logger.error(f"Failed to fetch user maxes from {base}: {e}")
                     continue
 
-        # Fallback: generate mock user maxes
         logger.warning("All user-max services failed. Generating mock user maxes")
         return [
             {
@@ -103,7 +100,7 @@ class WorkoutCalculator:
                     continue
         return
 
-    def _apply_normalization(self, effective_1rms: dict[int, float], value: Optional[float], unit: Optional[str]):
+    def _apply_normalization(self, effective_1rms: dict[int, float], value: float | None, unit: str | None):
         if value is None or unit is None:
             return
         if unit == "percentage":

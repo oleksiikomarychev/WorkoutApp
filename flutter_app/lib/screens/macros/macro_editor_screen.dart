@@ -30,7 +30,7 @@ class _MacroEditorScreenState extends ConsumerState<MacroEditorScreen> {
   String? _error;
   bool _editRawJson = false;
 
-  // Visual builder state
+
   Map<String, dynamic> _trigger = {};
   Map<String, dynamic> _condition = {};
   Map<String, dynamic> _action = {};
@@ -61,7 +61,7 @@ class _MacroEditorScreenState extends ConsumerState<MacroEditorScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _error = null);
     try {
-      // Build rule from visual state (or raw JSON if enabled)
+
       MacroRule rule;
       if (_editRawJson) {
         final Map<String, dynamic> ruleJson = jsonDecode(_ruleCtrl.text) as Map<String, dynamic>;
@@ -112,7 +112,7 @@ class _MacroEditorScreenState extends ConsumerState<MacroEditorScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(macrosNotifierProvider(widget.calendarPlanId));
-    // Prepare data for human-readable preview: from visual builder or raw JSON when enabled
+
     Map<String, dynamic> humanTrigger = _trigger;
     Map<String, dynamic> humanCondition = _condition;
     Map<String, dynamic> humanAction = _action;
@@ -128,7 +128,7 @@ class _MacroEditorScreenState extends ConsumerState<MacroEditorScreen> {
           if (j['duration'] is Map) humanDuration = (j['duration'] as Map).cast<String, dynamic>();
         }
       } catch (_) {
-        // ignore parse errors, fallback to visual state
+
       }
     }
     final actionType = (_action['type'] ?? '').toString();
@@ -190,7 +190,7 @@ class _MacroEditorScreenState extends ConsumerState<MacroEditorScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            // Visual builders
+
             const SizedBox(height: 16),
             Text('Триггер', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),

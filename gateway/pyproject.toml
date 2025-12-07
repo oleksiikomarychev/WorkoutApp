@@ -1,25 +1,26 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core>=1.7.0"]
+build-backend = "poetry.core.masonry.api"
 
-[project]
+[tool.poetry]
 name = "api-gateway"
 version = "0.1.0"
 description = "WorkoutApp API Gateway"
-requires-python = ">=3.12"
-dependencies = [
-    "fastapi==0.110.0",
-    "uvicorn==0.27.1",
-    "httpx==0.27.0",
-    "firebase-admin>=6.0.0,<7.0.0",
-    "structlog>=24.0.0,<25.0.0",
-    "asgi-correlation-id>=4.3.1,<5.0.0",
-    "prometheus-fastapi-instrumentator>=6.1.0,<7.0.0",
-    "prometheus-client>=0.16.0,<1.0.0",
-    "sentry-sdk[fastapi]>=2.0.0,<3.0.0",
-    "redis>=5",
+authors = ["WorkoutApp Team"]
+packages = [
+    { include = "gateway_app" }
 ]
 
-[tool.setuptools]
-packages = ["gateway_app"]
-package-dir = { "" = "." }
+[tool.poetry.dependencies]
+python = ">=3.12,<4.0"
+fastapi = "0.110.0"
+uvicorn = "0.27.1"
+httpx = "0.28.1"
+firebase-admin = "6.0.0"
+structlog = ">=24.0.0,<25.0.0"
+asgi-correlation-id = "4.3.1"
+prometheus-fastapi-instrumentator = "6.1.0"
+prometheus-client = "0.16.0"
+sentry-sdk = { version = "2.0.0", extras = ["fastapi"] }
+redis = "5.0.0"
+backend-common = { path = "../libs/backend-common", develop = true }

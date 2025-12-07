@@ -1,5 +1,3 @@
-# This file makes the schemas directory a Python package
-
 from .applied_mass_edit import (
     AppliedAddExerciseInstance,
     AppliedAddExerciseSet,

@@ -19,7 +19,7 @@ import 'package:workout_app/services/messaging_service.dart';
 import 'package:workout_app/services/crm_coach_mass_edit_service.dart';
 import 'package:workout_app/services/agent_mass_edit_service.dart';
 
-// Riverpod Providers
+
 final apiClientProvider = Provider<ApiClient>((ref) {
   return ApiClient();
 });
@@ -40,7 +40,7 @@ final workoutSessionServiceProvider = Provider<WorkoutSessionService>((ref) {
   return WorkoutSessionService(ref.watch(apiClientProvider));
 });
 
-// Register ApiClientProvider if missing
+
 final apiClientProviderVerify = Provider((ref) => ApiClient());
 
 final mesocycleServiceProvider = Provider((ref) => MesocycleService(apiClient: ref.read(apiClientProvider)));
@@ -81,10 +81,10 @@ final messagingServiceProvider = Provider<MessagingService>((ref) {
 });
 
 
-// Verify service registrations
+
 class ServiceProvider extends ConsumerWidget {
   final Widget child;
-  
+
   const ServiceProvider({
     super.key,
     required this.child,

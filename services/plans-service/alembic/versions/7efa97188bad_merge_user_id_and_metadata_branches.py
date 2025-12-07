@@ -5,7 +5,6 @@ Revises: cf2dbd4a8c72, eafa767832ad
 Create Date: 2025-10-12 20:37:25.990860
 """
 
-# revision identifiers, used by Alembic.
 revision = "7efa97188bad"
 down_revision = ("cf2dbd4a8c72", "eafa767832ad")
 branch_labels = None

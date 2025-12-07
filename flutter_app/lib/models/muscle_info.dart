@@ -1,7 +1,7 @@
 class MuscleInfo {
-  final String key;   // Enum key, e.g., "PectoralisMajor"
-  final String label; // User-friendly label, e.g., "Pectoralis Major"
-  final String group; // Group, e.g., "Chest"
+  final String key;
+  final String label;
+  final String group;
 
   const MuscleInfo({
     required this.key,

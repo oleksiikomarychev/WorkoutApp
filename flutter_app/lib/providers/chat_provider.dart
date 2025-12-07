@@ -96,7 +96,7 @@ class ChatController extends StateNotifier<ChatState> {
     await _service.sendMessage(content.trim());
   }
 
-  /// Sends structured context to the backend for auto-substitution of plan IDs, etc.
+
   Future<void> sendContext(Map<String, dynamic> context) async {
     state = state.copyWith(contextPayload: context);
     await _service.sendContext(context);
@@ -150,11 +150,11 @@ class ChatController extends StateNotifier<ChatState> {
     state = state.copyWith(lastMassEditResult: null);
   }
 
-  /// Applies a previously previewed mass edit command (for an applied plan)
-  /// by sending a structured "mass_edit_apply" request over WebSocket.
-  ///
-  /// The payload is expected to be the raw mass_edit_result event body
-  /// received from the backend (and stored in ChatState.lastMassEditResult).
+
+
+
+
+
   Future<void> applyMassEditFromPreview(Map<String, dynamic> payload) async {
     await _service.sendMassEditApply(payload);
   }

@@ -18,14 +18,14 @@ final previewContextProvider = FutureProvider.family<PreviewContextData, int>((r
   final exSvc = ref.watch(_exerciseServiceProvider);
   final woSvc = ref.watch(_workoutServiceProvider);
 
-  // Workouts by applied plan
+
   final workouts = await woSvc.getWorkoutsByAppliedPlan(appliedPlanId);
   final workoutMap = <int, String>{
     for (final w in workouts)
       if (w.id != null) w.id!: (w.name ?? 'Workout ${w.id}')
   };
 
-  // Exercise definitions
+
   final defs = await exSvc.getExerciseDefinitions();
   final exerciseMap = <int, String>{
     for (final d in defs)
@@ -35,7 +35,7 @@ final previewContextProvider = FutureProvider.family<PreviewContextData, int>((r
   return PreviewContextData(workoutNames: workoutMap, exerciseNames: exerciseMap);
 });
 
-// Map structure: workoutId -> exerciseId -> setId -> {intensity, volume, weight}
+
 typedef OriginalSetsMap = Map<int, Map<int?, Map<int?, Map<String, dynamic>>>>;
 
 final workoutOriginalSetsProvider = FutureProvider.family<OriginalSetsMap, List<int>>((ref, workoutIds) async {
@@ -54,7 +54,7 @@ final workoutOriginalSetsProvider = FutureProvider.family<OriginalSetsMap, List<
           final sid = s.id;
           mapSet[sid] = {
             'rpe': s.rpe,
-            'volume': s.reps, // reps is authoritative in DTO
+            'volume': s.reps,
             'weight': s.weight,
           };
         }
@@ -62,7 +62,7 @@ final workoutOriginalSetsProvider = FutureProvider.family<OriginalSetsMap, List<
       }
       out[wid] = mapEx;
     } catch (_) {
-      // ignore individual failures
+
     }
   }
   return out;

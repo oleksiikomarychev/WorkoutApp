@@ -12,7 +12,6 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 
-# Set database URL based on environment
 db_url = os.getenv("PLANS_DATABASE_URL")
 if db_url and db_url.startswith("postgresql+asyncpg://"):
     db_url = db_url.replace("postgresql+asyncpg://", "postgresql://", 1)

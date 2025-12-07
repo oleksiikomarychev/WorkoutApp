@@ -11,20 +11,13 @@ class UserMax(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String(255), nullable=False)
     exercise_id = Column(Integer, nullable=False)
-    exercise_name = Column(String(255))  # New field
+    exercise_name = Column(String(255))
     max_weight = Column(Integer, nullable=False)
     rep_max = Column(Integer)
     date = Column(Date, default=datetime.date.today, nullable=False)
-    true_1rm = Column(Float)  # Теоретический максимум
-    verified_1rm = Column(Float)  # Подтвержденный максимум
+    true_1rm = Column(Float)
+    verified_1rm = Column(Float)
     source = Column(String(64))
-
-    # exercise_instances = relationship("ExerciseInstance", back_populates="user_max")
-    # applied_plans = relationship(
-    #     "AppliedCalendarPlan",
-    #     back_populates="user_maxes",
-    #     secondary="applied_calendar_plan_user_maxes",
-    # )
 
     __table_args__ = (
         Index("idx_exercise_id", "exercise_id"),
@@ -40,3 +33,25 @@ class UserMax(Base):
 
     class Config:
         from_attributes = True
+
+
+class UserMaxDailyAgg(Base):
+    __tablename__ = "user_max_daily_agg"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String(255), nullable=False)
+    exercise_id = Column(Integer, nullable=False)
+    date = Column(Date, nullable=False)
+    sum_true_1rm = Column(Float, nullable=False)
+    cnt = Column(Integer, nullable=False)
+
+    __table_args__ = (
+        Index("ix_user_max_daily_agg_user_ex", "user_id", "exercise_id"),
+        Index(
+            "ix_user_max_daily_agg_user_ex_date",
+            "user_id",
+            "exercise_id",
+            "date",
+            unique=True,
+        ),
+    )

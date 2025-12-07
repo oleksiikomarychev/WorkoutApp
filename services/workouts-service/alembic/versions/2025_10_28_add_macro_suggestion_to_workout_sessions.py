@@ -9,7 +9,6 @@ Create Date: 2025-10-28 00:00:00.000000
 import sqlalchemy as sa
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "2025_10_28_macro_suggestion"
 down_revision = "2025_10_13_unique_workout"
 branch_labels = None

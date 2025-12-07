@@ -4,21 +4,19 @@ import 'package:flutter/foundation.dart';
 import 'package:workout_app/services/api_client.dart';
 import 'package:workout_app/services/logger_service.dart';
 
-/// Base class for API services to provide common functionality
 abstract class BaseApiService {
   final ApiClient _apiClient;
   final LoggerService _logger = LoggerService('BaseApiService');
 
   BaseApiService(this._apiClient);
 
-  /// Expose the underlying ApiClient to subclasses when they need
-  /// lower-level control (e.g., to handle null/empty responses manually).
+
+
   @protected
   ApiClient get apiClient => _apiClient;
 
-  /// Handles API errors and throws appropriate exceptions
   Never handleError(String message, dynamic error, [StackTrace? stackTrace]) {
-    // Log the error with the message and stack trace
+
     if (error != null) {
       _logger.e('$message: ${error.toString()}');
       if (stackTrace != null) {
@@ -34,26 +32,25 @@ abstract class BaseApiService {
     if (error is Response) {
       throw ApiException.fromResponse(error);
     } else if (error is ApiException) {
-      // Re-throw if it's already an ApiException
+
       throw error;
     } else if (error is Exception) {
-      // Wrap other exceptions in an ApiException
+
       throw ApiException(
         error.toString(),
-        statusCode: 0, // 0 indicates a client-side error
+        statusCode: 0,
         rawError: error,
       );
     } else {
-      // Handle any other error type
+
       throw ApiException(
         error?.toString() ?? 'Unknown error occurred',
-        statusCode: 0, // 0 indicates a client-side error
+        statusCode: 0,
         rawError: error,
       );
     }
   }
 
-  /// Generic PATCH request handler
   Future<T> patch<T>(
     String endpoint,
     Map<String, dynamic> data,
@@ -80,7 +77,6 @@ abstract class BaseApiService {
     }
   }
 
-  /// Generic GET request handler that may return null
   Future<T?> getOptional<T>(
     String endpoint,
     T Function(Map<String, dynamic>) fromJson, {
@@ -100,8 +96,8 @@ abstract class BaseApiService {
       if (response is Map<String, dynamic>) {
         return fromJson(response);
       } else {
-        // If backend returns literal null, response will be null (handled above)
-        // Any other unexpected format should throw
+
+
         throw Exception('Unexpected response format for optional GET: expected Map or null');
       }
     } catch (e) {
@@ -109,12 +105,11 @@ abstract class BaseApiService {
     }
   }
 
-  /// Generic GET request handler
   Future<T> get<T>(String endpoint, T Function(Map<String, dynamic>) fromJson) async {
     try {
       _logger.d('GET request to: $endpoint');
       final response = await _apiClient.get(endpoint);
-      
+
       if (response is Map<String, dynamic>) {
         return fromJson(response);
       } else {
@@ -125,9 +120,8 @@ abstract class BaseApiService {
     }
   }
 
-  /// Generic GET list request handler
   Future<List<T>> getList<T>(
-    String endpoint, 
+    String endpoint,
     T Function(Map<String, dynamic>) fromJson, {
     Map<String, dynamic>? queryParams,
   }) async {
@@ -137,14 +131,14 @@ abstract class BaseApiService {
         endpoint,
         queryParams: queryParams,
       );
-      
+
       if (response is List) {
         return response
             .whereType<Map<String, dynamic>>()
             .map((item) => fromJson(item))
             .toList();
       } else if (response is Map<String, dynamic>) {
-        // Handle case where the API returns a single item instead of a list
+
         return [fromJson(response)];
       } else {
         throw Exception('Unexpected response format: expected List or Map');
@@ -154,7 +148,6 @@ abstract class BaseApiService {
     }
   }
 
-  /// Generic POST request handler (accepts Map or List body)
   Future<T> post<T>(
     String endpoint,
     dynamic data,
@@ -164,13 +157,13 @@ abstract class BaseApiService {
     try {
       _logger.d('POST request to: $endpoint');
       _logger.d('Request data: $data');
-      
+
       final response = await _apiClient.post(
         endpoint,
         data,
         queryParams: queryParams,
       );
-      
+
       if (response is Map<String, dynamic>) {
         return fromJson(response);
       } else {
@@ -181,23 +174,22 @@ abstract class BaseApiService {
     }
   }
 
-  /// Generic PUT request handler
   Future<T> put<T>(
-    String endpoint, 
-    Map<String, dynamic> data, 
+    String endpoint,
+    Map<String, dynamic> data,
     T Function(Map<String, dynamic>) fromJson, {
     Map<String, dynamic>? queryParams,
   }) async {
     try {
       _logger.d('PUT request to: $endpoint');
       _logger.d('Request data: $data');
-      
+
       final response = await _apiClient.put(
         endpoint,
         data,
         queryParams: queryParams,
       );
-      
+
       if (response is Map<String, dynamic>) {
         return fromJson(response);
       } else {
@@ -208,27 +200,25 @@ abstract class BaseApiService {
     }
   }
 
-  /// Generic DELETE request handler
   Future<bool> delete(
     String endpoint, {
     Map<String, dynamic>? queryParams,
   }) async {
     try {
       _logger.d('DELETE request to: $endpoint');
-      
+
       await _apiClient.delete(
         endpoint,
         queryParams: queryParams,
       );
-      
-      return true; // Success
+
+      return true;
     } catch (e) {
       throw handleError('Failed to delete at $endpoint', e);
     }
   }
 }
 
-/// Custom exception class for API errors
 class ApiException implements Exception {
   final String message;
   final int statusCode;
@@ -242,7 +232,6 @@ class ApiException implements Exception {
     this.rawResponse,
   });
 
-  /// Factory constructor for creating an ApiException from a Response object
   factory ApiException.fromResponse(Response response) {
     try {
       final errorBody = jsonDecode(response.body) as Map<String, dynamic>;

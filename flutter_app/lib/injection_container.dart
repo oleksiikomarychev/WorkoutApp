@@ -13,8 +13,8 @@ final userMaxServiceProvider = Provider<UserMaxService>((ref) {
   return UserMaxService(ref.watch(apiClientProvider));
 });
 
-/// Sets up the dependency injection container
+
 Future<void> init() async {
-  // Initialize API configuration
+
   await ApiConfig.initialize();
 }

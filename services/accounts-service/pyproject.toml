@@ -1,33 +1,32 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core>=1.7.0"]
+build-backend = "poetry.core.masonry.api"
 
-[project]
+[tool.poetry]
 name = "accounts-service"
 version = "0.1.0"
 description = "User accounts and profile management"
-requires-python = ">=3.12"
-dependencies = [
-    "fastapi==0.110.0",
-    "uvicorn==0.27.1",
-    "pydantic==2.6.3",
-    "SQLAlchemy==2.0.27",
-    "asyncpg>=0.27",
-    "alembic==1.13.1",
-    "psycopg2-binary>=2.9",
-    "httpx==0.28.1",
-    "structlog>=24.0.0,<25.0.0",
-    "asgi-correlation-id>=4.3.1,<5.0.0",
-    "prometheus-fastapi-instrumentator>=6.1.0,<7.0.0",
-    "prometheus-client>=0.16.0,<1.0.0",
-    "sentry-sdk[fastapi]>=2.0.0,<3.0.0",
+authors = ["WorkoutApp Team"]
+packages = [
+    { include = "accounts_service" }
 ]
 
-[project.optional-dependencies]
-test = [
-    "pytest==8.2.0",
-]
+[tool.poetry.dependencies]
+python = ">=3.12,<4.0"
+fastapi = "0.110.0"
+uvicorn = "0.27.1"
+pydantic = "2.10.0"
+sqlalchemy = "2.0.29"
+asyncpg = "0.30.0"
+alembic = "1.15.0"
+psycopg2-binary = "2.9.9"
+httpx = "0.28.1"
+structlog = ">=24.0.0,<25.0.0"
+asgi-correlation-id = "4.3.1"
+prometheus-fastapi-instrumentator = "6.1.0"
+prometheus-client = "0.16.0"
+sentry-sdk = { version = "2.0.0", extras = ["fastapi"] }
+backend-common = { path = "../../libs/backend-common", develop = true }
 
-[tool.setuptools]
-packages = ["accounts_service"]
-package-dir = { "" = "." }
+[tool.poetry.group.test.dependencies]
+pytest = "8.2.0"

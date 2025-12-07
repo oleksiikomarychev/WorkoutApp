@@ -8,7 +8,6 @@ revision graph remains consistent.
 import sqlalchemy as sa  # noqa: F401
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "d59950afde1b"
 down_revision = "20251123_add_channel_id"
 branch_labels = None

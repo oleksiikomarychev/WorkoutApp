@@ -1,7 +1,7 @@
 from sqlalchemy import JSON, Column, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
-from .database import Base  # Import Base from database
+from .database import Base
 
 
 class ExerciseList(Base):
@@ -15,6 +15,9 @@ class ExerciseList(Base):
     synergist_muscles = Column(JSON, nullable=True)
     movement_type = Column(String(32), nullable=True)
     region = Column(String(32), nullable=True)
+    category = Column(String(64), nullable=True)
+    movement_pattern = Column(String(64), nullable=True)
+    is_competition_lift = Column(Integer, nullable=True)
 
     instances = relationship(
         "ExerciseInstance",
@@ -30,7 +33,7 @@ class ExerciseInstance(Base):
     __tablename__ = "exercise_instances"
 
     id = Column(Integer, primary_key=True, index=True)
-    workout_id = Column(Integer, nullable=False)  # Removed ForeignKey to avoid cross-service dependency
+    workout_id = Column(Integer, nullable=False)
     exercise_list_id = Column(Integer, ForeignKey("exercise_list.id"), nullable=False)
     user_max_id = Column(Integer, nullable=True)
     user_id = Column(String(255), nullable=False)
@@ -39,9 +42,6 @@ class ExerciseInstance(Base):
     order = Column("order", Integer, nullable=True)
 
     exercise_definition = relationship("ExerciseList", back_populates="instances")
-    # Removed relationships to UserMax and Set to avoid cross-service dependencies
-    # user_max = relationship("UserMax", back_populates="exercise_instances", lazy="selectin")
-    # sets_relation = relationship("Set", back_populates="exercise_instance")
 
     def get_sets(self):
         return self.sets

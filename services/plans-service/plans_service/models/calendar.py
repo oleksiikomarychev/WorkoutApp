@@ -25,14 +25,14 @@ class CalendarPlan(Base):
     is_active = Column(Boolean, default=True, server_default=text("true"))
     user_id = Column(String(255), nullable=False, index=True)
     root_plan_id = Column(Integer, ForeignKey("calendar_plans.id", ondelete="RESTRICT"), nullable=False, index=True)
-    # Plan metadata
+
     notes = Column(String(512), nullable=True)
     primary_goal = Column(String(32), nullable=True)
     intended_experience_level = Column(String(32), nullable=True)
     intended_frequency_per_week = Column(Integer, nullable=True)
     session_duration_target_min = Column(Integer, nullable=True)
-    primary_focus_lifts = Column(JSON, nullable=True)  # e.g. list of exercise_definition_ids
-    required_equipment = Column(JSON, nullable=True)  # e.g. list of strings
+    primary_focus_lifts = Column(JSON, nullable=True)
+    required_equipment = Column(JSON, nullable=True)
 
     applied_instances = relationship(
         "AppliedCalendarPlan", back_populates="calendar_plan", cascade="all, delete-orphan"
@@ -46,7 +46,7 @@ class CalendarPlan(Base):
     )
     root_plan = relationship("CalendarPlan", remote_side=[id], back_populates="variants", uselist=False)
     variants = relationship("CalendarPlan", back_populates="root_plan", cascade="all, delete-orphan")
-    # New: macros attached to this plan
+
     macros = relationship("PlanMacro", back_populates="calendar_plan", cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -67,14 +67,14 @@ class AppliedCalendarPlan(Base):
     user_max_ids = Column(JSON, nullable=True)
     current_workout_index = Column(Integer, default=0)
     user_id = Column(String(255), nullable=False, index=True)
-    # User plan progress metadata (USER_PLANS core)
-    status = Column(String(32), nullable=True)  # active/completed/dropped/etc.
+
+    status = Column(String(32), nullable=True)
     planned_sessions_total = Column(Integer, nullable=True)
     actual_sessions_completed = Column(Integer, nullable=True)
     adherence_pct = Column(Float, nullable=True)
     notes = Column(String(512), nullable=True)
-    # Dropout analytics
-    dropout_reason = Column(String(64), nullable=True)  # e.g. injury/no_time/too_hard/not_enjoyable
+
+    dropout_reason = Column(String(64), nullable=True)
     dropped_at = Column(DateTime, nullable=True)
 
     calendar_plan = relationship("CalendarPlan", back_populates="applied_instances")
@@ -207,12 +207,11 @@ class PlanWorkout(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     microcycle_id = Column(Integer, ForeignKey("microcycles.id", ondelete="CASCADE"), nullable=False)
-    day_label = Column(String(50), nullable=False)  # e.g., "Day 1"
+    day_label = Column(String(50), nullable=False)
     order_index = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
     microcycle = relationship("Microcycle", back_populates="plan_workouts")
     exercises = relationship("PlanExercise", back_populates="plan_workout", cascade="all, delete-orphan")
 
@@ -249,26 +248,25 @@ class PlanSet(Base):
     id = Column(Integer, primary_key=True, index=True)
     plan_exercise_id = Column(Integer, ForeignKey("plan_exercises.id", ondelete="CASCADE"), nullable=False)
     order_index = Column(Integer, nullable=False, default=0)
-    intensity = Column(Integer, nullable=True)  # 0-110
-    effort = Column(Integer, nullable=True)  # 1-10
-    volume = Column(Integer, nullable=True)  # >=1
-    working_weight = Column(Float, nullable=True)  # For calculations, exclude in responses if needed
+    intensity = Column(Integer, nullable=True)
+    effort = Column(Integer, nullable=True)
+    volume = Column(Integer, nullable=True)
+    working_weight = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
     plan_exercise = relationship("PlanExercise", back_populates="sets")
 
     def __repr__(self):
         return f"<PlanSet(id={self.id}, plan_exercise_id={self.plan_exercise_id}, intensity={self.intensity})>"
 
 
-class WorkoutProgress(Base):  # Сопоставление с воркаут сервисом(на будущее)
+class WorkoutProgress(Base):
     __tablename__ = "workout_progress"
 
     id = Column(Integer, primary_key=True, index=True)
     plan_exercise_id = Column(Integer, ForeignKey("plan_exercises.id"), nullable=True)
-    workout_set_id = Column(Integer, nullable=False)  # From workouts-service WorkoutSet.id
+    workout_set_id = Column(Integer, nullable=False)
     planned_intensity = Column(Integer, nullable=True)
     actual_intensity = Column(Float, nullable=True)
     planned_effort = Column(Integer, nullable=True)
@@ -278,7 +276,6 @@ class WorkoutProgress(Base):  # Сопоставление с воркаут с�
     date = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Optional relationships (if needed)
     plan_exercise = relationship("PlanExercise")
 
     def __repr__(self):

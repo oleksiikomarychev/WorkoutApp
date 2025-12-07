@@ -52,7 +52,7 @@ class DebugScreen extends StatelessWidget {
       'Chat Screen (embedded)': (context) => const ChatScreen(embedded: true),
       'Exercise Selection': (context) => ExerciseSelectionScreen(),
       'Exercise Form (stub)': (context) => ExerciseFormScreen(exercise: _stubExerciseDefinition(), workoutId: 0),
-      'Workout Detail': (context) => WorkoutDetailScreen(workoutId: 2000),  // Example ID
+      'Workout Detail': (context) => WorkoutDetailScreen(workoutId: 2000),
       'Workouts': (context) => WorkoutsScreen(),
       'Workout List': (context) => WorkoutListScreen(progressionId: 1),
       'Exercise List': (context) => ExerciseListScreen(),

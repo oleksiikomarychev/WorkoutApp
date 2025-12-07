@@ -18,7 +18,8 @@ services:
 
   plans-celery-worker:
     build:
-      context: ./services/plans-service
+      context: .
+      dockerfile: services/plans-service/Dockerfile
     image: docker.io/oleksiikomarychev/workoutapp-plans-service:latest
     command: >-
       sh -c "celery -A plans_service.celery_app worker
@@ -47,7 +48,8 @@ services:
 
   agent-celery-worker:
     build:
-      context: ./services/agent-service
+      context: .
+      dockerfile: services/agent-service/Dockerfile
     image: docker.io/oleksiikomarychev/workoutapp-agent-service:latest
     command: >-
       sh -c "celery -A agent_service.celery_app worker
@@ -79,7 +81,9 @@ services:
       - workout-net
 
   crm-service:
-    build: ./services/crm-service
+    build:
+      context: .
+      dockerfile: services/crm-service/Dockerfile
     image: docker.io/oleksiikomarychev/workoutapp-crm-service:latest
     container_name: crm-service
     env_file:
@@ -100,7 +104,9 @@ services:
       - workout-net
 
   plans-service:
-    build: ./services/plans-service
+    build:
+      context: .
+      dockerfile: services/plans-service/Dockerfile
     image: docker.io/oleksiikomarychev/workoutapp-plans-service:latest
     container_name: plans-service
     env_file:
@@ -135,7 +141,8 @@ services:
 
   exercises-service:
     build:
-      context: ./services/exercises-service
+      context: .
+      dockerfile: services/exercises-service/Dockerfile
     image: docker.io/oleksiikomarychev/workoutapp-exercises-service:latest
     container_name: exercises-service
     env_file:
@@ -162,7 +169,9 @@ services:
       - workout-net
 
   gateway:
-    build: ./gateway
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
     image: docker.io/oleksiikomarychev/workoutapp-gateway:latest
     container_name: api-gateway
     env_file:
@@ -209,7 +218,9 @@ services:
       - workout-network
 
   user-max-service:
-    build: ./services/user-max-service
+    build:
+      context: .
+      dockerfile: services/user-max-service/Dockerfile
     image: docker.io/oleksiikomarychev/workoutapp-user-max-service:latest
     container_name: user-max-service
     env_file:
@@ -230,7 +241,9 @@ services:
       - workout-net
 
   workouts-service:
-    build: ./services/workouts-service
+    build:
+      context: .
+      dockerfile: services/workouts-service/Dockerfile
     image: docker.io/oleksiikomarychev/workoutapp-workouts-service:latest
     container_name: workouts-service
     env_file:
@@ -262,7 +275,8 @@ services:
 
   workouts-celery-worker:
     build:
-      context: ./services/workouts-service
+      context: .
+      dockerfile: services/workouts-service/Dockerfile
     image: docker.io/oleksiikomarychev/workoutapp-workouts-service:latest
     command: >-
       sh -c "celery -A workouts_service.celery_app worker
@@ -297,7 +311,8 @@ services:
 
   agent-service:
     build:
-      context: ./services/agent-service
+      context: .
+      dockerfile: services/agent-service/Dockerfile
     image: docker.io/oleksiikomarychev/workoutapp-agent-service:latest
     env_file:
       - .env
@@ -327,7 +342,9 @@ services:
       - workout-net
 
   accounts-service:
-    build: ./services/accounts-service
+    build:
+      context: .
+      dockerfile: ./services/accounts-service/Dockerfile
     image: docker.io/oleksiikomarychev/workoutapp-accounts-service:latest
     container_name: accounts-service
     env_file:

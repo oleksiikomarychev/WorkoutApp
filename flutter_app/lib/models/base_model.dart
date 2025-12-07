@@ -6,15 +6,15 @@ part 'base_model.g.dart';
 @immutable
 abstract class BaseModel with _$BaseModel {
   const BaseModel._();
-  
+
   Map<String, dynamic> toJson();
-  
-  // Common fields that exist in most models
+
+
   int? get id;
 
-  // Helper method to handle JSON parsing consistently
+
   static T? fromJson<T extends BaseModel>(
-    Map<String, dynamic> json, 
+    Map<String, dynamic> json,
     T Function(Map<String, dynamic>) fromJsonT,
   ) {
     try {

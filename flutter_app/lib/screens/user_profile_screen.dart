@@ -20,7 +20,7 @@ import '../widgets/user_profile_view.dart';
 
 const int kActivityWeeks = 48;
 
-// Avatar generator state
+
 final avatarPromptProvider = StateProvider<String>((ref) => '');
 final avatarImageProvider = StateProvider<Uint8List?>((ref) => null);
 final avatarLoadingProvider = StateProvider<bool>((ref) => false);
@@ -352,7 +352,7 @@ class UserProfileScreen extends ConsumerWidget {
     String timezone = profile.settings.timezone ?? '';
     bool notificationsEnabled = profile.settings.notificationsEnabled;
 
-    // New profile fields
+
     final bodyweightController = TextEditingController(
       text: profile.bodyweightKg != null ? profile.bodyweightKg!.toStringAsFixed(1) : '',
     );
@@ -394,7 +394,7 @@ class UserProfileScreen extends ConsumerWidget {
                       maxLines: 3,
                     ),
                     const SizedBox(height: 12),
-                    // New core profile fields
+
                     Row(
                       children: [
                         Expanded(
@@ -1069,7 +1069,7 @@ class UserProfileScreen extends ConsumerWidget {
   Widget _buildActivityGrid(Map<DateTime, DayActivity> activityMap, double maxVolume) {
     final today = DateTime.now();
     final endDate = DateTime(today.year, today.month, today.day);
-    // Align to Monday (1 = Monday, 7 = Sunday)
+
     final endWeekStart = endDate.subtract(Duration(days: endDate.weekday - 1));
     final startWeekStart = endWeekStart.subtract(Duration(days: (kActivityWeeks - 1) * 7));
 
@@ -1088,7 +1088,7 @@ class UserProfileScreen extends ConsumerWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: weeks.map((weekDays) {
-          // Determine month label for this column (if the week contains the 1st day of any month)
+
           String label = '';
           for (final d in weekDays) {
             if (d.day == 1) {
@@ -1103,7 +1103,7 @@ class UserProfileScreen extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(
-                  width: 12, // exact cell width; padding on the column adds the 4px gutter
+                  width: 12,
                   child: Text(
                     label,
                     style: const TextStyle(
@@ -1151,13 +1151,13 @@ class UserProfileScreen extends ConsumerWidget {
   Color _getActivityColor(double volume, double maxVolume) {
     if (volume == 0) return const Color(0xFFEBEDF0);
     if (maxVolume == 0) return const Color(0xFFEBEDF0);
-    
+
     final intensity = volume / maxVolume;
-    
-    if (intensity <= 0.25) return const Color(0xFFC6E48B); // Light green
-    if (intensity <= 0.50) return const Color(0xFF7BC96F); // Medium green
-    if (intensity <= 0.75) return const Color(0xFF239A3B); // Dark green
-    return const Color(0xFF196127); // Darkest green
+
+    if (intensity <= 0.25) return const Color(0xFFC6E48B);
+    if (intensity <= 0.50) return const Color(0xFF7BC96F);
+    if (intensity <= 0.75) return const Color(0xFF239A3B);
+    return const Color(0xFF196127);
   }
 
   DayActivity? _getActivityForDate(Map<DateTime, DayActivity> map, DateTime date) {

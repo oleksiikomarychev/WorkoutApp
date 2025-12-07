@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict
+from typing import Any
 
 import httpx
 import structlog
@@ -102,9 +102,7 @@ User: "{user_request}"
 """
 
 
-async def generate_macro_payload(user_request: str, exercise_map: Dict[str, int]) -> Dict[str, Any]:
-    # Limit exercise map size if too large, or just use it.
-    # Format map for prompt
+async def generate_macro_payload(user_request: str, exercise_map: dict[str, int]) -> dict[str, Any]:
     map_str = json.dumps(exercise_map, indent=None)
 
     prompt = MACRO_GENERATION_PROMPT.format(exercise_map_json=map_str, user_request=user_request)
@@ -113,7 +111,7 @@ async def generate_macro_payload(user_request: str, exercise_map: Dict[str, int]
         "type": "object",
         "properties": {
             "name": {"type": "string"},
-            "rule": {"type": "object"},  # We trust the prompt to structure this correctly or we could define it fully
+            "rule": {"type": "object"},
             "error": {"type": "string"},
         },
         "required": ["name", "rule"],
@@ -122,28 +120,20 @@ async def generate_macro_payload(user_request: str, exercise_map: Dict[str, int]
     return await generate_structured_output(prompt=prompt, response_schema=response_schema, temperature=0.1)
 
 
-async def create_macro_in_backend(calendar_plan_id: int, payload: Dict[str, Any], user_id: str) -> Dict[str, Any]:
+async def create_macro_in_backend(calendar_plan_id: int, payload: dict[str, Any], user_id: str) -> dict[str, Any]:
     url = f"{settings.plans_service_url}/plans/calendar-plans/{calendar_plan_id}/macros/"
     headers = {"X-User-Id": user_id}
-
-    # The payload from LLM matches { "name": ..., "rule": ... }
-    # The API expects: { "name": ..., "rule": ..., "is_active": true, "priority": 100 }
 
     api_payload = {
         "name": payload.get("name", "New Macro"),
         "rule": payload.get("rule"),
         "is_active": True,
         "priority": 100,
-        # rule must be sent as a dictionary; the backend Pydantic model handles validation.
-        # Note: plans-service model expects 'rule_json' as text in DB, but API schema expects 'rule' object.
-        # Checking schema: PlanMacroCreate extends PlanMacroBase which has 'rule: MacroRule'.
-        # So we send dict.
     }
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.post(url, json=api_payload, headers=headers)
         if resp.status_code == 422:
-            # Validation error
             return {"error": "Validation failed", "details": resp.json()}
         resp.raise_for_status()
         return resp.json()
@@ -162,23 +152,21 @@ def create_manage_macros_tool(user_id: str) -> ToolSpec:
         },
     }
 
-    async def handler(args: Dict[str, Any]) -> Dict[str, Any]:
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
         calendar_plan_id = args.get("calendar_plan_id")
         instruction = args.get("instruction")
 
         if not calendar_plan_id or not instruction:
             raise ValueError("calendar_plan_id and instruction are required")
 
-        # 1. Fetch exercises for name mapping
         try:
             ex_def_map = await fetch_exercise_definitions_map()
-            # Invert to Name -> ID
+
             name_to_id = {d["name"]: d["id"] for d in ex_def_map.values()}
         except Exception as e:
             logger.error("failed_to_fetch_exercises", error=str(e))
             name_to_id = {}
 
-        # 2. Generate JSON
         try:
             llm_result = await generate_macro_payload(instruction, name_to_id)
         except Exception as e:
@@ -187,7 +175,6 @@ def create_manage_macros_tool(user_id: str) -> ToolSpec:
         if llm_result.get("error"):
             return {"error": llm_result["error"]}
 
-        # 3. Create in Backend
         try:
             result = await create_macro_in_backend(int(calendar_plan_id), llm_result, user_id)
             return {

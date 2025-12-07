@@ -17,7 +17,7 @@ class WorkoutSession with _$WorkoutSession {
     @Default('active') String status,
     @JsonKey(name: 'duration_seconds') int? durationSeconds,
     @Default(<String, dynamic>{}) Map<String, dynamic> progress,
-    // Optional session metrics
+
     @JsonKey(name: 'device_source') String? deviceSource,
     @JsonKey(name: 'hr_avg') int? hrAvg,
     @JsonKey(name: 'hr_max') int? hrMax,
@@ -29,6 +29,6 @@ class WorkoutSession with _$WorkoutSession {
   factory WorkoutSession.fromJson(Map<String, dynamic> json) =>
       _$WorkoutSessionFromJson(json);
 
-  // Convenience
+
   bool get isActive => status.toLowerCase() == 'active' && finishedAt == null;
 }

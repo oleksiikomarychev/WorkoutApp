@@ -1,5 +1,4 @@
 import io
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -29,7 +28,7 @@ async def apply_avatar(
 
     try:
         result = await db.execute(select(UserAvatar).where(UserAvatar.user_id == user_id))
-        existing: Optional[UserAvatar] = result.scalar_one_or_none()
+        existing: UserAvatar | None = result.scalar_one_or_none()
         if existing:
             existing.image = raw
             existing.content_type = content_type
@@ -48,7 +47,7 @@ async def apply_avatar(
 @router.get("/{uid}.png")
 async def get_avatar(uid: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(UserAvatar).where(UserAvatar.user_id == uid))
-    row: Optional[UserAvatar] = result.scalar_one_or_none()
+    row: UserAvatar | None = result.scalar_one_or_none()
     if not row or not row.image:
         raise HTTPException(status_code=404, detail="Avatar not found")
     return StreamingResponse(io.BytesIO(row.image), media_type=row.content_type or "image/png")

@@ -44,7 +44,7 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
   }
 
   Future<Map<String, dynamic>> _fetchWeakMuscleAnalysis({bool useLlm = true}) async {
-    // Build base endpoint and pass query params explicitly so ApiClient preserves them
+
     final endpoint = ApiConfig.getWeakMuscleAnalysisEndpoint(useLlm: false);
     final response = await _apiClient.get(
       endpoint,
@@ -72,7 +72,7 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
     try {
       final data = await _fetchWeakMuscleAnalysis(useLlm: true);
       if (!mounted) return;
-      // Build UI bottom sheet
+
       await showModalBottomSheet(
         context: context,
         isScrollControlled: true,

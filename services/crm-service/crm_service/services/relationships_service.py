@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from typing import List, Optional
 
 import httpx
 import structlog
@@ -39,9 +38,9 @@ INTERNAL_GATEWAY_SECRET = (os.getenv("INTERNAL_GATEWAY_SECRET") or "").strip()
 def _log_coach_athlete_event(
     db: AsyncSession,
     link_id: int,
-    actor_id: Optional[str],
+    actor_id: str | None,
     event_type: str,
-    payload: Optional[dict] = None,
+    payload: dict | None = None,
 ) -> None:
     event = CoachAthleteEvent(
         link_id=link_id,
@@ -54,7 +53,7 @@ def _log_coach_athlete_event(
 
 async def _get_link_or_404(db: AsyncSession, link_id: int) -> CoachAthleteLink:
     res = await db.execute(select(CoachAthleteLink).where(CoachAthleteLink.id == link_id))
-    link: Optional[CoachAthleteLink] = res.scalar_one_or_none()
+    link: CoachAthleteLink | None = res.scalar_one_or_none()
     if not link:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
     return link
@@ -62,7 +61,7 @@ async def _get_link_or_404(db: AsyncSession, link_id: int) -> CoachAthleteLink:
 
 async def _get_tag_or_404(db: AsyncSession, tag_id: int) -> CoachAthleteTag:
     res = await db.execute(select(CoachAthleteTag).where(CoachAthleteTag.id == tag_id))
-    tag: Optional[CoachAthleteTag] = res.scalar_one_or_none()
+    tag: CoachAthleteTag | None = res.scalar_one_or_none()
     if not tag:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found")
     return tag
@@ -73,16 +72,12 @@ async def create_link(
     coach_id: str,
     payload: CoachAthleteLinkCreate,
 ) -> CoachAthleteLinkResponse:
-    # Определяем роли в зависимости от того, какое поле пришло в payload.
-    # Если передан athlete_id, считаем, что текущий пользователь — тренер.
-    # Если передан coach_id и athlete_id не указан, считаем, что текущий пользователь — атлет.
     acting_user_id = coach_id
 
-    resolved_coach_id: Optional[str] = None
-    resolved_athlete_id: Optional[str] = None
+    resolved_coach_id: str | None = None
+    resolved_athlete_id: str | None = None
 
     if payload.athlete_id and payload.coach_id:
-        # Оба идентификатора заданы — пробуем вывести роли из действующего пользователя
         if acting_user_id == payload.coach_id:
             resolved_coach_id = payload.coach_id
             resolved_athlete_id = payload.athlete_id
@@ -95,11 +90,9 @@ async def create_link(
                 detail="Ambiguous coach/athlete assignment",
             )
     elif payload.athlete_id:
-        # Классический случай: тренер создаёт связь с атлетом
         resolved_coach_id = acting_user_id
         resolved_athlete_id = payload.athlete_id
     elif payload.coach_id:
-        # Атлет запрашивает связь с тренером
         resolved_coach_id = payload.coach_id
         resolved_athlete_id = acting_user_id
     else:
@@ -108,25 +101,27 @@ async def create_link(
             detail="Either athlete_id or coach_id must be provided",
         )
 
-    # Запрещаем создавать связь пользователя с самим собой
     if resolved_coach_id is not None and resolved_coach_id == resolved_athlete_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Coach and athlete must be different users",
         )
 
-    # Проверяем, нет ли уже связи
     stmt = select(CoachAthleteLink).where(
         CoachAthleteLink.coach_id == resolved_coach_id,
         CoachAthleteLink.athlete_id == resolved_athlete_id,
     )
     res = await db.execute(stmt)
-    existing: Optional[CoachAthleteLink] = res.scalar_one_or_none()
+    existing: CoachAthleteLink | None = res.scalar_one_or_none()
     if existing and existing.status != CoachAthleteStatus.ended.value:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Coach-athlete link already exists",
+        logger.info(
+            "crm_link_existing_returned",
+            link_id=existing.id,
+            coach_id=existing.coach_id,
+            athlete_id=existing.athlete_id,
+            status=existing.status,
         )
+        return CoachAthleteLinkResponse.model_validate(existing)
 
     initiated_by_coach = acting_user_id == resolved_coach_id
     initiated_by_athlete = acting_user_id == resolved_athlete_id
@@ -241,7 +236,7 @@ async def list_notes_for_link(
     acting_user_id: str,
     limit: int = 100,
     offset: int = 0,
-) -> List[CoachAthleteNoteResponse]:
+) -> list[CoachAthleteNoteResponse]:
     link = await _get_link_or_404(db, link_id)
     if acting_user_id not in {link.coach_id, link.athlete_id}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
@@ -326,11 +321,11 @@ async def update_note(
 async def list_athletes_for_coach(
     db: AsyncSession,
     coach_id: str,
-    status_filter: Optional[CoachAthleteStatus] = None,
-    tag_ids: Optional[List[int]] = None,
+    status_filter: CoachAthleteStatus | None = None,
+    tag_ids: list[int] | None = None,
     limit: int = 100,
     offset: int = 0,
-) -> List[CoachAthleteLinkResponse]:
+) -> list[CoachAthleteLinkResponse]:
     stmt = select(CoachAthleteLink).where(CoachAthleteLink.coach_id == coach_id)
     if status_filter is not None:
         stmt = stmt.where(CoachAthleteLink.status == status_filter.value)
@@ -349,11 +344,11 @@ async def list_athletes_for_coach(
 async def list_coaches_for_athlete(
     db: AsyncSession,
     athlete_id: str,
-    status_filter: Optional[CoachAthleteStatus] = None,
-    tag_ids: Optional[List[int]] = None,
+    status_filter: CoachAthleteStatus | None = None,
+    tag_ids: list[int] | None = None,
     limit: int = 100,
     offset: int = 0,
-) -> List[CoachAthleteLinkResponse]:
+) -> list[CoachAthleteLinkResponse]:
     stmt = select(CoachAthleteLink).where(CoachAthleteLink.athlete_id == athlete_id)
     if status_filter is not None:
         stmt = stmt.where(CoachAthleteLink.status == status_filter.value)
@@ -408,7 +403,7 @@ async def list_tags(
     db: AsyncSession,
     acting_user_id: str,
     include_inactive: bool = False,
-) -> List[CoachAthleteTagResponse]:
+) -> list[CoachAthleteTagResponse]:
     stmt = select(CoachAthleteTag).where(
         or_(
             CoachAthleteTag.is_global.is_(True),
@@ -527,7 +522,7 @@ async def remove_tag_from_link(
         CoachAthleteLinkTag.tag_id == tag_id,
     )
     res = await db.execute(stmt)
-    link_tag: Optional[CoachAthleteLinkTag] = res.scalar_one_or_none()
+    link_tag: CoachAthleteLinkTag | None = res.scalar_one_or_none()
     if not link_tag:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag assignment not found")
 
@@ -565,11 +560,10 @@ async def update_link_status(
     payload: CoachAthleteLinkStatusUpdate,
 ) -> CoachAthleteLinkResponse:
     res = await db.execute(select(CoachAthleteLink).where(CoachAthleteLink.id == link_id))
-    link: Optional[CoachAthleteLink] = res.scalar_one_or_none()
+    link: CoachAthleteLink | None = res.scalar_one_or_none()
     if not link:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
 
-    # Простейшая проверка прав: менять статус может только тренер или атлет
     if acting_user_id not in {link.coach_id, link.athlete_id}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
 

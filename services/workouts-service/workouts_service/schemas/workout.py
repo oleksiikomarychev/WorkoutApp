@@ -1,11 +1,9 @@
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
 
-# Define enum for schemas
 class WorkoutTypeEnum(str, Enum):
     manual = "manual"
     generated = "generated"
@@ -13,39 +11,39 @@ class WorkoutTypeEnum(str, Enum):
 
 class WorkoutBase(BaseModel):
     name: str = Field(..., max_length=255)
-    notes: Optional[str] = None
-    status: Optional[str] = None
-    started_at: Optional[datetime] = None
-    duration_seconds: Optional[int] = None
-    rpe_session: Optional[float] = None
-    location: Optional[str] = None
-    readiness_score: Optional[int] = None
-    applied_plan_id: Optional[int] = None
-    plan_order_index: Optional[int] = None
-    scheduled_for: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    # Add workout type classification
+    notes: str | None = None
+    status: str | None = None
+    started_at: datetime | None = None
+    duration_seconds: int | None = None
+    rpe_session: float | None = None
+    location: str | None = None
+    readiness_score: int | None = None
+    applied_plan_id: int | None = None
+    plan_order_index: int | None = None
+    scheduled_for: datetime | None = None
+    completed_at: datetime | None = None
+
     workout_type: WorkoutTypeEnum = Field(default="manual")
 
 
 class WorkoutCreate(WorkoutBase):
-    microcycle_id: Optional[int] = None
+    microcycle_id: int | None = None
 
     class Config:
         extra = "forbid"
 
 
 class WorkoutUpdate(WorkoutBase):
-    name: Optional[str] = Field(None, max_length=255)
+    name: str | None = Field(None, max_length=255)
 
 
 class WorkoutSetResponse(BaseModel):
     id: int
-    intensity: Optional[float] = None
-    effort: Optional[float] = None
-    volume: Optional[int] = None
-    working_weight: Optional[float] = None
-    set_type: Optional[str] = None
+    intensity: float | None = None
+    effort: float | None = None
+    volume: int | None = None
+    working_weight: float | None = None
+    set_type: str | None = None
 
     class Config:
         from_attributes = True
@@ -54,7 +52,7 @@ class WorkoutSetResponse(BaseModel):
 class WorkoutExerciseResponse(BaseModel):
     id: int
     exercise_id: int
-    sets: List[WorkoutSetResponse] = Field(default_factory=list)
+    sets: list[WorkoutSetResponse] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -74,10 +72,9 @@ class WorkoutResponse(WorkoutBase):
     plan_order_index: int | None
     scheduled_for: datetime | None
     completed_at: datetime | None
-    # Include workout type in response
+
     workout_type: WorkoutTypeEnum
-    exercises: List[WorkoutExerciseResponse]
-    # Removed redundant exercise_instances field
+    exercises: list[WorkoutExerciseResponse]
 
     class Config:
         from_attributes = True
@@ -88,11 +85,11 @@ class WorkoutResponse(WorkoutBase):
 class WorkoutSummaryResponse(BaseModel):
     id: int
     name: str
-    applied_plan_id: Optional[int] = None
-    plan_order_index: Optional[int] = None
-    scheduled_for: Optional[datetime] = None
-    status: Optional[str] = None
-    plan_workout_id: Optional[int] = None  # Add this field
+    applied_plan_id: int | None = None
+    plan_order_index: int | None = None
+    scheduled_for: datetime | None = None
+    status: str | None = None
+    plan_workout_id: int | None = None
     workout_type: WorkoutTypeEnum = Field(default="manual")
 
     class Config:
@@ -103,11 +100,11 @@ class WorkoutSummaryResponse(BaseModel):
 class WorkoutListResponse(BaseModel):
     id: int
     name: str
-    applied_plan_id: Optional[int] = None
-    plan_order_index: Optional[int] = None
-    scheduled_for: Optional[datetime] = None
-    status: Optional[str] = None
-    plan_workout_id: Optional[int] = None  # Add this field
+    applied_plan_id: int | None = None
+    plan_order_index: int | None = None
+    scheduled_for: datetime | None = None
+    status: str | None = None
+    plan_workout_id: int | None = None
     workout_type: WorkoutTypeEnum = Field(default="manual")
 
     class Config:
@@ -116,14 +113,12 @@ class WorkoutListResponse(BaseModel):
 
 
 class WorkoutPlanDetailItem(BaseModel):
-    """Lightweight representation of a workout with exercise IDs for analysis."""
-
     id: int
     name: str
-    scheduled_for: Optional[datetime] = None
-    status: Optional[str] = None
-    plan_order_index: Optional[int] = None
-    exercise_ids: List[int] = Field(default_factory=list)
+    scheduled_for: datetime | None = None
+    status: str | None = None
+    plan_order_index: int | None = None
+    exercise_ids: list[int] = Field(default_factory=list)
 
     class Config:
         from_attributes = True

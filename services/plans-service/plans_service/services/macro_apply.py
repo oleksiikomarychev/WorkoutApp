@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List
+from typing import Any
 
 import structlog
 
 try:
     import httpx
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     httpx = None
 
 
@@ -15,22 +15,6 @@ logger = structlog.get_logger(__name__)
 
 
 class MacroApplier:
-    """Applies preview patches to downstream services in batch.
-
-    Strategy (safe Phase 1):
-    - For Adjust_Sets:
-      - add_set: append a cloned set to the exercise instance in exercises-service
-        by PUTting the full instance with a new sets list
-      - remove_set: remove the set by calling DELETE set endpoint if available;
-        otherwise PUT the instance without this set
-    - For Adjust_Load/Adjust_Reps:
-      - Update specific set fields via exercises-service's update set endpoint
-        if available; otherwise PUT the instance with an updated set
-
-    Note: Workouts may be 'generated' and have embedded sets in workouts-service.
-    For Phase 1 we operate via exercises-service instances (manual path) to avoid schema differences.
-    """
-
     def __init__(self, user_id: str) -> None:
         self.user_id = user_id
         self.exercises_base = os.getenv("EXERCISES_SERVICE_URL")
@@ -42,34 +26,33 @@ class MacroApplier:
             raise RuntimeError("WORKOUTS_SERVICE_URL must be set")
         self.workouts_base = self.workouts_base.rstrip("/")
 
-    async def apply(self, preview: Dict[str, Any]) -> Dict[str, Any]:
+    async def apply(self, preview: dict[str, Any]) -> dict[str, Any]:
         if not httpx:
             return {"applied": 0, "errors": ["httpx not available"], "details": []}
         patches = self._collect_patches(preview)
         logger.info("MacroApplier.apply start | user_id=%s patches_total=%d", self.user_id, len(patches))
         if not patches:
             return {"applied": 0, "errors": [], "details": []}
-        # Group by workout_id and exercise_id for minimal calls
-        grouped: Dict[int, Dict[int, List[Dict[str, Any]]]] = {}
+
+        grouped: dict[int, dict[int, list[dict[str, Any]]]] = {}
         for p in patches:
             wid = int(p.get("workout_id"))
             eid = int(p.get("exercise_id")) if p.get("exercise_id") is not None else -1
             grouped.setdefault(wid, {}).setdefault(eid, []).append(p)
         applied = 0
-        errors: List[str] = []
-        details: List[Dict[str, Any]] = []
+        errors: list[str] = []
+        details: list[dict[str, Any]] = []
 
         async with httpx.AsyncClient(timeout=8.0) as client:
             for wid, per_ex in grouped.items():
-                # Fetch instances for this workout to obtain instance/set ids
                 instances = await self._fetch_instances(client, wid)
-                # Build index by exercise_id
-                by_ex: Dict[int, Dict[str, Any]] = {}
+
+                by_ex: dict[int, dict[str, Any]] = {}
                 for inst in instances:
                     try:
                         exid = int(inst.get("exercise_list_id"))
                         by_ex[exid] = inst
-                    except Exception:
+                    except (TypeError, ValueError):
                         continue
                 for eid, actions in per_ex.items():
                     logger.info(
@@ -80,14 +63,13 @@ class MacroApplier:
                     )
                     inst = by_ex.get(eid)
                     if not inst:
-                        # No instance for this exercise in this workout, skip
                         logger.warning(
                             "MacroApplier.apply skip | workout_id=%s exercise_id=%s reason=no_instance",
                             wid,
                             eid,
                         )
                         continue
-                    # Prepare updated sets list
+
                     sets = list(inst.get("sets") or [])
                     changed = False
                     for act in actions:
@@ -98,7 +80,6 @@ class MacroApplier:
                                 "reps": tpl.get("volume"),
                                 "weight": None,
                                 "rpe": tpl.get("effort"),
-                                # preserve extra if needed
                                 "intensity": tpl.get("intensity"),
                                 "volume": tpl.get("volume"),
                                 "effort": tpl.get("effort"),
@@ -111,7 +92,6 @@ class MacroApplier:
                                 sets = [s for s in sets if int(s.get("id")) != int(sid)]
                                 changed = True
                         else:
-                            # point update: volume/intensity/weight on a set
                             sid = act.get("set_id")
                             for i, s in enumerate(sets):
                                 if sid is not None and int(s.get("id")) == int(sid):
@@ -138,7 +118,7 @@ class MacroApplier:
                             eid,
                         )
                         continue
-                    # PUT updated instance
+
                     ok = await self._put_instance(client, inst, sets)
                     if ok:
                         applied += 1
@@ -158,27 +138,25 @@ class MacroApplier:
                         )
         return {"applied": applied, "errors": errors, "details": details}
 
-    def _collect_patches(self, preview: Dict[str, Any]) -> List[Dict[str, Any]]:
-        out: List[Dict[str, Any]] = []
+    def _collect_patches(self, preview: dict[str, Any]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
         for item in preview.get("preview", []) or []:
             for p in item.get("patches", []) or []:
                 out.append(p)
         return out
 
-    async def _fetch_instances(self, client: "httpx.AsyncClient", workout_id: int) -> List[Dict[str, Any]]:
+    async def _fetch_instances(self, client: httpx.AsyncClient, workout_id: int) -> list[dict[str, Any]]:
         url = f"{self.exercises_base}/exercises/instances/workouts/{workout_id}/instances"
         headers = {"X-User-Id": self.user_id}
         try:
             res = await client.get(url, headers=headers)
             if res.status_code == 200 and isinstance(res.json(), list):
                 return res.json()
-        except Exception:
+        except (httpx.RequestError, httpx.HTTPStatusError, ValueError):
             return []
         return []
 
-    async def _put_instance(
-        self, client: "httpx.AsyncClient", inst: Dict[str, Any], sets: List[Dict[str, Any]]
-    ) -> bool:
+    async def _put_instance(self, client: httpx.AsyncClient, inst: dict[str, Any], sets: list[dict[str, Any]]) -> bool:
         inst_id = inst.get("id")
         if inst_id is None:
             return False
@@ -189,5 +167,5 @@ class MacroApplier:
         try:
             res = await client.put(url, json=payload, headers=headers)
             return res.status_code in (200, 201)
-        except Exception:
+        except (httpx.RequestError, httpx.HTTPStatusError):
             return False

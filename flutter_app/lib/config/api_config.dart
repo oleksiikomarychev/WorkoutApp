@@ -2,42 +2,42 @@ import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, Tar
 import 'package:http/http.dart' as http;
 
 class ApiConfig {
-  // Base URLs (ensure no trailing slashes)
+
   static const String androidEmulatorBaseUrl = 'http://10.0.2.2:8000';
   static const String localBaseUrl = 'http://localhost:8000';
-  static const String productionBaseUrl = 'https://workoutapp-gateway-latest.onrender.com';  
-  // Timeouts
+  static const String productionBaseUrl = 'https://workoutapp-gateway-latest.onrender.com';
+
   static const int connectionTimeout = 30;
   static const int receiveTimeout = 30;
-  
-  // API Version
-  static const String apiVersion = 'v1';
-  
-  // API Base Path
-  static const String apiBasePath = 'api';
-  
-  /// Returns the base URL for API requests (platform-aware)
-  static String getBaseUrl() {
-    if (kReleaseMode) return productionBaseUrl; // release builds use production gateway
-    if (kIsWeb) return localBaseUrl; // web runs in host browser
 
-    // Android emulator cannot reach host via localhost; use 10.0.2.2
+
+  static const String apiVersion = 'v1';
+
+
+  static const String apiBasePath = 'api';
+
+
+  static String getBaseUrl() {
+    if (kReleaseMode) return productionBaseUrl;
+    if (kIsWeb) return localBaseUrl;
+
+
     if (defaultTargetPlatform == TargetPlatform.android) {
       return androidEmulatorBaseUrl;
     }
 
-    // iOS simulator and desktop can use localhost to reach host
+
     return localBaseUrl;
   }
-  
-  /// Builds a full API URL by combining base URL, API path, and endpoint
+
+
   static String buildEndpoint(String path) {
-    // Remove any leading slashes from the path to avoid double slashes
+
     final cleanPath = path.startsWith('/') ? path.substring(1) : path;
     return '$apiBasePath/$apiVersion/$cleanPath';
   }
-  
-  /// Builds a full URL by combining base URL with the given path
+
+
   static String buildFullUrl(String path) {
     final baseUrl = getBaseUrl().endsWith('/')
         ? getBaseUrl().substring(0, getBaseUrl().length - 1)
@@ -46,7 +46,7 @@ class ApiConfig {
     return '$baseUrl/$cleanPath';
   }
 
-  // Health Check
+
   static String get rpeHealthEndpoint => buildEndpoint('/rpe/health');
   static String get healthEndpoint => buildEndpoint('/health');
   static String get exercisesHealthEndpoint => buildEndpoint('/exercises/health');
@@ -92,7 +92,7 @@ class ApiConfig {
   static String getSessionHistoryEndpoint(String workoutId) => buildEndpoint('/workouts/sessions/$workoutId/history');
   static String getAllSessionsHistoryEndpoint() => buildEndpoint('/workouts/sessions/history/all');
   static String finishSessionEndpoint(String sessionId) => buildEndpoint('/workouts/sessions/$sessionId/finish');
-  // BFF endpoints (gateway) for starting/finishing a workout and returning aggregated workout
+
   static String startWorkoutBffEndpoint(String workoutId) => buildEndpoint('/workouts/$workoutId/start');
   static String finishWorkoutBffEndpoint(String workoutId) => buildEndpoint('/workouts/$workoutId/finish');
   static String generateWorkoutsEndpoint() => buildEndpoint('/workouts/workout-generation/generate');
@@ -110,7 +110,7 @@ class ApiConfig {
   static String getCalendarPlanEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId');
   static String updateCalendarPlanEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId');
   static String deleteCalendarPlanEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId');
-  // Plan Macros (plans-service)
+
   static String listMacrosEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/macros');
   static String createMacroEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/macros');
   static String updateMacroEndpoint(String planId, String macroId) => buildEndpoint('/plans/calendar-plans/$planId/macros/$macroId');
@@ -137,7 +137,7 @@ class ApiConfig {
   static String sessionSetCompletionEndpoint(String sessionId, String instanceId, String setId) => buildEndpoint('/workouts/sessions/$sessionId/instances/$instanceId/sets/$setId/completion');
   static String workoutsEndpointWithPagination(int skip, int limit) => "${buildEndpoint('/workouts/')}?skip=$skip&limit=$limit";
 
-  // New endpoints for workout filtering
+
   static String workoutsByTypeEndpoint(String type) => "${buildEndpoint('/workouts/')}?type=$type";
   static String get firstGeneratedWorkoutEndpoint => buildEndpoint('/workouts/generated/first');
   static String get nextGeneratedWorkoutEndpoint => buildEndpoint('/workouts/generated/next');
@@ -147,36 +147,36 @@ class ApiConfig {
 
   static String get activePlanEndpoint => buildEndpoint('plans/applied-plans/active');
   static String get activePlanWorkoutsEndpoint => buildEndpoint('$activePlanEndpoint/workouts');
-  static String nextWorkoutInActivePlanEndpoint(String planId) => 
+  static String nextWorkoutInActivePlanEndpoint(String planId) =>
       buildEndpoint('/plans/$planId/next-workout');
   static String appliedPlanAnalyticsEndpoint(String planId) =>
       buildEndpoint('/plans/applied-plans/$planId/analytics');
 
-  // Chat / Agent endpoints
+
   static String get chatEndpoint => buildEndpoint('/chat');
   static String get agentAppliedPlanMassEditEndpoint =>
       buildEndpoint('/agent/applied-plan-mass-edit');
   static String agentMassEditTaskStatusEndpoint(String taskId) =>
       buildEndpoint('/agent/plan-mass-edit/tasks/$taskId');
 
-  // Social endpoints (MessengerApp via WorkoutApp gateway)
+
   static String get socialPostsEndpoint => buildEndpoint('/social/posts');
   static String socialPostCommentsEndpoint(String postId) =>
       buildEndpoint('/social/posts/$postId/comments');
   static String socialPostReactionsEndpoint(String postId) =>
       buildEndpoint('/social/posts/$postId/reactions');
 
-  // Messaging endpoints (MessengerApp via WorkoutApp gateway)
+
   static String get messagingChannelsEndpoint =>
       buildEndpoint('/messaging/channels');
   static String messagingChannelMessagesEndpoint(String channelId) =>
       buildEndpoint('/messaging/channels/$channelId/messages');
 
-  // Progression Templates endpoints
+
   static String get progressionTemplatesEndpoint => buildEndpoint('/progressions/templates');
   static String progressionTemplateByIdEndpoint(String id) => buildEndpoint('/progressions/templates/$id');
 
-  // Analytics endpoint
+
   static String get workoutMetricsEndpoint => buildEndpoint('/workout-metrics');
   static String get profileAggregatesEndpoint => buildEndpoint('/profile/aggregates');
   static String get profileMeEndpoint => buildEndpoint('/profile/me');
@@ -184,21 +184,21 @@ class ApiConfig {
   static String get profileMeCoachingEndpoint => buildEndpoint('/profile/me/coaching');
   static String get profileSettingsEndpoint => buildEndpoint('/profile/settings');
   static String get usersAllEndpoint => buildEndpoint('/users/all');
-  // Avatars
+
   static String get avatarsGenerateEndpoint => buildEndpoint('/avatars/generate');
   static String get applyProfilePhotoEndpoint => buildEndpoint('/profile/photo/apply');
 
-  // Mesocycle Templates (plans-service)
+
   static String get mesocycleTemplatesEndpoint => buildEndpoint('/plans/mesocycle-templates');
   static String mesocycleTemplateByIdEndpoint(String id) => buildEndpoint('/plans/mesocycle-templates/$id');
 
-  // CRM: coach-athlete relationships
+
   static String get crmMyRelationshipsEndpoint => buildEndpoint('/crm/relationships/my/athletes');
   static String get crmMyCoachesEndpoint => buildEndpoint('/crm/relationships/my/coaches');
   static String get crmRelationshipsEndpoint => buildEndpoint('/crm/relationships');
   static String crmRelationshipStatusEndpoint(String id) => buildEndpoint('/crm/relationships/$id/status');
 
-  // CRM: coach planning
+
   static String crmCoachActivePlanEndpoint(String athleteId) =>
       buildEndpoint('/crm/coach/athletes/$athleteId/active-plan');
   static String crmCoachActivePlanWorkoutsEndpoint(String athleteId) =>
@@ -214,7 +214,7 @@ class ApiConfig {
   static String crmCoachMassEditEndpoint(String athleteId) =>
       buildEndpoint('/crm/coach/athletes/$athleteId/workouts/mass-edit');
 
-  // CRM: analytics
+
   static String get crmAnalyticsMyAthletesEndpoint => buildEndpoint('/crm/analytics/coaches/my/athletes');
   static String get crmAnalyticsMySummaryEndpoint => buildEndpoint('/crm/analytics/coaches/my/summary');
   static String crmAnalyticsAthleteEndpoint(String athleteId) => buildEndpoint('/crm/analytics/athletes/$athleteId');

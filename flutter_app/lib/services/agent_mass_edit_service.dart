@@ -8,7 +8,7 @@ class AgentAppliedPlanMassEditService extends BaseApiService {
 
   final LoggerService _logger = LoggerService('AgentAppliedPlanMassEditService');
 
-  /// Starts an applied-plan mass edit job via agent-service and returns Celery task id.
+
   Future<String> startAppliedPlanMassEdit({
     required int appliedPlanId,
     required String prompt,

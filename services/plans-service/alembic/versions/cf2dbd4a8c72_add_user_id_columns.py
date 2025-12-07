@@ -10,7 +10,6 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # calendar_plans.user_id
     with op.batch_alter_table("calendar_plans", schema=None) as batch_op:
         batch_op.add_column(
             sa.Column(
@@ -26,7 +25,6 @@ def upgrade() -> None:
             unique=False,
         )
 
-    # applied_calendar_plans.user_id
     with op.batch_alter_table("applied_calendar_plans", schema=None) as batch_op:
         batch_op.add_column(
             sa.Column(
@@ -42,7 +40,6 @@ def upgrade() -> None:
             unique=False,
         )
 
-    # drop defaults after backfill
     with op.batch_alter_table("calendar_plans", schema=None) as batch_op:
         batch_op.alter_column(
             "user_id",

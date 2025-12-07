@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 
 async def notify_rpe_plan_created(plan: TrainingPlan, user_id: str) -> bool:
-    """Send freshly generated plan to the RPE service for downstream processing."""
     url = f"{settings.rpe_service_url.rstrip('/')}/rpe/plans"
     payload: dict[str, Any] = {
         "plan": plan.model_dump(mode="json"),

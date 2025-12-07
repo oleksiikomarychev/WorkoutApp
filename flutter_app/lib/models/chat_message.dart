@@ -1,6 +1,5 @@
 import 'package:equatable/equatable.dart';
 
-/// Roles supported by the chat service.
 enum ChatRole { user, assistant, system }
 
 ChatRole roleFromString(String? value) {
@@ -27,7 +26,6 @@ String roleToString(ChatRole role) {
   }
 }
 
-/// Represents a single chat message exchanged via WebSocket.
 class ChatMessage extends Equatable {
   const ChatMessage({
     required this.id,

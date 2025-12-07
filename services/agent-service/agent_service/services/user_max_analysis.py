@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 import httpx
 import structlog
@@ -10,18 +10,11 @@ logger = structlog.get_logger(__name__)
 
 
 def analyze_user_max_tool(user_id: str) -> ToolSpec:
-    """
-    Creates a tool that fetches user strength analysis, weak muscles, and anomalies
-    from the user-max-service.
-    """
-
-    async def handler(args: Dict[str, Any]) -> Dict[str, Any]:
-        # Extract arguments or use defaults
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
         recent_days = args.get("recent_days", 180)
         min_records = args.get("min_records", 1)
         synergist_weight = args.get("synergist_weight", 0.25)
 
-        # We always enforce use_llm=True to get anomalies as requested by the user
         params = {
             "recent_days": recent_days,
             "min_records": min_records,

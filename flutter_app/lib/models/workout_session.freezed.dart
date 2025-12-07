@@ -1,13 +1,13 @@
 // coverage:ignore-file
-// GENERATED CODE - DO NOT MODIFY BY HAND
-// ignore_for_file: type=lint
-// ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
+
+
+
 
 part of 'workout_session.dart';
 
-// **************************************************************************
-// FreezedGenerator
-// **************************************************************************
+
+
+
 
 T _$identity<T>(T value) => value;
 
@@ -18,7 +18,7 @@ WorkoutSession _$WorkoutSessionFromJson(Map<String, dynamic> json) {
   return _WorkoutSession.fromJson(json);
 }
 
-/// @nodoc
+
 mixin _$WorkoutSession {
   int? get id => throw _privateConstructorUsedError;
   @JsonKey(name: 'workout_id')
@@ -31,7 +31,7 @@ mixin _$WorkoutSession {
   @JsonKey(name: 'duration_seconds')
   int? get durationSeconds => throw _privateConstructorUsedError;
   Map<String, dynamic> get progress =>
-      throw _privateConstructorUsedError; // Optional session metrics
+      throw _privateConstructorUsedError;
   @JsonKey(name: 'device_source')
   String? get deviceSource => throw _privateConstructorUsedError;
   @JsonKey(name: 'hr_avg')
@@ -44,17 +44,17 @@ mixin _$WorkoutSession {
   @JsonKey(name: 'injury_flags')
   Map<String, dynamic>? get injuryFlags => throw _privateConstructorUsedError;
 
-  /// Serializes this WorkoutSession to a JSON map.
+
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
-  /// Create a copy of WorkoutSession
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @JsonKey(includeFromJson: false, includeToJson: false)
   $WorkoutSessionCopyWith<WorkoutSession> get copyWith =>
       throw _privateConstructorUsedError;
 }
 
-/// @nodoc
+
 abstract class $WorkoutSessionCopyWith<$Res> {
   factory $WorkoutSessionCopyWith(
           WorkoutSession value, $Res Function(WorkoutSession) then) =
@@ -76,7 +76,7 @@ abstract class $WorkoutSessionCopyWith<$Res> {
       @JsonKey(name: 'injury_flags') Map<String, dynamic>? injuryFlags});
 }
 
-/// @nodoc
+
 class _$WorkoutSessionCopyWithImpl<$Res, $Val extends WorkoutSession>
     implements $WorkoutSessionCopyWith<$Res> {
   _$WorkoutSessionCopyWithImpl(this._value, this._then);
@@ -86,8 +86,8 @@ class _$WorkoutSessionCopyWithImpl<$Res, $Val extends WorkoutSession>
   // ignore: unused_field
   final $Res Function($Val) _then;
 
-  /// Create a copy of WorkoutSession
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -162,7 +162,7 @@ class _$WorkoutSessionCopyWithImpl<$Res, $Val extends WorkoutSession>
   }
 }
 
-/// @nodoc
+
 abstract class _$$WorkoutSessionImplCopyWith<$Res>
     implements $WorkoutSessionCopyWith<$Res> {
   factory _$$WorkoutSessionImplCopyWith(_$WorkoutSessionImpl value,
@@ -186,7 +186,7 @@ abstract class _$$WorkoutSessionImplCopyWith<$Res>
       @JsonKey(name: 'injury_flags') Map<String, dynamic>? injuryFlags});
 }
 
-/// @nodoc
+
 class __$$WorkoutSessionImplCopyWithImpl<$Res>
     extends _$WorkoutSessionCopyWithImpl<$Res, _$WorkoutSessionImpl>
     implements _$$WorkoutSessionImplCopyWith<$Res> {
@@ -194,8 +194,8 @@ class __$$WorkoutSessionImplCopyWithImpl<$Res>
       _$WorkoutSessionImpl _value, $Res Function(_$WorkoutSessionImpl) _then)
       : super(_value, _then);
 
-  /// Create a copy of WorkoutSession
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -270,7 +270,7 @@ class __$$WorkoutSessionImplCopyWithImpl<$Res>
   }
 }
 
-/// @nodoc
+
 
 @JsonSerializable(explicitToJson: true)
 class _$WorkoutSessionImpl extends _WorkoutSession
@@ -322,7 +322,7 @@ class _$WorkoutSessionImpl extends _WorkoutSession
     return EqualUnmodifiableMapView(_progress);
   }
 
-// Optional session metrics
+
   @override
   @JsonKey(name: 'device_source')
   final String? deviceSource;
@@ -418,8 +418,8 @@ class _$WorkoutSessionImpl extends _WorkoutSession
       mood,
       const DeepCollectionEquality().hash(_injuryFlags));
 
-  /// Create a copy of WorkoutSession
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   @pragma('vm:prefer-inline')
@@ -473,7 +473,7 @@ abstract class _WorkoutSession extends WorkoutSession {
   @JsonKey(name: 'duration_seconds')
   int? get durationSeconds;
   @override
-  Map<String, dynamic> get progress; // Optional session metrics
+  Map<String, dynamic> get progress;
   @override
   @JsonKey(name: 'device_source')
   String? get deviceSource;
@@ -492,8 +492,8 @@ abstract class _WorkoutSession extends WorkoutSession {
   @JsonKey(name: 'injury_flags')
   Map<String, dynamic>? get injuryFlags;
 
-  /// Create a copy of WorkoutSession
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @override
   @JsonKey(includeFromJson: false, includeToJson: false)
   _$$WorkoutSessionImplCopyWith<_$WorkoutSessionImpl> get copyWith =>

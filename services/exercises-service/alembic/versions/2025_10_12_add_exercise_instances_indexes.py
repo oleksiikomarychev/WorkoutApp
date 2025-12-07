@@ -7,7 +7,6 @@ Create Date: 2025-10-12 22:30:00.000000
 
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "c1d2e3f4g5h6"
 down_revision = "b1d2c3d4e5f6"
 branch_labels = None
@@ -15,7 +14,6 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Add index on user_id for basic user filtering
     op.create_index(
         "ix_exercise_instances_user_id",
         "exercise_instances",
@@ -23,8 +21,6 @@ def upgrade() -> None:
         unique=False,
     )
 
-    # Add composite index on (user_id, workout_id) to match repository filters
-    # This optimizes get_instances_by_workout query
     op.create_index(
         "ix_exercise_instances_user_workout",
         "exercise_instances",

@@ -15,14 +15,14 @@ class ExercisesScreen extends ConsumerStatefulWidget {
   ConsumerState<ExercisesScreen> createState() => _ExercisesScreenState();
 }
 
-// State notifier for exercises
+
 class ExercisesNotifier extends StateNotifier<AsyncValue<List<ExerciseDefinition>>> {
   final ExerciseService _exerciseService;
-  
+
   ExercisesNotifier(this._exerciseService) : super(const AsyncValue.loading()) {
     loadExercises();
   }
-  
+
   Future<void> loadExercises() async {
     state = const AsyncValue.loading();
     try {
@@ -35,12 +35,12 @@ class ExercisesNotifier extends StateNotifier<AsyncValue<List<ExerciseDefinition
   }
 }
 
-// Simple autocomplete input that lets user pick one label at a time
+
 class _TagAutocomplete extends StatefulWidget {
   final List<String> allOptions;
   final void Function(String label) onSelected;
-  final Set<String> exclude; // labels already selected
-  final List<String> selectedLabels; // render chips inline
+  final Set<String> exclude;
+  final List<String> selectedLabels;
   final void Function(String label) onDeleted;
 
   const _TagAutocomplete({
@@ -57,8 +57,8 @@ class _TagAutocomplete extends StatefulWidget {
 
 class _TagAutocompleteState extends State<_TagAutocomplete> {
   final TextEditingController _controller = TextEditingController();
-  TextEditingController? _fieldController; // controller provided by Autocomplete
-  FocusNode? _fieldFocus; // focus provided by Autocomplete
+  TextEditingController? _fieldController;
+  FocusNode? _fieldFocus;
 
   @override
   void dispose() {
@@ -80,7 +80,7 @@ class _TagAutocompleteState extends State<_TagAutocomplete> {
         _controller.value = controller.value;
         _fieldController = controller;
         _fieldFocus = focusNode;
-        // Nudge options to open when focused with empty text
+
         focusNode.addListener(() {
           if (focusNode.hasFocus) {
             controller.value = controller.value.copyWith(text: '${controller.text} ');
@@ -121,7 +121,7 @@ class _TagAutocompleteState extends State<_TagAutocomplete> {
                     onSubmitted: (value) {
                       final label = value.trim();
                       if (label.isEmpty) return;
-                      // Try to match exactly (case-insensitive) to an available option
+
                       final lower = label.toLowerCase();
                       final match = widget.allOptions.firstWhere(
                         (o) => o.toLowerCase() == lower,
@@ -143,7 +143,7 @@ class _TagAutocompleteState extends State<_TagAutocomplete> {
         widget.onSelected(selection);
         _controller.clear();
         _fieldController?.clear();
-        // Keep focus to allow rapid multi-add
+
         if (_fieldFocus != null) {
           Future.microtask(() => _fieldFocus!.requestFocus());
         }
@@ -177,7 +177,7 @@ class _SelectedChips extends StatelessWidget {
   }
 }
 
-// Provider for exercises notifier
+
 final exercisesNotifierProvider = StateNotifierProvider<ExercisesNotifier, AsyncValue<List<ExerciseDefinition>>>((ref) {
   final exerciseService = ref.watch(exerciseServiceProvider);
   return ExercisesNotifier(exerciseService);
@@ -187,24 +187,24 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
   final LoggerService _logger = LoggerService('ExercisesScreen');
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _equipmentController = TextEditingController();
-  String? _movementType; // 'compound' | 'isolation'
-  String? _region; // 'upper' | 'lower'
-  // Muscles dropdown state
+  String? _movementType;
+  String? _region;
+
   String? _selectedMuscleGroup;
   Future<List<String>>? _groupsFuture;
-  // Muscles (enum) for tag selectors
+
   Future<List<MuscleInfo>>? _musclesFuture;
   List<MuscleInfo> _muscles = const [];
-  // Selected tags (store KEYS for backend; render labels)
+
   final Set<String> _selectedTargetKeys = <String>{};
   final Set<String> _selectedSynergistKeys = <String>{};
-  // Equipment tags (store labels directly)
+
   final Set<String> _selectedEquipment = <String>{};
-  
+
   @override
   void initState() {
     super.initState();
-    // Trigger initial load
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(exercisesNotifierProvider.notifier).loadExercises();
     });
@@ -237,7 +237,7 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
       ..clear()
       ..addAll(initial?.synergistMuscles ?? const <String>[]);
 
-    // Initialize equipment tags from comma-separated string (if any)
+
     _selectedEquipment
       ..clear()
       ..addAll(
@@ -250,14 +250,14 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
     final service = ref.read(exerciseServiceProvider);
     final isEdit = initial?.id != null;
 
-    // Prepare groups Future (load from backend muscles endpoint)
+
     _groupsFuture = _loadMuscleGroups();
 
-    // Load full muscles list for tag pickers and wait for it
+
     try {
       _muscles = (await service.getMuscles()).cast<MuscleInfo>();
     } catch (e) {
-      // Handle error if needed
+
       _muscles = [];
     }
     _musclesFuture = Future.value(_muscles);
@@ -310,7 +310,7 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
                 },
               ),
               const SizedBox(height: 8),
-              // Target muscles tags
+
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text('Target muscles', style: Theme.of(context).textTheme.bodySmall),
@@ -354,7 +354,7 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
                 },
               ),
               const SizedBox(height: 8),
-              // Synergist muscles tags
+
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text('Synergist muscles', style: Theme.of(context).textTheme.bodySmall),
@@ -398,7 +398,7 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
                 },
               ),
               const SizedBox(height: 8),
-              // Equipment tags (enum + tags)
+
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text('Equipment', style: Theme.of(context).textTheme.bodySmall),
@@ -489,7 +489,7 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
       body: Consumer(
         builder: (context, ref, child) {
           final exercisesState = ref.watch(exercisesNotifierProvider);
-          
+
           return exercisesState.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (error, stackTrace) {
@@ -533,7 +533,7 @@ class _ExercisesScreenState extends ConsumerState<ExercisesScreen> {
                   ),
                 );
               }
-              
+
               return RefreshIndicator(
                 onRefresh: () async {
                   ref.refresh(exercisesNotifierProvider);
