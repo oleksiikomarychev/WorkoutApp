@@ -38,7 +38,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   int? _planId;
   String? _planName;
 
-  Map<String, dynamic>? _data; // Response JSON
+  Map<String, dynamic>? _data;
 
   @override
   void initState() {
@@ -52,7 +52,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       _error = null;
     });
     try {
-      final planService = ref.read(mesocycleServiceProvider) /* placeholder to ensure provider tree */;
+      final planService = ref.read(mesocycleServiceProvider) ;
       final ps = PlanService(apiClient: ref.read(apiClientProvider));
       final ap = await ps.getActivePlan();
       if (!mounted) return;
@@ -144,7 +144,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Calendar range selector
+
                   TableCalendar(
                     firstDay: DateTime.utc(2020, 1, 1),
                     lastDay: DateTime.utc(2100, 12, 31),
@@ -253,9 +253,9 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       return const SizedBox();
     }
 
-    // If the same metric selected for X and Y -> time series line chart of that metric
+
     if (mx == my) {
-      // Build date -> value series for the chosen metric (or 1rm series)
+
       final is1rm = mx == '1rm';
       final points = <FlSpot>[];
       final List<DateTime> dates = [];
@@ -319,13 +319,13 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       );
     }
 
-    // Otherwise: scatter chart of correlation (X vs Y)
+
     final scatters = <ScatterSpot>[];
     for (final it in items) {
       final vx = (it['values']?[mx] as num?)?.toDouble();
       double? vy;
       if (my == '1rm') {
-        // Join by date
+
         final dstr = it['date'] as String?;
         if (dstr != null) {
           final match = oneRm.firstWhere(

@@ -11,36 +11,20 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies (mirrors pyproject.toml)
-# Change these lines
-RUN pip install --no-cache-dir \
-    "fastapi>=0.110.0,<0.112.0" \
-    "uvicorn[standard]>=0.29.0,<0.31.0" \
-    "httpx==0.28.1" \
-    "pydantic>=2.10.0,<2.11.0" \
-    "SQLAlchemy>=2.0.29,<2.1.0" \
-    "langchain>=0.3.0,<0.4.0" \
-    "langchain-community>=0.3.0,<0.4.0" \
-    "langchain-google-genai>=0.1.0" \
-    "psycopg2-binary>=2.9.7,<2.10.0" \
-    "logging>=0.1.0" \
-    "alembic>=1.15.0,<2.0.0" \
-    "pydantic-ai>=0.0.15,<0.1.0" \
-    "google-genai==1.42.0" \
-    "json5>=0.9.25,<0.10.0" \
-    "huggingface_hub>=0.25.0,<1.0.0" \
-    "pillow>=10.0.0,<11.0.0" \
-    "google-auth>=2.23.0,<3.0.0" \
-    "structlog>=24.0.0,<25.0.0" \
-    "asgi-correlation-id>=4.3.1,<5.0.0" \
-    "prometheus-fastapi-instrumentator>=6.1.0,<7.0.0" \
-    "prometheus-client>=0.16.0,<1.0.0" \
-    "sentry-sdk[fastapi]>=2.0.0,<3.0.0" \
-    "celery[redis]>=5.4.0,<6.0.0" \
-    "redis>=5.0.0,<6.0.0"
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir poetry
+
+# Copy project metadata and shared backend-common library
+COPY services/agent-service/pyproject.toml /app/pyproject.toml
+COPY libs/backend-common /libs/backend-common
+
+RUN poetry config virtualenvs.create false \
+    && poetry install --no-interaction --no-ansi --only main --no-root
+
 # Copy application code
-COPY agent_service /app/agent_service
-COPY alembic /app/alembic
-COPY alembic.ini /app/alembic.ini
+COPY services/agent-service/agent_service /app/agent_service
+COPY services/agent-service/alembic /app/alembic
+COPY services/agent-service/alembic.ini /app/alembic.ini
 
 
 EXPOSE 8006

@@ -18,9 +18,9 @@ class Exercise {
     return Exercise(
       id: json['id'],
       name: json['name'] ?? '',
-      exerciseDefinition: json['exercise_definition'] != null 
-          ? ExerciseDefinition.fromJson(json['exercise_definition'] is Map<String, dynamic> 
-              ? json['exercise_definition'] 
+      exerciseDefinition: json['exercise_definition'] != null
+          ? ExerciseDefinition.fromJson(json['exercise_definition'] is Map<String, dynamic>
+              ? json['exercise_definition']
               : {})
           : null,
       instances: json['instances'] != null

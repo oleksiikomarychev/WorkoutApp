@@ -8,16 +8,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PORT=8007
 
 # Copy project metadata and sources
-COPY pyproject.toml /app/pyproject.toml
-COPY accounts_service /app/accounts_service
+COPY services/accounts-service/pyproject.toml /app/pyproject.toml
+COPY services/accounts-service/accounts_service /app/accounts_service
+COPY libs/backend-common /libs/backend-common
 
 # Install dependencies (editable install)
 RUN pip install --no-cache-dir -U pip && \
     pip install --no-cache-dir -e .
 
 # Alembic config and migrations
-COPY alembic.ini /app/alembic.ini
-COPY alembic /app/alembic
+COPY services/accounts-service/alembic.ini /app/alembic.ini
+COPY services/accounts-service/alembic /app/alembic
 RUN mkdir -p /app/alembic/versions
 
 EXPOSE 8007

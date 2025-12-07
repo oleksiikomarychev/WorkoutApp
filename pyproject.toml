@@ -7,23 +7,27 @@ name = "workoutapp"
 version = "0.1.0"
 description = "Workout App Backend"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<4.0"
 
 dependencies = [
     "fastapi==0.110.0",
     "uvicorn==0.27.1",
-    "sqlalchemy==2.0.28",
-    "pydantic==2.6.3",
+    "sqlalchemy==2.0.29",
+    "pydantic==2.10.0",
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.0.1",
     "python-jose[cryptography]==3.3.0",
     "passlib[bcrypt]==1.7.4",
     "python-multipart==0.0.18",
     "typing-extensions==4.10.0",
-    "alembic==1.13.1",
-    "requests>=2.32.4",
-    "sentry-sdk[fastapi]>=2.0.0,<3.0.0",
+    "alembic==1.15.0",
+    "requests==2.32.4",
+    "sentry-sdk[fastapi]==2.0.0",
+    "pytest-asyncio>=0.24.0",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [tool.setuptools]
 packages = ["app"]
@@ -49,7 +53,7 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+select = ["E", "F", "I", "UP"]
 ignore = []
 
 [tool.ruff.lint.per-file-ignores]

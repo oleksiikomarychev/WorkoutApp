@@ -11,11 +11,11 @@ class WorkoutService extends BaseApiService {
   @override
   final ApiClient apiClient;
   final LoggerService _logger = LoggerService('WorkoutService');
-  
+
   @override
   WorkoutService({required this.apiClient}) : super(apiClient);
 
-  /// Fetches workouts from the API (paginated)
+
   Future<List<Workout>> getWorkoutsPaged({int skip = 0, int limit = 20}) async {
     try {
       final endpoint = ApiConfig.workoutsEndpointWithPagination(skip, limit);
@@ -23,15 +23,15 @@ class WorkoutService extends BaseApiService {
         endpoint,
         context: 'WorkoutService.getWorkouts',
       );
-      
+
       _logger.d('Workout API response: ${jsonEncode(response)}');
-      
+
       if (response is List) {
         final workouts = <Workout>[];
-        
+
         for (var item in response.whereType<Map<String, dynamic>>()) {
           try {
-            // Super lightweight list item: do not parse nested instances at all here
+
             final workout = Workout.fromJson(item).copyWith(
               exerciseInstances: const [],
             );
@@ -39,13 +39,13 @@ class WorkoutService extends BaseApiService {
           } catch (e, stackTrace) {
             _logger.e('Error parsing workout item: ${e.toString()}', e, stackTrace);
             _logger.e('Problematic item: ${jsonEncode(item)}');
-            // Continue with next item
+
           }
         }
-        
+
         return workouts;
       } else if (response is Map<String, dynamic>) {
-        // Handle single workout response (rare for list route)
+
         try {
           final workout = Workout.fromJson(response).copyWith(exerciseInstances: const []);
           return [workout];
@@ -64,7 +64,7 @@ class WorkoutService extends BaseApiService {
     }
   }
 
-  /// Starts a workout via BFF endpoint and returns aggregated workout
+
   Future<Workout> startWorkoutBff(int id, {bool includeDefinitions = true}) async {
     try {
       final endpoint = '${ApiConfig.startWorkoutBffEndpoint(id.toString())}'
@@ -88,7 +88,7 @@ class WorkoutService extends BaseApiService {
     }
   }
 
-  /// Finishes a workout via BFF endpoint and returns aggregated workout
+
   Future<Workout> finishWorkoutBff(
     int id, {
     bool includeDefinitions = true,
@@ -120,12 +120,12 @@ class WorkoutService extends BaseApiService {
     }
   }
 
-  /// Backward compatible method: returns first page
+
   Future<List<Workout>> getWorkouts() async {
     return getWorkoutsPaged(skip: 0, limit: 20);
   }
 
-  /// Fetches workouts filtered by progression template ID
+
   Future<List<Workout>> getWorkoutsByProgressionId(int progressionId) async {
     try {
       _logger.d('Fetching workouts for progression ID: $progressionId');
@@ -134,12 +134,12 @@ class WorkoutService extends BaseApiService {
         endpoint,
         context: 'WorkoutService.getWorkoutsByProgressionId',
       );
-      
+
       if (response is List) {
         return response
             .whereType<Map<String, dynamic>>()
             .map((json) {
-              // Ensure exercise_instances is always a list in the JSON
+
               json['exercise_instances'] = json['exercise_instances'] ?? [];
               return Workout.fromJson(json);
             })
@@ -148,7 +148,7 @@ class WorkoutService extends BaseApiService {
                 ))
             .toList();
       } else {
-        handleError('Invalid response format for workouts list by progression', 
+        handleError('Invalid response format for workouts list by progression',
             Exception('Expected a list of workouts for progression'));
         return [];
       }
@@ -158,7 +158,7 @@ class WorkoutService extends BaseApiService {
     }
   }
 
-  /// Fetches a workout by its ID
+
   Future<Workout> getWorkout(int id) async {
     try {
       final endpoint = ApiConfig.getWorkoutEndpoint(id.toString());
@@ -166,13 +166,13 @@ class WorkoutService extends BaseApiService {
         endpoint,
         context: 'WorkoutService.getWorkout',
       );
-      
+
       if (response is Map<String, dynamic>) {
-        // Ensure exercise_instances is always a list in the response
+
         response['exercise_instances'] = response['exercise_instances'] ?? [];
         return Workout.fromJson(response);
       } else {
-        handleError('Invalid response format for workout', 
+        handleError('Invalid response format for workout',
             Exception('Expected a workout object'));
         throw Exception('Failed to get workout');
       }
@@ -181,8 +181,8 @@ class WorkoutService extends BaseApiService {
       throw Exception('Failed to get workout');
     }
   }
-  
-  /// Fetches a workout with all its details including exercise instances
+
+
   Future<Workout> getWorkoutWithDetails(int id) async {
     try {
       _logger.d('Fetching workout with ID: $id');
@@ -192,7 +192,7 @@ class WorkoutService extends BaseApiService {
       );
 
       _logger.d('Workout API response: ${jsonEncode(response)}');
-      
+
       if (response is Map<String, dynamic>) {
         final workout = Workout.fromJson(response);
         _logger.d('Parsed workout: $workout');
@@ -207,7 +207,7 @@ class WorkoutService extends BaseApiService {
     }
   }
 
-  /// Creates a new workout
+
   Future<Workout> createWorkout(Workout workout) async {
     try {
       final payload = _buildWorkoutPayload(workout);
@@ -230,14 +230,14 @@ class WorkoutService extends BaseApiService {
     }
   }
 
-  /// Updates an existing workout
+
   Future<Workout> updateWorkout(Workout workout) async {
     if (workout.id == null) {
-      handleError('Cannot update workout without an ID', 
+      handleError('Cannot update workout without an ID',
           Exception('Workout ID is required'));
       throw Exception('Cannot update workout without an ID');
     }
-    
+
     try {
       final payload = _buildWorkoutPayload(workout);
       _logger.d('Updating workout ${workout.id}: $payload');
@@ -259,7 +259,7 @@ class WorkoutService extends BaseApiService {
     }
   }
 
-  /// Deletes a workout by ID
+
   Future<void> deleteWorkout(int id) async {
     try {
       _logger.d('Deleting workout with ID: $id');
@@ -272,8 +272,8 @@ class WorkoutService extends BaseApiService {
       rethrow;
     }
   }
-  
-  /// Fetches user maxes for a specific exercise
+
+
   Future<List<UserMax>> getUserMaxesForExercise(int exerciseId) async {
     try {
       final endpoint = ApiConfig.userMaxesByExerciseEndpoint(exerciseId.toString());
@@ -281,14 +281,14 @@ class WorkoutService extends BaseApiService {
         endpoint,
         context: 'WorkoutService.getUserMaxesForExercise',
       );
-      
+
       if (response is List) {
         return response
             .whereType<Map<String, dynamic>>()
             .map((json) => UserMax.fromJson(json))
             .toList();
       } else {
-        handleError('Invalid response format for user maxes', 
+        handleError('Invalid response format for user maxes',
             Exception('Expected a list of user maxes'));
         return [];
       }
@@ -298,19 +298,19 @@ class WorkoutService extends BaseApiService {
     }
   }
 
-  /// Deletes an exercise set by instance ID and set ID
+
   Future<void> deleteExerciseSet(int instanceId, int setId) async {
     try {
       _logger.d('Deleting set $setId from instance $instanceId');
-      
-      // Use the existing endpoint helper from ApiConfig
+
+
       final endpoint = ApiConfig.deleteExerciseSetEndpoint(
         instanceId.toString(),
         setId.toString(),
       );
-      
+
       _logger.d('DELETE ExerciseSet | endpoint=$endpoint');
-      
+
       try {
         final response = await apiClient.delete(
           endpoint,
@@ -321,7 +321,7 @@ class WorkoutService extends BaseApiService {
         _logger.e('DELETE failed', e, stackTrace);
         rethrow;
       }
-      
+
       _logger.d('Successfully processed deletion of set $setId from instance $instanceId');
     } catch (e, stackTrace) {
       _logger.e('Failed to delete exercise set', e, stackTrace);
@@ -329,7 +329,7 @@ class WorkoutService extends BaseApiService {
     }
   }
 
-  /// Updates an exercise set by instance ID and set ID
+
   Future<ExerciseInstance> updateExerciseSet({
     required int instanceId,
     required int setId,
@@ -378,7 +378,7 @@ class WorkoutService extends BaseApiService {
     }
   }
 
-  /// Fetches workouts by type (manual or generated)
+
   Future<List<Workout>> getWorkoutsByType(WorkoutType type) async {
     try {
       final typeStr = type.toString().split('.').last;
@@ -387,14 +387,14 @@ class WorkoutService extends BaseApiService {
         endpoint,
         context: 'WorkoutService.getWorkoutsByType',
       );
-      
+
       if (response is List) {
         return response
             .whereType<Map<String, dynamic>>()
             .map((json) => Workout.fromJson(json))
             .toList();
       } else {
-        handleError('Invalid response format for workouts by type', 
+        handleError('Invalid response format for workouts by type',
             Exception('Expected a list of workouts'));
         return [];
       }
@@ -404,7 +404,7 @@ class WorkoutService extends BaseApiService {
     }
   }
 
-  /// Fetches the next generated workout
+
   Future<Workout?> getNextGeneratedWorkout() async {
     try {
       final endpoint = ApiConfig.nextGeneratedWorkoutEndpoint;
@@ -412,11 +412,11 @@ class WorkoutService extends BaseApiService {
         endpoint,
         context: 'WorkoutService.getNextGeneratedWorkout',
       );
-      
+
       if (response is Map<String, dynamic>) {
         return Workout.fromJson(response);
       } else {
-        handleError('Invalid response format for next generated workout', 
+        handleError('Invalid response format for next generated workout',
             Exception('Expected a workout object'));
         return null;
       }
@@ -426,7 +426,7 @@ class WorkoutService extends BaseApiService {
     }
   }
 
-  /// Fetches the next workout in plan
+
   Future<Workout?> getNextWorkoutInPlan(int workoutId) async {
     try {
       final endpoint = '${ApiConfig.nextWorkoutInPlanEndpoint(workoutId.toString())}?include=exercise_instances.exercise_definition';
@@ -434,11 +434,11 @@ class WorkoutService extends BaseApiService {
         endpoint,
         context: 'WorkoutService.getNextWorkoutInPlan',
       );
-      
+
       if (response is Map<String, dynamic>) {
         return Workout.fromJson(response);
       } else {
-        handleError('Invalid response format for next workout in plan', 
+        handleError('Invalid response format for next workout in plan',
             Exception('Expected a workout object'));
         return null;
       }
@@ -448,7 +448,7 @@ class WorkoutService extends BaseApiService {
     }
   }
 
-  /// Fetches workouts by applied plan ID
+
   Future<List<Workout>> getWorkoutsByAppliedPlan(int appliedPlanId) async {
     try {
       final endpoint = '${ApiConfig.workoutsEndpoint}?applied_plan_id=$appliedPlanId';
@@ -457,14 +457,14 @@ class WorkoutService extends BaseApiService {
         endpoint,
         context: 'WorkoutService.getWorkoutsByAppliedPlan',
       );
-      
+
       if (response is List) {
         return response
             .whereType<Map<String, dynamic>>()
             .map((json) => Workout.fromJson(json))
             .toList();
       } else {
-        handleError('Invalid response format for workouts by applied plan', 
+        handleError('Invalid response format for workouts by applied plan',
             Exception('Expected a list of workouts'));
         return [];
       }
@@ -474,25 +474,25 @@ class WorkoutService extends BaseApiService {
     }
   }
 
-  /// Methods for ExerciseInstance
 
-  /// Creates a new exercise instance
+
+
   Future<ExerciseInstance> createExerciseInstance(ExerciseInstance instance) async {
     try {
       _logger.d('Creating exercise instance for workout: ${instance.workoutId}');
-      // Backend route: POST /exercises/workouts/{workout_id}/instances
+
       final endpoint = ApiConfig.getInstancesByWorkoutEndpoint(instance.workoutId.toString());
       final body = instance.toJson();
-      
+
       _logger.d('Sending create exercise instance request to $endpoint');
       _logger.d('Request body: $body');
-      
+
       final response = await apiClient.post(
         endpoint,
         body,
         context: 'WorkoutService.createExerciseInstance',
       );
-      
+
       if (response is Map<String, dynamic>) {
         final exerciseInstance = ExerciseInstance.fromJson(response);
         _logger.d('Successfully created exercise instance: ${exerciseInstance.id}');
@@ -511,9 +511,9 @@ class WorkoutService extends BaseApiService {
   Future<ExerciseInstance> updateExerciseInstance(ExerciseInstance instance) async {
     try {
       _logger.d('Updating exercise instance: ${instance.id}');
-      // Backend route: PUT /exercises/instances/{instance_id}
+
       final endpoint = ApiConfig.updateExerciseInstanceEndpoint(instance.id!.toString());
-      
+
       final payload = instance.toJson();
       _logger.d('PUT ExerciseInstance | endpoint=$endpoint | body=$payload');
       final response = await apiClient.put(
@@ -521,7 +521,7 @@ class WorkoutService extends BaseApiService {
         payload,
         context: 'WorkoutService.updateExerciseInstance',
       );
-      
+
       if (response is Map<String, dynamic>) {
         final updatedInstance = ExerciseInstance.fromJson(response);
         _logger.d('Successfully updated exercise instance: ${updatedInstance.id}');
@@ -537,13 +537,13 @@ class WorkoutService extends BaseApiService {
     }
   }
 
-  /// Deletes an exercise instance by ID
+
   Future<bool> deleteExerciseInstance(int instanceId) async {
     try {
       _logger.d('Deleting exercise instance: $instanceId');
-      // Backend route: DELETE /exercises/instances/{instance_id}
+
       final endpoint = ApiConfig.updateExerciseInstanceEndpoint(instanceId.toString());
-      
+
       _logger.d('DELETE ExerciseInstance | endpoint=$endpoint');
       await apiClient.delete(
         endpoint,

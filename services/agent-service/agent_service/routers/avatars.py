@@ -1,10 +1,9 @@
 import io
 import os
-from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from huggingface_hub import InferenceClient
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -18,7 +17,7 @@ router = APIRouter()
 
 class AvatarRequest(BaseModel):
     prompt: str
-    model: Optional[str] = "fofr/sdxl-emoji"
+    model: str | None = "fofr/sdxl-emoji"
 
 
 @router.post("/generate", response_class=StreamingResponse)
@@ -28,7 +27,6 @@ def generate_avatar(req: AvatarRequest, request: Request):
         raise HTTPException(status_code=500, detail="HF_TOKEN is not configured")
 
     try:
-        client = InferenceClient(provider="fal-ai", api_key=hf_token)
         uid = request.headers.get("X-User-Id")
         user_prompt = (req.prompt or "").strip()
         if AVATAR_PROMPT_PREFIX:
@@ -36,16 +34,21 @@ def generate_avatar(req: AvatarRequest, request: Request):
         else:
             base_prompt = user_prompt
         salted_prompt = base_prompt if not uid else f"{base_prompt} (unique user token: {uid[:8]})"
-        image = client.text_to_image(salted_prompt, model=req.model)
+
+        model_id = req.model or "fofr/sdxl-emoji"
+        api_url = f"https://router.huggingface.co/models/{model_id}"
+        headers = {
+            "Authorization": f"Bearer {hf_token}",
+            "Accept": "image/png",
+        }
+        payload = {"inputs": salted_prompt}
+        resp = httpx.post(api_url, headers=headers, json=payload, timeout=60.0)
+        resp.raise_for_status()
+        image_bytes = resp.content
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Avatar generation failed: {e}")
 
-    buf = io.BytesIO()
-    try:
-        image.save(buf, format="PNG")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to encode image: {e}")
-    buf.seek(0)
+    buf = io.BytesIO(image_bytes)
 
     AVATARS_GENERATED_TOTAL.inc()
     return StreamingResponse(buf, media_type="image/png")

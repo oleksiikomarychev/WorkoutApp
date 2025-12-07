@@ -11,7 +11,6 @@ from alembic import op
 from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
 
-# revision identifiers, used by Alembic.
 revision = "20251123_restore_accounts"
 down_revision = "8b57bf954ef7"
 branch_labels = None
@@ -23,7 +22,6 @@ def upgrade() -> None:
     insp = sa.inspect(bind)
     tables = set(insp.get_table_names())
 
-    # Ensure unitsystem enum type exists (idempotent, matches initial migration)
     op.execute(
         sa.text(
             """

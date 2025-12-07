@@ -1,8 +1,8 @@
 import asyncio
 import logging
 import os
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from datetime import datetime, timedelta
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, Query
@@ -13,12 +13,13 @@ from .. import models
 from ..database import get_db
 from ..dependencies import get_current_user_id
 from ..schemas.analytics import PlanAnalyticsItem, PlanAnalyticsResponse
+from ..schemas.profile import DayActivity, ProfileAggregatesResponse, SessionLite
 
 router = APIRouter(prefix="/analytics")
 logger = logging.getLogger(__name__)
 
 
-async def _fetch_workout_instances(workout_id: int, user_id: str) -> List[Dict[str, Any]]:
+async def _fetch_workout_instances(workout_id: int, user_id: str) -> list[dict[str, Any]]:
     base_url = os.getenv("EXERCISES_SERVICE_URL", "http://exercises-service:8002").rstrip("/")
     url = f"{base_url}/exercises/instances/workouts/{workout_id}/instances"
     headers = {"X-User-Id": user_id}
@@ -29,17 +30,61 @@ async def _fetch_workout_instances(workout_id: int, user_id: str) -> List[Dict[s
                 data = resp.json()
                 if isinstance(data, list):
                     return data
-    except Exception as e:
+    except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as e:
         logger.warning(f"Failed to fetch instances for workout {workout_id}: {e}")
     return []
 
 
-def _compute_actual_metrics(session: models.WorkoutSession, instances: List[Dict[str, Any]]) -> Dict[str, float]:
+def _build_set_volume_index(instances: list[dict[str, Any]]) -> tuple[dict[int, float], float]:
+    set_volume: dict[int, float] = {}
+    total = 0.0
+    for inst in instances or []:
+        for s in inst.get("sets", []) or []:
+            sid = s.get("id")
+
+            reps_raw = s.get("reps")
+            weight_raw = s.get("weight")
+            volume_raw = s.get("volume")
+
+            reps = 0.0
+            weight: float | None = None
+            try:
+                if reps_raw is not None:
+                    reps = float(reps_raw)
+            except (TypeError, ValueError):
+                reps = 0.0
+            try:
+                if weight_raw is not None:
+                    weight = float(weight_raw)
+            except (TypeError, ValueError):
+                weight = None
+
+            volume: float | None = None
+            if weight is not None and reps > 0:
+                volume = round(reps * weight, 2)
+
+            if volume is None:
+                try:
+                    volume = float(volume_raw)
+                except (TypeError, ValueError):
+                    volume = None
+
+            if volume is None and reps > 0 and weight is None:
+                volume = round(reps, 2)
+
+            v = volume if volume is not None else 0.0
+
+            if isinstance(sid, int):
+                set_volume[sid] = v
+            total += v
+    return set_volume, total
+
+
+def _compute_actual_metrics(session: models.WorkoutSession, instances: list[dict[str, Any]]) -> dict[str, float]:
     raw_progress = session.progress if isinstance(session.progress, dict) else {}
     raw_completed = raw_progress.get("completed") if isinstance(raw_progress.get("completed"), dict) else {}
 
-    # Build map of instance_id -> set_ids
-    completed_map: Dict[int, Set[int]] = {}
+    completed_map: dict[int, set[int]] = {}
     for instance_id_raw, set_ids in raw_completed.items():
         try:
             iid = int(instance_id_raw)
@@ -56,16 +101,14 @@ def _compute_actual_metrics(session: models.WorkoutSession, instances: List[Dict
     cnt_intensity = 0
     sets_cnt = 0
 
-    # Aggregation by muscles and muscle groups (only for completed sets)
-    muscle_volume: Dict[str, float] = {}
-    muscle_group_volume: Dict[str, float] = {}
+    muscle_volume: dict[str, float] = {}
+    muscle_group_volume: dict[str, float] = {}
 
     for inst in instances:
         iid = inst.get("id")
         if iid is None or iid not in completed_map:
             continue
 
-        # Static metadata for this exercise instance
         exercise_def = inst.get("exercise_definition") or {}
         raw_target = exercise_def.get("target_muscles") or []
         raw_synergists = exercise_def.get("synergist_muscles") or []
@@ -81,9 +124,8 @@ def _compute_actual_metrics(session: models.WorkoutSession, instances: List[Dict
 
             effort = s.get("effort") or s.get("rpe")
             intensity = s.get("intensity")
-            volume = s.get("volume") or s.get("reps")  # Fallback for display if volume/reps ambiguous
+            volume = s.get("volume") or s.get("reps")
 
-            # Normalize and accumulate base metrics
             try:
                 if effort is not None:
                     total_effort += float(effort)
@@ -94,11 +136,11 @@ def _compute_actual_metrics(session: models.WorkoutSession, instances: List[Dict
                 if volume is not None:
                     v = float(volume)
                     total_volume += v
-                    # Per-muscle-group aggregation
+
                     if isinstance(muscle_group, str) and muscle_group:
                         muscle_group_volume[muscle_group] = muscle_group_volume.get(muscle_group, 0.0) + v
-                    # Per-muscle aggregation: distribute volume across primary/synergist muscles
-                    muscles_weights = []  # list[tuple[str, float]]
+
+                    muscles_weights = []
                     for m in target_muscles:
                         muscles_weights.append((m, 1.0))
                     for m in synergist_muscles:
@@ -113,17 +155,15 @@ def _compute_actual_metrics(session: models.WorkoutSession, instances: List[Dict
                                 muscle_volume[m] = muscle_volume.get(m, 0.0) + share
                 sets_cnt += 1
             except (ValueError, TypeError):
-                # Best-effort only: skip malformed values
                 pass
 
-    metrics: Dict[str, float] = {
+    metrics: dict[str, float] = {
         "effort_avg": (total_effort / cnt_effort) if cnt_effort > 0 else 0.0,
         "intensity_avg": (total_intensity / cnt_intensity) if cnt_intensity > 0 else 0.0,
         "volume_sum": total_volume,
         "sets_count": float(sets_cnt),
     }
 
-    # Flatten muscle metrics into scalar keys to satisfy Dict[str, float]
     for mg, v in muscle_group_volume.items():
         metrics[f"muscle_group:{mg}"] = v
     for m, v in muscle_volume.items():
@@ -132,21 +172,158 @@ def _compute_actual_metrics(session: models.WorkoutSession, instances: List[Dict
     return metrics
 
 
+@router.get("/profile/aggregates", response_model=ProfileAggregatesResponse)
+async def get_profile_aggregates(
+    weeks: int = Query(48, ge=1, le=104),
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    now = datetime.utcnow()
+    grid_end = datetime(now.year, now.month, now.day)
+    grid_start = grid_end - timedelta(days=weeks * 7 - 1)
+
+    result = await db.execute(
+        select(models.WorkoutSession).where(
+            models.WorkoutSession.user_id == user_id,
+            models.WorkoutSession.finished_at.isnot(None),
+        )
+    )
+    sessions: list[models.WorkoutSession] = list(result.scalars().all())
+
+    if not sessions:
+        return ProfileAggregatesResponse(
+            generated_at=now,
+            weeks=weeks,
+            total_workouts=0,
+            total_volume=0.0,
+            active_days=0,
+            max_day_volume=0.0,
+            activity_map={},
+            completed_sessions=[],
+        )
+
+    completed = sorted(
+        sessions,
+        key=lambda s: s.started_at or datetime.min,
+        reverse=True,
+    )
+
+    unique_wids: list[int] = []
+    seen: set[int] = set()
+    for s in completed:
+        wid = s.workout_id
+        if isinstance(wid, int) and wid not in seen:
+            seen.add(wid)
+            unique_wids.append(wid)
+
+    wid_to_index: dict[int, dict[int, float]] = {}
+    wid_to_total: dict[int, float] = {}
+
+    sem = asyncio.Semaphore(6)
+
+    async def _build_for_wid(wid: int) -> None:
+        async with sem:
+            instances = await _fetch_workout_instances(wid, user_id)
+            set_idx, total = _build_set_volume_index(instances)
+            wid_to_index[wid] = set_idx
+            wid_to_total[wid] = total
+
+    if unique_wids:
+        await asyncio.gather(*[_build_for_wid(wid) for wid in unique_wids])
+
+    activity_map: dict[str, dict[str, float]] = {}
+    total_volume = 0.0
+
+    for s in completed:
+        started_at = s.started_at
+        if not started_at:
+            continue
+        day_key = started_at.date().isoformat()
+
+        day_date = started_at.date()
+        if not (grid_start.date() <= day_date <= grid_end.date()):
+            continue
+
+        wid = s.workout_id
+        progress = s.progress or {}
+        completed_map = progress.get("completed") or {}
+        session_volume = 0.0
+
+        if isinstance(wid, int):
+            set_lookup = wid_to_index.get(wid) or {}
+
+            if not isinstance(completed_map, dict) or not any(
+                isinstance(v, list) and v for v in completed_map.values()
+            ):
+                session_volume = wid_to_total.get(wid, 0.0)
+            else:
+                for v in completed_map.values():
+                    if isinstance(v, list):
+                        for sid in v:
+                            if isinstance(sid, int):
+                                session_volume += float(set_lookup.get(sid, 0.0))
+
+        total_volume += session_volume
+        cur = activity_map.get(day_key)
+        if not cur:
+            activity_map[day_key] = {"session_count": 1, "volume": session_volume}
+        else:
+            cur["session_count"] += 1
+            cur["volume"] += session_volume
+
+    max_day_volume = 0.0
+    for v in activity_map.values():
+        vol = float(v.get("volume", 0.0))
+        if vol > max_day_volume:
+            max_day_volume = vol
+
+    last_sessions: list[SessionLite] = []
+    for s in completed[:limit]:
+        last_sessions.append(
+            SessionLite(
+                id=int(s.id),
+                workout_id=int(s.workout_id),
+                started_at=s.started_at,
+                finished_at=s.finished_at,
+                status=str(s.status or ""),
+            )
+        )
+
+    typed_activity: dict[str, DayActivity] = {
+        k: DayActivity(
+            session_count=int(v.get("session_count", 0)),
+            volume=float(v.get("volume", 0.0)),
+        )
+        for k, v in activity_map.items()
+    }
+
+    active_days = len({(s.started_at.date().isoformat()) for s in completed if s.started_at})
+
+    total_workouts = len(seen)
+
+    return ProfileAggregatesResponse(
+        generated_at=now,
+        weeks=weeks,
+        total_workouts=total_workouts,
+        total_volume=float(total_volume),
+        active_days=active_days,
+        max_day_volume=float(max_day_volume),
+        activity_map=typed_activity,
+        completed_sessions=last_sessions,
+    )
+
+
 @router.get("/completed", response_model=PlanAnalyticsResponse)
 async def get_completed_workouts_analytics(
     days: int = Query(30, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    """
-    Get aggregated metrics (volume, intensity, effort) for completed workouts
-    in the last N days.
-    """
     from datetime import timedelta
 
     cutoff_date = datetime.now() - timedelta(days=days)
 
-    # Fetch completed workouts in range
     q = (
         select(models.Workout)
         .where(models.Workout.user_id == user_id)
@@ -156,33 +333,31 @@ async def get_completed_workouts_analytics(
     )
 
     result = await db.execute(q)
-    workouts: List[models.Workout] = list(result.scalars().all())
+    workouts: list[models.Workout] = list(result.scalars().all())
 
-    items: List[PlanAnalyticsItem] = []
+    items: list[PlanAnalyticsItem] = []
 
     if not workouts:
         return PlanAnalyticsResponse(items=[])
 
     workout_ids = [w.id for w in workouts if w.id is not None]
 
-    # Fetch exercises
     ex_q = (
         select(models.WorkoutExercise)
         .where(models.WorkoutExercise.user_id == user_id)
         .where(models.WorkoutExercise.workout_id.in_(workout_ids))
     )
     ex_res = await db.execute(ex_q)
-    ex_list: List[models.WorkoutExercise] = list(ex_res.scalars().all())
-    ex_by_w: Dict[int, List[models.WorkoutExercise]] = {}
+    ex_list: list[models.WorkoutExercise] = list(ex_res.scalars().all())
+    ex_by_w: dict[int, list[models.WorkoutExercise]] = {}
     for ex in ex_list:
         ex_by_w.setdefault(ex.workout_id, []).append(ex)
 
-    # Fetch sets
     if ex_list:
         set_q = select(models.WorkoutSet).where(models.WorkoutSet.exercise_id.in_([ex.id for ex in ex_list]))
         set_res = await db.execute(set_q)
-        set_list: List[models.WorkoutSet] = list(set_res.scalars().all())
-        sets_by_ex: Dict[int, List[models.WorkoutSet]] = {}
+        set_list: list[models.WorkoutSet] = list(set_res.scalars().all())
+        sets_by_ex: dict[int, list[models.WorkoutSet]] = {}
         for s in set_list:
             sets_by_ex.setdefault(s.exercise_id, []).append(s)
     else:
@@ -190,7 +365,7 @@ async def get_completed_workouts_analytics(
 
     for w in workouts:
         wid = int(w.id)
-        # For history, order_index might not be relevant across different plans, but we keep it if exists
+
         order_index = w.plan_order_index
         date = w.completed_at or w.scheduled_for
 
@@ -227,25 +402,31 @@ async def get_completed_workouts_analytics(
 @router.get("/in-plan", response_model=PlanAnalyticsResponse)
 async def get_plan_analytics(
     applied_plan_id: int = Query(..., ge=1),
-    from_dt: Optional[str] = Query(None, alias="from"),
-    to_dt: Optional[str] = Query(None, alias="to"),
-    group_by: Optional[str] = Query("order", pattern="^(order|date)$"),
+    from_dt: str | None = Query(None, alias="from"),
+    to_dt: str | None = Query(None, alias="to"),
+    group_by: str | None = Query("order", pattern="^(order|date)$"),
+    include_actual: bool = Query(
+        False,
+        description=(
+            "If true, include realized per-workout actual_metrics based on completed sessions "
+            "and exercises-service instances. When false, only planned metrics computed from "
+            "WorkoutExercise/WorkoutSet are returned."
+        ),
+    ),
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    # Parse dates
-    def parse_iso(s: Optional[str]) -> Optional[datetime]:
+    def parse_iso(s: str | None) -> datetime | None:
         if not s:
             return None
         try:
             return datetime.fromisoformat(s)
-        except Exception:
+        except ValueError:
             return None
 
     frm = parse_iso(from_dt)
     to = parse_iso(to_dt)
 
-    # Fetch workouts for the plan
     q = (
         select(models.Workout)
         .where(models.Workout.user_id == user_id)
@@ -255,56 +436,57 @@ async def get_plan_analytics(
         q = q.where(models.Workout.scheduled_for >= frm)
     if to:
         q = q.where(models.Workout.scheduled_for <= to)
-    # Order deterministically by plan_order_index then id
+
     q = q.order_by(models.Workout.plan_order_index.asc(), models.Workout.id.asc())
 
     result = await db.execute(q)
-    workouts: List[models.Workout] = list(result.scalars().all())
+    workouts: list[models.Workout] = list(result.scalars().all())
 
-    items: List[PlanAnalyticsItem] = []
+    items: list[PlanAnalyticsItem] = []
 
-    # Aggregate per workout using WorkoutExercises/Sets
-    # We rely on relationships but we avoid lazy IO by separate fetch of exercises/sets
     if not workouts:
         return PlanAnalyticsResponse(items=[])
 
     workout_ids = [w.id for w in workouts if w.id is not None]
-    # Fetch exercises
+
     ex_q = (
         select(models.WorkoutExercise)
         .where(models.WorkoutExercise.user_id == user_id)
         .where(models.WorkoutExercise.workout_id.in_(workout_ids))
     )
     ex_res = await db.execute(ex_q)
-    ex_list: List[models.WorkoutExercise] = list(ex_res.scalars().all())
-    ex_by_w: Dict[int, List[models.WorkoutExercise]] = {}
+    ex_list: list[models.WorkoutExercise] = list(ex_res.scalars().all())
+    ex_by_w: dict[int, list[models.WorkoutExercise]] = {}
     for ex in ex_list:
         ex_by_w.setdefault(ex.workout_id, []).append(ex)
 
-    # Fetch sets
     set_q = select(models.WorkoutSet).where(models.WorkoutSet.exercise_id.in_([ex.id for ex in ex_list]))
     set_res = await db.execute(set_q)
-    set_list: List[models.WorkoutSet] = list(set_res.scalars().all())
-    sets_by_ex: Dict[int, List[models.WorkoutSet]] = {}
+    set_list: list[models.WorkoutSet] = list(set_res.scalars().all())
+    sets_by_ex: dict[int, list[models.WorkoutSet]] = {}
     for s in set_list:
         sets_by_ex.setdefault(s.exercise_id, []).append(s)
 
-    # NEW: Fetch sessions for these workouts to find completed ones
-    session_q = select(models.WorkoutSession).where(
-        models.WorkoutSession.workout_id.in_(workout_ids), models.WorkoutSession.status.in_(["finished", "completed"])
-    )
-    session_res = await db.execute(session_q)
-    sessions = session_res.scalars().all()
-    sessions_by_wid = {s.workout_id: s for s in sessions}
+    sessions_by_wid: dict[int, models.WorkoutSession] = {}
+    instances_by_wid: dict[int, list[dict[str, Any]]] = {}
 
-    # NEW: Async fetch actual instances for completed workouts
-    fetch_tasks = []
-    wids_to_fetch = list(sessions_by_wid.keys())
-    for wid in wids_to_fetch:
-        fetch_tasks.append(_fetch_workout_instances(wid, user_id))
+    if include_actual:
+        session_q = select(models.WorkoutSession).where(
+            models.WorkoutSession.workout_id.in_(workout_ids),
+            models.WorkoutSession.status.in_(["finished", "completed"]),
+        )
+        session_res = await db.execute(session_q)
+        sessions = session_res.scalars().all()
+        sessions_by_wid = {s.workout_id: s for s in sessions}
 
-    fetched_results = await asyncio.gather(*fetch_tasks)
-    instances_by_wid = dict(zip(wids_to_fetch, fetched_results))
+        if sessions_by_wid:
+            fetch_tasks = []
+            wids_to_fetch = list(sessions_by_wid.keys())
+            for wid in wids_to_fetch:
+                fetch_tasks.append(_fetch_workout_instances(wid, user_id))
+
+            fetched_results = await asyncio.gather(*fetch_tasks)
+            instances_by_wid = dict(zip(wids_to_fetch, fetched_results))
 
     for w in workouts:
         wid = int(w.id)
@@ -334,7 +516,6 @@ async def get_plan_analytics(
             "sets_count": float(sets_cnt),
         }
 
-        # NEW: Calculate actual metrics if session exists
         actual_metrics = None
         if wid in sessions_by_wid:
             sess = sessions_by_wid[wid]

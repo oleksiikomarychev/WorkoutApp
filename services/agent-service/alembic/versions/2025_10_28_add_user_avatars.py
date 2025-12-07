@@ -9,7 +9,6 @@ Create Date: 2025-10-28
 import sqlalchemy as sa
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "2025_10_28_add_user_avatars"
 down_revision = "g1h2i3j4k5l6"
 branch_labels = None

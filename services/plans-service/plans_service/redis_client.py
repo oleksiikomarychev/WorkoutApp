@@ -1,8 +1,6 @@
-"""Shared Redis client and cache key helpers for plans-service."""
-
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 import structlog
 from redis.asyncio import Redis
@@ -11,11 +9,11 @@ from .config import get_settings
 
 logger = structlog.get_logger(__name__)
 
-redis_client: Optional[Redis] = None
+redis_client: Redis | None = None
 
-PLAN_DETAIL_TTL_SECONDS = 15 * 60  # 15 minutes
-PLAN_LIST_TTL_SECONDS = 5 * 60  # 5 minutes
-FAVORITE_PLANS_TTL_SECONDS = 5 * 60  # 5 minutes
+PLAN_DETAIL_TTL_SECONDS = 15 * 60
+PLAN_LIST_TTL_SECONDS = 5 * 60
+FAVORITE_PLANS_TTL_SECONDS = 5 * 60
 
 
 def calendar_plan_key(user_id: str, plan_id: int) -> str:
@@ -36,7 +34,6 @@ def applied_plan_key(user_id: str) -> str:
 
 
 async def init_redis() -> None:
-    """Initialize global Redis client if configuration is present."""
     global redis_client
 
     settings = get_settings()
@@ -57,12 +54,12 @@ async def init_redis() -> None:
             port=settings.PLANS_REDIS_PORT,
             db=settings.PLANS_REDIS_DB,
         )
-    except Exception as exc:
-        logger.error("redis_connection_failed", error=str(exc))
+    except Exception:
+        logger.error("Failed to connect to plans redis", exc_info=True)
         redis_client = None
 
 
-async def get_redis() -> Optional[Redis]:
+async def get_redis() -> Redis | None:
     return redis_client
 
 
@@ -76,14 +73,13 @@ async def close_redis() -> None:
         await redis_client.close()
         await redis_client.connection_pool.disconnect()
         logger.info("redis_connection_closed")
-    except Exception as exc:
-        logger.warning("redis_close_failed", error=str(exc))
+    except Exception:
+        logger.warning("Failed to close plans redis connection", exc_info=True)
     finally:
         redis_client = None
 
 
-async def invalidate_plans_cache(user_id: str, plan_ids: Optional[Iterable[int]] = None) -> None:
-    """Remove cached plan data and list aggregates for a user."""
+async def invalidate_plans_cache(user_id: str, plan_ids: Iterable[int] | None = None) -> None:
     if redis_client is None:
         return
 
@@ -104,5 +100,5 @@ async def invalidate_plans_cache(user_id: str, plan_ids: Optional[Iterable[int]]
 
     try:
         await redis_client.delete(*keys)
-    except Exception as exc:
-        logger.warning("plans_cache_invalidation_failed", keys=list(keys), error=str(exc))
+    except Exception:
+        logger.warning("Failed to invalidate plans cache", keys=list(keys), exc_info=True)

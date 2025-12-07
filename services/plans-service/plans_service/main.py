@@ -6,6 +6,7 @@ from asgi_correlation_id import CorrelationIdMiddleware
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
+from sqlalchemy import text
 
 from .dependencies import engine
 from .logging_config import configure_logging
@@ -58,11 +59,16 @@ app = FastAPI(
 Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 
-# Add startup event handler for async database initialization
 @app.on_event("startup")
 async def startup_event():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        try:
+            await conn.execute(text("ALTER TABLE calendar_plans ALTER COLUMN root_plan_id DROP NOT NULL"))
+        except Exception:
+            logger.warning("calendar_plans_root_plan_id_migration_failed_or_unnecessary", exc_info=True)
+
     await init_redis()
 
 

@@ -9,7 +9,6 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-# revision identifiers, used by Alembic.
 revision = "20251116_init_accounts_models"
 down_revision = None
 branch_labels = None
@@ -17,9 +16,6 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Enum for unit system, aligned with accounts_service.models.UnitSystem
-    # Use a DO block with IF NOT EXISTS to avoid duplicate type errors if
-    # the enum was created manually or by a previous attempt.
     op.execute(
         sa.text(
             """

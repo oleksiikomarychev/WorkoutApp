@@ -23,12 +23,12 @@ class DayDraft {
 class WeekDraft {
   String name;
   bool expanded;
-  int daysCount; // length of this microcycle in days
-  // dayIndex -> DayDraft
+  int daysCount;
+
   Map<int, DayDraft> days;
-  // Optional normalization applied after this week/microcycle
+
   double? normValue;
-  String? normUnit; // 'kg' or '%'
+  String? normUnit;
 
   WeekDraft({required this.name, this.expanded = true, required this.daysCount, Map<int, DayDraft>? days, this.normValue, this.normUnit})
       : days = days ?? {};
@@ -55,7 +55,7 @@ class WeekDraft {
 
 class PlanDraft {
   final String name;
-  final int microcycleLength; // days per microcycle
+  final int microcycleLength;
   final List<WeekDraft> weeks;
   final List<MesocycleDraft> mesocycles;
 
@@ -98,7 +98,7 @@ class MesocycleDraft {
   String name;
   String? notes;
   int weeksCount;
-  int microcycleLength; // days per microcycle in this mesocycle
+  int microcycleLength;
 
   MesocycleDraft({required this.name, this.notes, required this.weeksCount, required this.microcycleLength});
 
@@ -131,7 +131,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
         state = PlanDraft.fromJson(jsonMap);
       }
     } catch (_) {
-      // ignore load errors
+
     }
   }
 
@@ -140,7 +140,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kPlanDraftPrefsKey, jsonEncode(state.toJson()));
     } catch (_) {
-      // ignore save errors
+
     }
   }
 
@@ -164,14 +164,14 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
     _save();
   }
 
-  // Adds a new microcycle and allocates it to the specified mesocycle without rebalancing others
+
   void addWeekToMesocycle(int mesoIndex) {
     if (mesoIndex < 0 || mesoIndex >= state.mesocycles.length) return;
     final ms = List<MesocycleDraft>.from(state.mesocycles);
     final weeks = List<WeekDraft>.from(state.weeks);
 
-    // Calculate insertion index so the new week belongs to the chosen mesocycle's block
-    // index = sum(weeksCount of mesocycles before) + current weeksCount of the target mesocycle
+
+
     int insertIndex = 0;
     for (int i = 0; i < mesoIndex; i++) {
       insertIndex += ms[i].weeksCount;
@@ -196,7 +196,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
     _save();
   }
 
-  // Removes the last week from a mesocycle block (if exists)
+
   void removeWeekFromMesocycleEnd(int mesoIndex) {
     if (mesoIndex < 0 || mesoIndex >= state.mesocycles.length) return;
     final ms = List<MesocycleDraft>.from(state.mesocycles);
@@ -264,7 +264,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
     _save();
   }
 
-  // Sets normalization after specific week
+
   void setNormalizationAfterWeek(int weekIndex, double value, String unit) {
     if (weekIndex < 0 || weekIndex >= state.weeks.length) return;
     if (unit != 'kg' && unit != '%') return;
@@ -282,7 +282,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
     _save();
   }
 
-  // Clears normalization after specific week
+
   void clearNormalizationAfterWeek(int weekIndex) {
     if (weekIndex < 0 || weekIndex >= state.weeks.length) return;
     final weeks = List<WeekDraft>.from(state.weeks);
@@ -299,7 +299,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
     _save();
   }
 
-  // Moves normalization from one week to another (overwrites destination)
+
   void moveNormalization(int fromWeekIndex, int toWeekIndex) {
     if (fromWeekIndex < 0 || fromWeekIndex >= state.weeks.length) return;
     if (toWeekIndex < 0 || toWeekIndex >= state.weeks.length) return;
@@ -308,7 +308,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
     final dst = weeks[toWeekIndex];
     final value = src.normValue;
     final unit = src.normUnit;
-    // clear src
+
     weeks[fromWeekIndex] = WeekDraft(
       name: src.name,
       expanded: src.expanded,
@@ -317,7 +317,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
       normValue: null,
       normUnit: null,
     );
-    // set dst
+
     weeks[toWeekIndex] = WeekDraft(
       name: dst.name,
       expanded: dst.expanded,
@@ -348,7 +348,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
     final totalWeeks = state.weeks.length;
     final ms = List<MesocycleDraft>.from(state.mesocycles);
     if (totalWeeks > 0 && ms.length >= totalWeeks) {
-      // нельзя иметь больше мезоциклов, чем недель
+
       return;
     }
     final newWeeks = totalWeeks > 0 ? 1 : 0;
@@ -403,7 +403,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
     if (old == days) return;
     ms[index].microcycleLength = days;
 
-    // apply to all weeks in this mesocycle block
+
     final weeks = List<WeekDraft>.from(state.weeks);
     int start = 0;
     for (int i = 0; i < index; i++) {
@@ -413,7 +413,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
     for (int i = start; i < endExclusive && i < weeks.length; i++) {
       final w = weeks[i];
       weeks[i] = WeekDraft(name: w.name, expanded: w.expanded, daysCount: days, days: w.days, normValue: w.normValue, normUnit: w.normUnit);
-      // optional: trim notes beyond new days
+
       final keysToRemove = w.days.keys.where((k) => k > days).toList();
       for (final k in keysToRemove) {
         weeks[i].days.remove(k);
@@ -451,28 +451,28 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
       return;
     }
 
-    // Ensure minimum 1 per meso if possible
+
     const minPer = 1;
     if (ms.length > totalWeeks) {
-      // Assign 1 to first totalWeeks, 0 to rest
+
       for (int i = 0; i < ms.length; i++) {
         ms[i].weeksCount = i < totalWeeks ? 1 : 0;
       }
       return;
     }
 
-    // Clamp exceptIndex value
+
     if (exceptIndex != null) {
       ms[exceptIndex].weeksCount = ms[exceptIndex].weeksCount.clamp(minPer, totalWeeks);
     }
 
-    // Compute target sum for others
+
     final except = exceptIndex;
     int currentSum = 0;
     for (int i = 0; i < ms.length; i++) {
       currentSum += ms[i].weeksCount;
     }
-    // If sum already equals totalWeeks, nothing to do
+
     if (currentSum == totalWeeks) return;
 
     final others = <int>[];
@@ -481,7 +481,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
     }
 
     if (others.isEmpty) {
-      // Only one mesocycle
+
       ms[except ?? 0].weeksCount = totalWeeks;
       return;
     }
@@ -495,9 +495,9 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
     int targetOthers = totalWeeks - reservedForExcept;
     if (targetOthers < others.length * minPer) targetOthers = others.length * minPer;
 
-    // Distribute proportionally if possible, else equally
+
     if (sumOthers == 0) {
-      // start with minPer
+
       for (final i in others) {
         ms[i].weeksCount = minPer;
       }
@@ -518,7 +518,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
         ms[i].weeksCount = val;
         allocated += val;
       }
-      // Fix rounding
+
       int diff = targetOthers - allocated;
       int t = 0;
       while (diff != 0) {
@@ -536,21 +536,21 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
       }
     }
 
-    // Finally, clamp except as well if needed so total matches
+
     int sumAll = 0;
     for (final m in ms) {
       sumAll += m.weeksCount;
     }
     if (sumAll != totalWeeks) {
       final delta = totalWeeks - sumAll;
-      // Adjust the first eligible meso (prefer except if present)
+
       if (except != null) {
         ms[except].weeksCount = (ms[except].weeksCount + delta).clamp(minPer, totalWeeks);
       } else {
         for (int i = 0; i < ms.length && sumAll != totalWeeks; i++) {
           final newVal = (ms[i].weeksCount + delta).clamp(minPer, totalWeeks);
           ms[i].weeksCount = newVal;
-          // recalc sum and delta
+
           sumAll = 0;
           for (final m in ms) {
             sumAll += m.weeksCount;

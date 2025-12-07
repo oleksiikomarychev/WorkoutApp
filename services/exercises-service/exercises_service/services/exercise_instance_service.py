@@ -1,7 +1,7 @@
-import json
-from typing import Any, List, Optional
+from typing import Any
 
 import structlog
+from backend_common.cache import CacheHelper, CacheMetrics
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import schemas
@@ -30,6 +30,15 @@ class ExerciseInstanceService:
         self.set_service = set_service
         self.repository = ExerciseRepository()
         self.user_id = user_id
+        self._cache = CacheHelper(
+            get_redis=get_redis,
+            metrics=CacheMetrics(
+                hits=EXERCISE_CACHE_HITS_TOTAL,
+                misses=EXERCISE_CACHE_MISSES_TOTAL,
+                errors=EXERCISE_CACHE_ERRORS_TOTAL,
+            ),
+            default_ttl=EXERCISE_INSTANCE_TTL_SECONDS,
+        )
 
     def _serialize_instance(self, instance: Any) -> dict:
         if instance is None:
@@ -39,12 +48,9 @@ class ExerciseInstanceService:
             return {**instance, "sets": normalized_sets}
 
         exercise_def_payload: dict | None = None
-        # Avoid triggering lazy-loads in async context: only read relationship
-        # if it has already been loaded on the instance.
+
         try:
-            raw_rel = None
-            if hasattr(instance, "__dict__") and "exercise_definition" in instance.__dict__:
-                raw_rel = instance.__dict__["exercise_definition"]
+            raw_rel = getattr(instance, "exercise_definition", None)
             if raw_rel is not None:
                 exercise_def_payload = {
                     "id": raw_rel.id,
@@ -57,7 +63,6 @@ class ExerciseInstanceService:
                     "region": raw_rel.region,
                 }
         except Exception:
-            # Best-effort only; if relationship is not safely accessible, skip it.
             exercise_def_payload = None
 
         return {
@@ -68,61 +73,23 @@ class ExerciseInstanceService:
             "order": instance.order,
             "workout_id": instance.workout_id,
             "user_max_id": instance.user_max_id,
-            "user_id": getattr(instance, "user_id", self.user_id),
+            "user_id": instance.user_id,
             "exercise_definition": exercise_def_payload,
         }
 
     async def _cache_instance(self, cache_key: str, payload: dict) -> None:
-        redis = await get_redis()
-        if not redis:
-            return
-        try:
-            await redis.set(cache_key, json.dumps(payload), ex=EXERCISE_INSTANCE_TTL_SECONDS)
-        except Exception as exc:
-            EXERCISE_CACHE_ERRORS_TOTAL.inc()
-            logger.warning("exercise_cache_set_failed", key=cache_key, error=str(exc))
+        await self._cache.set(cache_key, payload)
 
-    async def _cache_instances_list(self, cache_key: str, payload: List[dict]) -> None:
-        redis = await get_redis()
-        if not redis:
-            return
-        try:
-            await redis.set(cache_key, json.dumps(payload), ex=EXERCISE_WORKOUT_TTL_SECONDS)
-        except Exception as exc:
-            EXERCISE_CACHE_ERRORS_TOTAL.inc()
-            logger.warning("exercise_cache_set_failed", key=cache_key, error=str(exc))
+    async def _cache_instances_list(self, cache_key: str, payload: list[dict]) -> None:
+        await self._cache.set(cache_key, payload, ttl=EXERCISE_WORKOUT_TTL_SECONDS)
 
-    async def _get_cached_instance(self, cache_key: str) -> Optional[dict]:
-        redis = await get_redis()
-        if not redis:
-            return None
-        try:
-            cached_value = await redis.get(cache_key)
-            if cached_value:
-                EXERCISE_CACHE_HITS_TOTAL.inc()
-                return json.loads(cached_value)
-            EXERCISE_CACHE_MISSES_TOTAL.inc()
-        except Exception as exc:
-            EXERCISE_CACHE_ERRORS_TOTAL.inc()
-            logger.warning("exercise_cache_get_failed", key=cache_key, error=str(exc))
-        return None
+    async def _get_cached_instance(self, cache_key: str) -> dict | None:
+        return await self._cache.get(cache_key)
 
-    async def _get_cached_instances_list(self, cache_key: str) -> Optional[List[dict]]:
-        redis = await get_redis()
-        if not redis:
-            return None
-        try:
-            cached_value = await redis.get(cache_key)
-            if cached_value:
-                EXERCISE_CACHE_HITS_TOTAL.inc()
-                return json.loads(cached_value)
-            EXERCISE_CACHE_MISSES_TOTAL.inc()
-        except Exception as exc:
-            EXERCISE_CACHE_ERRORS_TOTAL.inc()
-            logger.warning("exercise_cache_get_failed", key=cache_key, error=str(exc))
-        return None
+    async def _get_cached_instances_list(self, cache_key: str) -> list[dict] | None:
+        return await self._cache.get(cache_key)
 
-    async def get_instance(self, instance_id: int) -> Optional[dict]:
+    async def get_instance(self, instance_id: int) -> dict | None:
         cache_key = exercise_instance_key(self.user_id, instance_id)
         cached = await self._get_cached_instance(cache_key)
         if cached is not None:
@@ -135,7 +102,7 @@ class ExerciseInstanceService:
         await self._cache_instance(cache_key, serialized)
         return serialized
 
-    async def get_instances_by_workout(self, workout_id: int) -> List[dict]:
+    async def get_instances_by_workout(self, workout_id: int) -> list[dict]:
         cache_key = workout_instances_key(self.user_id, workout_id)
         cached = await self._get_cached_instances_list(cache_key)
         if cached is not None:
@@ -157,7 +124,6 @@ class ExerciseInstanceService:
         )
         logger.debug("exercise_instance_payload", payload=instance_data.model_dump())
 
-        # Проверяем существование определения упражнения
         logger.info("exercise_definition_lookup", exercise_definition_id=instance_data.exercise_list_id)
         definition = await ExerciseRepository.get_exercise_definition(self.db, instance_data.exercise_list_id)
         if not definition:
@@ -205,29 +171,19 @@ class ExerciseInstanceService:
         return serialized
 
     async def update_set(self, instance_id: int, set_id: int, update_data: dict) -> dict:
-        """
-        Обновляет конкретный сет в экземпляре упражнения
-        """
         db_instance = await self.repository.get_exercise_instance(self.db, instance_id, self.user_id)
         if not db_instance:
             raise ValueError("Exercise instance not found")
         if not isinstance(db_instance.sets, list):
             raise ValueError("No sets to update")
 
-        # Синхронизация полей усилия: если приходит только одно из полей, зеркалим во второе
-        try:
-            if "rpe" in update_data and "effort" not in update_data:
-                update_data["effort"] = update_data.get("rpe")
-            if "effort" in update_data and "rpe" not in update_data:
-                update_data["rpe"] = update_data.get("effort")
-        except Exception:
-            # best-effort only
-            pass
+        if "rpe" in update_data and "effort" not in update_data:
+            update_data["effort"] = update_data.get("rpe")
+        if "effort" in update_data and "rpe" not in update_data:
+            update_data["rpe"] = update_data.get("effort")
 
-        # Обновляем сет
         new_sets = self.set_service.update_set(db_instance.sets, set_id, update_data)
 
-        # Обновляем экземпляр упражнения
         updated_instance = await self.repository.update_exercise_instance(self.db, db_instance, {"sets": new_sets})
         serialized = self._serialize_instance(updated_instance)
         await invalidate_instance_cache(

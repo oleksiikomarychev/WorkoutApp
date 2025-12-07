@@ -40,9 +40,9 @@ class ExerciseDefinitionService:
                     raw_items = json.loads(cached_value)
                     return [schemas.ExerciseListResponse.model_validate(item) for item in raw_items]
                 EXERCISE_CACHE_MISSES_TOTAL.inc()
-            except Exception as exc:
+            except Exception:
                 EXERCISE_CACHE_ERRORS_TOTAL.inc()
-                self.logger.warning("exercise_cache_get_failed", key=cache_key, error=str(exc))
+                self.logger.warning("Failed to retrieve from exercise definition cache", key=cache_key, exc_info=True)
 
         definitions = await self.repository.list_exercise_definitions(self.db, ids)
         responses = [schemas.ExerciseListResponse.model_validate(defn) for defn in definitions]
@@ -51,9 +51,9 @@ class ExerciseDefinitionService:
             try:
                 payload = json.dumps([item.model_dump(mode="json") for item in responses])
                 await redis.set(cache_key, payload, ex=EXERCISE_LIST_TTL_SECONDS)
-            except Exception as exc:
+            except Exception:
                 EXERCISE_CACHE_ERRORS_TOTAL.inc()
-                self.logger.warning("exercise_cache_set_failed", key=cache_key, error=str(exc))
+                self.logger.warning("Failed to set exercise definition cache", key=cache_key, exc_info=True)
 
         return responses
 
@@ -67,9 +67,9 @@ class ExerciseDefinitionService:
                     EXERCISE_CACHE_HITS_TOTAL.inc()
                     return schemas.ExerciseListResponse.model_validate_json(cached_value)
                 EXERCISE_CACHE_MISSES_TOTAL.inc()
-            except Exception as exc:
+            except Exception:
                 EXERCISE_CACHE_ERRORS_TOTAL.inc()
-                self.logger.warning("exercise_cache_get_failed", key=cache_key, error=str(exc))
+                self.logger.warning("Failed to retrieve from exercise definition cache", key=cache_key, exc_info=True)
 
         definition = await self.repository.get_exercise_definition(self.db, exercise_list_id)
         if not definition:
@@ -79,12 +79,16 @@ class ExerciseDefinitionService:
         if redis:
             try:
                 await redis.set(cache_key, response.model_dump_json(), ex=EXERCISE_DEF_TTL_SECONDS)
-            except Exception as exc:
+            except Exception:
                 EXERCISE_CACHE_ERRORS_TOTAL.inc()
-                self.logger.warning("exercise_cache_set_failed", key=cache_key, error=str(exc))
+                self.logger.warning("Failed to set exercise definition cache", key=cache_key, exc_info=True)
         return response
 
     async def create_definition(self, exercise: schemas.ExerciseListCreate):
+        existing = await self.repository.get_exercise_definition_by_name(self.db, exercise.name)
+        if existing:
+            return schemas.ExerciseListResponse.model_validate(existing)
+
         created = await self.repository.create_exercise_definition(self.db, exercise.model_dump())
         await invalidate_exercise_cache()
         return schemas.ExerciseListResponse.model_validate(created)

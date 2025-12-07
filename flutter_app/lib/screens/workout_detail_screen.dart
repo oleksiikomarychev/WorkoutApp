@@ -22,7 +22,7 @@ import 'package:workout_app/config/constants/theme_constants.dart';
 import 'package:workout_app/widgets/floating_header_bar.dart';
 import 'package:workout_app/screens/user_profile_screen.dart';
 
-// Top-level editor to manage TextEditingControllers for inline set editing
+
 class _SetEditor {
   final TextEditingController weightCtrl;
   final TextEditingController repsCtrl;
@@ -54,7 +54,7 @@ class _SetEditor {
   }
 }
 
-// Top-level container for baseline values used by readiness scaling
+
 class _BaselineSet {
   final int reps;
   final double? weight;
@@ -68,7 +68,7 @@ class WorkoutDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Use workoutId to fetch workout details
+
     final workoutAsync = ref.watch(workoutProvider(workoutId));
 
     return Scaffold(
@@ -98,7 +98,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   List<ExerciseDefinition> _uniqueExercises = [];
   Workout? _workout;
 
-  // Session state
+
   WorkoutSession? _activeSession;
   Timer? _sessionTimer;
   Duration _elapsed = Duration.zero;
@@ -106,14 +106,14 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   final Map<int, Set<int>> _completedByInstance = {};
   bool _isTogglingSet = false;
 
-  // RPE table and user max cache
+
   Map<int, Map<int, int>> _rpeTable = {};
   Map<int, int> _exerciseMaxByExerciseId = {};
-  // Inline editors storage per set
+
   final Map<String, _SetEditor> _setEditors = <String, _SetEditor>{};
   bool _isSyncingFields = false;
 
-  // Metadata controllers
+
   final TextEditingController _notesCtrl = TextEditingController();
   final TextEditingController _statusCtrl = TextEditingController();
   final TextEditingController _locationCtrl = TextEditingController();
@@ -123,32 +123,32 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   DateTime? _editedStartedAt;
   bool _isSavingMetadata = false;
 
-  // Readiness controls
+
   double _readinessSlider = 10.0;
   bool _isApplyingReadiness = false;
   final bool _scaleRepsWithReadiness = true;
   bool _isProgrammaticReadinessUpdate = false;
 
-  // Baseline snapshot to make scaling reversible and non-destructive
-  // Keyed by editor key (instance+set identity)
+
+
   final Map<String, _BaselineSet> _baselineSets = <String, _BaselineSet>{};
 
-  // Session ticker guards and diagnostics
+
   bool _sessionTickerRunning = false;
   int _sessionTickerGen = 0;
 
-  double? _weight; // Ensure weight property is properly declared
+  double? _weight;
 
-  WidgetRef? _ref; // Store ref for use in other methods
+  WidgetRef? _ref;
 
   @override
   void initState() {
     super.initState();
-    // Seed local state from incoming widget
+
     _workout = widget.workout;
     _syncMetadataControllers();
 
-    // Defer data loading until after first build so that _ref is available
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _loadExercises();
@@ -160,20 +160,20 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       }
     });
 
-    // Load helpers for inline recalculation
+
     _fetchRpeTable();
   }
 
   @override
   void didUpdateWidget(covariant _WorkoutDetailContent oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // When parent provides a new workout, sync local state and refresh
+
     if (oldWidget.workout.id != widget.workout.id) {
       setState(() {
         _workout = widget.workout;
       });
       _syncMetadataControllers();
-      // Safe to call; _ref is set after first build
+
       _loadExercises();
       if (_workout?.id != null) {
         _loadActiveSession();
@@ -242,11 +242,11 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     }
   }
 
-  // --- Readiness scaling helpers ---
+
   double _roundToStep(double value, double step) {
     if (step <= 0) return value;
     final rounded = (value / step).roundToDouble() * step;
-    // limit to 1 decimal to align with UI formatting
+
     return double.parse(rounded.toStringAsFixed(1));
   }
 
@@ -257,14 +257,14 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       _isApplyingReadiness = true;
     });
 
-    // Ensure we have a baseline snapshot for all sets so scaling is reversible.
+
     _ensureBaselineSets();
 
-    // Use a gentle mapping so 5/10 ~= 0.95 (not 0.5), 0/10 ~= 0.85, 10/10 ~= 1.05
+
     double factor = _readinessFactor(_readinessSlider.clamp(0, 10));
     int updates = 0;
     try {
-      // Dynamic rounding: <=20 kg -> step 1.0, otherwise -> step 2.5
+
       for (final instance in _workout!.exerciseInstances) {
         for (int i = 0; i < instance.sets.length; i++) {
           final set = instance.sets[i];
@@ -323,7 +323,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     }
   }
 
-  // Build or refresh baseline snapshot to match current workout structure
+
   void _ensureBaselineSets() {
     if (_workout == null) return;
     final Map<String, _BaselineSet> snap = <String, _BaselineSet>{};
@@ -331,7 +331,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       for (int i = 0; i < instance.sets.length; i++) {
         final set = instance.sets[i];
         final key = _editorKey(instance, i, set);
-        // Preserve existing baseline if present; otherwise seed from current values
+
         final existing = _baselineSets[key];
         snap[key] = existing ?? _BaselineSet(reps: set.reps, weight: set.weight);
       }
@@ -352,8 +352,8 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     _isProgrammaticReadinessUpdate = false;
   }
 
-  // Map readiness (0..10) to a gentle scaling factor around 1.0
-  // Defaults: 6 -> 0.95, 8 -> 1.00, 10 -> 1.05
+
+
   double _readinessFactor(double readiness) {
     final r = readiness.clamp(0.0, 10.0);
     const double base = 0.8;
@@ -364,7 +364,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     return factor;
   }
 
-  
+
 
   Future<void> _updateSetField(
     ExerciseInstance instance,
@@ -397,7 +397,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       final setId = updatedSet.id ?? current.id;
 
       if (instance.id != null && setId != null) {
-        // Preferred: update a single set via new endpoint
+
         savedInstance = await workoutService.updateExerciseSet(
           instanceId: instance.id!,
           setId: setId,
@@ -407,7 +407,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           order: updatedSet.order,
         );
       } else {
-        // Fallback: update entire instance if set lacks an ID (e.g., just created locally)
+
         final newSets = List<ExerciseSetDto>.from(instance.sets);
         newSets[setIndex] = updatedSet;
         final updatedInstance = instance.copyWith(sets: newSets);
@@ -448,10 +448,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     }
   }
 
-  // Helper method to fetch raw API response
+
   Future<void> _fetchRawWorkoutData() async {
     if (_workout?.id == null) return;
-    
+
     try {
       final api = ApiClient.create();
       final data = await api.get(
@@ -490,7 +490,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         _isLoading = true;
       });
 
-      // Show confirmation dialog
+
       final shouldDelete = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -514,16 +514,16 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         return;
       }
 
-      // Delete the instance from the backend
+
       final workoutService = _ref!.read(workoutServiceProvider);
       if (instance.id != null) {
         await workoutService.deleteExerciseInstance(instance.id!);
         print('Successfully deleted instance from backend');
-        
-        // Refresh the workout data
+
+
         await _loadExercises();
         print('Successfully refreshed workout data after deletion');
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Exercise removed from workout')),
@@ -556,53 +556,53 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
   Future<void> _addSetToInstance(ExerciseInstance instance) async {
     if (_isLoading) return;
-    
+
     try {
       print('Adding set to instance ${instance.id}');
       setState(() {
         _isLoading = true;
       });
 
-      // Create a new set with default values based on the last set or default values
+
       int lastReps = 5;
       double lastWeight = 0.0;
-      
+
       if (instance.sets.isNotEmpty) {
-        // Use values from the last set as defaults
+
         final lastSet = instance.sets.last;
         lastReps = lastSet.reps;
         lastWeight = lastSet.weight;
       }
 
       final newSet = ExerciseSetDto(
-        id: null, // Will be set by the backend
+        id: null,
         reps: lastReps,
         weight: lastWeight,
-        order: instance.sets.length, // Next order
-        exerciseInstanceId: instance.id, // Will be set by the backend
+        order: instance.sets.length,
+        exerciseInstanceId: instance.id,
         localId: null,
-        volume: (lastReps * lastWeight).round(), // Calculate and round volume to nearest integer
+        volume: (lastReps * lastWeight).round(),
       );
 
       print('Created new set: $newSet');
 
-      // Add the set to the instance
+
       final updatedInstance = instance.copyWith(
         sets: [...instance.sets, newSet],
       );
-      
+
       print('Updated instance with new set: ${updatedInstance.sets.length} total sets');
-      
-      // Update the instance in the backend
+
+
       final workoutService = _ref!.read(workoutServiceProvider);
       final savedInstance = await workoutService.updateExerciseInstance(updatedInstance);
-      
+
       print('Successfully updated instance in backend');
-      
-      // Update the local state with the saved instance
+
+
       if (_workout != null && mounted) {
         setState(() {
-          // Create a new list to avoid modifying the unmodifiable one
+
           final updatedInstances = List<ExerciseInstance>.from(_workout!.exerciseInstances);
           final index = updatedInstances.indexWhere((i) => i.id == savedInstance.id);
           if (index != -1) {
@@ -612,7 +612,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         });
       }
       _reconcileEditors();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Set added successfully')),
@@ -635,7 +635,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
   Future<void> _loadExercises() async {
     if (_workout == null) return;
-    
+
     setState(() {
       _isLoadingExercises = true;
     });
@@ -643,34 +643,34 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     try {
       final workoutService = _ref!.read(workoutServiceProvider);
       final updatedWorkout = await workoutService.getWorkoutWithDetails(_workout!.id!);
-      
+
       print('Fetched workout with ${updatedWorkout.exerciseInstances.length} exercise instances');
-      
-      // Get all unique exercise list IDs from instances
+
+
       final exerciseListIds = updatedWorkout.exerciseInstances
           .map((e) => e.exerciseListId)
           .toSet()
           .toList();
-      
+
       if (exerciseListIds.isNotEmpty) {
-        // Fetch exercise definitions
+
         final exerciseService = _ref!.read(exerciseServiceProvider);
         final exercises = await exerciseService.getExercisesByIds(exerciseListIds);
-        
-        // Create a map of exercise ID to exercise definition
+
+
         final exerciseMap = {
           for (var e in exercises) e.id: e,
         };
-        
-        // Build a new list of instances with their exercise definitions via copyWith
+
+
         final updatedInstances = updatedWorkout.exerciseInstances.map((instance) {
           final def = exerciseMap[instance.exerciseListId];
           return instance.copyWith(exerciseDefinition: def);
         }).toList();
 
-        // Create a list of unique exercise definitions
+
         final exerciseDefinitions = exerciseMap.values.toList();
-        
+
         setState(() {
           _workout = updatedWorkout.copyWith(exerciseInstances: updatedInstances);
           _uniqueExercises = exerciseDefinitions.cast<ExerciseDefinition>();
@@ -687,7 +687,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     } catch (e, stackTrace) {
       print('Error loading exercises: $e');
       print('Stack trace: $stackTrace');
-      // Show error to user
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to load exercises: $e')),
@@ -702,7 +702,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     }
   }
 
-  // --- RPE table and user max helpers ---
+
   Future<void> _fetchRpeTable() async {
     try {
       final api = ApiClient.create();
@@ -730,14 +730,14 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         }
       }
     } catch (_) {
-      // ignore errors; leave table empty
+
     }
   }
 
-  // --- Metadata editing helpers ---
+
   void _d(String msg) {
     if (kDebugMode) {
-      // Lightweight debug logger
+
       print('[WorkoutDetail] ${DateTime.now().toIso8601String()} | $msg');
     }
   }
@@ -753,7 +753,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         : ((w!.rpeSession! % 1 == 0)
             ? w.rpeSession!.toStringAsFixed(0)
             : w.rpeSession!.toStringAsFixed(1));
-    // Normalize readiness to 0–10. If legacy value >10 (0–100), convert to /10.
+
     final double readinessRaw = (w?.readinessScore?.toDouble() ?? 10.0);
     final double normalized = readinessRaw > 10.0 ? readinessRaw / 10.0 : readinessRaw;
     _readinessSlider = normalized.clamp(0.0, 10.0);
@@ -770,7 +770,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       double? parseDouble(String s) => double.tryParse(s.trim().replaceAll(',', '.'));
       String? emptyToNull(String s) => s.trim().isEmpty ? null : s.trim();
 
-      // Clamp and sanitize inputs
+
       final int? dur = parseInt(_durationCtrl.text);
       final double? rpeRaw = parseDouble(_rpeSessionCtrl.text);
       final double? rpe = (rpeRaw == null)
@@ -817,7 +817,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     }
   }
 
-  // --- Session helpers ---
+
   Future<void> _loadActiveSession() async {
     if (_workout?.id == null) return;
     try {
@@ -826,9 +826,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       if (!mounted) return;
       setState(() {
         _activeSession = session;
-        // If a session exists, reflect its start time in the edited startedAt (without overriding manual edits)
+
         if (session != null && session.finishedAt != null) {
-          // Keep finished timestamp available for UI summaries
+
         }
       });
       _d('Active session loaded: id=${_activeSession?.id}, isActive=${_activeSession?.isActive}');
@@ -839,7 +839,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         _stopSessionTicker();
       }
     } catch (_) {
-      // ignore errors; treated as no active session
+
     }
   }
 
@@ -868,7 +868,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   }
 
   void _startSessionTicker() {
-    // Guard with generation token and running flag to avoid stray ticks after stop/dispose
+
     _sessionTickerGen++;
     final myGen = _sessionTickerGen;
     _sessionTimer?.cancel();
@@ -920,20 +920,20 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     try {
       _d('Starting session for workoutId=${_workout?.id}');
       setState(() => _isLoading = true);
-      // Use BFF endpoint: POST /api/v1/workouts/{id}/start
+
       final workoutSvc = _ref!.read(workoutServiceProvider);
       final updated = await workoutSvc.startWorkoutBff(_workout!.id!, includeDefinitions: true);
       if (!mounted) return;
       setState(() {
         _workout = updated;
-        // Reflect server-side startedAt and reset duration counter
+
         _editedStartedAt = updated.startedAt;
         _durationCtrl.text = '0';
       });
-      // Load active session (created by BFF) and start ticker
+
       await _loadActiveSession();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Workout started')), 
+        const SnackBar(content: Text('Workout started')),
       );
     } catch (e) {
       if (mounted) {
@@ -951,7 +951,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     try {
       _d('Finishing workoutId=${_workout?.id} cancelled=$cancelled markCompleted=$markWorkoutCompleted');
       setState(() => _isLoading = true);
-      // Use BFF endpoint: POST /api/v1/workouts/{id}/finish
+
       final workoutSvc = _ref!.read(workoutServiceProvider);
       final updated = await workoutSvc.finishWorkoutBff(
         _workout!.id!,
@@ -960,10 +960,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         markWorkoutCompleted: markWorkoutCompleted,
       );
       if (!mounted) return;
-      // Stop ticker and clear active session (server finished it)
+
       _stopSessionTicker();
-      await _loadActiveSession(); // should become null or inactive
-      // Reflect updated workout fields from BFF response
+      await _loadActiveSession();
+
       setState(() {
         _workout = updated;
         _editedStartedAt ??= updated.startedAt;
@@ -977,8 +977,8 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
       await _maybeShowMacroSuggestion();
 
-      // Do not auto-advance to the next workout here.
-      // Next workout will be presented in the list screen widget.
+
+
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -993,7 +993,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   Future<void> _advanceToNextWorkoutInPlan(BuildContext context) async {
     try {
       final workoutSvc = _ref!.read(workoutServiceProvider);
-      // Fetch next workout from backend via gateway. Returns null on 404 (no next workout).
+
       final nextWorkout = await workoutSvc.getNextWorkoutInPlan(_workout!.id!);
       if (nextWorkout == null) {
         if (mounted) {
@@ -1003,11 +1003,11 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         }
         return;
       }
-      // If already showing the same workout (safety), skip.
+
       if (_workout?.id == nextWorkout.id) return;
 
       if (!mounted) return;
-      // Reset session-related state and load next workout
+
       _stopSessionTicker();
       setState(() {
         _workout = nextWorkout;
@@ -1106,23 +1106,23 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     return '$instKey-$setKey';
   }
 
-  // Moved to top-level: _SetEditor
-  // class _SetEditor {
-  //   final TextEditingController weightCtrl;
-  //   final TextEditingController repsCtrl;
-  //   final TextEditingController rpeCtrl;
-  //   final List<String> editedFields = [];
-  //   _SetEditor({
-  //     required this.weightCtrl,
-  //     required this.repsCtrl,
-  //     required this.rpeCtrl,
-  //   });
-  //   void dispose() {
-  //     weightCtrl.dispose();
-  //     repsCtrl.dispose();
-  //     rpeCtrl.dispose();
-  //   }
-  // }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   _SetEditor _getSetEditor(ExerciseInstance instance, int setIndex, ExerciseSetDto set) {
     final key = _editorKey(instance, setIndex, set);
@@ -1191,19 +1191,19 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   ) {
     if (_isSyncingFields) return;
     final editor = _getSetEditor(instance, setIndex, set);
-    // Track edit order (last two distinct)
+
     editor.editedFields.remove(field);
     editor.editedFields.add(field);
     if (editor.editedFields.length > 2) editor.editedFields.removeAt(0);
 
-    // Parse current values from controllers
+
     double? parseDouble(String s) => double.tryParse(s.replaceAll(',', '.').trim());
     int? parseInt(String s) => int.tryParse(s.trim());
 
     final w = parseDouble(editor.weightCtrl.text);
     final r = parseInt(editor.repsCtrl.text);
     final eRaw = parseDouble(editor.rpeCtrl.text);
-    final e = eRaw?.round(); // RPE table uses ints
+    final e = eRaw?.round();
 
     final bool hasTwo = editor.editedFields.length >= 2;
     String? third;
@@ -1260,7 +1260,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     final int? reps = parseInt(editor.repsCtrl.text);
     final double? rpe = parseDouble(editor.rpeCtrl.text)?.clamp(1.0, 10.0);
 
-    // If we have two fields, compute the third to persist a consistent triple
+
     final fields = <String, bool>{
       'weight': weight != null,
       'reps': reps != null,
@@ -1319,14 +1319,14 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       if (instance.id == null) {
         throw Exception('Cannot delete set: Instance ID is null');
       }
-      
+
       if (setIndex < 0 || setIndex >= instance.sets.length) {
         throw Exception('Invalid set index: $setIndex');
       }
-      
+
       final setToDelete = instance.sets[setIndex];
-      
-      // Show confirmation dialog
+
+
       final confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -1349,29 +1349,29 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       );
 
       if (confirm != true) return;
-      
+
       setState(() {
         _isLoading = true;
       });
-      
+
       if (setToDelete.id == null) {
-        // Local set (no ID). Try to resolve the server set at the same index and delete it on backend.
+
         final workoutService = _ref!.read(workoutServiceProvider);
         try {
-          // Reload latest workout to sync sets with backend and get IDs
+
           await _loadExercises();
 
-          // Find the refreshed instance
+
           final refreshedInstance = _workout?.exerciseInstances
               .firstWhere((i) => i.id == instance.id, orElse: () => instance);
 
           if (refreshedInstance != null && setIndex >= 0 && setIndex < refreshedInstance.sets.length) {
             final refreshedSet = refreshedInstance.sets[setIndex];
             if (refreshedSet.id != null && instance.id != null) {
-              // Delete by resolved server set ID
+
               await workoutService.deleteExerciseSet(instance.id!, refreshedSet.id!);
 
-              // Update local state to reflect deletion immediately
+
               final updatedSets = List<ExerciseSetDto>.from(refreshedInstance.sets)..removeAt(setIndex);
               final updatedInstance = refreshedInstance.copyWith(sets: updatedSets);
 
@@ -1386,10 +1386,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                 }
               }
               _reconcileEditors();
-              // Ensure consistency with backend
+
               await _loadExercises();
             } else {
-              // No server ID even after refresh -> purely local set, remove locally only
+
               final updatedSets = List<ExerciseSetDto>.from(instance.sets)..removeAt(setIndex);
               final updatedInstance = instance.copyWith(sets: updatedSets);
               if (_workout != null) {
@@ -1405,7 +1405,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
               _reconcileEditors();
             }
           } else {
-            // Fallback: remove locally
+
             final updatedSets = List<ExerciseSetDto>.from(instance.sets)..removeAt(setIndex);
             final updatedInstance = instance.copyWith(sets: updatedSets);
             if (_workout != null) {
@@ -1421,7 +1421,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
             _reconcileEditors();
           }
         } catch (e) {
-          // If anything goes wrong, at least remove locally to keep UX responsive
+
           final updatedSets = List<ExerciseSetDto>.from(instance.sets)..removeAt(setIndex);
           final updatedInstance = instance.copyWith(sets: updatedSets);
           if (_workout != null) {
@@ -1437,14 +1437,14 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           _reconcileEditors();
         }
       } else {
-        // Delete the set from the backend
+
         final workoutService = _ref!.read(workoutServiceProvider);
         await workoutService.deleteExerciseSet(instance.id!, setToDelete.id!);
-        
-        // Update local state immediately for better UX
+
+
         final updatedSets = List<ExerciseSetDto>.from(instance.sets)..removeAt(setIndex);
         final updatedInstance = instance.copyWith(sets: updatedSets);
-        
+
         if (_workout != null) {
           final updatedInstances = List<ExerciseInstance>.from(_workout!.exerciseInstances);
           final index = updatedInstances.indexWhere((i) => i.id == instance.id);
@@ -1456,11 +1456,11 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           }
         }
         _reconcileEditors();
-        
-        // Still refresh the workout data to ensure consistency
+
+
         await _loadExercises();
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1472,7 +1472,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     } catch (e, stackTrace) {
       print('Error deleting set: $e');
       print('Stack trace: $stackTrace');
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1743,7 +1743,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   Widget build(BuildContext context) {
     return Consumer(
       builder: (context, ref, _) {
-        _ref = ref; // Store ref for later use
+        _ref = ref;
         if (_isLoading) {
           return Scaffold(
             backgroundColor: AppColors.background,
@@ -1862,7 +1862,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   Widget _buildMetadataCard() {
     final theme = Theme.of(context);
     if (_workout == null) return const SizedBox.shrink();
-    
+
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 16, 20, 8),
       padding: const EdgeInsets.all(16),
@@ -2110,17 +2110,17 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   }
 
   Widget _buildExerciseCard(ExerciseDefinition exercise) {
-    // Get all instances for this exercise
+
     final instances = _workout?.exerciseInstances
         .where((instance) => instance.exerciseListId == exercise.id)
         .toList() ?? [];
-    
-    // If no instances, return an empty container
+
+
     if (instances.isEmpty) {
       return Container();
     }
-    
-    // Show all instances in a column with their own cards
+
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: instances.map((instance) {
@@ -2175,7 +2175,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
   Widget _buildInstanceCard(ExerciseInstance instance) {
     final theme = Theme.of(context);
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
@@ -2229,9 +2229,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                     IconButton(
                       icon: const Icon(Icons.edit_outlined, size: 20),
                       onPressed: () => _navigateToExerciseForm(
-                        instance.exerciseDefinition ?? 
+                        instance.exerciseDefinition ??
                           ExerciseDefinition(
-                            id: instance.exerciseListId, 
+                            id: instance.exerciseListId,
                             name: 'Unknown',
                             muscleGroup: '',
                             equipment: '',
@@ -2308,7 +2308,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                       letterSpacing: 0.5,
                     ),
                   ),
-                  const SizedBox(width: 24), // Space for delete button
+                  const SizedBox(width: 24),
                 ],
               ),
             ),
@@ -2317,9 +2317,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
             final set = entry.value;
             final bool isCompleted = _activeSession != null && instance.id != null && set.id != null
                 ? _isSetCompleted(instance.id!, set.id!)
-                : false; // derived from session progress
+                : false;
             final bool canToggle = _activeSession?.isActive == true && instance.id != null && set.id != null;
-            
+
             return Container(
               margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
               decoration: BoxDecoration(
@@ -2358,7 +2358,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                             textAlign: TextAlign.center,
                           ),
                         ),
-                        // Inline weight editor
+
                         SizedBox(
                           width: 100,
                           child: TextField(
@@ -2396,7 +2396,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                             },
                           ),
                         ),
-                        // Inline reps editor
+
                         SizedBox(
                           width: 64,
                           child: TextField(
@@ -2434,7 +2434,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                             },
                           ),
                         ),
-                        // Inline RPE editor
+
                         SizedBox(
                           width: 64,
                           child: TextField(
@@ -2475,8 +2475,8 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                         IconButton(
                           icon: const Icon(Icons.delete_outline, size: 18),
                           color: AppColors.textSecondary,
-                          onPressed: _isLoading 
-                              ? null 
+                          onPressed: _isLoading
+                              ? null
                               : () => _handleDeleteSet(instance, entry.key),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -2505,7 +2505,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           final key = _editorKey(instance, i, set);
           validKeys.add(key);
           final editor = _setEditors[key] ?? _getSetEditor(instance, i, set);
-          // Sync controller texts to model values (avoid redundant updates)
+
           String fmtWeight(double w) => (w % 1 == 0) ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
           final desiredWeight = fmtWeight(set.weight);
           final desiredReps = set.reps.toString();
@@ -2522,7 +2522,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     } finally {
       _isSyncingFields = false;
     }
-    // Dispose any editors that no longer correspond to existing sets
+
     final toRemove = _setEditors.keys.where((k) => !validKeys.contains(k)).toList();
     for (final k in toRemove) {
       _setEditors[k]?.dispose();
@@ -2533,14 +2533,14 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
   @override
   void dispose() {
-    // Dispose inline editors
+
     for (final e in _setEditors.values) {
       e.dispose();
     }
     _d('Disposing WorkoutDetailScreen; cleaning up');
     _stopSessionTicker();
     _elapsedNotifier.dispose();
-    // Dispose metadata controllers
+
     _notesCtrl.dispose();
     _statusCtrl.dispose();
     _locationCtrl.dispose();

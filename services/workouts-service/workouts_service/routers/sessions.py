@@ -1,6 +1,5 @@
 import os
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -27,7 +26,7 @@ def get_session_service(
     return SessionService(db, user_id=user_id)
 
 
-@router.get("/history/all", response_model=List[sm.WorkoutSessionResponse])
+@router.get("/history/all", response_model=list[sm.WorkoutSessionResponse])
 async def get_all_sessions(
     session_service: SessionService = Depends(get_session_service),
     user_id: str | None = Query(None, description="Override user id (internal use only)"),
@@ -55,7 +54,7 @@ async def start_workout_session(
     session_service: SessionService = Depends(get_session_service),
     user_id: str = Depends(get_current_user_id),
 ):
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     if payload and payload.started_at:
         started_at = payload.started_at
     logger.info(
@@ -82,7 +81,7 @@ async def get_active_session(workout_id: int, session_service: SessionService = 
     return sm.WorkoutSessionResponse(**session.__dict__)
 
 
-@router.get("/{workout_id}/history", response_model=List[sm.WorkoutSessionResponse])
+@router.get("/{workout_id}/history", response_model=list[sm.WorkoutSessionResponse])
 async def get_session_history(workout_id: int, session_service: SessionService = Depends(get_session_service)):
     sessions = await session_service.get_session_history(workout_id)
     return [sm.WorkoutSessionResponse(**s.__dict__) for s in sessions]
@@ -139,5 +138,37 @@ async def update_session_progress(
         instance_id=payload.instance_id,
         set_id=payload.set_id,
         completed=payload.completed,
+    )
+    return sm.WorkoutSessionResponse(**session.__dict__)
+
+
+@router.put(
+    "/{session_id}/instances/{instance_id}/sets/{set_id}/completion",
+    response_model=sm.WorkoutSessionResponse,
+)
+async def update_set_completion(
+    session_id: int,
+    instance_id: int,
+    set_id: int,
+    payload: sm.SessionProgressUpdate | None = None,
+    session_service: SessionService = Depends(get_session_service),
+    user_id: str = Depends(get_current_user_id),
+):
+    completed = True
+    if payload is not None:
+        completed = payload.completed
+    logger.info(
+        "workout_session_set_completion_update",
+        user_id=user_id,
+        session_id=session_id,
+        instance_id=instance_id,
+        set_id=set_id,
+        completed=completed,
+    )
+    session = await session_service.update_progress(
+        session_id=session_id,
+        instance_id=instance_id,
+        set_id=set_id,
+        completed=completed,
     )
     return sm.WorkoutSessionResponse(**session.__dict__)

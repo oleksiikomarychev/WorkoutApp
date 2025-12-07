@@ -1,11 +1,14 @@
-import json
+from __future__ import annotations
+
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Any, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 import pytz
 import structlog
+from backend_common.cache import CacheHelper, CacheMetrics
+from backend_common.http_client import ServiceClient
 from fastapi import HTTPException
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
@@ -53,86 +56,63 @@ class WorkoutService:
         self.user_id = user_id
         self.rpe_rpc = rpe_rpc
         self.request_headers = request_headers or {}
+        self._cache = CacheHelper(
+            get_redis=get_redis,
+            metrics=CacheMetrics(
+                hits=WORKOUT_CACHE_HITS_TOTAL,
+                misses=WORKOUT_CACHE_MISSES_TOTAL,
+                errors=WORKOUT_CACHE_ERRORS_TOTAL,
+            ),
+            default_ttl=WORKOUT_DETAIL_TTL_SECONDS,
+        )
 
-    async def _get_cached_workout(self, workout_id: int) -> Optional[dict]:
-        redis = await get_redis()
-        if not redis:
-            return None
-        key = workout_detail_key(self.user_id, workout_id)
-        try:
-            cached_value = await redis.get(key)
-            if cached_value:
-                WORKOUT_CACHE_HITS_TOTAL.inc()
-                return json.loads(cached_value)
-            WORKOUT_CACHE_MISSES_TOTAL.inc()
-        except Exception as exc:
-            WORKOUT_CACHE_ERRORS_TOTAL.inc()
-            logger.warning("workout_cache_get_failed", key=key, error=str(exc))
-        return None
+    def _serialize_for_cache(self, payload: dict) -> dict:
+        data = dict(payload)
+        for field in ("scheduled_for", "completed_at", "started_at"):
+            value = data.get(field)
+            if isinstance(value, datetime):
+                data[field] = value.isoformat()
+        return data
+
+    async def _get_cached_workout(self, workout_id: int) -> dict | None:
+        return await self._cache.get(workout_detail_key(self.user_id, workout_id))
 
     async def _set_cached_workout(self, workout_id: int, payload: dict) -> None:
-        redis = await get_redis()
-        if not redis:
-            return
-        key = workout_detail_key(self.user_id, workout_id)
-        try:
-            await redis.set(key, json.dumps(payload), ex=WORKOUT_DETAIL_TTL_SECONDS)
-        except Exception as exc:
-            WORKOUT_CACHE_ERRORS_TOTAL.inc()
-            logger.warning("workout_cache_set_failed", key=key, error=str(exc))
+        await self._cache.set(
+            workout_detail_key(self.user_id, workout_id),
+            self._serialize_for_cache(payload),
+        )
 
-    async def _get_cached_workouts_list(self, status: str | None) -> Optional[List[dict]]:
-        redis = await get_redis()
-        if not redis:
-            return None
-        key = workout_list_key(self.user_id, status)
-        try:
-            cached_value = await redis.get(key)
-            if cached_value:
-                WORKOUT_CACHE_HITS_TOTAL.inc()
-                return json.loads(cached_value)
-            WORKOUT_CACHE_MISSES_TOTAL.inc()
-        except Exception as exc:
-            WORKOUT_CACHE_ERRORS_TOTAL.inc()
-            logger.warning("workout_list_cache_get_failed", key=key, error=str(exc))
-        return None
+    async def _get_cached_workouts_list(self, status: str | None) -> list[dict] | None:
+        return await self._cache.get(workout_list_key(self.user_id, status))
 
-    async def _set_cached_workouts_list(self, status: str | None, payload: List[dict]) -> None:
-        redis = await get_redis()
-        if not redis:
-            return
-        key = workout_list_key(self.user_id, status)
-        try:
-            await redis.set(key, json.dumps(payload), ex=WORKOUT_LIST_TTL_SECONDS)
-        except Exception as exc:
-            WORKOUT_CACHE_ERRORS_TOTAL.inc()
-            logger.warning("workout_list_cache_set_failed", key=key, error=str(exc))
+    async def _set_cached_workouts_list(self, status: str | None, payload: list[dict]) -> None:
+        serialized = [self._serialize_for_cache(p) for p in payload]
+        await self._cache.set(
+            workout_list_key(self.user_id, status),
+            serialized,
+            ttl=WORKOUT_LIST_TTL_SECONDS,
+        )
 
     def _convert_to_naive_utc(self, dt: datetime) -> datetime:
-        """Convert aware datetime to naive UTC datetime"""
         if dt.tzinfo is not None:
             dt = dt.astimezone(pytz.utc)
             return dt.replace(tzinfo=None)
         return dt
 
     async def create_workout(self, payload: WorkoutCreate, plan_workout_id: int = None) -> WorkoutResponse:
-        # Convert payload to dict and filter only valid ORM columns to avoid
-        # passing unexpected kwargs like 'day' to SQLAlchemy model constructor.
         raw_data = payload.model_dump()
         valid_fields = {f.name for f in models.Workout.__table__.columns}
         filtered_data = {k: v for k, v in raw_data.items() if k in valid_fields}
 
-        # Log any invalid/ignored fields for observability (e.g., 'day', 'exercises')
         ignored = set(raw_data.keys()) - valid_fields
         if ignored:
             logger.warning(f"Ignoring invalid fields in WorkoutCreate: {', '.join(sorted(ignored))}")
 
-        # Convert timezone-aware datetimes to naive UTC
         for field in ["scheduled_for", "completed_at", "started_at"]:
             if field in filtered_data and filtered_data[field] is not None:
                 filtered_data[field] = self._convert_to_naive_utc(filtered_data[field])
 
-        # 'plan_workout_id' is not a column on Workout; ignore if provided
         if plan_workout_id is not None:
             logger.warning("'plan_workout_id' argument is ignored: column does not exist on models.Workout")
 
@@ -141,6 +121,8 @@ class WorkoutService:
         self.db.add(item)
         await self.db.commit()
         await self.db.refresh(item)
+
+        await invalidate_workout_cache(self.user_id)
 
         try:
             WORKOUTS_CREATED_TOTAL.labels(source="manual").inc()
@@ -224,11 +206,10 @@ class WorkoutService:
         self,
         skip: int = 0,
         limit: int = 100,
-        type: Optional[str] = None,
-        status: Optional[str] = None,
-        applied_plan_id: Optional[int] = None,
+        type: str | None = None,
+        status: str | None = None,
+        applied_plan_id: int | None = None,
     ) -> list[WorkoutListResponse]:
-        # Only use cache if no filters other than type are applied
         use_cache = (applied_plan_id is None) and (status is None)
 
         if use_cache:
@@ -247,7 +228,6 @@ class WorkoutService:
         if applied_plan_id is not None:
             query = query.where(models.Workout.applied_plan_id == applied_plan_id)
 
-        # Apply sorting: completed workouts usually sort by completed_at desc, others by scheduled_for
         if status == "completed":
             query = query.order_by(models.Workout.completed_at.desc())
         else:
@@ -259,7 +239,6 @@ class WorkoutService:
 
         workout_dicts = []
         for workout in workouts:
-            # Convert to dict to avoid DetachedInstanceError
             workout_dict = {
                 "id": workout.id,
                 "name": workout.name,
@@ -278,7 +257,6 @@ class WorkoutService:
         return [WorkoutListResponse.model_validate(w) for w in workout_dicts]
 
     async def _recalculate_plan_order(self, applied_plan_id: int) -> None:
-        # Fetch all workouts for the plan
         result = await self.db.execute(
             select(models.Workout)
             .where(models.Workout.applied_plan_id == applied_plan_id)
@@ -286,13 +264,9 @@ class WorkoutService:
         )
         workouts = result.scalars().all()
 
-        # Sort by scheduled_for.
-        # If scheduled_for is missing, put at the end (datetime.max)
-        # Use current plan_order_index as tie-breaker to maintain stability
         def sort_key(w):
             dt = w.scheduled_for
             if dt is None:
-                # Use a far future date for unscheduled workouts so they go to the end
                 dt = datetime.max.replace(tzinfo=None)
             elif dt.tzinfo is not None:
                 dt = dt.replace(tzinfo=None)
@@ -300,13 +274,11 @@ class WorkoutService:
 
         workouts.sort(key=sort_key)
 
-        # Update indices
         for idx, workout in enumerate(workouts):
             if workout.plan_order_index != idx:
                 workout.plan_order_index = idx
 
     async def update_workout(self, workout_id: int, payload: WorkoutUpdate) -> WorkoutResponse:
-        # Fetch the ORM model directly (not the Pydantic response)
         result = await self.db.execute(
             select(models.Workout)
             .options(selectinload(models.Workout.exercises).selectinload(models.WorkoutExercise.sets))
@@ -319,12 +291,10 @@ class WorkoutService:
 
         original_scheduled_for = item.scheduled_for
 
-        # Update attributes on the ORM model
         data = payload.model_dump(exclude_unset=True)
         for k, v in data.items():
             setattr(item, k, v)
 
-        # If scheduled_for changed and this is part of a plan, reorder the plan
         if (
             item.applied_plan_id is not None
             and "scheduled_for" in data
@@ -342,7 +312,6 @@ class WorkoutService:
         )
         item = result.scalars().first()
 
-        # Convert ORM model to Pydantic response
         workout_dict = {
             "id": item.id,
             "name": item.name,
@@ -383,7 +352,6 @@ class WorkoutService:
         return WorkoutResponse.model_validate(workout_dict)
 
     async def delete_workout(self, workout_id: int) -> None:
-        # Fetch the ORM model directly for deletion
         result = await self.db.execute(
             select(models.Workout)
             .filter(models.Workout.id == workout_id)
@@ -399,17 +367,14 @@ class WorkoutService:
     async def create_workouts_batch(self, workouts_data: list[WorkoutCreate]) -> list[dict]:
         created_workouts = []
         for data in workouts_data:
-            # Convert to dict and filter only valid fields
             item_data = data.model_dump()
             valid_fields = {f.name for f in models.Workout.__table__.columns}
             filtered_data = {k: v for k, v in item_data.items() if k in valid_fields}
 
-            # Log any invalid fields
             invalid_fields = set(item_data.keys()) - valid_fields
             if invalid_fields:
                 logger.warning(f"Ignoring invalid fields: {', '.join(invalid_fields)}")
 
-            # Convert timezone-aware datetimes to naive UTC
             for field in ["scheduled_for", "completed_at", "started_at"]:
                 if field in filtered_data and filtered_data[field] is not None:
                     filtered_data[field] = self._convert_to_naive_utc(filtered_data[field])
@@ -419,7 +384,6 @@ class WorkoutService:
             self.db.add(workout)
             await self.db.flush()
 
-            # Return consistent dictionary format
             workout_dict = {
                 "id": workout.id,
                 "name": workout.name,
@@ -446,7 +410,6 @@ class WorkoutService:
         request: WorkoutGenerationRequest,
         microcycle_id: int = None,
     ) -> models.Workout:
-        """Create a workout from generation item"""
         scheduled_for = workout_item.scheduled_for
         if isinstance(scheduled_for, str):
             scheduled_for = datetime.fromisoformat(scheduled_for)
@@ -461,12 +424,10 @@ class WorkoutService:
         )
 
     async def _create_workout_exercise(self, workout: models.Workout, exercise: dict) -> models.WorkoutExercise:
-        """Create workout exercise from exercise data"""
         exercise_id = exercise.get("exercise_id") if isinstance(exercise, dict) else exercise.exercise_id
         return models.WorkoutExercise(workout_id=workout.id, exercise_id=exercise_id)
 
     async def _create_workout_set(self, workout_exercise: models.WorkoutExercise, set_data: dict) -> models.WorkoutSet:
-        """Create workout set from set data"""
         intensity = set_data.get("intensity") if isinstance(set_data, dict) else set_data.intensity
         effort = set_data.get("effort") if isinstance(set_data, dict) else set_data.effort
         volume = set_data.get("volume") if isinstance(set_data, dict) else set_data.volume
@@ -490,25 +451,21 @@ class WorkoutService:
             self.user_id,
         )
 
-        # Allow generating additional workouts for an existing applied_plan_id (no early idempotent return)
-
         try:
-            # Pre-fetch user-max ids per exercise to enable weight computation
             calculator = WorkoutCalculator()
             all_exercise_ids: set[int] = set()
             for w in request.workouts:
                 for ex in w.exercises:
                     all_exercise_ids.add(int(ex.exercise_id))
             user_max_list = await calculator._fetch_user_maxes(list(all_exercise_ids))
-            # Build maps: exercise_id -> user_max_id
+
             user_max_by_ex: dict[int, dict] = {}
             for um in user_max_list or []:
                 try:
                     user_max_by_ex[int(um.get("exercise_id"))] = um
-                except Exception:
+                except (TypeError, ValueError):
                     continue
             for idx, workout_item in enumerate(request.workouts):
-                # Create workout
                 scheduled_for = workout_item.scheduled_for
                 if isinstance(scheduled_for, str):
                     scheduled_for = datetime.fromisoformat(scheduled_for)
@@ -532,7 +489,6 @@ class WorkoutService:
                 await self.db.flush()
                 logger.debug(f"[WORKOUT_SERVICE] Created workout id={workout.id}")
 
-                # Create exercises and sets
                 for ex_idx, exercise in enumerate(workout_item.exercises):
                     workout_exercise = models.WorkoutExercise(
                         workout_id=workout.id,
@@ -553,7 +509,6 @@ class WorkoutService:
                         volume = set_data.volume
                         working_weight = set_data.working_weight
 
-                        # Determine if we need to call RPE compute:
                         need_core_fill = sum(v is not None for v in (intensity, effort, volume)) >= 2 and (
                             intensity is None or effort is None or volume is None
                         )
@@ -580,10 +535,10 @@ class WorkoutService:
                                     ww = compute_res.get("weight")
                                     if ww is not None:
                                         working_weight = ww
-                            except Exception as e:
+                            except Exception:
                                 logger.warning(
-                                    "[WORKOUT_SERVICE] RPE compute failed, proceeding with provided values: %s",
-                                    e,
+                                    "[WORKOUT_SERVICE] RPE compute failed, proceeding with provided values",
+                                    exc_info=True,
                                 )
 
                         workout_set = models.WorkoutSet(
@@ -604,7 +559,11 @@ class WorkoutService:
             )
             await self.db.commit()
             logger.info(
-                "[WORKOUT_SERVICE] Successfully committed workout_ids: %s",
+                "[WORKOUT_SERVICE] Successfully committed %s workouts",
+                len(workout_ids),
+            )
+            logger.debug(
+                "[WORKOUT_SERVICE] Committed workout_ids: %s",
                 workout_ids,
             )
 
@@ -621,7 +580,7 @@ class WorkoutService:
                 e,
             )
             await self.db.rollback()
-            # If we hit a duplicate constraint, fetch existing workouts and return them
+
             if request.applied_plan_id:
                 logger.info(
                     "[WORKOUT_SERVICE] Fetching existing workouts for applied_plan_id=%s",
@@ -639,30 +598,31 @@ class WorkoutService:
                 if existing_workouts:
                     existing_ids = [w.id for w in existing_workouts]
                     logger.info(
+                        "[WORKOUT_SERVICE] Returning %s existing workouts",
+                        len(existing_ids),
+                    )
+                    logger.debug(
                         "[WORKOUT_SERVICE] Returning existing workout_ids: %s",
                         existing_ids,
                     )
                     return existing_ids, 0, len(existing_ids)
             raise
-        except Exception as e:
-            logger.error(f"[WORKOUT_SERVICE] Error during workout generation: {e}")
+        except Exception:
+            logger.exception("[WORKOUT_SERVICE] Error during workout generation")
             await self.db.rollback()
             logger.error("[WORKOUT_SERVICE] Transaction rolled back")
             raise
 
     async def get_next_generated_workout(self) -> models.Workout:
-        """
-        Fetches the next generated workout (scheduled for the nearest future)
-        """
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
         result = await self.db.execute(
             select(models.Workout)
             .options(selectinload(models.Workout.exercises).selectinload(models.WorkoutExercise.sets))
             .where(models.Workout.user_id == self.user_id)
             .where(models.Workout.workout_type == "generated")
-            .where(models.Workout.status != "completed")  # Only include not completed
-            .where(models.Workout.scheduled_for > current_time)  # Only future workouts
-            .order_by(models.Workout.scheduled_for.asc())  # Order by time
+            .where(models.Workout.status != "completed")
+            .where(models.Workout.scheduled_for > current_time)
+            .order_by(models.Workout.scheduled_for.asc())
             .limit(1)
         )
         workout = result.scalars().first()
@@ -670,7 +630,6 @@ class WorkoutService:
             logger.info("No upcoming generated workouts found")
             raise HTTPException(status_code=404, detail="No upcoming generated workouts found")
 
-        # Convert to dict to avoid DetachedInstanceError
         workout_dict = {
             "id": workout.id,
             "name": workout.name,
@@ -686,17 +645,13 @@ class WorkoutService:
             "location": workout.location,
             "readiness_score": workout.readiness_score,
             "workout_type": workout.workout_type,
-            "exercises": [],  # We don't need exercises for this response
+            "exercises": [],
         }
         return schemas.workout.WorkoutResponse.model_validate(workout_dict)
 
     async def get_next_workout_in_plan(self, current_workout_id: int) -> models.Workout:
-        """
-        Get the next workout in the same plan after the current workout
-        """
         logger.info("Searching next workout for current_workout_id=%s", current_workout_id)
 
-        # Get current workout to know its plan and order index
         current_result = await self.db.execute(
             select(models.Workout)
             .filter(models.Workout.id == current_workout_id)
@@ -721,8 +676,9 @@ class WorkoutService:
             .where(models.Workout.user_id == self.user_id)
             .where(models.Workout.applied_plan_id == current_workout.applied_plan_id)
             .where(models.Workout.plan_order_index > current_workout.plan_order_index)
-            .where(or_(models.Workout.status != "completed", models.Workout.status is None))
-            .order_by(models.Workout.plan_order_index.asc())
+            .where(models.Workout.id > current_workout.id)
+            .where(or_(models.Workout.status != "completed", models.Workout.status.is_(None)))
+            .order_by(models.Workout.plan_order_index.asc(), models.Workout.id.desc())
             .limit(1)
         )
         next_workout = result.scalars().first()
@@ -741,7 +697,6 @@ class WorkoutService:
             next_workout.plan_order_index,
         )
 
-        # Convert to dict to avoid DetachedInstanceError
         workout_dict = {
             "id": next_workout.id,
             "name": next_workout.name,
@@ -778,9 +733,6 @@ class WorkoutService:
         return schemas.workout.WorkoutResponse.model_validate(workout_dict)
 
     async def get_first_generated_workout(self) -> models.Workout:
-        """
-        Fetches the first generated workout (with smallest id)
-        """
         result = await self.db.execute(
             select(models.Workout)
             .options(selectinload(models.Workout.exercises).selectinload(models.WorkoutExercise.sets))
@@ -793,7 +745,6 @@ class WorkoutService:
         if not workout:
             raise HTTPException(status_code=404, detail="No generated workouts found")
 
-        # Convert to dict to avoid DetachedInstanceError
         workout_dict = {
             "id": workout.id,
             "name": workout.name,
@@ -809,14 +760,11 @@ class WorkoutService:
             "location": workout.location,
             "readiness_score": workout.readiness_score,
             "workout_type": workout.workout_type,
-            "exercises": [],  # We don't need exercises for this response
+            "exercises": [],
         }
         return schemas.workout.WorkoutResponse.model_validate(workout_dict)
 
     async def get_workouts_by_microcycle_ids(self, microcycle_ids: list[int]) -> list[models.Workout]:
-        """
-        Fetches workouts associated with the given microcycle IDs.
-        """
         logger.debug("Fetching workouts for microcycle IDs: %s", microcycle_ids)
         if not microcycle_ids:
             return []
@@ -842,15 +790,6 @@ class WorkoutService:
         only_future: bool = True,
         baseline_date: datetime | None = None,
     ) -> dict:
-        """Shift plan_order_index and scheduled_for for workouts in a plan.
-
-        - Select workouts for this user and applied_plan_id with plan_order_index >= from_order_index
-          and not in exclude_ids.
-        - plan_order_index += delta_index for all selected.
-        - scheduled_for += delta_days for rows where scheduled_for is not null and
-          (not only_future or scheduled_for >= baseline_date).
-        Returns a summary with affected_count and details.
-        """
         try:
             exclude_ids = exclude_ids or []
             affected = 0
@@ -866,7 +805,7 @@ class WorkoutService:
                 only_future,
                 baseline_date,
             )
-            # Select target rows with deterministic order
+
             stmt = (
                 select(models.Workout)
                 .where(models.Workout.user_id == self.user_id)
@@ -877,7 +816,6 @@ class WorkoutService:
             if exclude_ids:
                 stmt = stmt.where(~models.Workout.id.in_(exclude_ids))
 
-            # Apply row-level locking to prevent concurrent shifts touching same rows
             result = await self.db.execute(stmt.with_for_update())
             items: list[models.Workout] = list(result.scalars().all())
 
@@ -885,34 +823,29 @@ class WorkoutService:
                 logger.info("[SHIFT_SCHEDULE] affected_count=0 (no rows matched)")
                 return {"affected_count": 0, "shifted_ids": []}
 
-            # Two-phase bump to avoid UNIQUE (user_id, applied_plan_id, plan_order_index) violation
             TEMP_OFFSET = 1_000_000
-            # Phase 1: bump indices far away
+
             for w in items:
                 if w.plan_order_index is None:
-                    # should not happen due to filter, but guard anyway
                     w.plan_order_index = int(from_order_index) + TEMP_OFFSET
                 else:
                     w.plan_order_index = int(w.plan_order_index) + TEMP_OFFSET
             await self.db.flush()
 
-            # Phase 2: place to final positions and adjust dates
             for w in items:
-                # final index
                 w.plan_order_index = int(w.plan_order_index) - TEMP_OFFSET + int(delta_index)
-                # shift date if allowed
+
                 if w.scheduled_for is not None:
                     if (not only_future) or (baseline_date is None) or (w.scheduled_for >= baseline_date):
                         w.scheduled_for = w.scheduled_for + timedelta(days=int(delta_days))
                 affected += 1
 
-            # Collect ids before commit to avoid attribute access on expired instances
             shifted_ids = [int(w.id) for w in items]
             await self.db.commit()
             logger.info("[SHIFT_SCHEDULE] affected_count=%s", affected)
             return {"affected_count": affected, "shifted_ids": shifted_ids}
-        except Exception as e:
-            logger.error("[SHIFT_SCHEDULE] error: %s", e)
+        except Exception:
+            logger.exception("[SHIFT_SCHEDULE] error")
             await self.db.rollback()
             raise
 
@@ -921,22 +854,10 @@ class WorkoutService:
         applied_plan_id: int,
         cmd: schemas.AppliedPlanScheduleShiftCommand,
     ) -> dict:
-        """Shift or restructure scheduled_for dates for workouts in an applied plan starting from a calendar date.
-
-        This supports:
-        - Shifting workouts by N days ("shift" mode)
-        - Restructuring gaps between workouts ("set_rest" mode)
-        - Inserting extra rest days via patterns (every N, at index, etc.)
-        - Filtering by date range (from_date, to_date)
-        - Filtering by status and future-only
-        """
-
         raw_mode = getattr(cmd, "mode", None)
         mode = "preview" if raw_mode == "preview" else "apply"
         dry_run = mode == "preview"
 
-        # Short-circuit only if it's a simple shift of 0 days (no-op) in apply mode
-        # AND no other structural changes are requested.
         if (
             cmd.action_type == "shift"
             and cmd.days == 0
@@ -952,12 +873,8 @@ class WorkoutService:
                 "mode": mode,
             }
 
-        from_dt = cmd.from_date
-        if isinstance(from_dt, datetime):
-            from_dt = self._convert_to_naive_utc(from_dt)
-            from_day_start = datetime(from_dt.year, from_dt.month, from_dt.day)
-        else:
-            from_day_start = from_dt
+        from_dt = self._convert_to_naive_utc(cmd.from_date)
+        from_day_start = datetime(from_dt.year, from_dt.month, from_dt.day)
 
         stmt = (
             select(models.Workout)
@@ -967,22 +884,17 @@ class WorkoutService:
             .where(models.Workout.scheduled_for >= from_day_start)
         )
 
-        # Apply to_date filter if provided
         if cmd.to_date:
-            to_dt = cmd.to_date
-            if isinstance(to_dt, datetime):
-                to_dt = self._convert_to_naive_utc(to_dt)
-                # Include the entire 'to_date' day (exclusive of next day start)
-                to_day_end = datetime(to_dt.year, to_dt.month, to_dt.day) + timedelta(days=1)
-                stmt = stmt.where(models.Workout.scheduled_for < to_day_end)
+            to_dt = self._convert_to_naive_utc(cmd.to_date)
+            to_day_end = datetime(to_dt.year, to_dt.month, to_dt.day) + timedelta(days=1)
+            stmt = stmt.where(models.Workout.scheduled_for < to_day_end)
 
-        # Skip completed workouts based on completed_at, and optionally filter by status
         stmt = stmt.where(models.Workout.completed_at.is_(None))
         if cmd.status_in:
             stmt = stmt.where(models.Workout.status.in_(cmd.status_in))
 
         if cmd.only_future:
-            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+            now_utc = datetime.now(UTC).replace(tzinfo=None)
             stmt = stmt.where(models.Workout.scheduled_for >= now_utc)
 
         stmt = stmt.order_by(models.Workout.scheduled_for.asc())
@@ -1007,14 +919,12 @@ class WorkoutService:
         shifted_ids: list[int] = []
         shifted_count = 0
 
-        # Capture original dates to calculate gaps correctly
         original_dates = [w.scheduled_for for w in workouts]
 
-        # 1. Handle the first workout
         current_date = original_dates[0]
         if cmd.days != 0:
             current_date += timedelta(days=int(cmd.days))
-            # Apply change if date is different
+
             if workouts[0].scheduled_for != current_date:
                 if not dry_run:
                     workouts[0].scheduled_for = current_date
@@ -1022,75 +932,32 @@ class WorkoutService:
                         shifted_ids.append(int(workouts[0].id))
                 shifted_count += 1
 
-        # 2. Iterate subsequent workouts
         for i in range(1, len(workouts)):
             w = workouts[i]
 
-            # A. Determine Base Gap
             if cmd.new_rest_days is not None:
-                # Fixed gap mode
                 base_gap = cmd.new_rest_days + 1
             else:
-                # Preserve original gap logic
                 orig_prev = original_dates[i - 1]
                 orig_curr = original_dates[i]
                 if orig_prev and orig_curr:
                     base_gap = (orig_curr - orig_prev).days
                 else:
-                    base_gap = 1  # Fallback
-                # Safety: gap should be at least 0 (same day) or 1
+                    base_gap = 1
+
                 if base_gap < 0:
                     base_gap = 0
 
-            # B. Determine Extra Gap (Pattern-based insertion)
             extra_days = 0
 
-            # Case 1: Every N workouts
-            # i is 0-based index in this list.
-            # "After every 4th workout" usually means after index 3, 7, etc.
-            # If the user says "add rest after every 4 workouts", it means
-            # between workout 4 and 5, there is extra rest.
-            # In 0-indexed list: workout 4 is index 3.
-            # So if (i) % N == 0?
-            # Example: N=2. After 2nd workout (index 1).
-            # We are currently at workout i (index 1). We are determining its date relative to i-1 (index 0).
-            # The gap is BETWEEN i-1 and i.
-            # If we want "rest after 1st workout", that's gap between index 0 and 1.
-            # So if (i) % N == 0?
-            # Let's trace: N=2. Add rest after 2nd workout.
-            # i=0 (1st workout).
-            # i=1 (2nd workout). Gap between 0 and 1. No extra rest yet.
-            # i=2 (3rd workout). Gap between 1 and 2. This is "after 2nd workout".
-            # So if (i) % N == 0 means:
-            # i=2, N=2 -> match. Correct.
-            # i=4, N=2 -> match. Correct (after 4th workout).
             if cmd.add_rest_every_n_workouts and (i % cmd.add_rest_every_n_workouts == 0):
                 extra_days += cmd.add_rest_days_amount
 
-            # Case 2: Specific indices
-            # "After workout #4" means gap between #4 and #5.
-            # In list, #4 is index 3. #5 is index 4.
-            # We are calculating date for index 4.
-            # So we check if (i-1) + 1 (1-based index of PREVIOUS workout) is in list?
-            # Or if user provided 0-based indices?
-            # Let's assume user thinks 1-based (workout #1, #2...).
-            # If user says "after #4", they mean gap after the 4th workout processed.
-            # i starts at 1.
-            # Previous workout was i-1 (index wise), which is the (i-1)+1 = i-th workout in the sequence.
-            # So if 'i' is in the list of "insert after X"?
-            # Let's define 'add_rest_at_indices' as "1-based index of the workout AFTER WHICH we insert rest".
-            # If i=4 (5th workout), we are calculating gap after 4th workout (i=3).
-            # So if we want to insert rest after 4th workout, we insert it when calculating date for 5th workout.
-            # So we check if (i) is in add_rest_at_indices?
-            # Example: add after #1. List=[1].
-            # i=1 (2nd workout). We want extra gap here.
-            # if 1 in [1] -> True. Correct.
             if cmd.add_rest_at_indices and i in cmd.add_rest_at_indices:
                 extra_days += cmd.add_rest_days_amount
 
             target_date = current_date + timedelta(days=base_gap + extra_days)
 
-            # Apply
             if w.scheduled_for != target_date:
                 if not dry_run:
                     w.scheduled_for = target_date
@@ -1127,8 +994,6 @@ class WorkoutService:
         applied_plan_id: int,
         cmd: schemas.AppliedPlanMassEditCommand,
     ) -> schemas.AppliedPlanMassEditResult:
-        """Apply mass edit actions to exercise instances/sets for an applied plan."""
-
         flt = cmd.filter
         actions = cmd.actions
 
@@ -1136,14 +1001,6 @@ class WorkoutService:
             workout_id: int,
             spec: schemas.AppliedAddExerciseInstance,
         ) -> dict | None:
-            """Create a new exercise instance in the given workout via exercises-service.
-
-            This is used by high-level mass edit actions that add new exercises
-            (actions.add_exercise_instances). It mirrors the public
-            /exercises/instances/workouts/{workout_id}/instances endpoint and
-            applies backend fallbacks when no sets are explicitly provided.
-            """
-
             base_url = os.getenv("EXERCISES_SERVICE_URL")
             if not base_url:
                 logger.warning("EXERCISES_SERVICE_URL is not set; cannot create exercise instance")
@@ -1153,17 +1010,15 @@ class WorkoutService:
             headers = {"X-User-Id": self.user_id}
 
             sets_payload: list[dict] = []
-            # 1) Direct mapping from spec.sets when present
+
             for s in spec.sets or []:
                 payload_set: dict[str, Any] = {}
 
-                # Reps are required by exercises-service SetService.normalize_sets.
-                # Use volume as the primary source for reps; if missing, fall back to 1.
                 reps_val: int | None = None
                 if s.volume is not None:
                     try:
                         reps_val = int(s.volume)
-                    except Exception:
+                    except (TypeError, ValueError):
                         reps_val = None
                 if reps_val is None:
                     reps_val = 1
@@ -1179,17 +1034,14 @@ class WorkoutService:
                 if payload_set:
                     sets_payload.append(payload_set)
 
-            # 2) Backend fallback: if no sets were provided by the LLM, try to
-            #    copy set patterns from the most recent existing instance of
-            #    this exercise (within the same applied plan).
             if not sets_payload:
                 try:
                     ex_def_id = int(spec.exercise_definition_id)
-                except Exception:
+                except (TypeError, ValueError):
                     ex_def_id = None
                 if ex_def_id is not None:
                     history_list = history_instances_by_ex_def.get(ex_def_id) or []
-                    # Walk from the latest seen instance backwards
+
                     for inst in reversed(history_list):
                         src_sets = inst.get("sets") or []
                         for s in src_sets:
@@ -1204,7 +1056,8 @@ class WorkoutService:
                                     v_int = int(volume_src)
                                     payload_set["volume"] = v_int
                                     payload_set["reps"] = v_int
-                                except Exception:
+                                except (TypeError, ValueError):
+                                    # keep payload_set without volume/reps if conversion fails
                                     pass
                             intensity_src = s.get("intensity")
                             if intensity_src is not None:
@@ -1224,7 +1077,6 @@ class WorkoutService:
                         if sets_payload:
                             break
 
-            # 3) Final safety: if still nothing, create one minimal visible set
             if not sets_payload:
                 sets_payload.append({"volume": 1, "reps": 1})
 
@@ -1237,24 +1089,16 @@ class WorkoutService:
             if spec.order is not None:
                 body["order"] = spec.order
 
-            try:
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    res = await client.post(url, headers=headers, json=body)
-                    if res.status_code in (200, 201):
-                        data = res.json()
-                        if isinstance(data, dict):
-                            return data
-                    logger.warning(
-                        "applied_mass_edit_create_instance_non_2xx",
-                        status_code=res.status_code,
-                        body=res.text,
-                        workout_id=workout_id,
-                    )
-            except Exception:
-                logger.exception(
-                    "applied_mass_edit_create_instance_failed",
+            async with ServiceClient(timeout=5.0) as client:
+                resp = await client.post(
+                    url,
+                    headers=headers,
+                    json=body,
+                    expected_status=(200, 201),
                     workout_id=workout_id,
                 )
+            if resp.success and isinstance(resp.data, dict):
+                return resp.data
             return None
 
         async def fetch_instances_for_workout(workout_id: int) -> list[dict]:
@@ -1265,25 +1109,9 @@ class WorkoutService:
             base_url = base_url.rstrip("/")
             url = f"{base_url}/exercises/instances/workouts/{workout_id}/instances"
             headers = {"X-User-Id": self.user_id}
-            try:
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    res = await client.get(url, headers=headers)
-                    if res.status_code == 200:
-                        data = res.json()
-                        if isinstance(data, list):
-                            return data
-                    logger.warning(
-                        "applied_mass_edit_instances_non_200",
-                        status_code=res.status_code,
-                        body=res.text,
-                        workout_id=workout_id,
-                    )
-            except Exception:
-                logger.exception(
-                    "applied_mass_edit_instances_failed",
-                    workout_id=workout_id,
-                )
-            return []
+            async with ServiceClient(timeout=5.0) as client:
+                data = await client.get_json(url, headers=headers, default=[], workout_id=workout_id)
+            return data if isinstance(data, list) else []
 
         async def replace_exercise_instance(inst: dict, new_ex_def_id: int, new_ex_name: str | None = None) -> bool:
             instance_id = inst.get("id")
@@ -1307,7 +1135,7 @@ class WorkoutService:
                     volume_val = payload_set.get("volume")
                     try:
                         reps_val = int(volume_val) if volume_val is not None else 1
-                    except Exception:
+                    except (TypeError, ValueError):
                         reps_val = 1
                     payload_set["reps"] = reps_val
                 payload_set["volume"] = payload_set.get("volume", reps_val)
@@ -1338,7 +1166,7 @@ class WorkoutService:
                         body=res.text,
                         instance_id=instance_id,
                     )
-            except Exception:
+            except httpx.HTTPError:
                 logger.exception(
                     "applied_mass_edit_replace_instance_failed",
                     instance_id=instance_id,
@@ -1367,7 +1195,7 @@ class WorkoutService:
                         instance_id=instance_id,
                         set_id=set_id,
                     )
-            except Exception:
+            except httpx.HTTPError:
                 logger.exception(
                     "applied_mass_edit_update_set_failed",
                     instance_id=instance_id,
@@ -1490,7 +1318,7 @@ class WorkoutService:
                     new_effort += actions.increase_effort_by
                 if actions.decrease_effort_by is not None:
                     new_effort -= actions.decrease_effort_by
-                # Clamp to [4,10] as per ExerciseSetUpdate constraints when effort is used
+
                 new_effort = max(4.0, min(10.0, new_effort))
                 if effort_val is None or abs(new_effort - (effort_val or 0.0)) > 1e-9:
                     payload["effort"] = new_effort
@@ -1498,10 +1326,8 @@ class WorkoutService:
 
             return payload
 
-        # Accumulate history of instances by exercise_definition_id as we scan workouts
         history_instances_by_ex_def: dict[int, list[dict]] = {}
 
-        # Select workouts in this applied plan for current user
         stmt = (
             select(models.Workout)
             .where(models.Workout.user_id == self.user_id)
@@ -1520,7 +1346,7 @@ class WorkoutService:
         if flt.scheduled_to is not None:
             stmt = stmt.where(models.Workout.scheduled_for <= flt.scheduled_to)
         if flt.only_future:
-            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+            now_utc = datetime.now(UTC).replace(tzinfo=None)
             stmt = stmt.where(
                 (models.Workout.scheduled_for == None) | (models.Workout.scheduled_for >= now_utc)  # noqa: E711
             )
@@ -1547,7 +1373,6 @@ class WorkoutService:
         for w in workouts:
             instances = await fetch_instances_for_workout(int(w.id))
 
-            # Update history for backend fallbacks (e.g., copying sets from previous workouts)
             for inst in instances:
                 if not isinstance(inst, dict):
                     continue
@@ -1594,7 +1419,6 @@ class WorkoutService:
                     workout_sets_matched += instance_sets_matched
                     workout_sets_modified += instance_sets_modified
 
-                # Exercise-level replacement (after evaluating set filters)
                 if actions.replace_exercise_definition_id_to is not None:
                     target_ids = flt.exercise_definition_ids or []
                     ex_def_id = inst.get("exercise_list_id")
@@ -1630,7 +1454,6 @@ class WorkoutService:
                             if cmd.mode == "apply":
                                 workout_sets_modified += replacement_sets
 
-            # Handle high-level actions that add new exercise instances to this workout
             added_sets_for_workout = 0
             added_instances_for_workout = 0
             if actions.add_exercise_instances:
@@ -1642,11 +1465,9 @@ class WorkoutService:
                             added_sets_for_workout += len(created_sets)
                             added_instances_for_workout += 1
                     else:
-                        # Preview mode: approximate the number of affected sets without mutating state
                         if spec.sets:
                             added_sets_for_workout += len(spec.sets)
                         else:
-                            # If no sets specified, assume at least one set will be created
                             added_sets_for_workout += 1
                         added_instances_for_workout += 1
 
@@ -1683,11 +1504,7 @@ class WorkoutService:
     async def get_plan_details_with_exercises(
         self,
         applied_plan_id: int,
-    ) -> List[schemas.workout.WorkoutPlanDetailItem]:
-        """
-        Fetch all workouts for an applied plan, including their exercise definition IDs.
-        This is optimized for analysis/reporting to avoid N+1 queries.
-        """
+    ) -> list[schemas.workout.WorkoutPlanDetailItem]:
         query = (
             select(models.Workout)
             .options(selectinload(models.Workout.exercises))

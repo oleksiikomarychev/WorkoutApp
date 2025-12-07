@@ -6,13 +6,13 @@ class Microcycle {
   final String name;
   final String? notes;
   final int orderIndex;
-  // Legacy schedule (backward compatibility)
+
   final Map<String, List<ExerciseScheduleItemDto>> schedule;
-  // New structure
+
   final List<PlanWorkout> planWorkouts;
   final int? daysCount;
   final double? normalizationValue;
-  final String? normalizationUnit; // 'kg' or '%'
+  final String? normalizationUnit;
 
   const Microcycle({
     required this.id,
@@ -184,7 +184,7 @@ class MicrocycleUpdateDto {
   final Map<String, List<ExerciseScheduleItemDto>>? schedule;
   final int? daysCount;
   final double? normalizationValue;
-  final String? normalizationUnit; // 'kg' or '%'
+  final String? normalizationUnit;
 
   const MicrocycleUpdateDto({
     this.name,

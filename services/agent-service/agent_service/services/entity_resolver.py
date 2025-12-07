@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 import structlog
@@ -12,27 +12,11 @@ from ..config import settings
 
 @dataclass
 class InlineReference:
-    """Lightweight representation of an inline entity reference in chat text.
-
-    This parser is intentionally simple and side-effect free: it does not call
-    other services, it only extracts *aliases* that the user wrote in a
-    message. Higher-level code can then decide how to map these aliases to
-    concrete IDs or filters.
-
-    Supported patterns (for now):
-    - /workout_6        -> kind="workout_order", index=6 (user-facing 1-based index)
-    - /workout6         -> same as above
-    - /plan_12          -> kind="calendar_plan", id=12
-    - /applied_plan_5   -> kind="applied_plan", id=5
-    - /applied_plan     -> kind="applied_plan", id=None (use context to resolve)
-    - /Benchpress       -> kind="exercise_name", name="Benchpress" (no digits)
-    """
-
     raw: str
     kind: str
-    name: Optional[str] = None
-    index: Optional[int] = None
-    id: Optional[int] = None
+    name: str | None = None
+    index: int | None = None
+    id: int | None = None
 
 
 _RE_WORKOUT = re.compile(r"/workout_?(?P<idx>\d+)")
@@ -41,13 +25,8 @@ _RE_APPLIED_PLAN_WITH_ID = re.compile(r"/applied_plan_?(?P<id>\d+)")
 _RE_APPLIED_PLAN_BARE = re.compile(r"/applied_plan(?![A-Za-z0-9_])")
 
 
-def parse_inline_references(text: str) -> List[InlineReference]:
-    """Extract inline references from arbitrary user text.
-
-    This is best-effort and tolerant to malformed input. It never raises.
-    """
-
-    refs: List[InlineReference] = []
+def parse_inline_references(text: str) -> list[InlineReference]:
+    refs: list[InlineReference] = []
     if not text:
         return refs
 
@@ -109,7 +88,7 @@ def parse_inline_references(text: str) -> List[InlineReference]:
             continue
         refs.append(InlineReference(raw=m.group(0), kind="exercise_name", name=name))
 
-    unique_refs: List[InlineReference] = []
+    unique_refs: list[InlineReference] = []
     seen = set()
     for r in refs:
         key = (r.raw, r.kind, r.name, r.index, r.id)
@@ -122,22 +101,15 @@ def parse_inline_references(text: str) -> List[InlineReference]:
 
 
 def build_inline_entities_snippet(
-    refs: List[InlineReference],
+    refs: list[InlineReference],
     *,
     selection_date: Any = None,
     active_applied_plan_id: Any = None,
 ) -> str:
-    """Build a short, LLM-oriented context snippet for inline references.
-
-    This snippet is designed to be concatenated into a higher-level prompt,
-    giving the model extra hints about how to interpret aliases like
-    `/workout_6` or `/Benchpress`.
-    """
-
     if not refs:
         return ""
 
-    lines: List[str] = ["Inline entity references detected in user message:"]
+    lines: list[str] = ["Inline entity references detected in user message:"]
 
     if active_applied_plan_id is not None:
         lines.append(f"- Active applied_plan_id (from context): {active_applied_plan_id}")
@@ -176,23 +148,17 @@ logger = structlog.get_logger(__name__)
 
 @dataclass
 class ResolvedReference:
-    """Second-layer resolution of an InlineReference.
-
-    For workouts in an applied plan we primarily care about plan_order_index.
-    For exercises we want exercise_definition_id from exercises-service.
-    """
-
     ref: InlineReference
-    exercise_definition_id: Optional[int] = None
-    calendar_plan_id: Optional[int] = None
-    applied_plan_id: Optional[int] = None
-    plan_order_index: Optional[int] = None  # zero-based for AppliedPlanExerciseFilter
-    exercise_name: Optional[str] = None
-    calendar_plan_name: Optional[str] = None
-    errors: List[str] = field(default_factory=list)
+    exercise_definition_id: int | None = None
+    calendar_plan_id: int | None = None
+    applied_plan_id: int | None = None
+    plan_order_index: int | None = None
+    exercise_name: str | None = None
+    calendar_plan_name: str | None = None
+    errors: list[str] = field(default_factory=list)
 
 
-async def _fetch_exercise_definitions_json() -> List[Dict[str, Any]]:
+async def _fetch_exercise_definitions_json() -> list[dict[str, Any]]:
     base_url = settings.exercises_service_url
     try:
         async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
@@ -202,12 +168,12 @@ async def _fetch_exercise_definitions_json() -> List[Dict[str, Any]]:
             data = resp.json()
             if isinstance(data, list):
                 return data
-    except Exception as exc:  # pragma: no cover - best-effort logging
-        logger.warning("failed_to_fetch_exercise_definitions", error=str(exc))
+    except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as exc:  # pragma: no cover
+        logger.warning("Failed to fetch exercise definitions", error=str(exc))
     return []
 
 
-async def _fetch_calendar_plan_name(plan_id: int) -> Optional[str]:
+async def _fetch_calendar_plan_name(plan_id: int) -> str | None:
     base_url = settings.plans_service_url
     try:
         async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
@@ -221,34 +187,26 @@ async def _fetch_calendar_plan_name(plan_id: int) -> Optional[str]:
                 name = data.get("name")
                 if isinstance(name, str) and name:
                     return name
-    except Exception as exc:  # pragma: no cover - best-effort logging
-        logger.warning("failed_to_fetch_calendar_plan_name", plan_id=plan_id, error=str(exc))
+    except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as exc:  # pragma: no cover
+        logger.warning("Failed to fetch calendar plan name", plan_id=plan_id, error=str(exc))
     return None
 
 
 async def resolve_inline_references_for_active_plan(
-    refs: List[InlineReference],
+    refs: list[InlineReference],
     *,
-    active_applied_plan_id: Optional[int] = None,
-) -> List[ResolvedReference]:
-    """Resolve inline references into ids and indices for an ACTIVE applied plan.
-
-    - /workout_6  -> plan_order_index=5 (zero-based), tied to active_applied_plan_id
-    - /Benchpress -> exercise_definition_id looked up in exercises-service
-    - /plan_12    -> calendar_plan_id=12 (+ optional name from plans-service)
-    - /applied_plan, /applied_plan_5 -> applied_plan_id
-    """
-
+    active_applied_plan_id: int | None = None,
+) -> list[ResolvedReference]:
     if not refs:
         return []
 
-    resolved: List[ResolvedReference] = []
+    resolved: list[ResolvedReference] = []
 
     needs_ex_defs = any(r.kind == "exercise_name" and r.name for r in refs)
-    exercise_defs: List[Dict[str, Any]] = []
+    exercise_defs: list[dict[str, Any]] = []
     if needs_ex_defs:
         exercise_defs = await _fetch_exercise_definitions_json()
-    name_to_def: Dict[str, Dict[str, Any]] = {}
+    name_to_def: dict[str, dict[str, Any]] = {}
     for item in exercise_defs:
         name = item.get("name")
         if isinstance(name, str) and name:
@@ -256,14 +214,12 @@ async def resolve_inline_references_for_active_plan(
             if key not in name_to_def:
                 name_to_def[key] = item
 
-    calendar_plan_name_cache: Dict[int, Optional[str]] = {}
+    calendar_plan_name_cache: dict[int, str | None] = {}
 
     for ref in refs:
         rr = ResolvedReference(ref=ref)
 
         if ref.kind == "workout_order" and ref.index is not None:
-            # User-facing index is 1-based (/workout_6 -> 6-я тренировка).
-            # AppliedPlanExerciseFilter.plan_order_indices is 0-based.
             idx = ref.index
             if idx > 0:
                 rr.plan_order_index = idx - 1
@@ -304,13 +260,11 @@ async def resolve_inline_references_for_active_plan(
 
 
 async def build_resolved_inline_entities_snippet(
-    refs: List[InlineReference],
+    refs: list[InlineReference],
     *,
     selection_date: Any = None,
     active_applied_plan_id: Any = None,
 ) -> str:
-    """Async variant that resolves refs and builds a richer LLM context snippet."""
-
     resolved = await resolve_inline_references_for_active_plan(
         refs,
         active_applied_plan_id=active_applied_plan_id,
@@ -318,7 +272,7 @@ async def build_resolved_inline_entities_snippet(
     if not resolved:
         return ""
 
-    lines: List[str] = ["Inline entity references detected in user message (resolved):"]
+    lines: list[str] = ["Inline entity references detected in user message (resolved):"]
 
     if active_applied_plan_id is not None:
         lines.append(f"- Active applied_plan_id (from context): {active_applied_plan_id}")
@@ -362,23 +316,16 @@ async def build_resolved_inline_entities_snippet(
 
 
 async def build_applied_mass_edit_filter_hints(
-    refs: List[InlineReference],
+    refs: list[InlineReference],
     *,
-    active_applied_plan_id: Optional[int] = None,
-) -> Dict[str, Any]:
-    """Produce ready-to-use filter hints for AppliedPlanMassEditCommand.
-
-    Returns a dict that may contain:
-    - plan_order_indices: List[int] (zero-based)
-    - exercise_definition_ids: List[int]
-    """
-
+    active_applied_plan_id: int | None = None,
+) -> dict[str, Any]:
     resolved = await resolve_inline_references_for_active_plan(
         refs,
         active_applied_plan_id=active_applied_plan_id,
     )
-    plan_order_indices: List[int] = []
-    exercise_definition_ids: List[int] = []
+    plan_order_indices: list[int] = []
+    exercise_definition_ids: list[int] = []
 
     for rr in resolved:
         if rr.plan_order_index is not None:
@@ -386,7 +333,7 @@ async def build_applied_mass_edit_filter_hints(
         if rr.exercise_definition_id is not None:
             exercise_definition_ids.append(rr.exercise_definition_id)
 
-    hints: Dict[str, Any] = {}
+    hints: dict[str, Any] = {}
     if plan_order_indices:
         hints["plan_order_indices"] = sorted(set(plan_order_indices))
     if exercise_definition_ids:

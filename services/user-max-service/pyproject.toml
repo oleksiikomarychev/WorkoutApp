@@ -19,6 +19,7 @@ dependencies = [
     "prometheus-fastapi-instrumentator>=6.1.0,<7.0.0",
     "prometheus-client>=0.16.0,<1.0.0",
     "sentry-sdk[fastapi]>=2.0.0,<3.0.0",
+    "backend-common @ file:///libs/backend-common",
 ]
 
 [project.optional-dependencies]

@@ -1,38 +1,37 @@
 class SetService:
     @staticmethod
     def normalize_sets(sets: list) -> list:
-        # Нормализует сеты для внутренней обработки.
         normalized = []
         for s in sets:
-            if "reps" not in s:
-                raise ValueError("Reps are required for each set")
             ns = s.copy()
-            ns["reps"] = int(ns["reps"])
+            # Accept either "reps" or "volume" as the rep count
+            if "reps" in ns:
+                ns["reps"] = int(ns["reps"])
+            elif "volume" in ns:
+                ns["reps"] = int(ns["volume"])
+            else:
+                raise ValueError("Reps are required for each set")
             normalized.append(ns)
         return normalized
 
     @staticmethod
     def normalize_sets_for_frontend(sets: list) -> list:
-        # Нормализует сеты для представления на фронтенде.
         normalized = []
         for s in sets:
             ns = s.copy()
-            # Backward compatibility: if effort is missing but rpe is present, mirror it
+
             try:
                 if (ns.get("effort") is None) and (ns.get("rpe") is not None):
                     ns["effort"] = ns.get("rpe")
                 if ns.get("effort") is not None and not ns.get("effort_type"):
                     ns["effort_type"] = "RPE"
             except Exception:
-                # best-effort only
                 pass
             normalized.append(ns)
         return normalized
 
     @staticmethod
     def ensure_set_ids(sets: list) -> list:
-        # Гарантирует наличие уникальных ID для каждого сета.
-        # Генерирует положительные временные ID вместо отрицательных
         max_id = 0
         for s in sets:
             if "id" in s and s["id"] is not None and isinstance(s["id"], int) and s["id"] > max_id:
@@ -47,7 +46,6 @@ class SetService:
 
     @staticmethod
     def update_set(existing_sets: list, set_id: int, update_data: dict) -> list:
-        # Обновляет конкретный сет в списке сетов.
         new_sets = []
         updated = False
         for s in existing_sets:
@@ -62,8 +60,5 @@ class SetService:
         return new_sets
 
     def prepare_sets(self, sets_data: list) -> list:
-        # Подготавливает сеты для сохранения:
-        # 1. Нормализует данные
-        # 2. Гарантирует наличие ID
         normalized = self.normalize_sets(sets_data)
         return self.ensure_set_ids(normalized)

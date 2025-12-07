@@ -3,7 +3,7 @@ from prometheus_client import Counter
 WORKOUTS_CREATED_TOTAL = Counter(
     "workouts_created_total",
     "Number of workouts created in workouts-service",
-    ["source"],  # manual | batch | generated
+    ["source"],
 )
 
 WORKOUT_SESSIONS_STARTED_TOTAL = Counter(

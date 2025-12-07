@@ -4,13 +4,13 @@ import 'package:workout_app/providers/chat_provider.dart';
 
 import 'mass_edit_tool_widget.dart';
 
-/// Tool widget to display results of an applied schedule shift operation
-/// (variant: "applied_schedule_shift").
-///
-/// This widget is intentionally simpler than MassEditToolWidget: the
-/// backend currently always performs a real shift (no preview/apply
-/// distinction), so we only show a summary and a generic "Скрыть" button
-/// from ToolResultCard.
+
+
+
+
+
+
+
 class ScheduleShiftToolWidget extends ConsumerWidget {
   const ScheduleShiftToolWidget({
     super.key,
@@ -34,7 +34,7 @@ class ScheduleShiftToolWidget extends ConsumerWidget {
     final actionType = (payload['action_type'] ?? summary['action_type'] ?? 'shift').toString();
     final fromDate = payload['from_date']?.toString();
 
-    // Optional extra scoping fields if backend ever sends them
+
     final toDate = payload['to_date']?.toString();
     final onlyFuture = payload['only_future'] == true;
     final statusIn = payload['status_in'];
@@ -42,7 +42,7 @@ class ScheduleShiftToolWidget extends ConsumerWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    // --- Header chips ---
+
     final headerChips = <Widget>[];
     if (workoutsShifted != null) {
       headerChips.add(
@@ -63,7 +63,7 @@ class ScheduleShiftToolWidget extends ConsumerWidget {
       );
     }
 
-    // --- Filter lines ---
+
     final filterLines = <String>[];
     if (fromDate != null && fromDate.isNotEmpty) {
       filterLines.add('Начиная с: $fromDate');

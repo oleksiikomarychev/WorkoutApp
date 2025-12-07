@@ -1,26 +1,25 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel
 
 
 class AthleteTrainingSummary(BaseModel):
     athlete_id: str
-    last_workout_at: Optional[datetime] = None
+    last_workout_at: datetime | None = None
     sessions_count: int
-    total_volume: Optional[float] = None
-    active_plan_id: Optional[int] = None
-    active_plan_name: Optional[str] = None
-    days_since_last_workout: Optional[int] = None
+    total_volume: float | None = None
+    active_plan_id: int | None = None
+    active_plan_name: str | None = None
+    days_since_last_workout: int | None = None
 
-    sessions_per_week: Optional[float] = None
-    plan_adherence: Optional[float] = None
-    avg_intensity: Optional[float] = None
-    avg_effort: Optional[float] = None
-    rpe_distribution: Optional[dict[str, float]] = None
-    segment: Optional[str] = None
+    sessions_per_week: float | None = None
+    plan_adherence: float | None = None
+    avg_intensity: float | None = None
+    avg_effort: float | None = None
+    rpe_distribution: dict[str, float] | None = None
+    segment: str | None = None
 
 
 class AthleteTrendPoint(BaseModel):
@@ -34,19 +33,19 @@ class AthleteDetailedAnalyticsResponse(BaseModel):
     generated_at: datetime
     weeks: int
     sessions_count: int
-    total_volume: Optional[float] = None
-    active_plan_id: Optional[int] = None
-    active_plan_name: Optional[str] = None
-    last_workout_at: Optional[datetime] = None
-    days_since_last_workout: Optional[int] = None
-    trend: List[AthleteTrendPoint]
-    sessions_per_week: Optional[float] = None
-    plan_adherence: Optional[float] = None
-    avg_intensity: Optional[float] = None
-    avg_effort: Optional[float] = None
-    rpe_distribution: Optional[dict[str, float]] = None
-    muscle_volume_by_group: Optional[dict[str, float]] = None
-    muscle_volume_by_muscle: Optional[dict[str, float]] = None
+    total_volume: float | None = None
+    active_plan_id: int | None = None
+    active_plan_name: str | None = None
+    last_workout_at: datetime | None = None
+    days_since_last_workout: int | None = None
+    trend: list[AthleteTrendPoint]
+    sessions_per_week: float | None = None
+    plan_adherence: float | None = None
+    avg_intensity: float | None = None
+    avg_effort: float | None = None
+    rpe_distribution: dict[str, float] | None = None
+    muscle_volume_by_group: dict[str, float] | None = None
+    muscle_volume_by_muscle: dict[str, float] | None = None
 
 
 class CoachAthletesAnalyticsResponse(BaseModel):
@@ -55,7 +54,7 @@ class CoachAthletesAnalyticsResponse(BaseModel):
     weeks: int
     total_athletes: int
     active_links: int
-    athletes: List[AthleteTrainingSummary]
+    athletes: list[AthleteTrainingSummary]
 
 
 class CoachSummaryAnalyticsResponse(BaseModel):

@@ -1,10 +1,6 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
 
-/// A service class for handling logging throughout the app.
-/// 
-/// This class provides a consistent way to log messages with different severity levels.
-/// It wraps the `logger` package and provides additional functionality.
 class LoggerService {
   final String _context;
 
@@ -56,14 +52,14 @@ class LoggerService {
     final buffer = StringBuffer();
     buffer.writeln('\n════════════════════════════════════════');
     buffer.writeln('⬆️ REQUEST: $method $url');
-    
+
     if (queryParameters != null && queryParameters.isNotEmpty) {
       buffer.writeln('Query Parameters:');
       queryParameters.forEach((key, value) {
         buffer.writeln('  $key: $value');
       });
     }
-    
+
     if (headers != null && headers.isNotEmpty) {
       buffer.writeln('Headers:');
       headers.forEach((key, value) {
@@ -74,12 +70,12 @@ class LoggerService {
         }
       });
     }
-    
+
     if (body != null) {
       buffer.writeln('Body:');
       buffer.writeln(body.toString());
     }
-    
+
     buffer.writeln('════════════════════════════════════════\n');
     log(buffer.toString(), level: 'info');
   }
@@ -95,16 +91,16 @@ class LoggerService {
     final buffer = StringBuffer();
     buffer.writeln('\n════════════════════════════════════════');
     buffer.writeln('⬇️ RESPONSE: $method $url');
-    
+
     if (statusCode != null) {
       final statusEmoji = statusCode >= 200 && statusCode < 300 ? '✅' : '❌';
       buffer.writeln('Status: $statusEmoji $statusCode');
     }
-    
+
     if (duration != null) {
       buffer.writeln('Duration: ${duration.inMilliseconds}ms');
     }
-    
+
     if (headers != null && headers.isNotEmpty) {
       buffer.writeln('Headers:');
       headers.forEach((key, value) {
@@ -115,7 +111,7 @@ class LoggerService {
         }
       });
     }
-    
+
     if (body != null) {
       buffer.writeln('Body:');
       if (body is Map || body is List) {
@@ -129,9 +125,9 @@ class LoggerService {
         buffer.writeln(body.toString());
       }
     }
-    
+
     buffer.writeln('════════════════════════════════════════\n');
-    
+
     if (statusCode != null && statusCode >= 400) {
       log(buffer.toString(), level: 'error');
     } else {
@@ -139,7 +135,6 @@ class LoggerService {
     }
   }
 
-  /// Log an error with stack trace.
   void error(
     String message, {
     dynamic error,
@@ -147,11 +142,11 @@ class LoggerService {
     bool showInRelease = false,
   }) {
     if (showInRelease) {
-      // In production, you might want to send the error to a crash reporting service
-      // like Firebase Crashlytics or Sentry
-      // FirebaseCrashlytics.instance.recordError(error, stackTrace, reason: message);
+
+
+
     }
-    
+
     log(message, level: 'error');
   }
 }

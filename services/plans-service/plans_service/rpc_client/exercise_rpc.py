@@ -13,7 +13,6 @@ router = APIRouter()
 
 
 async def create_exercise_instances_batch(instances: list) -> list:
-    """Create multiple exercise instances via exercises-service"""
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -23,15 +22,13 @@ async def create_exercise_instances_batch(instances: list) -> list:
             )
             response.raise_for_status()
             return response.json()
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=e.status_code, detail=f"Failed to create exercise instances: {str(e)}")
-    except Exception as e:
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=f"Failed to create exercise instances: {str(e)}")
+    except httpx.RequestError as e:
         raise HTTPException(status_code=500, detail=f"Failed to create exercise instances: {str(e)}")
 
 
 @router.get("/list/{exercise_id}")
 async def get_exercise_details(exercise_id: int):
-    try:
-        return {"id": exercise_id, "name": "Bench Press", "muscle_group": "Chest"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch exercise details: {str(e)}")
+    # Stub endpoint - no exception expected from static return
+    return {"id": exercise_id, "name": "Bench Press", "muscle_group": "Chest"}

@@ -1,9 +1,7 @@
-"""Celery tasks for mass-edit operations."""
-
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict
+from typing import Any
 
 from celery import shared_task
 from celery.utils.log import get_task_logger
@@ -41,9 +39,7 @@ def _normalize_mode(mode: str | None) -> str:
     queue=TOOLS_TASK_QUEUE,
     max_retries=2,
 )
-def execute_mass_edit_task(self, *, plan_id: int, user_id: str, mode: str, prompt: str) -> Dict[str, Any]:
-    """Generate a mass-edit command via LLM and apply it to a plan."""
-
+def execute_mass_edit_task(self, *, plan_id: int, user_id: str, mode: str, prompt: str) -> dict[str, Any]:
     normalized_mode = _normalize_mode(mode)
     try:
         command = _run_async(generate_mass_edit_command(prompt, normalized_mode))
@@ -73,9 +69,7 @@ def execute_mass_edit_agent_task(
     user_id: str,
     mode: str,
     prompt: str,
-) -> Dict[str, Any]:
-    """Execute the tool-driven mass edit flow used by chat/WebSocket commands."""
-
+) -> dict[str, Any]:
     normalized_mode = _normalize_mode(mode)
     tool = create_plan_mass_edit_tool(user_id)
     arguments_prompt = build_plan_mass_edit_agent_prompt(plan_id, normalized_mode, prompt)
@@ -125,13 +119,11 @@ def execute_applied_mass_edit_task(
     user_id: str,
     mode: str,
     prompt: str,
-) -> Dict[str, Any]:
-    """Generate an applied-plan mass-edit command via LLM and apply it to an applied plan."""
-
+) -> dict[str, Any]:
     normalized_mode = _normalize_mode(mode)
     try:
         inline_refs = parse_inline_references(prompt)
-        filter_hints: Dict[str, Any] = {}
+        filter_hints: dict[str, Any] = {}
         if inline_refs:
             filter_hints = _run_async(
                 build_applied_mass_edit_filter_hints(
@@ -204,9 +196,7 @@ def execute_applied_schedule_shift_task(
     action_type: str = "shift",
     only_future: bool = False,
     status_in: list[str] | None = None,
-) -> Dict[str, Any]:
-    """Shift or restructure schedule of an applied plan."""
-
+) -> dict[str, Any]:
     try:
         summary = _run_async(
             shift_applied_plan_schedule(

@@ -1,10 +1,10 @@
-// GENERATED CODE - DO NOT MODIFY BY HAND
+
 
 part of 'exercise_set_dto.dart';
 
-// **************************************************************************
-// JsonSerializableGenerator
-// **************************************************************************
+
+
+
 
 _$ExerciseSetDtoImpl _$$ExerciseSetDtoImplFromJson(Map<String, dynamic> json) =>
     _$ExerciseSetDtoImpl(

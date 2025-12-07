@@ -1,7 +1,7 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import structlog
-from celery.result import AsyncResult
+from backend_common.celery_utils import build_task_status_response, enqueue_task
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -25,20 +25,23 @@ logger = structlog.get_logger(__name__)
 
 
 def _submit_task(task_fn, *, user_id: str, **kwargs: Any) -> TaskSubmissionResponse:
-    signature = task_fn.s(user_id=user_id, **kwargs)
-    async_result = signature.apply_async()
-    logger.info(
-        "plans_task_enqueued",
-        task_id=async_result.id,
-        task_name=task_fn.name,
-        user_id=user_id,
+    task_kwargs: dict[str, Any] = {"user_id": user_id}
+    task_kwargs.update(kwargs)
+
+    payload = enqueue_task(
+        task_fn,
+        logger=logger,
+        log_event="plans_task_enqueued",
+        task_kwargs=task_kwargs,
+        log_extra={
+            "user_id": user_id,
+        },
     )
-    return TaskSubmissionResponse(task_id=async_result.id, status=async_result.status)
+    return TaskSubmissionResponse(**payload)
 
 
-@router.get("/active", response_model=Optional[AppliedCalendarPlanResponse])
+@router.get("/active", response_model=AppliedCalendarPlanResponse | None)
 async def get_active_plan(db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id)):
-    """Получение активного плана пользователя"""
     try:
         service = AppliedCalendarPlanService(db, user_id)
         plan = await service.get_active_plan()
@@ -55,9 +58,9 @@ async def get_active_plan(db: Session = Depends(get_db), user_id: str = Depends(
 @router.get("/{applied_plan_id}/analytics")
 async def get_applied_plan_analytics(
     applied_plan_id: int,
-    from_date: Optional[str] = Query(None, alias="from"),
-    to_date: Optional[str] = Query(None, alias="to"),
-    group_by: Optional[str] = Query(None, regex="^(order|date)$"),
+    from_date: str | None = Query(None, alias="from"),
+    to_date: str | None = Query(None, alias="to"),
+    group_by: str | None = Query(None, regex="^(order|date)$"),
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -79,23 +82,17 @@ async def get_applied_plan_analytics(
         )
 
 
-@router.post("/{applied_plan_id}/apply-macros", response_model=Dict[str, Any])
+@router.post("/{applied_plan_id}/apply-macros", response_model=dict[str, Any])
 async def apply_plan_macros(
     applied_plan_id: int,
     index_offset: int = Query(0, description="Offset to apply to current_workout_index when evaluating macros"),
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Вычислить макросы и применить предложенные изменения к будущим тренировкам (батч).
-
-    На текущем этапе изменения применяются к инстансам упражнений в exercises-service путём
-    обновления целого инстанса (списка сетов), что безопаснее для согласованности.
-    """
     try:
         engine = MacroEngine(db, user_id)
         preview = await engine.run_for_applied_plan(applied_plan_id, anchor="current", index_offset=index_offset)
 
-        # Apply plan-level changes into the applied plan
         svc = AppliedCalendarPlanService(db, user_id)
         plan_changes_results: list[dict] = []
         for item in preview.get("preview") or []:
@@ -118,7 +115,6 @@ async def apply_plan_macros(
                         res = {"applied": False, "reason": "exception"}
                     plan_changes_results.append(res)
 
-        # Apply patches to exercise instances
         applier = MacroApplier(user_id=user_id)
         patch_result = await applier.apply(preview)
         return {
@@ -139,11 +135,6 @@ async def apply_plan_macros_async(
     index_offset: int = Query(0, description="Offset to apply to current_workout_index when evaluating macros"),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Поставить применение макросов в очередь Celery.
-
-    Существующий синхронный эндпойнт /apply-macros остаётся без изменений; этот вариант лишь
-    ставит задачу и возвращает идентификатор Celery-задачи.
-    """
     return _submit_task(
         apply_plan_macros_task,
         user_id=user_id,
@@ -152,11 +143,27 @@ async def apply_plan_macros_async(
     )
 
 
+@router.get("/{applied_plan_id}/flattened-workouts", response_model=list[dict[str, Any]])
+async def get_flattened_workouts(
+    applied_plan_id: int,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    try:
+        service = AppliedCalendarPlanService(db, user_id)
+        workouts = await service.get_flattened_plan_workouts(applied_plan_id)
+        return workouts
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch flattened workouts: {str(e)}",
+        )
+
+
 @router.get("/{plan_id}", response_model=AppliedCalendarPlanResponse)
 async def get_applied_plan_details(
     plan_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id)
 ):
-    """Получение полной информации о примененном плане"""
     try:
         service = AppliedCalendarPlanService(db, user_id)
         plan = await service.get_applied_plan_by_id(plan_id)
@@ -170,12 +177,11 @@ async def get_applied_plan_details(
         )
 
 
-@router.get("/user", response_model=List[AppliedCalendarPlanSummaryResponse])
+@router.get("/user", response_model=list[AppliedCalendarPlanSummaryResponse])
 async def get_user_applied_plans(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Получение всех примененных планов пользователя"""
     try:
         service = AppliedCalendarPlanService(db, user_id)
         return await service.get_user_applied_plans()
@@ -186,14 +192,13 @@ async def get_user_applied_plans(
         )
 
 
-@router.post("/{applied_plan_id}/advance-index", response_model=Dict[str, Any])
+@router.post("/{applied_plan_id}/advance-index", response_model=dict[str, Any])
 async def advance_applied_plan_index(
     applied_plan_id: int,
     by: int = Query(1, description="How many positions to advance the current_workout_index by"),
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Advance current_workout_index for the applied plan."""
     try:
         svc = AppliedCalendarPlanService(db, user_id)
         new_index = await svc.advance_current_index(applied_plan_id, by=by)
@@ -210,7 +215,7 @@ async def advance_applied_plan_index(
 
 
 class CancelAppliedPlanRequest(BaseModel):
-    dropout_reason: Optional[str] = None
+    dropout_reason: str | None = None
 
 
 @router.post("/{applied_plan_id}/cancel", response_model=AppliedCalendarPlanResponse)
@@ -220,11 +225,6 @@ async def cancel_applied_plan(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Отменить (отказаться от) применённый план пользователя.
-
-    Помечает план как неактивный, выставляет статус cancelled (если он ещё не задан),
-    фиксирует время отмены и, при необходимости, причину отказа.
-    """
     try:
         svc = AppliedCalendarPlanService(db, user_id)
         plan = await svc.cancel_applied_plan(
@@ -233,7 +233,7 @@ async def cancel_applied_plan(
         )
         if not plan:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active plan found")
-        # Преобразуем ORM-объект в response-схему, используя уже существующий метод get_applied_plan_by_id
+
         full = await svc.get_applied_plan_by_id(applied_plan_id)
         if not full:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Applied plan not found")
@@ -247,7 +247,7 @@ async def cancel_applied_plan(
         )
 
 
-@router.get("", response_model=List[AppliedCalendarPlanResponse])
+@router.get("", response_model=list[AppliedCalendarPlanResponse])
 async def get_applied_plans(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
@@ -262,19 +262,16 @@ async def get_applied_plans(
         )
 
 
-@router.get("/active/workouts", response_model=List[Dict[str, Any]])
+@router.get("/active/workouts", response_model=list[dict[str, Any]])
 async def get_active_plan_workouts(db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id)):
-    """Get ordered workouts for user's active plan"""
     try:
         service = AppliedCalendarPlanService(db, user_id)
         active_plan = await service.get_active_plan()
         if not active_plan:
             raise HTTPException(status_code=404, detail="No active plan found")
 
-        # Get workouts in order
         workouts = []
         for workout_rel in sorted(active_plan.workouts, key=lambda w: w.order_index):
-            # In real implementation, fetch workout details from workout-service
             workouts.append(
                 {
                     "id": workout_rel.workout_id,
@@ -299,9 +296,7 @@ async def apply_plan(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Применение плана пользователем с настройками вычислений"""
     try:
-        # Convert comma-separated string to list of integers, skipping empty parts
         user_max_ids_list = [int(id.strip()) for id in user_max_ids.split(",") if id.strip()]
         if not user_max_ids_list:
             raise HTTPException(status_code=400, detail="At least one user_max_id is required")
@@ -335,11 +330,6 @@ async def apply_plan_async(
     user_max_ids: str = Query(..., description="Comma-separated list of user_max IDs"),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Асинхронное применение плана через Celery.
-
-    Существующий /apply/{plan_id} по-прежнему выполняет операцию синхронно; этот эндпойнт
-    только ставит задачу и возвращает task_id.
-    """
     user_max_ids_list = [int(id.strip()) for id in user_max_ids.split(",") if id.strip()]
     if not user_max_ids_list:
         raise HTTPException(status_code=400, detail="At least one user_max_id is required")
@@ -358,18 +348,13 @@ async def apply_plan_async(
     )
 
 
-@router.post("/{applied_plan_id}/run-macros", response_model=Dict[str, Any])
+@router.post("/{applied_plan_id}/run-macros", response_model=dict[str, Any])
 async def run_plan_macros(
     applied_plan_id: int,
     index_offset: int = Query(1, description="Offset to apply to current_workout_index when evaluating macros"),
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Запустить макросы для примененного плана и вернуть краткое резюме.
-
-    Фаза 1: dry‑run – движок только считает активные макросы и возвращает summary
-    без модификаций тренировок. В следующих шагах добавим реальные действия.
-    """
     try:
         engine = MacroEngine(db, user_id)
         result = await engine.run_for_applied_plan(applied_plan_id, anchor="current", index_offset=index_offset)
@@ -383,13 +368,8 @@ async def run_plan_macros(
 
 @router.get("/tasks/{task_id}", response_model=TaskStatusResponse)
 async def get_plans_task_status(task_id: str) -> TaskStatusResponse:
-    """Получить статус Celery-задачи plans-service."""
-
-    result = AsyncResult(task_id, app=celery_app)
-    response = TaskStatusResponse(task_id=task_id, status=result.status)
-    if result.failed():
-        response.error = str(result.result)
-    elif result.successful():
-        response.result = result.result
-    response.meta = result.info if isinstance(result.info, dict) else None
-    return response
+    return build_task_status_response(
+        task_id=task_id,
+        celery_app=celery_app,
+        response_model=TaskStatusResponse,
+    )

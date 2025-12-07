@@ -49,7 +49,7 @@ class CustomBottomNavBar extends StatelessWidget {
     final mediaQuery = MediaQuery.of(context);
     final bottomPadding = mediaQuery.padding.bottom;
     const double outerHorizontalPadding = 24.0;
-    const double islandOffset = 16.0; // расстояние "подъёма" островка от безопасного низа
+    const double islandOffset = 16.0;
     final Color panelColor = backgroundColor ?? theme.scaffoldBackgroundColor;
     const List<Color> gradientColors = [
       Color(0xFF0D47A1),
@@ -61,7 +61,7 @@ class CustomBottomNavBar extends StatelessWidget {
       color: Colors.transparent,
       elevation: 0,
       child: SizedBox(
-        // Общая высота навбара: высота островка + безопасная зона + отступ "подъёма"
+
         height: height + bottomPadding + islandOffset,
         child: SafeArea(
           top: false,
@@ -192,59 +192,11 @@ class CustomBottomNavBar extends StatelessWidget {
   }
 }
 
-// Example usage with updated navigation items:
-/*
-int _currentIndex = 0;
 
-CustomBottomNavBar(
-  currentIndex: _currentIndex,
-  onTap: (index) {
-    setState(() {
-      _currentIndex = index;
-      // Handle navigation based on index
-      switch (index) {
-        case 0: // Workouts
-          // Uses: ApiConfig.workoutsEndpoint
-          break;
-        case 1: // Exercises
-          // Uses: ApiConfig.exercisesEndpoint
-          break;
-        case 2: // User Maxes
-          // Uses: ApiConfig.userMaxesEndpoint
-          break;
-        case 3: // My Plans
-          // Uses: ApiConfig.calendarPlansEndpoint
-          break;
-      }
-    });
-  },
-  items: const [
-    BottomNavBarItem(
-      icon: Icons.fitness_center,
-      label: 'Тренировки',
-      activeLabel: 'Тренировки',
-    ),
-    BottomNavBarItem(
-      icon: Icons.list_alt,
-      label: 'Упражнения',
-      activeLabel: 'Упражнения',
-    ),
-    BottomNavBarItem(
-      icon: Icons.assessment,
-      label: 'Максимумы',
-      activeLabel: 'Максимумы',
-    ),
-    BottomNavBarItem(
-      icon: Icons.assignment_turned_in,
-      label: 'Мои планы',
-      activeLabel: 'Мои планы',
-    ),
-  ],
-)
-*/
 
-// API Endpoints used in navigation:
-// - Workouts: ApiConfig.workoutsEndpoint
-// - Exercises: ApiConfig.exercisesEndpoint
-// - User Maxes: ApiConfig.userMaxesEndpoint
-// - My Plans: ApiConfig.calendarPlansEndpoint
+
+
+
+
+
+

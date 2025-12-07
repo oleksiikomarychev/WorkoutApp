@@ -81,14 +81,14 @@ class _ProgressionDetailScreenState extends State<ProgressionDetailScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // Title
+
                                   Text(
                                     template.name,
                                     style: Theme.of(context).textTheme.headlineMedium,
                                   ),
                                   const SizedBox(height: 16),
 
-                                  // Description
+
                                   if (template.description != null && template.description!.isNotEmpty)
                                     Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -106,8 +106,8 @@ class _ProgressionDetailScreenState extends State<ProgressionDetailScreen> {
                                       ],
                                     ),
 
-                                  // Exercise
-                                  // Parameters
+
+
                                   Text(
                                     'Параметры:',
                                     style: Theme.of(context).textTheme.titleMedium,

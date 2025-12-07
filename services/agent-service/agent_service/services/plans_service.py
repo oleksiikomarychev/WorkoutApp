@@ -9,8 +9,6 @@ logger = logging.getLogger(__name__)
 
 
 def _to_calendar_plan_create_payload(plan: TrainingPlan) -> dict:
-    """Convert agent-service TrainingPlan to plans-service CalendarPlanCreate payload."""
-    # Index for quick lookup
     micro_by_meso = {}
     for micro in plan.microcycles:
         micro_by_meso.setdefault(micro.mesocycle_id, []).append(micro)
@@ -27,9 +25,8 @@ def _to_calendar_plan_create_payload(plan: TrainingPlan) -> dict:
     for s in plan.sets:
         sets_by_ex.setdefault(s.plan_exercise_id, []).append(s)
 
-    # Build nested payload
     mesocycles_payload = []
-    # Preserve order by mesocycle.order_index if available
+
     meso_sorted = sorted(plan.mesocycles, key=lambda m: m.order_index)
     for meso in meso_sorted:
         micro_payload = []
@@ -86,7 +83,6 @@ def _to_calendar_plan_create_payload(plan: TrainingPlan) -> dict:
 
 
 async def save_plan_to_plans_service(plan: TrainingPlan, user_id: str):
-    """Отправляем план в plans-service (create calendar plan)."""
     try:
         payload = _to_calendar_plan_create_payload(plan)
         headers = {"X-User-Id": user_id}

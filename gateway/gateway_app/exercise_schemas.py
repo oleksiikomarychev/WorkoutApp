@@ -1,39 +1,37 @@
-from typing import List, Optional
-
 from pydantic import BaseModel
 
 
 class ExerciseSetCreate(BaseModel):
-    weight: Optional[float] = None
-    volume: Optional[float] = None
-    intensity: Optional[float] = None
-    effort_type: Optional[str] = None
-    effort: Optional[float] = None
-    reps: Optional[int] = None
+    weight: float | None = None
+    volume: float | None = None
+    intensity: float | None = None
+    effort_type: str | None = None
+    effort: float | None = None
+    reps: int | None = None
 
 
 class ExerciseSet(BaseModel):
     id: int
-    weight: Optional[float] = None
-    volume: Optional[float] = None
-    intensity: Optional[float] = None
-    effort_type: Optional[str] = None
-    effort: Optional[float] = None
-    reps: Optional[int] = None
+    weight: float | None = None
+    volume: float | None = None
+    intensity: float | None = None
+    effort_type: str | None = None
+    effort: float | None = None
+    reps: int | None = None
 
 
 class ExerciseInstanceCreate(BaseModel):
     exercise_list_id: int
-    sets: List[ExerciseSetCreate] = []
-    notes: Optional[str] = None
-    order: Optional[int] = None
+    sets: list[ExerciseSetCreate] = []
+    notes: str | None = None
+    order: int | None = None
 
 
 class ExerciseInstanceResponse(BaseModel):
     id: int
     exercise_list_id: int
-    sets: List[ExerciseSet] = []
-    notes: Optional[str] = None
-    order: Optional[int] = None
+    sets: list[ExerciseSet] = []
+    notes: str | None = None
+    order: int | None = None
     workout_id: int
-    user_max_id: Optional[int] = None
+    user_max_id: int | None = None

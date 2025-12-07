@@ -8,7 +8,6 @@ logger = logging.getLogger(__name__)
 
 
 async def get_exercise_by_id(exercise_id: int):
-    """Fetch an exercise by ID from the exercises service"""
     base_url = os.getenv("EXERCISES_SERVICE_URL") or os.getenv("GATEWAY_URL")
     if not base_url:
         logger.error("EXERCISES_SERVICE_URL or GATEWAY_URL must be set")
@@ -36,7 +35,7 @@ class PlansServiceRPC:
         if not base_url:
             logger.error("PLANS_SERVICE_URL or GATEWAY_URL must be set")
             raise HTTPException(status_code=503, detail="Plans service URL not configured")
-        # Ensure base_url has a protocol
+
         if not base_url.startswith("http"):
             base_url = "https://" + base_url
         self.base_url = base_url
@@ -71,7 +70,6 @@ class PlansServiceRPC:
             raise HTTPException(status_code=503, detail=f"Plans service unreachable: {str(e)}")
 
     async def get_params_workout(self, params_workout_id: int):
-        """Fetch a ParamsWorkout by ID"""
         response = await self.call_rpc("get_params_workout", {"params_workout_id": params_workout_id})
         return response
 
@@ -79,7 +77,6 @@ class PlansServiceRPC:
 class RpeServiceRPC:
     def __init__(self, base_url: str = ""):
         if not base_url:
-            # default to RPE service; we may override to gateway in compute() when auth is present
             base_url = os.getenv("RPE_SERVICE_URL") or os.getenv("GATEWAY_URL")
         if not base_url:
             logger.error("RPE_SERVICE_URL or GATEWAY_URL must be set")
@@ -111,7 +108,6 @@ class RpeServiceRPC:
             "rounding_mode": rounding_mode,
         }
         try:
-            # If Authorization header is present, prefer routing through gateway to validate user token
             target_base = self.base_url
             if headers and headers.get("Authorization"):
                 gw = os.getenv("GATEWAY_URL")
@@ -119,13 +115,13 @@ class RpeServiceRPC:
                     if not gw.startswith("http"):
                         gw = "https://" + gw
                     target_base = gw.rstrip("/")
-            # Ensure Authorization header exists (rpe-service enforces auth via dependency)
+
             send_headers = dict(headers or {})
             if not send_headers.get("Authorization"):
                 svc_token = os.getenv("SERVICE_TOKEN") or os.getenv("RPE_SERVICE_TOKEN")
                 if svc_token:
                     send_headers["Authorization"] = f"Bearer {svc_token}"
-            # Add X-User-Id when available (rpe-service may require it)
+
             if user_id and not send_headers.get("X-User-Id"):
                 send_headers["X-User-Id"] = user_id
             async with httpx.AsyncClient() as client:

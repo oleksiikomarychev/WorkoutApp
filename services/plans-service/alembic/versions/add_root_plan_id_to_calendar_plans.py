@@ -8,7 +8,6 @@ Create Date: 2025-10-24 14:51:00.000000
 import sqlalchemy as sa
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "add_root_plan_id_to_calendar_pl"
 down_revision = "add_missing_cols_plan_exercises"
 branch_labels = None
@@ -24,7 +23,6 @@ def upgrade() -> None:
     conn = op.get_bind()
     conn.execute(sa.text("UPDATE calendar_plans SET root_plan_id = id WHERE root_plan_id IS NULL"))
 
-    # Enforce NOT NULL and add FK + index
     op.execute(
         """
         CREATE OR REPLACE FUNCTION set_calendar_plan_root()

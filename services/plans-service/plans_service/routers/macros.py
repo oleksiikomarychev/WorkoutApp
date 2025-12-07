@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from typing import List
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import delete, select
@@ -28,12 +27,12 @@ async def _require_plan(db: AsyncSession, plan_id: int, user_id: str) -> Calenda
     return plan
 
 
-@router.get("/", response_model=List[PlanMacroResponse])
+@router.get("/", response_model=list[PlanMacroResponse])
 async def list_macros(
     plan_id: int,
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
-) -> List[PlanMacroResponse]:
+) -> list[PlanMacroResponse]:
     await _require_plan(db, plan_id, user_id)
     stmt = (
         select(PlanMacro)
@@ -139,11 +138,8 @@ async def delete_macro(
     stmt = delete(PlanMacro).where(PlanMacro.id == macro_id, PlanMacro.calendar_plan_id == plan_id)
     await db.execute(stmt)
     await db.commit()
-    # No explicit rows-affected check to avoid leaking existence; 204 regardless
+
     return
-
-
-# --- helpers ---
 
 
 def _safe_parse_json(s: str | None):
@@ -152,7 +148,7 @@ def _safe_parse_json(s: str | None):
     try:
         v = json.loads(s)
         return v if isinstance(v, dict) else {}
-    except Exception:
+    except (json.JSONDecodeError, TypeError, ValueError):
         return {}
 
 
@@ -161,6 +157,5 @@ def _safe_dump_json(obj: dict) -> str:
         if hasattr(obj, "model_dump"):
             obj = obj.model_dump()
         return json.dumps(obj, ensure_ascii=False)
-    except Exception:
-        # store empty object on failure
+    except (TypeError, ValueError):
         return "{}"

@@ -1,4 +1,4 @@
-from . import models  # Import models to ensure they are registered
+from . import models
 
 __all__ = [
     "main",

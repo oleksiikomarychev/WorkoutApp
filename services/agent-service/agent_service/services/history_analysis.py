@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 import httpx
 import structlog
@@ -10,11 +10,7 @@ logger = structlog.get_logger(__name__)
 
 
 def analyze_completed_workouts_tool(user_id: str) -> ToolSpec:
-    """
-    Creates a tool that fetches completed workouts analytics from workouts-service.
-    """
-
-    async def handler(args: Dict[str, Any]) -> Dict[str, Any]:
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
         days = args.get("days", 30)
 
         base_url = settings.workouts_service_url.rstrip("/")
@@ -28,13 +24,12 @@ def analyze_completed_workouts_tool(user_id: str) -> ToolSpec:
                 resp = await client.get(url, params=params, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
-                # data has 'items': list of analytics items
+
                 items = data.get("items", [])
 
                 if not items:
                     return {"summary": f"No completed workouts found in the last {days} days."}
 
-                # Simple local aggregation for the LLM
                 total_workouts = len(items)
                 total_volume = sum(item["metrics"]["volume_sum"] for item in items)
                 avg_intensity = (
@@ -47,7 +42,7 @@ def analyze_completed_workouts_tool(user_id: str) -> ToolSpec:
                     "total_volume": total_volume,
                     "avg_intensity": avg_intensity,
                     "workouts_per_week": round(total_workouts / (days / 7), 2),
-                    "details": items,  # Pass raw items so LLM can see trends
+                    "details": items,
                 }
 
             except Exception as e:

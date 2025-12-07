@@ -17,7 +17,7 @@ class UserMax extends Equatable {
     required this.repMax,
   });
 
-  /// Creates a copy of this user max with the given fields replaced by the new values
+
   UserMax copyWith({
     int? id,
     String? name,
@@ -36,7 +36,7 @@ class UserMax extends Equatable {
     );
   }
 
-  /// Creates a UserMax from JSON data
+
   factory UserMax.fromJson(Map<String, dynamic> json) {
     return UserMax(
       id: (json['id'] as num?)?.toInt() ?? 0,
@@ -48,7 +48,7 @@ class UserMax extends Equatable {
     );
   }
 
-  /// Converts this UserMax to a JSON map
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -60,12 +60,12 @@ class UserMax extends Equatable {
     };
   }
 
-  /// Validates the user max data
+
   bool validate() {
-    return exerciseId > 0 && 
-           maxWeight > 0 && 
-           repMax > 0 && 
-           repMax <= 12; // Assuming 12 is the maximum rep max
+    return exerciseId > 0 &&
+           maxWeight > 0 &&
+           repMax > 0 &&
+           repMax <= 12;
   }
 
   @override

@@ -5,9 +5,9 @@ import 'package:workout_app/features/auth/sign_in_screen.dart';
 import 'package:workout_app/screens/home_screen_new.dart';
 import 'package:workout_app/features/auth/auth_me_loader.dart';
 
-/// AuthGate controls the main routing based on authentication state.
-/// If the user is authenticated, it shows the main app (HomeScreenNew).
-/// If not authenticated, it shows the SignInScreen.
+
+
+
 class AuthGate extends ConsumerWidget {
   const AuthGate({super.key});
 

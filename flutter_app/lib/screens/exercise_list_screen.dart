@@ -15,7 +15,7 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
   late Future<List<ExerciseDefinition>> _exercisesFuture;
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _equipmentController = TextEditingController();
-  // Muscles
+
   List<String> _muscleGroups = [];
   String? _selectedMuscleGroup;
   bool _loadingMuscles = false;
@@ -39,7 +39,7 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
       final groups = muscles.map((m) => m.group).toSet().toList()..sort();
       setState(() {
         _muscleGroups = groups.cast<String>();
-        // Keep previous selection if still valid
+
         if (_selectedMuscleGroup != null && !_muscleGroups.contains(_selectedMuscleGroup)) {
           _selectedMuscleGroup = null;
         }
@@ -189,7 +189,7 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  const SizedBox(width: 48), // To balance the BackButton
+                  const SizedBox(width: 48),
                 ],
               ),
             ),
@@ -230,7 +230,7 @@ class _ExerciseListScreenState extends State<ExerciseListScreen> {
                                   Text('Группа мышц: ${exercise.muscleGroup}'),
                                 if (exercise.equipment != null && exercise.equipment!.isNotEmpty)
                                   Text('Оборудование: ${exercise.equipment}'),
-                                // Removed weight display as it's not part of ExerciseList model
+
                               ],
                             ),
                             trailing: IconButton(

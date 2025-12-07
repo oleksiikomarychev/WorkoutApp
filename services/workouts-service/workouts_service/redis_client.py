@@ -1,8 +1,6 @@
-"""Redis client utilities for workouts-service."""
-
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 import structlog
 from redis.asyncio import Redis
@@ -11,11 +9,11 @@ from .config import get_settings
 
 logger = structlog.get_logger(__name__)
 
-redis_client: Optional[Redis] = None
+redis_client: Redis | None = None
 
-WORKOUT_DETAIL_TTL_SECONDS = 10 * 60  # 10 minutes for individual workouts
-WORKOUT_LIST_TTL_SECONDS = 5 * 60  # 5 minutes for workout lists per user
-SESSION_DETAIL_TTL_SECONDS = 5 * 60  # 5 minutes for session details
+WORKOUT_DETAIL_TTL_SECONDS = 10 * 60
+WORKOUT_LIST_TTL_SECONDS = 5 * 60
+SESSION_DETAIL_TTL_SECONDS = 5 * 60
 
 
 def workout_detail_key(user_id: str, workout_id: int) -> str:
@@ -56,12 +54,12 @@ async def init_redis() -> None:
             port=settings.WORKOUTS_REDIS_PORT,
             db=settings.WORKOUTS_REDIS_DB,
         )
-    except Exception as exc:
-        logger.error("workouts_redis_connection_failed", error=str(exc))
+    except Exception:
+        logger.error("Failed to connect to workouts redis", exc_info=True)
         redis_client = None
 
 
-async def get_redis() -> Optional[Redis]:
+async def get_redis() -> Redis | None:
     return redis_client
 
 
@@ -75,15 +73,15 @@ async def close_redis() -> None:
         await redis_client.close()
         await redis_client.connection_pool.disconnect()
         logger.info("workouts_redis_closed")
-    except Exception as exc:
-        logger.warning("workouts_redis_close_failed", error=str(exc))
+    except Exception:
+        logger.warning("Failed to close workouts redis connection", exc_info=True)
     finally:
         redis_client = None
 
 
 async def invalidate_workout_cache(
     user_id: str,
-    workout_ids: Optional[Iterable[int]] = None,
+    workout_ids: Iterable[int] | None = None,
     invalidate_lists: bool = True,
 ) -> None:
     if redis_client is None:
@@ -104,13 +102,13 @@ async def invalidate_workout_cache(
 
     try:
         await redis_client.delete(*keys)
-    except Exception as exc:
-        logger.warning("workouts_cache_invalidation_failed", keys=list(keys), error=str(exc))
+    except Exception:
+        logger.warning("Failed to invalidate workouts cache", keys=list(keys), exc_info=True)
 
 
 async def invalidate_session_cache(
     user_id: str,
-    session_ids: Optional[Iterable[int]] = None,
+    session_ids: Iterable[int] | None = None,
 ) -> None:
     if redis_client is None:
         return
@@ -124,5 +122,5 @@ async def invalidate_session_cache(
 
     try:
         await redis_client.delete(*keys)
-    except Exception as exc:
-        logger.warning("workouts_session_cache_invalidation_failed", keys=list(keys), error=str(exc))
+    except Exception:
+        logger.warning("Failed to invalidate session cache", keys=list(keys), exc_info=True)

@@ -1,5 +1,3 @@
-"""Celery application for agent-service."""
-
 from __future__ import annotations
 
 import os
@@ -31,8 +29,4 @@ celery_app.conf.update(
     result_expires=int(os.getenv("CELERY_RESULT_EXPIRES", "3600")),
 )
 
-# Autodiscover Celery tasks inside the agent_service package. This will pick up
-# agent_service.tasks and its submodules (plan_tasks, mass_edit_tasks, etc.),
-# registering tasks like "agent.applied_mass_edit.direct" so workers can
-# execute them.
 celery_app.autodiscover_tasks(["agent_service"])

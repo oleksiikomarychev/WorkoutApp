@@ -12,11 +12,11 @@ class TargetSelector extends ConsumerStatefulWidget {
 }
 
 class _TargetSelectorState extends ConsumerState<TargetSelector> {
-  // Mode: ids or tags
+
   String _mode = 'tags';
   final _exerciseIdsCtrl = TextEditingController();
 
-  // Tags
+
   final Set<String> _mt = {};
   final Set<String> _rg = {};
   final Set<String> _mg = {};
@@ -53,8 +53,8 @@ class _TargetSelectorState extends ConsumerState<TargetSelector> {
         fill(_eq, val['equipment']);
       }
     }
-    // Do not emit here to avoid setState during build; if needed, emit after first frame
-    // WidgetsBinding.instance.addPostFrameCallback((_) => _emit());
+
+
   }
 
   @override
@@ -78,7 +78,7 @@ class _TargetSelectorState extends ConsumerState<TargetSelector> {
       }
       return;
     }
-    // tags mode
+
     final value = <String, dynamic>{};
     if (_mt.isNotEmpty) value['movement_type'] = _mt.toList();
     if (_rg.isNotEmpty) value['region'] = _rg.toList();

@@ -3,7 +3,6 @@
 import sqlalchemy as sa
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "20251123_add_note_to_links"
 down_revision = "20251123_crm_restore_links"
 branch_labels = None

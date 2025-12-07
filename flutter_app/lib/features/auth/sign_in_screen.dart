@@ -4,8 +4,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-/// Sign-in screen using Firebase UI Auth for simplified authentication flow.
-/// Supports email/password authentication and Google Sign-In.
+
+
 class SignInScreen extends StatelessWidget {
   const SignInScreen({super.key});
 

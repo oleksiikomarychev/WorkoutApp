@@ -1,10 +1,10 @@
-// GENERATED CODE - DO NOT MODIFY BY HAND
+
 
 part of 'exercise_instance.dart';
 
-// **************************************************************************
-// JsonSerializableGenerator
-// **************************************************************************
+
+
+
 
 _$ExerciseInstanceImpl _$$ExerciseInstanceImplFromJson(
         Map<String, dynamic> json) =>

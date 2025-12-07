@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from celery import shared_task
 from celery.utils.log import get_task_logger
@@ -20,7 +20,7 @@ def _run_async(coro):
     return asyncio.run(coro)
 
 
-def _parse_baseline_date(value: Optional[str]) -> Optional[datetime]:
+def _parse_baseline_date(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
@@ -36,10 +36,10 @@ async def _shift_schedule_in_plan_async(
     from_order_index: int,
     delta_days: int,
     delta_index: int,
-    exclude_ids: Optional[List[int]] = None,
+    exclude_ids: list[int] | None = None,
     only_future: bool = True,
-    baseline_date: Optional[str] = None,
-) -> Dict[str, Any]:
+    baseline_date: str | None = None,
+) -> dict[str, Any]:
     async with AsyncSessionLocal() as db:
         plans_rpc = PlansServiceRPC()
         service = WorkoutService(db, plans_rpc, user_id=user_id)
@@ -70,10 +70,10 @@ def shift_schedule_in_plan_task(
     from_order_index: int,
     delta_days: int,
     delta_index: int,
-    exclude_ids: Optional[List[int]] = None,
+    exclude_ids: list[int] | None = None,
     only_future: bool = True,
-    baseline_date: Optional[str] = None,
-) -> Dict[str, Any]:
+    baseline_date: str | None = None,
+) -> dict[str, Any]:
     try:
         logger.info(
             "shift_schedule_in_plan_task_enqueued",
@@ -112,8 +112,8 @@ async def _applied_plan_mass_edit_async(
     *,
     user_id: str,
     applied_plan_id: int,
-    command: Dict[str, Any],
-) -> Dict[str, Any]:
+    command: dict[str, Any],
+) -> dict[str, Any]:
     async with AsyncSessionLocal() as db:
         plans_rpc = PlansServiceRPC()
         service = WorkoutService(db, plans_rpc, user_id=user_id)
@@ -133,8 +133,8 @@ def applied_plan_mass_edit_sets_task(
     *,
     user_id: str,
     applied_plan_id: int,
-    command: Dict[str, Any],
-) -> Dict[str, Any]:
+    command: dict[str, Any],
+) -> dict[str, Any]:
     try:
         logger.info(
             "applied_plan_mass_edit_task_enqueued",
@@ -166,20 +166,13 @@ async def _applied_plan_schedule_shift_async(
     from_date: str,
     days: int,
     only_future: bool = True,
-    status_in: Optional[List[str]] = None,
-) -> Dict[str, Any]:
-    """Async helper to shift applied-plan schedule from a given date.
-
-    This calls WorkoutService.shift_applied_plan_schedule_from_date using the
-    same logic as the HTTP endpoint, but in a Celery-friendly context.
-    """
-
+    status_in: list[str] | None = None,
+) -> dict[str, Any]:
     async with AsyncSessionLocal() as db:
         plans_rpc = PlansServiceRPC()
         service = WorkoutService(db, plans_rpc, user_id=user_id)
 
-        # Build command object compatible with AppliedPlanScheduleShiftCommand
-        command: Dict[str, Any] = {
+        command: dict[str, Any] = {
             "from_date": from_date,
             "days": days,
             "only_future": only_future,
@@ -204,8 +197,8 @@ def applied_plan_schedule_shift_task(
     from_date: str,
     days: int,
     only_future: bool = True,
-    status_in: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+    status_in: list[str] | None = None,
+) -> dict[str, Any]:
     try:
         logger.info(
             "applied_plan_schedule_shift_task_enqueued",

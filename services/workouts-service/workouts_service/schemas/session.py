@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -8,21 +8,21 @@ class WorkoutSessionBase(BaseModel):
     workout_id: int
     status: str
     started_at: datetime
-    finished_at: Optional[datetime] = None
+    finished_at: datetime | None = None
 
 
 class WorkoutSessionCreate(BaseModel):
-    started_at: Optional[datetime] = None
+    started_at: datetime | None = None
 
 
 class WorkoutSessionResponse(WorkoutSessionBase):
     id: int
-    duration_seconds: Optional[int] = None
-    rpe_session: Optional[float] = None
-    location: Optional[str] = None
-    readiness_score: Optional[int] = None
-    progress: Dict[str, Any] = Field(default_factory=dict)
-    macro_suggestion: Optional[Dict[str, Any]] = None
+    duration_seconds: int | None = None
+    rpe_session: float | None = None
+    location: str | None = None
+    readiness_score: int | None = None
+    progress: dict[str, Any] = Field(default_factory=dict)
+    macro_suggestion: dict[str, Any] | None = None
 
     class Config:
         from_attributes = True

@@ -1,5 +1,3 @@
-from typing import List
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +19,7 @@ from ..services.template_service import TemplateService
 router = APIRouter(prefix="/mesocycles")
 
 
-@router.get("/{plan_id}/mesocycles", response_model=List[MesocycleResponse])
+@router.get("/{plan_id}/mesocycles", response_model=list[MesocycleResponse])
 async def list_mesocycles(
     plan_id: int,
     db: Session = Depends(get_db),
@@ -77,7 +75,7 @@ async def get_mesocycle(
     return mesocycle
 
 
-@router.get("/{mesocycle_id}/microcycles", response_model=List[MicrocycleResponse])
+@router.get("/{mesocycle_id}/microcycles", response_model=list[MicrocycleResponse])
 async def list_microcycles(
     mesocycle_id: int,
     db: Session = Depends(get_db),
@@ -145,7 +143,6 @@ async def validate_microcycles(
 
     from ..models.calendar import CalendarPlan, Mesocycle
 
-    # Filter by user ownership through the join chain
     stmt = (
         select(Microcycle.id)
         .join(Microcycle.mesocycle)

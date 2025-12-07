@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from textwrap import dedent
-from typing import Dict, List
 
-CONVERSATION_STATE_PROMPTS: Dict[str, Dict[str, List[str] | str]] = {
+CONVERSATION_STATE_PROMPTS: dict[str, dict[str, list[str] | str]] = {
     "collect_goals": {
         "system": dedent(
             """
@@ -114,7 +113,7 @@ STATE_COMPLETION_PROMPT_TEMPLATE: str = dedent(
     Наконец, на новой строке выдай 'VERDICT: COMPLETE' или 'VERDICT: INCOMPLETE'.
     Если вердикт INCOMPLETE, добавь еще одну строку 'NEXT_QUESTION: <один уточняющий вопрос на русском языке>'
     без дополнительных пояснений.
-    
+
     Важное правило делегирования:
     - Если пользователь пишет, что готов доверить выбор какого-либо параметра ассистенту, считай, что
       соответствующее требование СЧИТАЕТСЯ ВЫПОЛНЕННЫМ.
@@ -137,7 +136,7 @@ def get_state_system_prompt(state_key: str) -> str:
     return str(CONVERSATION_STATE_PROMPTS[state_key]["system"])
 
 
-def get_state_requirements(state_key: str) -> List[str]:
+def get_state_requirements(state_key: str) -> list[str]:
     requirements = CONVERSATION_STATE_PROMPTS[state_key]["requirements"]
     return list(requirements) if isinstance(requirements, list) else [str(requirements)]
 

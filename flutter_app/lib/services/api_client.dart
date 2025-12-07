@@ -11,11 +11,11 @@ class ApiClient {
   final http.Client _httpClient;
   final Map<String, String> _defaultHeaders;
   final LoggerService _logger = LoggerService('ApiClient');
-  
+
   ApiClient({
     http.Client? httpClient,
     Map<String, String>? defaultHeaders,
-  }) : 
+  }) :
     _httpClient = httpClient ?? http.Client(),
     _defaultHeaders = {
       'Content-Type': 'application/json',
@@ -28,7 +28,7 @@ class ApiClient {
   Future<dynamic> patch(String endpoint, Map<String, dynamic> data, {Map<String, dynamic>? queryParams, String? context}) async {
     final url = ApiConfig.buildFullUrl(endpoint);
     final uri = Uri.parse(url).replace(queryParameters: queryParams);
-    
+
     _logRequest('PATCH', uri, body: data, context: context);
     try {
       final headers = {
@@ -40,7 +40,7 @@ class ApiClient {
         headers: headers,
         body: json.encode(data),
       ).timeout(const Duration(seconds: 10));
-      
+
       if (response.statusCode == 401) {
         try {
           await FirebaseAuth.instance.currentUser?.getIdToken(true);
@@ -80,7 +80,7 @@ class ApiClient {
         idToken = await user.getIdToken(forceRefresh);
       }
     } catch (e) {
-      // Non-fatal: proceed without token
+
     }
 
     return {
@@ -92,7 +92,7 @@ class ApiClient {
   Future<dynamic> get(String endpoint, {Map<String, dynamic>? queryParams, String? context}) async {
     final url = ApiConfig.buildFullUrl(endpoint);
     final uri = Uri.parse(url).replace(queryParameters: queryParams);
-    
+
     _logRequest('GET', uri, context: context);
     try {
       print('Making GET request to: ${uri.toString()}');
@@ -104,12 +104,12 @@ class ApiClient {
         uri,
         headers: headers,
       ).timeout(const Duration(seconds: 10));
-      
+
       print('Response status: ${response.statusCode}');
       print('Response body: ${response.body}');
-      
+
       if (response.statusCode == 401) {
-        // Retry once with forced token refresh
+
         try {
           await FirebaseAuth.instance.currentUser?.getIdToken(true);
           final retryHeaders = {
@@ -140,7 +140,7 @@ class ApiClient {
   Future<dynamic> post(String endpoint, dynamic data, {Map<String, dynamic>? queryParams, String? context}) async {
     final url = ApiConfig.buildFullUrl(endpoint);
     final uri = Uri.parse(url).replace(queryParameters: queryParams);
-    
+
     _logRequest('POST', uri, body: data, context: context);
     try {
       print('POST request to: ${uri.toString()}');
@@ -150,16 +150,16 @@ class ApiClient {
         ...await _getHeaders(),
       };
       print('Headers: $headers');
-      
+
       final response = await _httpClient.post(
         uri,
         headers: headers,
         body: json.encode(data),
       ).timeout(const Duration(seconds: 10));
-      
+
       print('Response status: ${response.statusCode}');
       print('Response body: ${response.body}');
-      
+
       if (response.statusCode == 401) {
         try {
           await FirebaseAuth.instance.currentUser?.getIdToken(true);
@@ -195,7 +195,7 @@ class ApiClient {
   Future<dynamic> put(String endpoint, Map<String, dynamic> data, {Map<String, dynamic>? queryParams, String? context}) async {
     final url = ApiConfig.buildFullUrl(endpoint);
     final uri = Uri.parse(url).replace(queryParameters: queryParams);
-    
+
     _logRequest('PUT', uri, body: data, context: context);
     try {
       final headers = {
@@ -207,7 +207,7 @@ class ApiClient {
         headers: headers,
         body: json.encode(data),
       ).timeout(const Duration(seconds: 10));
-      
+
       if (response.statusCode == 401) {
         try {
           await FirebaseAuth.instance.currentUser?.getIdToken(true);
@@ -242,7 +242,7 @@ class ApiClient {
   Future<dynamic> delete(String endpoint, {Map<String, dynamic>? queryParams, String? context}) async {
     final url = ApiConfig.buildFullUrl(endpoint);
     final uri = Uri.parse(url).replace(queryParameters: queryParams);
-    
+
     _logRequest('DELETE', uri, context: context);
     try {
       print('Sending DELETE request to: ${uri.toString()}');
@@ -251,15 +251,15 @@ class ApiClient {
         ...await _getHeaders(),
       };
       print('Headers: $headers');
-      
+
       final response = await _httpClient.delete(
         uri,
         headers: headers,
       ).timeout(const Duration(seconds: 10));
-      
+
       print('DELETE response status: ${response.statusCode}');
       print('Response body: ${response.body}');
-      
+
       if (response.statusCode == 401) {
         try {
           await FirebaseAuth.instance.currentUser?.getIdToken(true);
@@ -293,14 +293,14 @@ class ApiClient {
       rethrow;
     }
   }
-  // Helper method to handle the API response
+
   dynamic _handleResponse(http.Response response) {
     final statusCode = response.statusCode;
     final responseBody = response.body;
-    
+
     _logger.d('Response status: $statusCode');
     _logger.d('Response body: $responseBody');
-    
+
     if (statusCode >= 200 && statusCode < 300) {
       if (responseBody.isEmpty) {
         return null;
@@ -353,7 +353,7 @@ class ApiClient {
     }
   }
 
-  // Dispose method to close the HTTP client
+
   void dispose() {
     _httpClient.close();
   }

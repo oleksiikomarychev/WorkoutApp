@@ -1,40 +1,38 @@
-from typing import List, Optional
-
 from pydantic import BaseModel
 
 
 class WorkoutSet(BaseModel):
     exercise_id: int
-    intensity: Optional[float] = None
-    effort: Optional[float] = None
-    volume: Optional[int] = None
-    working_weight: Optional[float] = None
+    intensity: float | None = None
+    effort: float | None = None
+    volume: int | None = None
+    working_weight: float | None = None
 
 
 class ExerciseSet(BaseModel):
     exercise_id: int
-    intensity: Optional[float] = None
-    effort: Optional[float] = None
-    volume: Optional[int] = None
-    working_weight: Optional[float] = None
+    intensity: float | None = None
+    effort: float | None = None
+    volume: int | None = None
+    working_weight: float | None = None
 
 
 class ExerciseInWorkout(BaseModel):
     exercise_id: int
-    sets: List[ExerciseSet]
+    sets: list[ExerciseSet]
 
 
 class WorkoutExercise(BaseModel):
     exercise_id: int
-    sets: List[WorkoutSet]
+    sets: list[WorkoutSet]
 
 
 class WorkoutGenerationItem(BaseModel):
     name: str
-    exercises: List[ExerciseInWorkout]
-    # Optional fields for scheduled date and order index
-    scheduled_for: Optional[str] = None
-    plan_order_index: Optional[int] = None
+    exercises: list[ExerciseInWorkout]
+
+    scheduled_for: str | None = None
+    plan_order_index: int | None = None
 
 
 class WorkoutGenerationRequest(BaseModel):
@@ -42,10 +40,10 @@ class WorkoutGenerationRequest(BaseModel):
     compute_weights: bool
     rounding_step: float
     rounding_mode: str
-    workouts: List[WorkoutGenerationItem]
+    workouts: list[WorkoutGenerationItem]
 
 
 class WorkoutGenerationResponse(BaseModel):
-    workout_ids: List[int]
+    workout_ids: list[int]
     created_count: int | None = None
     existing_count: int | None = None

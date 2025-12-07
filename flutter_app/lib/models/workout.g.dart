@@ -1,10 +1,10 @@
-// GENERATED CODE - DO NOT MODIFY BY HAND
+
 
 part of 'workout.dart';
 
-// **************************************************************************
-// JsonSerializableGenerator
-// **************************************************************************
+
+
+
 
 _$WorkoutImpl _$$WorkoutImplFromJson(Map<String, dynamic> json) =>
     _$WorkoutImpl(

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
 from ..dependencies import get_current_user_id
 from ..schemas.workout_generation import WorkoutGenerationRequest, WorkoutGenerationResponse
-from ..services.rpc_client import PlansServiceRPC, RpeServiceRPC  # Import the RPC clients
+from ..services.rpc_client import PlansServiceRPC, RpeServiceRPC
 from ..services.workout_service import WorkoutService
 
 logger = logging.getLogger(__name__)
@@ -24,9 +24,9 @@ async def generate_workouts(
     logger.info(
         f"[GENERATE_WORKOUTS] Starting workout generation for user {user_id}, applied_plan_id={request.applied_plan_id}"
     )
-    plans_rpc = PlansServiceRPC()  # Create RPC client instance
+    plans_rpc = PlansServiceRPC()
     rpe_rpc = RpeServiceRPC()
-    # Forward Authorization header (if present) so downstream through gateway works
+
     headers = {}
     if http_request is not None:
         auth = http_request.headers.get("Authorization")

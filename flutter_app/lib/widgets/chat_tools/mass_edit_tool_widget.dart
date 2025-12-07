@@ -3,8 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/providers/chat_provider.dart';
 import 'package:workout_app/providers/target_data_providers.dart';
 
-/// A generic container for any Tool Result displayed in the chat.
-/// Handles the Card styling, Title, and the generic "Hide" action.
 class ToolResultCard extends ConsumerWidget {
   const ToolResultCard({
     super.key,
@@ -34,7 +32,7 @@ class ToolResultCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- Header ---
+
             Row(
               children: [
                 Icon(icon, color: colorScheme.primary),
@@ -51,18 +49,18 @@ class ToolResultCard extends ConsumerWidget {
             ),
             const SizedBox(height: 12),
 
-            // --- Specific Tool Content ---
+
             content,
 
             const SizedBox(height: 12),
 
-            // --- Footer Actions ---
+
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton.icon(
                   onPressed: () {
-                    // Generic hide action
+
                     ref.read(chatControllerProvider.notifier).clearMassEditResult();
                   },
                   icon: const Icon(Icons.close_rounded),
@@ -81,7 +79,6 @@ class ToolResultCard extends ConsumerWidget {
   }
 }
 
-/// The specific implementation for the 'applied_plan' mass edit tool.
 class MassEditToolWidget extends ConsumerWidget {
   const MassEditToolWidget({
     super.key,
@@ -96,7 +93,7 @@ class MassEditToolWidget extends ConsumerWidget {
     final isPreview = mode == 'preview';
     final exerciseNameMap = ref.watch(exerciseDefinitionNameMapProvider);
 
-    // -- Parsing Logic --
+
     final summaryRaw = payload['summary'];
     final summary = summaryRaw is Map<String, dynamic> ? summaryRaw : <String, dynamic>{};
     final commandRaw = payload['mass_edit_command'];
@@ -110,11 +107,11 @@ class MassEditToolWidget extends ConsumerWidget {
     final setsMatched = summary['sets_matched'];
     final setsModified = summary['sets_modified'];
 
-    final dynamic setsCount = isPreview 
-        ? (setsMatched ?? setsModified) 
+    final dynamic setsCount = isPreview
+        ? (setsMatched ?? setsModified)
         : (setsModified ?? setsMatched);
 
-    // -- Prepare Filter Lines --
+
     final filterLines = <String>[];
     final onlyFuture = filter['only_future'] == true;
     final scheduledFrom = filter['scheduled_from']?.toString();
@@ -126,7 +123,7 @@ class MassEditToolWidget extends ConsumerWidget {
     if (scheduledFrom != null && scheduledFrom.isNotEmpty) filterLines.add('Дата не раньше $scheduledFrom');
     if (scheduledTo != null && scheduledTo.isNotEmpty) filterLines.add('Дата не позже $scheduledTo');
     if (statusIn is List && statusIn.isNotEmpty) filterLines.add('Статусы: ${statusIn.join(', ')}');
-    
+
     if (exerciseIds is List && exerciseIds.isNotEmpty) {
       final names = <String>[];
       for (final rawId in exerciseIds) {
@@ -144,7 +141,7 @@ class MassEditToolWidget extends ConsumerWidget {
       }
     }
 
-    // -- Prepare Action Lines --
+
     final actionLines = <String>[];
     void addActionLine(String key, String Function(num v) textBuilder) {
       final raw = actions[key];
@@ -190,7 +187,7 @@ class MassEditToolWidget extends ConsumerWidget {
       actionLines.add('Добавить новых упражнений: ${addInstances.length}');
     }
 
-    // -- UI Composition --
+
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -265,7 +262,7 @@ class MassEditToolWidget extends ConsumerWidget {
       ],
     );
 
-    // -- Build Actions --
+
     final List<Widget> actionsList = [];
     if (isPreview && command.isNotEmpty) {
       actionsList.add(

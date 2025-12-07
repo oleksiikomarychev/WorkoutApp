@@ -10,7 +10,6 @@ router = APIRouter()
 
 @router.get("/{exercise_id}/exists", response_model=ExerciseExistsResponse)
 async def exercise_exists(exercise_id: int, db: AsyncSession = Depends(get_db)):
-    """Check if exercise exists"""
     result = await db.execute(select(ExerciseList).filter(ExerciseList.id == exercise_id))
     exists = result.scalars().first() is not None
     return ExerciseExistsResponse(exists=exists)

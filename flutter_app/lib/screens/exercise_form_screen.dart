@@ -31,12 +31,12 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _nameController;
   late TextEditingController _muscleGroupController;
-  // Multiple set controllers
+
   final List<TextEditingController> _volumeControllers = [];
   final List<TextEditingController> _weightControllers = [];
   final List<ExerciseSetDto?> _existingSetDtos = [];
 
-  // Muscle group dropdown (loaded from backend enum)
+
   List<String> _muscleGroups = [];
   String? _selectedMuscleGroup;
 
@@ -44,7 +44,7 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
   ProgressionTemplate? _selectedTemplate;
   bool _isLoading = false;
 
-  // Set helpers
+
   void _addSetRow({ExerciseSetDto? existing, String? volume, String? weight}) {
     final defaultReps = existing?.reps.toString() ?? '5';
     final defaultWeight = () {
@@ -94,7 +94,7 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
       _addSetRow();
     }
 
-    // Defer selected value initialization until groups are loaded
+
     _selectedMuscleGroup = null;
 
     _loadData();
@@ -115,23 +115,23 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
     });
     try {
       final exerciseService = ref.read(exerciseServiceProvider);
-      // Fetch in parallel
+
       final results = await Future.wait([
         exerciseService.getTemplates(),
         exerciseService.getMuscles(),
       ]);
 
       final templates = results[0] as List<ProgressionTemplate>;
-      final muscles = results[1]; // MuscleInfo but we just need groups
+      final muscles = results[1];
 
-      // Derive unique, sorted groups
+
       final groups = Set<String>.from(muscles.map((m) => (m as dynamic).group as String));
       _muscleGroups = groups.toList()..sort();
 
       if (mounted) {
         setState(() {
           _templates = templates;
-          // Initialize selected muscle group if existing value matches a group (case-insensitive, trimmed)
+
           final current = _muscleGroupController.text.trim();
           if (current.isNotEmpty) {
             String? match;
@@ -254,11 +254,11 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
         setState(() {
           _selectedTemplate = template;
           if (template != null) {
-            // autofill first set volume and intensity/effort
+
             if (_volumeControllers.isNotEmpty) {
               _volumeControllers.first.text = template.volume.toString();
             }
-            // We removed the weight calculation because it depended on user max
+
           } else {
             if (_volumeControllers.isNotEmpty) {
               _volumeControllers.first.text = '5';

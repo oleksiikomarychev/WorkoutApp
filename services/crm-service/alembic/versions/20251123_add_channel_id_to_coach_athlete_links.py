@@ -3,7 +3,6 @@
 import sqlalchemy as sa
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "20251123_add_channel_id"
 down_revision = "20251122_init_crm_models"
 branch_labels = None

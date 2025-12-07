@@ -79,7 +79,7 @@ class _CalendarPlansScreenState extends State<CalendarPlansScreen> {
     if (confirmed == true) {
       try {
         await _apiClient.delete(ApiConfig.deleteCalendarPlanEndpoint(planId.toString()));
-        // If successful, remove the plan from the list and update the UI
+
         setState(() {
           _plans.removeWhere((plan) => plan.id == planId);
         });

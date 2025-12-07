@@ -8,7 +8,6 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy import text
 
-# revision identifiers, used by Alembic.
 revision = "20251123_crm_restore_links"
 down_revision = "d59950afde1b"
 branch_labels = None
@@ -36,7 +35,6 @@ def upgrade() -> None:
             sa.UniqueConstraint("coach_id", "athlete_id", name="uq_coach_athlete_pair"),
         )
 
-        # Recreate indexes matching current SQLAlchemy model
         op.create_index("ix_coach_athlete_links_id", "coach_athlete_links", ["id"], unique=False)
         op.create_index("ix_coach_athlete_links_coach_id", "coach_athlete_links", ["coach_id"], unique=False)
         op.create_index("ix_coach_athlete_links_athlete_id", "coach_athlete_links", ["athlete_id"], unique=False)

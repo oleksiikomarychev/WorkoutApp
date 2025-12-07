@@ -41,7 +41,7 @@ class MacrosNotifier extends StateNotifier<MacrosState> {
         priority: macro.priority,
         rule: macro.rule,
       );
-      // Refresh from server to ensure canonical shape
+
       await load();
       return created;
     } catch (e) {
@@ -60,7 +60,7 @@ class MacrosNotifier extends StateNotifier<MacrosState> {
         priority: macro.priority,
         rule: macro.rule,
       );
-      // Refresh from server to avoid drift and reflect backend canon
+
       await load();
       return updated;
     } catch (e) {

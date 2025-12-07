@@ -1,13 +1,13 @@
 // coverage:ignore-file
-// GENERATED CODE - DO NOT MODIFY BY HAND
-// ignore_for_file: type=lint
-// ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
+
+
+
 
 part of 'workout.dart';
 
-// **************************************************************************
-// FreezedGenerator
-// **************************************************************************
+
+
+
 
 T _$identity<T>(T value) => value;
 
@@ -18,7 +18,7 @@ Workout _$WorkoutFromJson(Map<String, dynamic> json) {
   return _Workout.fromJson(json);
 }
 
-/// @nodoc
+
 mixin _$Workout {
   int? get id => throw _privateConstructorUsedError;
   String get name => throw _privateConstructorUsedError;
@@ -34,12 +34,12 @@ mixin _$Workout {
   String? get location => throw _privateConstructorUsedError;
   @JsonKey(name: 'readiness_score')
   int? get readinessScore =>
-      throw _privateConstructorUsedError; // Linkage to applied calendar plans (nullable for regular workouts)
+      throw _privateConstructorUsedError;
   @JsonKey(name: 'applied_plan_id')
   int? get appliedPlanId => throw _privateConstructorUsedError;
   @JsonKey(name: 'plan_order_index')
   int? get planOrderIndex =>
-      throw _privateConstructorUsedError; // Scheduling/Completion timestamps
+      throw _privateConstructorUsedError;
   @JsonKey(name: 'scheduled_for')
   DateTime? get scheduledFor => throw _privateConstructorUsedError;
   @JsonKey(name: 'completed_at')
@@ -51,20 +51,20 @@ mixin _$Workout {
   int? get localId => throw _privateConstructorUsedError;
   @JsonKey(name: 'next_workout_id')
   int? get nextWorkoutId =>
-      throw _privateConstructorUsedError; // Add workout type classification
+      throw _privateConstructorUsedError;
   @JsonKey(name: 'workout_type')
   WorkoutType get workoutType => throw _privateConstructorUsedError;
 
-  /// Serializes this Workout to a JSON map.
+
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
-  /// Create a copy of Workout
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @JsonKey(includeFromJson: false, includeToJson: false)
   $WorkoutCopyWith<Workout> get copyWith => throw _privateConstructorUsedError;
 }
 
-/// @nodoc
+
 abstract class $WorkoutCopyWith<$Res> {
   factory $WorkoutCopyWith(Workout value, $Res Function(Workout) then) =
       _$WorkoutCopyWithImpl<$Res, Workout>;
@@ -90,7 +90,7 @@ abstract class $WorkoutCopyWith<$Res> {
       @JsonKey(name: 'workout_type') WorkoutType workoutType});
 }
 
-/// @nodoc
+
 class _$WorkoutCopyWithImpl<$Res, $Val extends Workout>
     implements $WorkoutCopyWith<$Res> {
   _$WorkoutCopyWithImpl(this._value, this._then);
@@ -100,8 +100,8 @@ class _$WorkoutCopyWithImpl<$Res, $Val extends Workout>
   // ignore: unused_field
   final $Res Function($Val) _then;
 
-  /// Create a copy of Workout
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -196,7 +196,7 @@ class _$WorkoutCopyWithImpl<$Res, $Val extends Workout>
   }
 }
 
-/// @nodoc
+
 abstract class _$$WorkoutImplCopyWith<$Res> implements $WorkoutCopyWith<$Res> {
   factory _$$WorkoutImplCopyWith(
           _$WorkoutImpl value, $Res Function(_$WorkoutImpl) then) =
@@ -224,7 +224,7 @@ abstract class _$$WorkoutImplCopyWith<$Res> implements $WorkoutCopyWith<$Res> {
       @JsonKey(name: 'workout_type') WorkoutType workoutType});
 }
 
-/// @nodoc
+
 class __$$WorkoutImplCopyWithImpl<$Res>
     extends _$WorkoutCopyWithImpl<$Res, _$WorkoutImpl>
     implements _$$WorkoutImplCopyWith<$Res> {
@@ -232,8 +232,8 @@ class __$$WorkoutImplCopyWithImpl<$Res>
       _$WorkoutImpl _value, $Res Function(_$WorkoutImpl) _then)
       : super(_value, _then);
 
-  /// Create a copy of Workout
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -328,7 +328,7 @@ class __$$WorkoutImplCopyWithImpl<$Res>
   }
 }
 
-/// @nodoc
+
 
 @JsonSerializable(explicitToJson: true)
 class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
@@ -380,14 +380,14 @@ class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
   @override
   @JsonKey(name: 'readiness_score')
   final int? readinessScore;
-// Linkage to applied calendar plans (nullable for regular workouts)
+
   @override
   @JsonKey(name: 'applied_plan_id')
   final int? appliedPlanId;
   @override
   @JsonKey(name: 'plan_order_index')
   final int? planOrderIndex;
-// Scheduling/Completion timestamps
+
   @override
   @JsonKey(name: 'scheduled_for')
   final DateTime? scheduledFor;
@@ -410,7 +410,7 @@ class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
   @override
   @JsonKey(name: 'next_workout_id')
   final int? nextWorkoutId;
-// Add workout type classification
+
   @override
   @JsonKey(name: 'workout_type')
   final WorkoutType workoutType;
@@ -502,8 +502,8 @@ class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
       nextWorkoutId,
       workoutType);
 
-  /// Create a copy of Workout
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   @pragma('vm:prefer-inline')
@@ -566,13 +566,13 @@ abstract class _Workout extends Workout {
   @override
   @JsonKey(name: 'readiness_score')
   int?
-      get readinessScore; // Linkage to applied calendar plans (nullable for regular workouts)
+      get readinessScore;
   @override
   @JsonKey(name: 'applied_plan_id')
   int? get appliedPlanId;
   @override
   @JsonKey(name: 'plan_order_index')
-  int? get planOrderIndex; // Scheduling/Completion timestamps
+  int? get planOrderIndex;
   @override
   @JsonKey(name: 'scheduled_for')
   DateTime? get scheduledFor;
@@ -587,13 +587,13 @@ abstract class _Workout extends Workout {
   int? get localId;
   @override
   @JsonKey(name: 'next_workout_id')
-  int? get nextWorkoutId; // Add workout type classification
+  int? get nextWorkoutId;
   @override
   @JsonKey(name: 'workout_type')
   WorkoutType get workoutType;
 
-  /// Create a copy of Workout
-  /// with the given fields replaced by the non-null parameter values.
+
+
   @override
   @JsonKey(includeFromJson: false, includeToJson: false)
   _$$WorkoutImplCopyWith<_$WorkoutImpl> get copyWith =>

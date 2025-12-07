@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,18 +18,18 @@ from ..schemas import (
 class ProfileData:
     profile: UserProfile
     settings: UserSettings
-    coaching: Optional[UserCoachingProfile] = None
+    coaching: UserCoachingProfile | None = None
 
 
-async def _fetch_profile(db: AsyncSession, user_id: str) -> Optional[UserProfile]:
+async def _fetch_profile(db: AsyncSession, user_id: str) -> UserProfile | None:
     return await db.get(UserProfile, user_id)
 
 
-async def _fetch_settings(db: AsyncSession, user_id: str) -> Optional[UserSettings]:
+async def _fetch_settings(db: AsyncSession, user_id: str) -> UserSettings | None:
     return await db.get(UserSettings, user_id)
 
 
-async def _fetch_coaching_profile(db: AsyncSession, user_id: str) -> Optional[UserCoachingProfile]:
+async def _fetch_coaching_profile(db: AsyncSession, user_id: str) -> UserCoachingProfile | None:
     return await db.get(UserCoachingProfile, user_id)
 
 
@@ -95,8 +94,8 @@ def build_profile_response(data: ProfileData) -> ProfileResponse:
 
 
 def build_coaching_response(
-    entity: Optional[UserCoachingProfile],
-) -> Optional[CoachingProfileResponse]:
+    entity: UserCoachingProfile | None,
+) -> CoachingProfileResponse | None:
     if entity is None:
         return None
 
@@ -123,7 +122,7 @@ def build_coaching_response(
     )
 
 
-def parse_unit_system(raw: Optional[str]) -> Optional[UnitSystem]:
+def parse_unit_system(raw: str | None) -> UnitSystem | None:
     if raw is None:
         return None
     try:

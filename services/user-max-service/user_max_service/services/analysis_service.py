@@ -4,7 +4,6 @@ import math
 import os
 import time
 from datetime import date, datetime, timedelta
-from typing import Dict, List, Optional, Tuple
 
 from google import genai
 
@@ -14,14 +13,11 @@ from .true_1rm_service import calculate_true_1rm
 
 logger = logging.getLogger(__name__)
 
-# Simple in-memory cache
-_CACHE: Dict[Tuple[int, int, float], Tuple[float, dict]] = {}
+
+_CACHE: dict[tuple[int, int, float], tuple[float, dict]] = {}
 _CACHE_TTL_SECONDS = 300
 
 
-# Heuristic normalization scales to improve cross-muscle comparability
-# We normalize raw exercise 1RM by factors derived from metadata and then apply log1p.
-# This reduces the bias where lower-body compound barbell lifts dwarf upper-body isolation lifts.
 EXERCISE_MOVEMENT_SCALE = {
     "compound": 1.0,
     "isolation": 0.6,
@@ -42,11 +38,6 @@ EXERCISE_EQUIPMENT_SCALE = {
 
 
 def _exercise_norm_factor(meta: dict) -> float:
-    """Compute a normalization factor for an exercise using its metadata.
-
-    The factor is a product of movement_type, region and equipment scales.
-    Clamped to [0.25, 2.0] to avoid extreme effects.
-    """
     try:
         mv = str((meta or {}).get("movement_type", "")).lower()
         rg = str((meta or {}).get("region", "")).lower()
@@ -56,7 +47,7 @@ def _exercise_norm_factor(meta: dict) -> float:
             * EXERCISE_REGION_SCALE.get(rg, 1.0)
             * EXERCISE_EQUIPMENT_SCALE.get(eq, 1.0)
         )
-        # Clamp to a sensible range
+
         return max(0.25, min(2.0, float(f)))
     except Exception:
         return 1.0
@@ -67,7 +58,6 @@ def _now_ts() -> float:
 
 
 def _exp_decay_weight(sample_date: date, half_life_days: float = 90.0) -> float:
-    """Exponential decay by sample age (in days)."""
     try:
         age_days = (datetime.utcnow().date() - sample_date).days
         if age_days <= 0:
@@ -79,11 +69,9 @@ def _exp_decay_weight(sample_date: date, half_life_days: float = 90.0) -> float:
 
 
 class AlgorithmicLLMHelper:
-    """Helper to use LLM for specific sub-tasks inside algorithmic pipeline."""
-
     def __init__(self) -> None:
         api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-        self.client: Optional[genai.Client]
+        self.client: genai.Client | None
         if api_key:
             try:
                 self.client = genai.Client(api_key=api_key)
@@ -94,9 +82,8 @@ class AlgorithmicLLMHelper:
             self.client = None
 
     def classify_muscle_priority(self, muscle_data: dict) -> dict:
-        """Return {priority: high|medium|low, reason: str} using LLM; fallback to simple rule."""
         z = float(muscle_data.get("z") or 0.0)
-        # Fallback quick rule if LLM not available
+
         if not self.client:
             return {
                 "priority": ("high" if z < -1.0 else ("low" if z > 0.5 else "medium")),
@@ -133,12 +120,10 @@ class AlgorithmicLLMHelper:
             "reason": "fallback",
         }
 
-    def classify_muscle_priorities_batch(self, muscles: List[dict]) -> List[dict]:
-        """Batch classify priorities to minimize API calls. Returns list aligned with inputs."""
+    def classify_muscle_priorities_batch(self, muscles: list[dict]) -> list[dict]:
         if not muscles:
             return []
 
-        # If no client (no key), fallback for all
         if not self.client:
             return [self.classify_muscle_priority(m) for m in muscles]
 
@@ -168,7 +153,7 @@ class AlgorithmicLLMHelper:
             text = getattr(resp, "text", None) or str(resp)
             parsed = json.loads(text)
             if isinstance(parsed, list) and len(parsed) == len(muscles):
-                out: List[dict] = []
+                out: list[dict] = []
                 for idx, item in enumerate(parsed):
                     if isinstance(item, dict):
                         priority = str(item.get("priority", "")).strip() or "medium"
@@ -180,11 +165,9 @@ class AlgorithmicLLMHelper:
         except Exception as e:
             logger.warning(f"Batch LLM classify failed, falling back: {e}")
 
-        # Fallback element-wise if parsing failed
         return [self.classify_muscle_priority(m) for m in muscles]
 
-    def detect_anomalies(self, samples: List[dict]) -> List[int]:
-        """Return list of indices of anomalous samples using LLM; empty on failure."""
+    def detect_anomalies(self, samples: list[dict]) -> list[int]:
         if not self.client or len(samples) < 5:
             return []
         try:
@@ -202,18 +185,42 @@ class AlgorithmicLLMHelper:
             text = getattr(resp, "text", None) or str(resp)
             data = json.loads(text)
             if isinstance(data, list):
-                return [int(x) for x in data if isinstance(x, (int, float))]
+                return [int(x) for x in data if isinstance(x, int | float)]
         except Exception as e:
             logger.warning(f"LLM anomaly detection failed: {e}")
         return []
 
 
-def _weighted_quantile(values: List[float], weights: List[float], q: float) -> float:
-    """Compute weighted quantile for values in [0..1]. Robust to zero/empty weights.
+def aggregate_exercise_strength_from_daily_agg(daily_rows) -> dict[int, float]:
+    num: dict[int, float] = {}
+    den: dict[int, float] = {}
+    for row in daily_rows or []:
+        ex_id = getattr(row, "exercise_id", None)
+        dt = getattr(row, "date", None)
+        sum_true_1rm = getattr(row, "sum_true_1rm", None)
+        cnt = getattr(row, "cnt", None)
+        if ex_id is None or dt is None:
+            continue
+        try:
+            cnt_f = float(cnt)
+            sum_f = float(sum_true_1rm)
+        except (TypeError, ValueError):
+            continue
+        if cnt_f <= 0:
+            continue
+        w = _exp_decay_weight(dt)
+        num[ex_id] = num.get(ex_id, 0.0) + sum_f * w
+        den[ex_id] = den.get(ex_id, 0.0) + cnt_f * w
 
-    - Sort by value ascending and accumulate weights until reaching q * total_weight.
-    - If weights sum to 0 or inputs empty, fallback to simple median.
-    """
+    out: dict[int, float] = {}
+    for ex_id, n in num.items():
+        d = den.get(ex_id, 0.0)
+        if d > 0:
+            out[ex_id] = n / d
+    return out
+
+
+def _weighted_quantile(values: list[float], weights: list[float], q: float) -> float:
     try:
         n = len(values)
         if n == 0:
@@ -225,7 +232,6 @@ def _weighted_quantile(values: List[float], weights: List[float], q: float) -> f
         ws = [max(0.0, float(w)) for _, w in pairs]
         tot = sum(ws)
         if tot <= 0.0:
-            # fallback to unweighted median
             mid = n // 2
             return vals[mid] if n % 2 == 1 else 0.5 * (vals[mid - 1] + vals[mid])
         target = max(0.0, min(1.0, q)) * tot
@@ -236,7 +242,6 @@ def _weighted_quantile(values: List[float], weights: List[float], q: float) -> f
                 return v
         return vals[-1]
     except Exception:
-        # very defensive fallback
         try:
             s = sorted(values)
             mid = len(s) // 2
@@ -245,13 +250,13 @@ def _weighted_quantile(values: List[float], weights: List[float], q: float) -> f
             return 0.0
 
 
-def _weighted_median(values: List[float], weights: List[float]) -> float:
+def _weighted_median(values: list[float], weights: list[float]) -> float:
     return _weighted_quantile(values, weights, 0.5)
 
 
-def _build_exercise_meta_index() -> Dict[int, dict]:
+def _build_exercise_meta_index() -> dict[int, dict]:
     meta_list = get_all_exercises_meta()
-    id_to_meta: Dict[int, dict] = {}
+    id_to_meta: dict[int, dict] = {}
     for m in meta_list:
         try:
             ex_id = int(m.get("id"))
@@ -262,23 +267,16 @@ def _build_exercise_meta_index() -> Dict[int, dict]:
 
 
 def _compute_exercise_robust_stats(
-    by_ex: Dict[int, List[UserMax]],
+    by_ex: dict[int, list[UserMax]],
     iqr_floor: float,
     sigma_floor: float,
     robust: bool = True,
     half_life_days: float = 90.0,
-) -> Dict[int, dict]:
-    """For each exercise, compute robust stats over log1p(1RM) with exponential decay.
-
-    Returns per exercise:
-      {"median": float, "sigma": float, "n_eff": float, "cur_log": float}
-    where sigma is robust (IQR/1.349) floored by sigma_floor, and cur_log is the
-    weighted mean of log1p(1RM) using decay.
-    """
-    out: Dict[int, dict] = {}
+) -> dict[int, dict]:
+    out: dict[int, dict] = {}
     for ex_id, arr in by_ex.items():
-        vals: List[float] = []
-        ws: List[float] = []
+        vals: list[float] = []
+        ws: list[float] = []
         for um in arr:
             val = um.verified_1rm if getattr(um, "verified_1rm", None) else calculate_true_1rm(um)
             v = math.log1p(max(0.0, float(val)))
@@ -296,7 +294,6 @@ def _compute_exercise_robust_stats(
             iqr = max((q3 - q1), float(iqr_floor))
             sigma = max(iqr / 1.349, float(sigma_floor))
         else:
-            # Weighted mean/std
             med = cur_log if wsum > 0 else (sum(vals) / len(vals))
             var = (sum(w * (v - med) ** 2 for v, w in zip(vals, ws)) / wsum) if wsum > 0 else 0.0
             sigma = max(math.sqrt(var), float(sigma_floor))
@@ -307,20 +304,15 @@ def _compute_exercise_robust_stats(
 
 
 def _aggregate_muscle_scores_from_ex(
-    z_by_ex: Dict[int, float],
-    conf_by_ex: Dict[int, float],
-    id_to_meta: Dict[int, dict],
+    z_by_ex: dict[int, float],
+    conf_by_ex: dict[int, float],
+    id_to_meta: dict[int, dict],
     synergist_weight: float,
     quantile_mode: str,
     quantile_p: float,
-) -> Dict[str, float]:
-    """Distribute exercise z-scores to muscles and aggregate per muscle with robust statistics.
-
-    - z_by_ex: per-exercise relative z
-    - conf_by_ex: confidence weights per exercise (e.g., sqrt(n_eff))
-    """
-    mus_vals: Dict[str, List[float]] = {}
-    mus_ws: Dict[str, List[float]] = {}
+) -> dict[str, float]:
+    mus_vals: dict[str, list[float]] = {}
+    mus_ws: dict[str, list[float]] = {}
     for ex_id, z in z_by_ex.items():
         meta = id_to_meta.get(ex_id)
         if not isinstance(meta, dict):
@@ -338,7 +330,7 @@ def _aggregate_muscle_scores_from_ex(
                     mus_vals.setdefault(m, []).append(z)
                     mus_ws.setdefault(m, []).append(float(synergist_weight) * conf)
 
-    out: Dict[str, float] = {}
+    out: dict[str, float] = {}
     for m, vals in mus_vals.items():
         ws = mus_ws.get(m, [1.0] * len(vals))
         if not vals:
@@ -348,38 +340,32 @@ def _aggregate_muscle_scores_from_ex(
         elif quantile_mode == "median":
             out[m] = _weighted_median(vals, ws)
         else:
-            # mean
             wsum = sum(ws)
             out[m] = (sum(v * w for v, w in zip(vals, ws)) / wsum) if wsum > 0 else (sum(vals) / len(vals))
     return out
 
 
 def _compute_relative_trends(
-    by_ex: Dict[int, List[UserMax]],
+    by_ex: dict[int, list[UserMax]],
     recent_days: int,
-    id_to_meta: Dict[int, dict],
+    id_to_meta: dict[int, dict],
     synergist_weight: float,
-    ex_stats: Dict[int, dict],
+    ex_stats: dict[int, dict],
     quantile_mode: str,
     quantile_p: float,
-) -> Dict[str, dict]:
-    """Compute recent vs previous averages per muscle in relative z units.
-
-    For each exercise: compute mean log1p(1RM) in recent and previous windows, convert each
-    to z using per-exercise robust stats, then aggregate to muscles with the same aggregator.
-    """
+) -> dict[str, dict]:
     today = datetime.utcnow().date()
     recent_from = today - timedelta(days=recent_days)
     prev_from = today - timedelta(days=2 * recent_days)
 
-    rec_z_by_ex: Dict[int, float] = {}
-    prev_z_by_ex: Dict[int, float] = {}
-    rec_conf: Dict[int, float] = {}
-    prev_conf: Dict[int, float] = {}
+    rec_z_by_ex: dict[int, float] = {}
+    prev_z_by_ex: dict[int, float] = {}
+    rec_conf: dict[int, float] = {}
+    prev_conf: dict[int, float] = {}
 
     for ex_id, arr in by_ex.items():
-        rec_vals: List[float] = []
-        prev_vals: List[float] = []
+        rec_vals: list[float] = []
+        prev_vals: list[float] = []
         for um in arr:
             d = getattr(um, "date", today)
             val = um.verified_1rm if getattr(um, "verified_1rm", None) else calculate_true_1rm(um)
@@ -409,7 +395,7 @@ def _compute_relative_trends(
         prev_z_by_ex, prev_conf, id_to_meta, synergist_weight, quantile_mode, quantile_p
     )
 
-    out: Dict[str, dict] = {}
+    out: dict[str, dict] = {}
     for m in set(list(rec_mus.keys()) + list(prev_mus.keys())):
         r = rec_mus.get(m)
         p = prev_mus.get(m)
@@ -421,16 +407,14 @@ def _compute_relative_trends(
     return out
 
 
-def _aggregate_exercise_strength(user_maxes: List[UserMax]) -> Dict[int, float]:
-    """Compute an effective 1RM per exercise_id using time-decayed averaging."""
-    by_ex: Dict[int, List[Tuple[float, float]]] = {}
+def _aggregate_exercise_strength(user_maxes: list[UserMax]) -> dict[int, float]:
+    by_ex: dict[int, list[tuple[float, float]]] = {}
     for um in user_maxes:
-        # Effective 1RM for this record
         val = um.verified_1rm if getattr(um, "verified_1rm", None) else calculate_true_1rm(um)
         w = _exp_decay_weight(getattr(um, "date", datetime.utcnow().date()))
         by_ex.setdefault(um.exercise_id, []).append((val, w))
 
-    out: Dict[int, float] = {}
+    out: dict[int, float] = {}
     for ex_id, samples in by_ex.items():
         ws = sum(w for _, w in samples)
         if ws <= 0:
@@ -439,15 +423,14 @@ def _aggregate_exercise_strength(user_maxes: List[UserMax]) -> Dict[int, float]:
     return out
 
 
-def _distribute_to_muscles(ex_strength: Dict[int, float], synergist_weight: float) -> Dict[str, float]:
-    """Map exercise strengths to muscle strengths via metadata (target/synergists)."""
+def _distribute_to_muscles(ex_strength: dict[int, float], synergist_weight: float) -> dict[str, float]:
     logger.info(
         "distribute_to_muscles: incoming exercises=%d synergist_weight=%s",
         len(ex_strength),
         synergist_weight,
     )
     meta_list = get_all_exercises_meta()
-    id_to_meta: Dict[int, dict] = {}
+    id_to_meta: dict[int, dict] = {}
     for m in meta_list:
         try:
             ex_id = int(m.get("id"))
@@ -456,17 +439,15 @@ def _distribute_to_muscles(ex_strength: Dict[int, float], synergist_weight: floa
             continue
     logger.info("distribute_to_muscles: fetched exercise metadata=%d", len(id_to_meta))
 
-    mus_sum: Dict[str, float] = {}
-    mus_wsum: Dict[str, float] = {}
-    missing_meta: List[int] = []
+    mus_sum: dict[str, float] = {}
+    mus_wsum: dict[str, float] = {}
+    missing_meta: list[int] = []
     for ex_id, strength in ex_strength.items():
         meta = id_to_meta.get(ex_id)
         if not isinstance(meta, dict):
             missing_meta.append(ex_id)
             continue
-        # Normalize raw exercise strength by metadata-derived factor to improve
-        # cross-exercise comparability (compound vs isolation, region, equipment).
-        # This prevents lower-body barbell lifts from dominating the scores.
+
         try:
             norm_f = _exercise_norm_factor(meta)
         except Exception:
@@ -474,13 +455,13 @@ def _distribute_to_muscles(ex_strength: Dict[int, float], synergist_weight: floa
         adj_strength = strength / (norm_f or 1.0)
         targets = meta.get("target_muscles") or []
         syner = meta.get("synergist_muscles") or []
-        # Target muscles: weight 1.0
+
         for m in targets:
             if not isinstance(m, str):
                 continue
             mus_sum[m] = mus_sum.get(m, 0.0) + adj_strength * 1.0
             mus_wsum[m] = mus_wsum.get(m, 0.0) + 1.0
-        # Synergists: reduced weight
+
         if synergist_weight > 0:
             for m in syner:
                 if not isinstance(m, str):
@@ -488,7 +469,7 @@ def _distribute_to_muscles(ex_strength: Dict[int, float], synergist_weight: floa
                 mus_sum[m] = mus_sum.get(m, 0.0) + adj_strength * float(synergist_weight)
                 mus_wsum[m] = mus_wsum.get(m, 0.0) + float(synergist_weight)
 
-    mus_score: Dict[str, float] = {}
+    mus_score: dict[str, float] = {}
     for m, s in mus_sum.items():
         w = mus_wsum.get(m, 0.0)
         if w > 0:
@@ -499,22 +480,19 @@ def _distribute_to_muscles(ex_strength: Dict[int, float], synergist_weight: floa
     return mus_score
 
 
-def _compute_trends(user_maxes: List[UserMax], recent_days: int, synergist_weight: float) -> Dict[str, dict]:
-    """Compute recent vs previous averages per muscle."""
-    # Split into two windows: [0..recent_days] and (recent_days..2*recent_days]
+def _compute_trends(user_maxes: list[UserMax], recent_days: int, synergist_weight: float) -> dict[str, dict]:
     today = datetime.utcnow().date()
     recent_from = today - timedelta(days=recent_days)
     prev_from = today - timedelta(days=2 * recent_days)
 
-    # Pre-group by exercise with timestamps
-    entries: Dict[int, List[Tuple[date, float]]] = {}
+    entries: dict[int, list[tuple[date, float]]] = {}
     for um in user_maxes:
         val = um.verified_1rm if getattr(um, "verified_1rm", None) else calculate_true_1rm(um)
         d = getattr(um, "date", today)
         entries.setdefault(um.exercise_id, []).append((d, val))
 
     meta_list = get_all_exercises_meta()
-    id_to_meta: Dict[int, dict] = {}
+    id_to_meta: dict[int, dict] = {}
     for m in meta_list:
         try:
             ex_id = int(m.get("id"))
@@ -522,11 +500,10 @@ def _compute_trends(user_maxes: List[UserMax], recent_days: int, synergist_weigh
         except Exception:
             continue
 
-    # Accumulators
-    rec_sum: Dict[str, float] = {}
-    rec_w: Dict[str, float] = {}
-    prev_sum: Dict[str, float] = {}
-    prev_w: Dict[str, float] = {}
+    rec_sum: dict[str, float] = {}
+    rec_w: dict[str, float] = {}
+    prev_sum: dict[str, float] = {}
+    prev_w: dict[str, float] = {}
 
     for ex_id, samples in entries.items():
         meta = id_to_meta.get(ex_id)
@@ -536,7 +513,6 @@ def _compute_trends(user_maxes: List[UserMax], recent_days: int, synergist_weigh
         syner = meta.get("synergist_muscles") or []
         for d, val in samples:
             if d >= recent_from:
-                # recent window
                 for m in targets:
                     if isinstance(m, str):
                         rec_sum[m] = rec_sum.get(m, 0.0) + val
@@ -547,7 +523,6 @@ def _compute_trends(user_maxes: List[UserMax], recent_days: int, synergist_weigh
                             rec_sum[m] = rec_sum.get(m, 0.0) + val * float(synergist_weight)
                             rec_w[m] = rec_w.get(m, 0.0) + float(synergist_weight)
             elif d >= prev_from:
-                # previous window
                 for m in targets:
                     if isinstance(m, str):
                         prev_sum[m] = prev_sum.get(m, 0.0) + val
@@ -558,7 +533,7 @@ def _compute_trends(user_maxes: List[UserMax], recent_days: int, synergist_weigh
                             prev_sum[m] = prev_sum.get(m, 0.0) + val * float(synergist_weight)
                             prev_w[m] = prev_w.get(m, 0.0) + float(synergist_weight)
 
-    out: Dict[str, dict] = {}
+    out: dict[str, dict] = {}
     for m in set(list(rec_sum.keys()) + list(prev_sum.keys())):
         r_w = rec_w.get(m, 0.0)
         p_w = prev_w.get(m, 0.0)
@@ -574,14 +549,13 @@ def _compute_trends(user_maxes: List[UserMax], recent_days: int, synergist_weigh
 
 
 def compute_weak_muscles(
-    user_maxes: List[UserMax],
+    user_maxes: list[UserMax],
     recent_days: int = 180,
     min_records: int = 1,
     synergist_weight: float = 0.25,
-    # New mode: per-exercise relative normalization with robust stats
     relative_by_exercise: bool = True,
     robust: bool = True,
-    quantile_mode: str = "p",  # 'p' | 'median' | 'mean'
+    quantile_mode: str = "p",
     quantile_p: float = 0.25,
     iqr_floor: float = 0.08,
     sigma_floor: float = 0.06,
@@ -589,11 +563,8 @@ def compute_weak_muscles(
     z_clip: float = 3.0,
     use_llm: bool = False,
     use_cache: bool = True,
+    precomputed_ex_strength: dict[int, float] | None = None,
 ) -> dict:
-    """
-    Compute weakness profile from user_max records with time decay and exercise metadata.
-    Returns a dict suitable for inclusion into prompts and UI.
-    """
     logger.info(
         "compute_weak_muscles: received user_maxes=%d unique_exercises=%d " "recent_days=%d min_records=%d use_llm=%s",
         len(user_maxes),
@@ -623,7 +594,6 @@ def compute_weak_muscles(
             logger.info("compute_weak_muscles: cache hit | key=%s", cache_key)
             return hit[1]
 
-    # Filter and compute
     if not user_maxes:
         result = {
             "recent_days": recent_days,
@@ -636,8 +606,7 @@ def compute_weak_muscles(
         logger.warning("compute_weak_muscles: no user_max records found")
         return result
 
-    # If min_records > 1, we can optionally drop exercises with too few samples
-    by_ex: Dict[int, List[UserMax]] = {}
+    by_ex: dict[int, list[UserMax]] = {}
     for um in user_maxes:
         by_ex.setdefault(um.exercise_id, []).append(um)
     if min_records > 1:
@@ -661,11 +630,10 @@ def compute_weak_muscles(
         logger.warning("compute_weak_muscles: filtered dataset empty after min_records filter")
         return result
 
-    # Branch: robust per-exercise relative mode vs legacy absolute mode
     if relative_by_exercise:
         id_to_meta = _build_exercise_meta_index()
-        # Build per-ex robust stats
-        by_ex: Dict[int, List[UserMax]] = {}
+
+        by_ex: dict[int, list[UserMax]] = {}
         for um in filtered:
             by_ex.setdefault(um.exercise_id, []).append(um)
         ex_stats = _compute_exercise_robust_stats(
@@ -675,9 +643,8 @@ def compute_weak_muscles(
             robust=robust,
         )
 
-        # Current per-ex z with shrinkage and clipping
-        z_by_ex: Dict[int, float] = {}
-        conf_by_ex: Dict[int, float] = {}
+        z_by_ex: dict[int, float] = {}
+        conf_by_ex: dict[int, float] = {}
         for ex_id, st in ex_stats.items():
             cur_log = float(st.get("cur_log", 0.0))
             med = float(st.get("median", 0.0))
@@ -712,19 +679,17 @@ def compute_weak_muscles(
             len(z_by_ex),
             len(muscle_strength),
         )
-        # Fallback: if relative mode yields empty or near-zero strengths (e.g., single
-        # sample per exercise makes z≈0), switch to absolute mode so UI doesn't show all zeros.
-        # Use a small threshold (0.05) because results are later rounded to 2 decimals.
+
         if not muscle_strength or all(abs(v) < 0.05 for v in muscle_strength.values()):
             logger.warning(
                 "compute_weak_muscles: relative mode produced empty/near-zero scores; " "falling back to absolute mode"
             )
-            ex_strength = _aggregate_exercise_strength(filtered)
+            ex_strength = precomputed_ex_strength or _aggregate_exercise_strength(filtered)
             logger.info("compute_weak_muscles: fallback aggregated exercise strengths=%d", len(ex_strength))
             muscle_strength = _distribute_to_muscles(ex_strength, synergist_weight)
             trends = _compute_trends(filtered, recent_days, synergist_weight)
     else:
-        ex_strength = _aggregate_exercise_strength(filtered)
+        ex_strength = precomputed_ex_strength or _aggregate_exercise_strength(filtered)
         logger.info("compute_weak_muscles: aggregated exercise strengths=%d", len(ex_strength))
         muscle_strength = _distribute_to_muscles(ex_strength, synergist_weight)
         trends = _compute_trends(filtered, recent_days, synergist_weight)
@@ -734,7 +699,6 @@ def compute_weak_muscles(
         len(trends),
     )
 
-    # Z-score across muscles
     vals = list(muscle_strength.values())
     mean = sum(vals) / len(vals) if vals else 0.0
     var = sum((v - mean) ** 2 for v in vals) / len(vals) if vals else 0.0
@@ -751,11 +715,10 @@ def compute_weak_muscles(
                 "trend": trends.get(m, {}),
             }
         )
-    weak.sort(key=lambda x: x["z"])  # ascending: most negative first
+    weak.sort(key=lambda x: x["z"])
 
-    # LLM enrichment
-    anomalies: List[int] = []
-    anomaly_details: List[dict] = []
+    anomalies: list[int] = []
+    anomaly_details: list[dict] = []
     if use_llm:
         helper = AlgorithmicLLMHelper()
         try:
@@ -763,9 +726,9 @@ def compute_weak_muscles(
             for item, pr in zip(weak, priorities):
                 item["priority"] = pr.get("priority", "medium")
                 item["priority_reason"] = pr.get("reason", "")
-            # Build samples for anomaly detection and for user-facing explanations
-            samples: List[dict] = []
-            simple_samples: List[dict] = []
+
+            samples: list[dict] = []
+            simple_samples: list[dict] = []
             for um in filtered:
                 d = getattr(um, "date", datetime.utcnow().date()).isoformat()
                 max_w = float(getattr(um, "max_weight", 0))

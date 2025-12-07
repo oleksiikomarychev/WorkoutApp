@@ -5,10 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/providers/chat_provider.dart';
 import 'package:workout_app/screens/chat_screen.dart';
 
-/// Full-screen blurred overlay with assistant chat on top of the current UI.
-///
-/// Should be placed as a child inside a [Stack]. When [visible] is false, this
-/// widget renders as an empty box.
+
+
+
+
 class AssistantChatOverlay extends StatefulWidget {
   const AssistantChatOverlay({
     super.key,
@@ -58,12 +58,12 @@ class _AssistantChatOverlayState extends State<AssistantChatOverlay> {
       final container = ProviderScope.containerOf(context, listen: false);
       final controller = container.read(chatControllerProvider.notifier);
 
-      // Send structured context first (for backend auto-substitution)
+
       if (contextPayload != null) {
         controller.sendContext(contextPayload);
       }
 
-      // Then send the initial message (if any)
+
       final message = widget.initialMessage?.trim();
       if (message != null && message.isNotEmpty) {
         controller.sendMessage(message);

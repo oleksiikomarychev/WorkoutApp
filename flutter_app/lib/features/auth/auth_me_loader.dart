@@ -4,7 +4,7 @@ import 'package:provider/provider.dart' as pv;
 import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/services/api_client.dart';
 
-/// Calls /api/v1/auth/me once after successful login to validate the auth chain.
+
 class AuthMeLoader extends StatefulWidget {
   const AuthMeLoader({super.key, required this.child});
 
@@ -31,7 +31,7 @@ class _AuthMeLoaderState extends State<AuthMeLoader> {
       final api = pv.Provider.of<ApiClient>(context, listen: false);
       await api.get(ApiConfig.buildEndpoint('/auth/me'));
     } catch (e) {
-      // In case of 401/403, force re-login
+
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         try {

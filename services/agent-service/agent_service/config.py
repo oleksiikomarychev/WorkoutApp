@@ -18,8 +18,6 @@ class Settings:
     def staged_llm_model(self) -> str:
         return os.getenv("GENAI_STAGED_MODEL", self.llm_model)
 
-    # LM Studio settings removed; Gemini is the only provider
-
     @property
     def genai_max_attempts(self) -> int:
         try:
@@ -69,8 +67,11 @@ class Settings:
 
     @property
     def workouts_service_url(self):
-        # Direct URL to workouts-service inside the docker network
         return os.getenv("WORKOUTS_SERVICE_URL", "http://workouts-service:8004")
+
+    @property
+    def crm_service_url(self):
+        return os.getenv("CRM_SERVICE_URL", "http://crm-service:8008")
 
     @property
     def rpe_service_url(self):

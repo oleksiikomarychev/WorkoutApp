@@ -22,7 +22,7 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
   String _direction = '';
   String _relation = '';
 
-  // Return allowed operator keys for a given metric
+
   List<String> _allowedOpKeysForMetric(String? metric) {
     final m = (metric ?? '').trim();
     switch (m) {

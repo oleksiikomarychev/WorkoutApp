@@ -1,7 +1,7 @@
 class ComputeSettings {
   final bool computeWeights;
   final double roundingStep;
-  final String roundingMode; // 'nearest' | 'floor' | 'ceil'
+  final String roundingMode;
   final bool generateWorkouts;
   final DateTime? startDate;
 

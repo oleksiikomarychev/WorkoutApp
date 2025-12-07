@@ -3,7 +3,7 @@ from prometheus_client import Counter
 TRAINING_PLANS_GENERATED_TOTAL = Counter(
     "training_plans_generated_total",
     "Number of training plans generated via agent-service",
-    ["variant"],  # base | rationale | summary
+    ["variant"],
 )
 
 MASS_EDIT_COMMANDS_REQUESTED_TOTAL = Counter(

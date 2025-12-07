@@ -6,7 +6,7 @@ class Mesocycle {
   final String? notes;
   final int orderIndex;
   final double? normalizationValue;
-  final String? normalizationUnit; // 'kg' or '%'
+  final String? normalizationUnit;
   final int? weeksCount;
   final int? microcycleLengthDays;
   final List<Microcycle> microcycles;
@@ -55,7 +55,7 @@ class MesocycleUpdateDto {
   final String? notes;
   final int? orderIndex;
   final double? normalizationValue;
-  final String? normalizationUnit; // 'kg' or '%'
+  final String? normalizationUnit;
   final int? weeksCount;
   final int? microcycleLengthDays;
 

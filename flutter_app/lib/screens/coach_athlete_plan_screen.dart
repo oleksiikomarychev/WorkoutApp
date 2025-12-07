@@ -687,7 +687,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Упражнение удалено')));
-        Navigator.of(context).pop(); // Close bottom sheet if needed
+        Navigator.of(context).pop();
         ref.invalidate(coachActivePlanWorkoutsProvider(widget.athleteId));
       }
     } catch (e) {
@@ -706,7 +706,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
     final workoutId = workout?.id ?? instance?.workoutId;
     if (workoutId == null) return;
 
-    // Fetch definitions
+
     List<ExerciseDefinition> definitions = [];
     try {
       definitions = await ref.read(exerciseServiceProvider).getExerciseDefinitions();
@@ -714,17 +714,17 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error loading exercises: $e')));
       return;
     }
-    
-    // Sort definitions by name
+
+
     definitions.sort((a, b) => a.name.compareTo(b.name));
 
-    // Initial state
+
     int? selectedExerciseId = instance?.exerciseListId ?? (definitions.isNotEmpty ? definitions.first.id : null);
     String notes = instance?.notes ?? '';
     int? order = instance?.order;
-    // Create mutable copy of sets
+
     List<ExerciseSetDto> sets = List.from(instance?.sets ?? []);
-    // Ensure at least one set for new exercise
+
     if (!isEdit && sets.isEmpty) {
       sets.add(const ExerciseSetDto(reps: 10, weight: 20, rpe: 8));
     }
@@ -745,7 +745,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Exercise Selector
+
                       DropdownButtonFormField<int>(
                         value: selectedExerciseId,
                         isExpanded: true,
@@ -778,9 +778,9 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                           IconButton(
                             icon: const Icon(Icons.add_circle_outline),
                             onPressed: () => setState(() {
-                              // Copy previous set values if exists
+
                               final last = sets.isNotEmpty ? sets.last : const ExerciseSetDto(reps: 10, weight: 20, rpe: 8);
-                              sets.add(last.copyWith(id: null)); 
+                              sets.add(last.copyWith(id: null));
                             }),
                             tooltip: 'Добавить сет',
                           )
@@ -788,7 +788,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                       ),
                       if (sets.isEmpty)
                         const Text('Нет сетов', style: TextStyle(color: Colors.grey)),
-                        
+
                       ...sets.asMap().entries.map((entry) {
                         final index = entry.key;
                         final set = entry.value;
@@ -854,7 +854,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Выберите упражнение')));
                       return;
                     }
-                    
+
                     try {
                       final svc = ref.read(crmCoachServiceProvider);
                       final payload = {
@@ -880,10 +880,10 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                       if (mounted) {
                          Navigator.of(ctx).pop();
                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isEdit ? 'Обновлено' : 'Создано')));
-                         // Refresh data
+
                          ref.invalidate(coachActivePlanWorkoutsProvider(widget.athleteId));
-                         // Close the bottom sheet to avoid showing stale data
-                         Navigator.of(context).pop(); 
+
+                         Navigator.of(context).pop();
                       }
                     } catch (e) {
                       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e')));

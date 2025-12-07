@@ -9,7 +9,6 @@ import 'package:web_socket_channel/status.dart' as status_codes;
 import '../config/chat_config.dart';
 import '../models/chat_message.dart';
 
-/// Connection state for the chat service.
 enum ChatConnectionState {
   disconnected,
   connecting,
@@ -18,7 +17,6 @@ enum ChatConnectionState {
   error,
 }
 
-/// Events emitted by the chat service.
 sealed class ChatEvent {
   const ChatEvent();
 }
@@ -53,19 +51,18 @@ class TypingEvent extends ChatEvent {
   final bool isTyping;
 }
 
-/// Emitted when the backend sends a structured mass edit result payload
-/// (type: "mass_edit_result") for tools like applied_plan_mass_edit.
-///
-/// The raw payload is forwarded so higher layers can render a rich preview
-/// card (counts + human-readable filter/actions summary) without the
-/// transport layer knowing domain details.
+
+
+
+
+
+
 class MassEditResultEvent extends ChatEvent {
   const MassEditResultEvent(this.payload);
 
   final Map<String, dynamic> payload;
 }
 
-/// Handles WebSocket connectivity, reconnection, and message parsing.
 class ChatService {
   ChatService({
     Duration heartbeatInterval = const Duration(seconds: 30),
@@ -164,10 +161,10 @@ class ChatService {
     }
   }
 
-  /// Sends a structured request to apply a previously previewed mass edit
-  /// command for an applied plan. This avoids re-generating the command via
-  /// LLM and instead reuses the exact JSON mass_edit_command payload received
-  /// from the backend.
+
+
+
+
   Future<void> sendMassEditApply(Map<String, dynamic> payload) async {
     if (_channel == null) {
       throw StateError('Cannot send mass_edit_apply while channel is null');
@@ -208,12 +205,12 @@ class ChatService {
     }
   }
 
-  /// Sends structured context payload to the backend.
-  /// This should be called once when the chat overlay opens to provide
-  /// screen-specific context (plan IDs, athlete info, etc.) for auto-substitution.
+
+
+
   Future<void> sendContext(Map<String, dynamic> context) async {
-    // Remember the latest context; if the socket is not yet connected,
-    // it will be sent as soon as the channel is opened.
+
+
     _pendingContext = context;
 
     if (_channel == null) {
@@ -264,9 +261,9 @@ class ChatService {
       _lastMessageReceived = DateTime.now();
       _startHeartbeat();
 
-      // If there is pending structured context (e.g. ActivePlanScreen
-      // already built it), send it as soon as the channel is open so
-      // the backend has it before processing slash-commands.
+
+
+
       final pending = _pendingContext;
       if (pending != null) {
         try {
@@ -337,11 +334,11 @@ class ChatService {
           _eventController.add(ErrorEvent(message));
           break;
         case 'pong':
-          // Reset the last message time to prevent heartbeat timeout
+
           _lastMessageReceived = DateTime.now();
           break;
         case 'mass_edit_result':
-          // Forward raw payload so UI can show a structured summary card
+
           _eventController.add(MassEditResultEvent(payload));
           break;
         default:
@@ -352,9 +349,9 @@ class ChatService {
       _eventController.add(ErrorEvent('Malformed message received from server'));
     }}
 
-  
-  
-  
+
+
+
   void _handleDone() {
     _cancelHeartbeat();
     if (_manuallyClosed) {

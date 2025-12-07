@@ -1,19 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
-/// Service class wrapping Firebase Auth for centralized authentication logic.
-/// Provides methods for sign-in, sign-out, and token management.
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  /// Current authenticated user
   User? get currentUser => _auth.currentUser;
 
-  /// Stream of authentication state changes
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  /// Get the current ID token for API requests
-  /// If [forceRefresh] is true, the token will be refreshed from the server
   Future<String?> getIdToken({bool forceRefresh = false}) async {
     final user = _auth.currentUser;
     if (user == null) {
@@ -35,7 +29,6 @@ class AuthService {
     }
   }
 
-  /// Sign in with email and password
   Future<UserCredential> signInWithEmailAndPassword({
     required String email,
     required String password,
@@ -51,7 +44,6 @@ class AuthService {
     }
   }
 
-  /// Create a new user with email and password
   Future<UserCredential> createUserWithEmailAndPassword({
     required String email,
     required String password,
@@ -67,7 +59,6 @@ class AuthService {
     }
   }
 
-  /// Send password reset email
   Future<void> sendPasswordResetEmail({required String email}) async {
     try {
       await _auth.sendPasswordResetEmail(email: email);
@@ -78,7 +69,6 @@ class AuthService {
     }
   }
 
-  /// Sign out the current user
   Future<void> signOut() async {
     try {
       await _auth.signOut();
@@ -89,10 +79,8 @@ class AuthService {
     }
   }
 
-  /// Check if the current user's email is verified
   bool get isEmailVerified => _auth.currentUser?.emailVerified ?? false;
 
-  /// Send email verification to the current user
   Future<void> sendEmailVerification() async {
     final user = _auth.currentUser;
     if (user == null) {
@@ -108,7 +96,6 @@ class AuthService {
     }
   }
 
-  /// Reload the current user to get the latest data
   Future<void> reloadUser() async {
     final user = _auth.currentUser;
     if (user == null) {
@@ -124,8 +111,6 @@ class AuthService {
     }
   }
 
-  /// Configure Firebase Auth Emulator for local development
-  /// Call this before any auth operations in development mode
   void useAuthEmulator({String host = 'localhost', int port = 9099}) {
     try {
       _auth.useAuthEmulator(host, port);

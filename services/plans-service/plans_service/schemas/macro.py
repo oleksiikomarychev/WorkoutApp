@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -76,13 +76,13 @@ class MacroTargetSelectorType(str, Enum):
 
 
 class MacroTagSelectorValue(BaseModel):
-    movement_type: Optional[List[str]] = None
-    region: Optional[List[str]] = None
-    muscle_group: Optional[List[str]] = None
-    equipment: Optional[List[str]] = None
+    movement_type: list[str] | None = None
+    region: list[str] | None = None
+    muscle_group: list[str] | None = None
+    equipment: list[str] | None = None
 
     @model_validator(mode="after")
-    def _ensure_any_value(cls, values: "MacroTagSelectorValue") -> "MacroTagSelectorValue":
+    def _ensure_any_value(cls, values: MacroTagSelectorValue) -> MacroTagSelectorValue:
         if not any(getattr(values, attr) for attr in ("movement_type", "region", "muscle_group", "equipment")):
             raise ValueError("selector.value must contain at least one non-empty filter")
         return values
@@ -94,12 +94,12 @@ class MacroTargetSelector(BaseModel):
 
 
 class MacroActionTarget(BaseModel):
-    exercise_id: Optional[int] = Field(None, ge=1)
-    exercise_ids: Optional[List[int]] = Field(None, min_length=1)
-    selector: Optional[MacroTargetSelector] = None
+    exercise_id: int | None = Field(None, ge=1)
+    exercise_ids: list[int] | None = Field(None, min_length=1)
+    selector: MacroTargetSelector | None = None
 
     @model_validator(mode="after")
-    def _normalize_ids(cls, values: "MacroActionTarget") -> "MacroActionTarget":
+    def _normalize_ids(cls, values: MacroActionTarget) -> MacroActionTarget:
         ids = values.exercise_ids
         if ids:
             deduped = []
@@ -122,14 +122,14 @@ class MacroActionTarget(BaseModel):
 
 class MacroTrigger(BaseModel):
     metric: MacroMetric
-    exercise_id: Optional[int] = Field(None, ge=1)
-    exercise_ids: Optional[List[int]] = Field(None, min_length=1)
-    selector: Optional[MacroTargetSelector] = None
+    exercise_id: int | None = Field(None, ge=1)
+    exercise_ids: list[int] | None = Field(None, min_length=1)
+    selector: MacroTargetSelector | None = None
 
     @model_validator(mode="after")
-    def _normalize_ids(cls, values: "MacroTrigger") -> "MacroTrigger":
+    def _normalize_ids(cls, values: MacroTrigger) -> MacroTrigger:
         if values.exercise_ids:
-            deduped: List[int] = []
+            deduped: list[int] = []
             seen: set[int] = set()
             for val in values.exercise_ids:
                 if val is None:
@@ -149,17 +149,17 @@ class MacroTrigger(BaseModel):
 
 class MacroCondition(BaseModel):
     op: MacroConditionOp
-    value: Optional[float] = None
-    range: Optional[List[float]] = Field(None, min_length=2, max_length=2)
-    relation: Optional[MacroConditionRelation] = None
-    n: Optional[int] = Field(None, ge=1)
-    n_sets: Optional[int] = Field(None, ge=1)
-    epsilon_percent: Optional[float] = Field(None, ge=0)
-    value_percent: Optional[float] = Field(None, ge=0)
-    direction: Optional[str] = Field(None, pattern="^(positive|negative)?$")
+    value: float | None = None
+    range: list[float] | None = Field(None, min_length=2, max_length=2)
+    relation: MacroConditionRelation | None = None
+    n: int | None = Field(None, ge=1)
+    n_sets: int | None = Field(None, ge=1)
+    epsilon_percent: float | None = Field(None, ge=0)
+    value_percent: float | None = Field(None, ge=0)
+    direction: str | None = Field(None, pattern="^(positive|negative)?$")
 
     @model_validator(mode="after")
-    def _validate_payload(cls, values: "MacroCondition") -> "MacroCondition":
+    def _validate_payload(cls, values: MacroCondition) -> MacroCondition:
         op = values.op
 
         if (
@@ -220,15 +220,15 @@ class MacroDuration(BaseModel):
 
 class MacroAction(BaseModel):
     type: MacroActionType
-    params: Dict[str, Any] = Field(default_factory=dict)
-    target: Optional[MacroActionTarget] = None
+    params: dict[str, Any] = Field(default_factory=dict)
+    target: MacroActionTarget | None = None
 
     @model_validator(mode="after")
-    def _validate_params(cls, values: "MacroAction") -> "MacroAction":
+    def _validate_params(cls, values: MacroAction) -> MacroAction:
         action_type = values.type
         params = values.params or {}
 
-        def require_keys(required: List[str]) -> None:
+        def require_keys(required: list[str]) -> None:
             missing = [k for k in required if params.get(k) is None]
             if missing:
                 raise ValueError(f"action.params missing required fields: {', '.join(missing)}")
@@ -296,11 +296,11 @@ class MacroRule(BaseModel):
     duration: MacroDuration = Field(default_factory=MacroDuration)
 
     @model_validator(mode="after")
-    def _validate_semantics(cls, values: "MacroRule") -> "MacroRule":
+    def _validate_semantics(cls, values: MacroRule) -> MacroRule:
         metric = values.trigger.metric
         op = values.condition.op
 
-        allowed_ops: Dict[MacroMetric, set[MacroConditionOp]] = {
+        allowed_ops: dict[MacroMetric, set[MacroConditionOp]] = {
             MacroMetric.E1RM: {
                 MacroConditionOp.GT,
                 MacroConditionOp.GE,
@@ -390,7 +390,6 @@ class MacroRule(BaseModel):
                 if cond.range is None:
                     raise ValueError("Readiness_Score range operators require condition.range [min, max]")
 
-            # normalize to floats
             if cond.value is not None:
                 cond.value = float(cond.value)
                 if cond.value < 0 or cond.value > 10:
@@ -440,10 +439,10 @@ class PlanMacroCreate(PlanMacroBase):
 
 
 class PlanMacroUpdate(BaseModel):
-    name: Optional[str] = Field(None, max_length=255)
-    is_active: Optional[bool] = None
-    priority: Optional[int] = Field(None, ge=0, le=10000)
-    rule: Optional[MacroRule] = None
+    name: str | None = Field(None, max_length=255)
+    is_active: bool | None = None
+    priority: int | None = Field(None, ge=0, le=10000)
+    rule: MacroRule | None = None
 
 
 class PlanMacroResponse(PlanMacroBase):

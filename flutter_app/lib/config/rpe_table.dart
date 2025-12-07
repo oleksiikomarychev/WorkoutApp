@@ -1,8 +1,8 @@
-/// Optimized RPE (Rate of Perceived Exertion) table for fast local calculations
-/// This eliminates HTTP calls and provides instant RPE/reps/intensity calculations
+
+
 class RpeTable {
-  // Precomputed RPE table as nested maps for O(1) lookups
-  // Structure: intensity -> rpe -> reps
+
+
   static const Map<int, Map<int, int>> _rpeTable = {
     100: {10: 1},
     99: {10: 1},
@@ -67,11 +67,11 @@ class RpeTable {
     40: {10: 42, 9: 41, 8: 40, 7: 39, 6: 38, 5: 37, 4: 36, 3: 35, 2: 34, 1: 33},
   };
 
-  // Precomputed reverse lookup for faster calculations
-  // Structure: intensity -> reps -> rpe (for calculating RPE from intensity + reps)
+
+
   static final Map<int, Map<int, int>> _intensityRepsToRpe = _buildReverseLookup();
 
-  // Build reverse lookup table at initialization
+
   static Map<int, Map<int, int>> _buildReverseLookup() {
     final result = <int, Map<int, int>>{};
     _rpeTable.forEach((intensity, rpeMap) {
@@ -83,22 +83,22 @@ class RpeTable {
     return result;
   }
 
-  /// Get RPE for given intensity and reps
-  /// O(1) lookup time
+
+
   static int? getRpe(int intensity, int reps) {
     return _intensityRepsToRpe[intensity]?[reps];
   }
 
-  /// Get reps for given intensity and RPE
-  /// O(1) lookup time
+
+
   static int? getReps(int intensity, int rpe) {
     return _rpeTable[intensity]?[rpe];
   }
 
-  /// Get intensity for given reps and RPE
-  /// O(n) time complexity but optimized with early bounds checking
+
+
   static int? getIntensity(int reps, int rpe) {
-    // Find the highest intensity that can achieve the target reps at given RPE
+
     for (int intensity = 100; intensity >= 40; intensity--) {
       final repsAtIntensity = _rpeTable[intensity]?[rpe];
       if (repsAtIntensity != null && repsAtIntensity >= reps) {
@@ -108,36 +108,36 @@ class RpeTable {
     return null;
   }
 
-  /// Calculate one rep max from RPE, reps, and weight
+
   static double calculateOneRepMax(int rpe, int reps, double weight) {
     final intensity = getIntensity(reps, rpe);
     if (intensity == null) return 0.0;
     return weight / (intensity / 100.0);
   }
 
-  /// Validate intensity value
+
   static bool isValidIntensity(int intensity) {
     return _rpeTable.containsKey(intensity);
   }
 
-  /// Validate RPE value
+
   static bool isValidRpe(int rpe) {
     return [4, 5, 6, 7, 8, 9, 10].contains(rpe);
   }
 
-  /// Get all available intensities (sorted descending)
+
   static List<int> getAvailableIntensities() {
     return _rpeTable.keys.toList()..sort((a, b) => b.compareTo(a));
   }
 
-  /// Get all available RPE values for a given intensity
+
   static List<int> getAvailableRpes(int intensity) {
     final rpeMap = _rpeTable[intensity];
     if (rpeMap == null) return [];
     return rpeMap.keys.toList()..sort((a, b) => b.compareTo(a));
   }
 
-  /// Get maximum reps possible at given intensity and RPE
+
   static int? getMaxRepsAtIntensity(int intensity, int rpe) {
     return _rpeTable[intensity]?[rpe];
   }

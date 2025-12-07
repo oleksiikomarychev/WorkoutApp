@@ -10,14 +10,14 @@ class WorkoutSessionService extends BaseApiService {
 
   WorkoutSessionService(this._apiClient) : super(_apiClient);
 
-  // POST /workouts/{workout_id}/start
+
   Future<WorkoutSession> startSession(int workoutId) async {
     try {
       final endpoint = ApiConfig.startWorkoutSessionEndpoint(workoutId.toString());
       _logger.d('Starting session for workout $workoutId');
       final response = await _apiClient.post(
         endpoint,
-        <String, dynamic>{}, // path contains workoutId; backend doesn't require body
+        <String, dynamic>{},
         context: 'WorkoutSessionService.startSession',
       );
 
@@ -30,7 +30,7 @@ class WorkoutSessionService extends BaseApiService {
     }
   }
 
-  // GET /workouts/{workout_id}/active -> may be 404 (no active)
+
   Future<WorkoutSession?> getActiveSession(int workoutId) async {
     final endpoint = ApiConfig.getActiveSessionEndpoint(workoutId.toString());
     try {
@@ -45,7 +45,7 @@ class WorkoutSessionService extends BaseApiService {
       }
       throw Exception('Unexpected response format for active session');
     } catch (e) {
-      // Treat 404 as no active session
+
       if (e is ApiException && e.statusCode == 404) {
         _logger.d('No active session for workout $workoutId (404)');
         return null;
@@ -54,7 +54,7 @@ class WorkoutSessionService extends BaseApiService {
     }
   }
 
-  // GET /workouts/{workout_id}/history
+
   Future<List<WorkoutSession>> listSessions(int workoutId) async {
     try {
       final endpoint = ApiConfig.getSessionHistoryEndpoint(workoutId.toString());
@@ -71,7 +71,7 @@ class WorkoutSessionService extends BaseApiService {
             .toList();
       }
       if (response is Map<String, dynamic>) {
-        // Some backends may return a single object
+
         return [WorkoutSession.fromJson(response)];
       }
       throw Exception('Unexpected response format for session history');
@@ -104,7 +104,7 @@ class WorkoutSessionService extends BaseApiService {
     }
   }
 
-  // PUT /sessions/{session_id}/instances/{instance_id}/sets/{set_id}
+
   Future<WorkoutSession> updateSetCompletion({
     required int sessionId,
     required int instanceId,
@@ -137,7 +137,7 @@ class WorkoutSessionService extends BaseApiService {
     }
   }
 
-  // POST /sessions/{session_id}/finish
+
   Future<WorkoutSession> finishSession(
     int sessionId, {
     bool cancelled = false,

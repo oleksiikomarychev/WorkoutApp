@@ -1,9 +1,7 @@
-"""Celery tasks responsible for training plan generation."""
-
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, Optional
+from typing import Any
 
 from celery import shared_task
 from celery.utils.log import get_task_logger
@@ -52,10 +50,10 @@ def _build_payload(
     *,
     variant: str,
     plan: TrainingPlan,
-    rationale: Optional[str] = None,
-    summary: Optional[str] = None,
-) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {
+    rationale: str | None = None,
+    summary: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "variant": variant,
         "plan": plan.model_dump(mode="json"),
     }
@@ -72,13 +70,12 @@ def _handle_success(plan: TrainingPlan, user_id: str, variant: str) -> None:
     TRAINING_PLANS_GENERATED_TOTAL.labels(variant=variant).inc()
 
 
-def _parse_user_data(data: Dict[str, Any]) -> UserDataInput:
+def _parse_user_data(data: dict[str, Any]) -> UserDataInput:
     return UserDataInput.model_validate(data)
 
 
 @shared_task(bind=True, name="agent.generate_plan", queue=PLAN_TASK_QUEUE, max_retries=3)
-def generate_plan_task(self, user_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
-    """Generate base training plan."""
+def generate_plan_task(self, user_data: dict[str, Any], user_id: str) -> dict[str, Any]:
     try:
         plan = _run_async(generate_training_plan(_parse_user_data(user_data)))
         _handle_success(plan, user_id, "base")
@@ -94,8 +91,7 @@ def generate_plan_task(self, user_data: Dict[str, Any], user_id: str) -> Dict[st
     queue=PLAN_TASK_QUEUE,
     max_retries=3,
 )
-def generate_plan_with_rationale_task(self, user_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
-    """Generate plan plus rationale."""
+def generate_plan_with_rationale_task(self, user_data: dict[str, Any], user_id: str) -> dict[str, Any]:
     try:
         plan, rationale = _run_async(generate_training_plan_with_rationale(_parse_user_data(user_data)))
         _handle_success(plan, user_id, "rationale")
@@ -111,8 +107,7 @@ def generate_plan_with_rationale_task(self, user_data: Dict[str, Any], user_id: 
     queue=PLAN_TASK_QUEUE,
     max_retries=3,
 )
-def generate_plan_with_summary_task(self, user_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
-    """Generate plan plus summary snippet."""
+def generate_plan_with_summary_task(self, user_data: dict[str, Any], user_id: str) -> dict[str, Any]:
     try:
         plan, summary = _run_async(generate_training_plan_with_summary(_parse_user_data(user_data)))
         _handle_success(plan, user_id, "summary")

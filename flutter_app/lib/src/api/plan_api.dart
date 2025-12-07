@@ -46,7 +46,7 @@ class PlanApi {
     required int exerciseId,
     required int maxWeight,
     required int repMax,
-    required String date, // format: YYYY-MM-DD
+    required String date,
   }) async {
     final response = await _apiClient.post(
       ApiConfig.createUserMaxEndpoint(),
@@ -61,7 +61,7 @@ class PlanApi {
     return UserMax.fromJson(response);
   }
 
-  // ===== Variants =====
+
   static Future<List<CalendarPlanSummary>> getVariants(int planId) async {
     final data = await _apiClient.get(
       ApiConfig.listPlanVariantsEndpoint(planId.toString()),

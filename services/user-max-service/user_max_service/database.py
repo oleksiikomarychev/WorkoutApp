@@ -9,7 +9,7 @@ DATABASE_URL = os.getenv("USER_MAX_DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("USER_MAX_DATABASE_URL environment variable is not set")
 
-# Normalize SSL params for psycopg2
+
 try:
     parsed = urlparse(DATABASE_URL)
     q = dict(parse_qsl(parsed.query, keep_blank_values=True))
@@ -35,10 +35,6 @@ engine_args = {"echo": False}
 engine = create_engine(DATABASE_URL, **engine_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
-
-# Drop and create all tables
-# Base.metadata.drop_all(bind=engine)
-# Base.metadata.create_all(bind=engine)
 
 
 def get_db():

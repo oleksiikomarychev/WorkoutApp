@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal
+from typing import Any, Literal
 
 import httpx
 import structlog
@@ -19,7 +19,7 @@ from .tool_agent import ToolSpec
 
 logger = structlog.get_logger(__name__)
 
-MASS_EDIT_COMMAND_SCHEMA: Dict[str, Any] = {
+MASS_EDIT_COMMAND_SCHEMA: dict[str, Any] = {
     "type": "object",
     "required": ["operation", "filter", "actions"],
     "properties": {
@@ -73,7 +73,7 @@ MASS_EDIT_COMMAND_SCHEMA: Dict[str, Any] = {
 }
 
 
-APPLIED_MASS_EDIT_COMMAND_SCHEMA: Dict[str, Any] = {
+APPLIED_MASS_EDIT_COMMAND_SCHEMA: dict[str, Any] = {
     "type": "object",
     "required": ["filter", "actions"],
     "properties": {
@@ -101,7 +101,6 @@ APPLIED_MASS_EDIT_COMMAND_SCHEMA: Dict[str, Any] = {
                     "type": "array",
                     "items": {"type": "integer", "minimum": 1},
                 },
-                # Set-level filters
                 "intensity_lte": {"type": "number"},
                 "intensity_gte": {"type": "number"},
                 "volume_lte": {"type": "integer", "minimum": 0},
@@ -164,9 +163,7 @@ APPLIED_MASS_EDIT_COMMAND_SCHEMA: Dict[str, Any] = {
 }
 
 
-async def generate_mass_edit_command(prompt: str, desired_mode: Literal["preview", "apply"]) -> Dict[str, Any]:
-    """Call the LLM to transform a natural-language request into PlanMassEditCommand JSON."""
-
+async def generate_mass_edit_command(prompt: str, desired_mode: Literal["preview", "apply"]) -> dict[str, Any]:
     composed_prompt = MASS_EDIT_PROMPT_TEMPLATE.format(user_prompt=f"User request: {prompt}")
     logger.info(
         "mass_edit_command_generate_requested",
@@ -205,7 +202,6 @@ async def generate_mass_edit_command(prompt: str, desired_mode: Literal["preview
 
 
 async def fetch_exercise_definitions() -> str:
-    """Fetch all exercise definitions to provide context for the LLM."""
     base_url = settings.exercises_service_url
     try:
         async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
@@ -217,14 +213,12 @@ async def fetch_exercise_definitions() -> str:
             for item in defs:
                 lines.append(f"- {item.get('name')} (ID: {item.get('id')})")
             return "\n".join(lines)
-    except Exception as exc:
-        logger.warning("failed_to_fetch_exercises_context", error=str(exc))
+    except (httpx.RequestError, httpx.HTTPStatusError, ValueError, TypeError):
+        logger.warning("Failed to fetch exercise definitions context", exc_info=True)
         return ""
 
 
-async def generate_applied_mass_edit_command(prompt: str, desired_mode: Literal["preview", "apply"]) -> Dict[str, Any]:
-    """Call the LLM to transform a natural-language request into AppliedPlanMassEditCommand JSON."""
-
+async def generate_applied_mass_edit_command(prompt: str, desired_mode: Literal["preview", "apply"]) -> dict[str, Any]:
     exercises_context = await fetch_exercise_definitions()
     context_str = ""
     if exercises_context:
@@ -257,11 +251,6 @@ async def generate_applied_mass_edit_command(prompt: str, desired_mode: Literal[
         )
         raise ValueError("LLM response missing required keys 'filter' or 'actions'")
 
-    # Safety: AppliedPlanExerciseFilter in workouts-service requires at least one
-    # scope field among plan_order_indices, from/to_order_index, or
-    # scheduled_from/scheduled_to. If the LLM omitted all of them, default to
-    # "all relevant future workouts in this applied plan" by setting
-    # from_order_index = 0 and only_future = true.
     flt = command.get("filter")
     if isinstance(flt, dict):
         plan_order_indices = flt.get("plan_order_indices")
@@ -294,9 +283,7 @@ async def generate_applied_mass_edit_command(prompt: str, desired_mode: Literal[
     return command
 
 
-async def apply_mass_edit_to_plan(plan_id: int, user_id: str, command: Dict[str, Any]) -> Dict[str, Any]:
-    """Proxy the generated command to plans-service and return the updated plan."""
-
+async def apply_mass_edit_to_plan(plan_id: int, user_id: str, command: dict[str, Any]) -> dict[str, Any]:
     url = f"{settings.plans_service_url}/plans/calendar-plans/{plan_id}/mass-edit"
     headers = {"X-User-Id": user_id}
 
@@ -331,14 +318,15 @@ async def apply_mass_edit_to_plan(plan_id: int, user_id: str, command: Dict[str,
             plan_id=plan_id,
             status_code=exc.response.status_code,
             detail=detail,
+            exc_info=True,
         )
         raise HTTPException(status_code=exc.response.status_code, detail=detail)
-    except httpx.RequestError as exc:
+    except httpx.RequestError:
         logger.error(
             "mass_edit_apply_request_failed",
             user_id=user_id,
             plan_id=plan_id,
-            error=str(exc),
+            exc_info=True,
         )
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Plans service unavailable")
 
@@ -346,13 +334,8 @@ async def apply_mass_edit_to_plan(plan_id: int, user_id: str, command: Dict[str,
 async def apply_applied_mass_edit_to_plan(
     applied_plan_id: int,
     user_id: str,
-    command: Dict[str, Any],
-) -> Dict[str, Any]:
-    """Proxy the generated applied mass-edit command to workouts-service.
-
-    Returns the summary response from workouts-service.
-    """
-
+    command: dict[str, Any],
+) -> dict[str, Any]:
     url = f"{settings.workouts_service_url}/workouts/applied-plans/{applied_plan_id}/mass-edit-sets"
     headers = {"X-User-Id": user_id}
 
@@ -386,14 +369,15 @@ async def apply_applied_mass_edit_to_plan(
             applied_plan_id=applied_plan_id,
             status_code=exc.response.status_code,
             detail=detail,
+            exc_info=True,
         )
         raise HTTPException(status_code=exc.response.status_code, detail=detail)
-    except httpx.RequestError as exc:
+    except httpx.RequestError:
         logger.error(
             "applied_mass_edit_apply_request_failed",
             user_id=user_id,
             applied_plan_id=applied_plan_id,
-            error=str(exc),
+            exc_info=True,
         )
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Workouts service unavailable")
 
@@ -406,22 +390,16 @@ async def shift_applied_plan_schedule(
     to_date: str | None = None,
     new_rest_days: int | None = None,
     add_rest_every_n_workouts: int | None = None,
-    add_rest_at_indices: List[int] | None = None,
+    add_rest_at_indices: list[int] | None = None,
     add_rest_days_amount: int = 1,
     action_type: Literal["shift", "set_rest"] = "shift",
     only_future: bool = False,
-    status_in: List[str] | None = None,
+    status_in: list[str] | None = None,
     mode: Literal["preview", "apply"] = "apply",
-) -> Dict[str, Any]:
-    """Proxy schedule-shift command to workouts-service for an applied plan.
-
-    This is a thin wrapper around the workouts-service endpoint
-    /workouts/applied-plans/{applied_plan_id}/shift-schedule.
-    """
-
+) -> dict[str, Any]:
     url = f"{settings.workouts_service_url}/workouts/applied-plans/{applied_plan_id}/shift-schedule"
     headers = {"X-User-Id": user_id}
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "from_date": from_date,
         "to_date": to_date,
         "days": days,
@@ -473,20 +451,21 @@ async def shift_applied_plan_schedule(
             applied_plan_id=applied_plan_id,
             status_code=exc.response.status_code,
             detail=detail,
+            exc_info=True,
         )
         raise HTTPException(status_code=exc.response.status_code, detail=detail)
-    except httpx.RequestError as exc:
+    except httpx.RequestError:
         logger.error(
             "applied_schedule_shift_apply_request_failed",
             user_id=user_id,
             applied_plan_id=applied_plan_id,
-            error=str(exc),
+            exc_info=True,
         )
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Workouts service unavailable")
 
 
 def create_plan_mass_edit_tool(user_id: str) -> ToolSpec:
-    parameters_schema: Dict[str, Any] = {
+    parameters_schema: dict[str, Any] = {
         "type": "object",
         "required": ["plan_id", "mode", "instructions"],
         "properties": {
@@ -503,18 +482,15 @@ def create_plan_mass_edit_tool(user_id: str) -> ToolSpec:
         },
     }
 
-    async def handler(args: Dict[str, Any]) -> Dict[str, Any]:
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
         raw_plan_id = args.get("plan_id")
         if raw_plan_id is None:
             raise ValueError("plan_id is required")
         try:
             plan_id = int(raw_plan_id)
-        except Exception as exc:  # pragma: no cover
+        except (TypeError, ValueError) as exc:  # pragma: no cover
             raise ValueError("plan_id must be an integer") from exc
 
-        # For ActivePlanScreen tool usage we always want to perform real
-        # modifications, not just a preview, so we force mode="apply"
-        # regardless of what the LLM passed in arguments.
         mode: Literal["preview", "apply"] = "apply"
 
         raw_instructions = args.get("instructions")
@@ -547,9 +523,7 @@ def create_plan_mass_edit_tool(user_id: str) -> ToolSpec:
 
 
 def create_applied_plan_mass_edit_tool(user_id: str) -> ToolSpec:
-    """ToolSpec for applying mass edits to an applied plan using natural language instructions."""
-
-    parameters_schema: Dict[str, Any] = {
+    parameters_schema: dict[str, Any] = {
         "type": "object",
         "required": ["applied_plan_id", "instructions"],
         "properties": {
@@ -574,16 +548,15 @@ def create_applied_plan_mass_edit_tool(user_id: str) -> ToolSpec:
         },
     }
 
-    async def handler(args: Dict[str, Any]) -> Dict[str, Any]:
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
         raw_applied_plan_id = args.get("applied_plan_id")
         if raw_applied_plan_id is None:
             raise ValueError("applied_plan_id is required")
         try:
             applied_plan_id = int(raw_applied_plan_id)
-        except Exception as exc:  # pragma: no cover
+        except (TypeError, ValueError) as exc:  # pragma: no cover
             raise ValueError("applied_plan_id must be an integer") from exc
 
-        # Default to 'preview' if not specified, unless the LLM explicitly chose 'apply'.
         raw_mode = args.get("mode")
         if not raw_mode:
             mode: Literal["preview", "apply"] = "preview"
@@ -606,7 +579,7 @@ def create_applied_plan_mass_edit_tool(user_id: str) -> ToolSpec:
             mode=mode,
         )
         inline_refs = parse_inline_references(prompt_text)
-        filter_hints: Dict[str, Any] = {}
+        filter_hints: dict[str, Any] = {}
         if inline_refs:
             filter_hints = await build_applied_mass_edit_filter_hints(
                 inline_refs,
@@ -646,7 +619,6 @@ def create_applied_plan_mass_edit_tool(user_id: str) -> ToolSpec:
 
             command["filter"] = flt
 
-        # Ensure the command mode matches the decided mode (preview/apply).
         command["mode"] = mode
         result = await apply_applied_mass_edit_to_plan(applied_plan_id, user_id, command)
         logger.info(
@@ -655,8 +627,7 @@ def create_applied_plan_mass_edit_tool(user_id: str) -> ToolSpec:
             applied_plan_id=applied_plan_id,
             mode=mode,
         )
-        # Return instructions so the frontend can later trigger an explicit
-        # "apply" run using the same natural-language request, if needed.
+
         return {"summary": result, "mass_edit_command": command, "instructions": prompt_text}
 
     return ToolSpec(
@@ -671,9 +642,7 @@ def create_applied_plan_mass_edit_tool(user_id: str) -> ToolSpec:
 
 
 def create_applied_plan_schedule_shift_tool(user_id: str) -> ToolSpec:
-    """ToolSpec для сдвига или реструктуризации расписания applied-плана."""
-
-    parameters_schema: Dict[str, Any] = {
+    parameters_schema: dict[str, Any] = {
         "type": "object",
         "required": ["applied_plan_id", "from_date"],
         "properties": {
@@ -749,7 +718,7 @@ def create_applied_plan_schedule_shift_tool(user_id: str) -> ToolSpec:
         },
     }
 
-    async def handler(args: Dict[str, Any]) -> Dict[str, Any]:
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
         raw_applied_plan_id = args.get("applied_plan_id")
         if raw_applied_plan_id is None:
             raise ValueError("applied_plan_id is required")
@@ -769,21 +738,21 @@ def create_applied_plan_schedule_shift_tool(user_id: str) -> ToolSpec:
         days_val = args.get("days", 0)
         try:
             days = int(days_val)
-        except Exception as exc:
+        except (TypeError, ValueError) as exc:
             raise ValueError("days must be an integer") from exc
 
         new_rest_days = args.get("new_rest_days")
         if new_rest_days is not None:
             try:
                 new_rest_days = int(new_rest_days)
-            except Exception as exc:
+            except (TypeError, ValueError) as exc:
                 raise ValueError("new_rest_days must be an integer") from exc
 
         add_rest_every_n_workouts = args.get("add_rest_every_n_workouts")
         if add_rest_every_n_workouts is not None:
             try:
                 add_rest_every_n_workouts = int(add_rest_every_n_workouts)
-            except Exception as exc:
+            except (TypeError, ValueError) as exc:
                 raise ValueError("add_rest_every_n_workouts must be an integer") from exc
 
         add_rest_at_indices = args.get("add_rest_at_indices")
@@ -793,16 +762,13 @@ def create_applied_plan_schedule_shift_tool(user_id: str) -> ToolSpec:
         add_rest_days_amount = args.get("add_rest_days_amount", 1)
         try:
             add_rest_days_amount = int(add_rest_days_amount)
-        except Exception as exc:
+        except (TypeError, ValueError) as exc:
             raise ValueError("add_rest_days_amount must be an integer") from exc
 
         action_type = args.get("action_type", "shift")
         if action_type not in ("shift", "set_rest"):
             action_type = "shift"
 
-        # Safety: if the model passed a "rest interval" parameter but kept
-        # action_type="shift" and days=0, treat this as a request to
-        # restructure gaps between workouts rather than a no-op shift.
         if action_type == "shift" and new_rest_days is not None and days == 0:
             action_type = "set_rest"
 
@@ -837,11 +803,7 @@ def create_applied_plan_schedule_shift_tool(user_id: str) -> ToolSpec:
             status_in=status_in,
         )
 
-        # Build a deterministic command payload that captures all parameters
-        # used for this schedule shift. This is returned to the frontend so it
-        # can render a structured card and, in the future, re-apply the exact
-        # same command without involving the LLM again.
-        command: Dict[str, Any] = {
+        command: dict[str, Any] = {
             "from_date": from_date_val,
             "to_date": to_date_val,
             "days": days,
@@ -854,9 +816,6 @@ def create_applied_plan_schedule_shift_tool(user_id: str) -> ToolSpec:
             "status_in": status_in,
         }
 
-        # We need to update shift_applied_plan_schedule signature or pass kwargs?
-        # shift_applied_plan_schedule is a wrapper around POST request.
-        # It constructs the payload manually. We need to update it too.
         summary = await shift_applied_plan_schedule(
             applied_plan_id=applied_plan_id,
             user_id=user_id,
@@ -864,7 +823,6 @@ def create_applied_plan_schedule_shift_tool(user_id: str) -> ToolSpec:
             to_date=to_date_val,
             days=days,
             new_rest_days=new_rest_days,
-            # Pass new params as kwargs to be forwarded
             add_rest_every_n_workouts=add_rest_every_n_workouts,
             add_rest_at_indices=add_rest_at_indices,
             add_rest_days_amount=add_rest_days_amount,
@@ -896,16 +854,9 @@ def create_applied_plan_schedule_shift_tool(user_id: str) -> ToolSpec:
 def create_exercise_lookup_tool(
     *,
     user_id: str,
-    context_exercises: List[Dict[str, Any]] | None = None,
+    context_exercises: list[dict[str, Any]] | None = None,
 ) -> ToolSpec:
-    """Tool that resolves user-facing exercise names to exercise_definition_id.
-
-    It first tries to match against exercises present in the current plan
-    ("plan_exercises" from structured context), then falls back to
-    querying exercises-service /exercises/definitions.
-    """
-
-    parameters_schema: Dict[str, Any] = {
+    parameters_schema: dict[str, Any] = {
         "type": "object",
         "required": ["query"],
         "properties": {
@@ -928,7 +879,7 @@ def create_exercise_lookup_tool(
         },
     }
 
-    async def handler(args: Dict[str, Any]) -> Dict[str, Any]:
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
         query = str(args.get("query") or "").strip()
         if not query:
             raise ValueError("query must be a non-empty string")
@@ -936,9 +887,8 @@ def create_exercise_lookup_tool(
         limit = int(args.get("limit") or 5)
         must_be_in_plan = bool(args.get("must_be_in_plan", True))
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
 
-        # 1) Try to match against exercises from the current plan, if provided.
         plan_exercises = context_exercises or []
         if plan_exercises:
             q_lower = query.lower()
@@ -960,16 +910,19 @@ def create_exercise_lookup_tool(
             if must_be_in_plan and results:
                 return {"items": results[:limit]}
 
-        # 2) Fallback: query exercises-service for definitions
         base_url = settings.exercises_service_url
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                # For now, we reuse the definitions listing endpoint and filter client-side.
                 url = f"{base_url.rstrip('/')}/exercises/definitions"
                 resp = await client.get(url)
                 resp.raise_for_status()
                 defs = resp.json()
-        except Exception as exc:  # pragma: no cover - best-effort lookup
+        except (  # pragma: no cover - best-effort lookup
+            httpx.RequestError,
+            httpx.HTTPStatusError,
+            ValueError,
+            TypeError,
+        ) as exc:
             logger.warning("exercise_lookup_remote_failed", error=str(exc))
             return {"items": results[:limit]}
 

@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import argparse
-from typing import Tuple
 
 from ..database import Base, SessionLocal, engine
 from ..models.exercises import ExerciseList
 from ..models.user_max import UserMax
 
 
-def _desired_values_for(ex_name: str, default_weight: int, default_rep_max: int) -> Tuple[int, int]:
+def _desired_values_for(ex_name: str, default_weight: int, default_rep_max: int) -> tuple[int, int]:
     """Возвращает (max_weight, rep_max) для упражнения.
     Пока используем дефолтные значения; точные профили можно добавить позже.
     """
@@ -18,8 +17,8 @@ def _desired_values_for(ex_name: str, default_weight: int, default_rep_max: int)
         "Становая тяга": (140, 5),
         "Жим стоя (ОHP)": (60, 8),
         "Тяга штанги в наклоне": (80, 8),
-        "Подтягивания": (15, 10),  # c доп. весом
-        "Отжимания на брусьях": (20, 10),  # c доп. весом
+        "Подтягивания": (15, 10),
+        "Отжимания на брусьях": (20, 10),
         "Разгибание на блоке": (40, 10),
         "Сгибание рук с гантелями": (16, 12),
     }
@@ -38,7 +37,7 @@ def seed_user_maxes(default_weight: int = 100, default_rep_max: int = 1, upsert:
     - Если запись существует и upsert=False — пропускает.
     - Если записи нет — создаёт.
     """
-    # Создаём таблицы при необходимости (безопасно)
+
     Base.metadata.create_all(bind=engine)
 
     db = SessionLocal()

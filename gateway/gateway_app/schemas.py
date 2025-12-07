@@ -1,56 +1,67 @@
 from datetime import datetime
-from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 
 
 class WorkoutBase(BaseModel):
     name: str
-    notes: Optional[str] = None
-    status: Optional[str] = None
-    started_at: Optional[datetime] = None
-    duration_seconds: Optional[int] = None
-    rpe_session: Optional[int] = None
-    location: Optional[str] = None
-    readiness_score: Optional[int] = None
-    applied_plan_id: Optional[int] = None
-    plan_order_index: Optional[int] = None
-    scheduled_for: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    notes: str | None = None
+    status: str | None = None
+    started_at: datetime | None = None
+    duration_seconds: int | None = None
+    rpe_session: int | None = None
+    location: str | None = None
+    readiness_score: int | None = None
+    applied_plan_id: int | None = None
+    plan_order_index: int | None = None
+    scheduled_for: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class ExerciseSetCreate(BaseModel):
+    weight: float | None = None
+    reps: int | None = None
+    rpe: float | None = None
+    duration_seconds: int | None = None
+    distance_meters: float | None = None
+
+
+class ExerciseInstanceCreate(BaseModel):
+    exercise_list_id: int
+    sets: list[ExerciseSetCreate] = []
+    notes: str | None = None
+    user_max_id: int | None = None
 
 
 class WorkoutCreateWithExercises(WorkoutBase):
-    # exercise_instances: List[ExerciseInstanceCreate] = []
-    pass
+    exercise_instances: list[ExerciseInstanceCreate] | None = None
 
 
 class WorkoutResponse(WorkoutBase):
     id: int
-    # exercise_instances: List[ExerciseInstanceCreate] = []
 
 
 class WorkoutResponseWithExercises(WorkoutBase):
     id: int
-    # exercise_instances: List[ExerciseInstanceResponse] = Field(..., alias="exercise_instances")
 
 
 class MicrocycleCreate(BaseModel):
     name: str
     order_index: int
-    normalization_value: Optional[float] = None
-    normalization_unit: Optional[str] = None
+    normalization_value: float | None = None
+    normalization_unit: str | None = None
 
 
 class MesocycleCreate(BaseModel):
     name: str
     order_index: int
-    microcycles: List[MicrocycleCreate]
+    microcycles: list[MicrocycleCreate]
 
 
 class CalendarPlanCreate(BaseModel):
     name: str
     duration_weeks: int
-    mesocycles: List[MesocycleCreate]
+    mesocycles: list[MesocycleCreate]
 
 
 class DayActivity(BaseModel):
@@ -62,7 +73,7 @@ class SessionLite(BaseModel):
     id: int
     workout_id: int
     started_at: datetime
-    finished_at: Optional[datetime] = None
+    finished_at: datetime | None = None
     status: str
 
 
@@ -73,5 +84,5 @@ class ProfileAggregatesResponse(BaseModel):
     total_volume: float
     active_days: int
     max_day_volume: float
-    activity_map: Dict[str, DayActivity]
-    completed_sessions: List[SessionLite]
+    activity_map: dict[str, DayActivity]
+    completed_sessions: list[SessionLite]

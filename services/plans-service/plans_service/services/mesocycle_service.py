@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -42,7 +42,7 @@ class MesocycleService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found or permission denied")
         return plan
 
-    async def _check_mesocycle_permission(self, mesocycle_id: int) -> Optional[Mesocycle]:
+    async def _check_mesocycle_permission(self, mesocycle_id: int) -> Mesocycle | None:
         user_id = self._require_user_id()
         stmt = (
             select(Mesocycle)
@@ -71,12 +71,12 @@ class MesocycleService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Microcycle not found")
         return micro
 
-    async def _serialize_schedule(self, schedule: Optional[Dict[str, List[Any]]]) -> Dict[str, List[Dict[str, Any]]]:
+    async def _serialize_schedule(self, schedule: dict[str, list[Any]] | None) -> dict[str, list[dict[str, Any]]]:
         if not schedule:
             return {}
-        serialized: Dict[str, List[Dict[str, Any]]] = {}
+        serialized: dict[str, list[dict[str, Any]]] = {}
         for day, items in schedule.items():
-            day_items: List[Dict[str, Any]] = []
+            day_items: list[dict[str, Any]] = []
             for it in items or []:
                 try:
                     dumped = it.model_dump()
@@ -86,7 +86,7 @@ class MesocycleService:
             serialized[day] = day_items
         return serialized
 
-    async def list_mesocycles(self, plan_id: int) -> List[MesocycleResponse]:
+    async def list_mesocycles(self, plan_id: int) -> list[MesocycleResponse]:
         try:
             await self._check_plan_permission(plan_id)
             user_id = self._require_user_id()
@@ -173,13 +173,13 @@ class MesocycleService:
         await self.db.delete(m)
         await self.db.commit()
 
-    async def get_mesocycle_by_id(self, mesocycle_id: int) -> Optional[Mesocycle]:
+    async def get_mesocycle_by_id(self, mesocycle_id: int) -> Mesocycle | None:
         await self._check_mesocycle_permission(mesocycle_id)
         stmt = select(Mesocycle).options(selectinload(Mesocycle.microcycles)).where(Mesocycle.id == mesocycle_id)
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
-    async def list_microcycles(self, mesocycle_id: int) -> List[MicrocycleResponse]:
+    async def list_microcycles(self, mesocycle_id: int) -> list[MicrocycleResponse]:
         await self._check_mesocycle_permission(mesocycle_id)
         stmt = (
             select(Microcycle)
@@ -246,9 +246,8 @@ class MesocycleService:
             mc.notes = data.notes
         if data.order_index is not None:
             mc.order_index = data.order_index
-        # Apply schedule into relational structure (plan_workouts/exercises/sets)
+
         if data.schedule is not None:
-            # Eager-load existing workouts/exercises/sets to avoid async lazy-load (MissingGreenlet)
             stmt_pw = (
                 select(PlanWorkout)
                 .options(selectinload(PlanWorkout.exercises).selectinload(PlanExercise.sets))
@@ -257,36 +256,30 @@ class MesocycleService:
             result_pw = await self.db.execute(stmt_pw)
             existing_workouts = list(result_pw.scalars().all())
 
-            # Build lookup existing workouts by day index (1-based) and by label
             existing_by_day: dict[int, PlanWorkout] = {}
             for pw in existing_workouts:
-                # Try parse "Day X" to int, else fallback to order_index + 1
-                day_idx: Optional[int] = None
+                day_idx: int | None = None
                 label = (pw.day_label or "").strip().lower()
                 if label.startswith("day "):
                     try:
                         day_idx = int(label[4:].strip())
-                    except Exception:
+                    except ValueError:
                         day_idx = None
                 if day_idx is None:
                     day_idx = (pw.order_index or 0) + 1
                 existing_by_day[day_idx] = pw
 
-            # Iterate incoming schedule per day
             for raw_day, items in (data.schedule or {}).items():
-                # Accept keys like "1" or "Day 1"
                 day_idx: int | None = None
                 try:
                     day_idx = int(str(raw_day).strip().split()[-1])
-                except Exception:
+                except (ValueError, IndexError):
                     day_idx = None
                 if day_idx is None or day_idx < 1:
-                    # Skip invalid keys
                     continue
 
                 pw = existing_by_day.get(day_idx)
                 if pw is None:
-                    # Create a new workout for this day
                     pw = PlanWorkout(
                         microcycle_id=mc.id,
                         day_label=f"Day {day_idx}",
@@ -296,7 +289,6 @@ class MesocycleService:
                     await self.db.flush()
                     existing_by_day[day_idx] = pw
 
-                # Replace exercises for this day
                 new_exercises: list[PlanExercise] = []
                 for item in items or []:
                     if not isinstance(item, dict):
@@ -304,7 +296,7 @@ class MesocycleService:
                     ex_id = item.get("exercise_id") or item.get("exercise_list_id")
                     try:
                         ex_id = int(ex_id) if ex_id is not None else None
-                    except Exception:
+                    except (TypeError, ValueError):
                         ex_id = None
                     if ex_id is None:
                         continue
@@ -333,7 +325,6 @@ class MesocycleService:
                         )
                     )
 
-                # Assign, old ones are deleted via cascade orphan
                 pw.exercises = new_exercises
         if data.normalization_value is not None:
             mc.normalization_value = data.normalization_value
@@ -352,7 +343,7 @@ class MesocycleService:
         await self.db.delete(mc)
         await self.db.commit()
 
-    async def get_microcycle_by_id(self, microcycle_id: int) -> Optional[Microcycle]:
+    async def get_microcycle_by_id(self, microcycle_id: int) -> Microcycle | None:
         await self._check_microcycle_permission(microcycle_id)
         stmt = (
             select(Microcycle)

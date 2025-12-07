@@ -1,12 +1,13 @@
+import os
 from datetime import datetime
-from typing import List, Optional
 
 import structlog
-from celery.result import AsyncResult
+from backend_common.celery_utils import build_task_status_response, enqueue_task
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import schemas
+from .. import models, schemas
 from ..celery_app import celery_app
 from ..database import get_db
 from ..dependencies import get_current_user_id
@@ -18,7 +19,7 @@ from ..tasks.workout_tasks import (
     shift_schedule_in_plan_task,
 )
 
-PLANS_SERVICE_URL = "http://plans-service:8005"  # URL plans-service в docker-сети
+PLANS_SERVICE_URL = "http://plans-service:8005"
 
 logger = structlog.get_logger(__name__)
 
@@ -34,6 +35,9 @@ def get_workout_service(
 router = APIRouter(prefix="")
 
 
+DEBUG = (os.getenv("DEBUG") or "").strip().lower() in {"1", "true", "yes"}
+
+
 @router.post("/", response_model=schemas.workout.WorkoutResponse, status_code=status.HTTP_201_CREATED)
 async def create_workout(
     payload: schemas.workout.WorkoutCreate,
@@ -43,6 +47,13 @@ async def create_workout(
     try:
         logger.info(
             "workout_create_requested",
+            user_id=user_id,
+            name=getattr(payload, "name", None),
+            applied_plan_id=getattr(payload, "applied_plan_id", None),
+            microcycle_id=getattr(payload, "microcycle_id", None),
+        )
+        logger.debug(
+            "workout_create_payload",
             user_id=user_id,
             payload=payload.model_dump(),
         )
@@ -65,23 +76,22 @@ async def create_workout(
         )
 
 
-@router.get("/", response_model=List[schemas.workout.WorkoutListResponse])
+@router.get("/", response_model=list[schemas.workout.WorkoutListResponse])
 async def list_workouts(
     skip: int = 0,
     limit: int = 100,
-    type: Optional[str] = None,
-    status: Optional[str] = None,
-    applied_plan_id: Optional[int] = Query(None, alias="applied_plan_id"),
+    type: str | None = None,
+    status: str | None = None,
+    applied_plan_id: int | None = Query(None, alias="applied_plan_id"),
     workout_service: WorkoutService = Depends(get_workout_service),
 ):
     return await workout_service.list_workouts(skip, limit, type=type, status=status, applied_plan_id=applied_plan_id)
 
 
-@router.get("/generated", response_model=List[schemas.workout.WorkoutListResponse])
+@router.get("/generated", response_model=list[schemas.workout.WorkoutListResponse])
 async def list_generated_workouts(
     skip: int = 0, limit: int = 100, workout_service: WorkoutService = Depends(get_workout_service)
 ):
-    """List all generated workouts"""
     return await workout_service.list_workouts(skip, limit, type="generated")
 
 
@@ -92,9 +102,6 @@ async def get_workout(workout_id: int, workout_service: WorkoutService = Depends
 
 @router.get("/{workout_id}/next", response_model=schemas.workout.WorkoutResponse)
 async def get_next_workout_in_plan(workout_id: int, workout_service: WorkoutService = Depends(get_workout_service)):
-    """
-    Get the next workout in the same plan after the given workout.
-    """
     return await workout_service.get_next_workout_in_plan(workout_id)
 
 
@@ -105,7 +112,7 @@ async def update_workout(
     workout_service: WorkoutService = Depends(get_workout_service),
 ):
     item = await workout_service.update_workout(workout_id, payload)
-    # Convert ORM object to Pydantic model for proper serialization
+
     return schemas.workout.WorkoutResponse.model_validate(item)
 
 
@@ -115,9 +122,9 @@ async def delete_workout(workout_id: int, workout_service: WorkoutService = Depe
     return None
 
 
-@router.post("/batch", response_model=List[schemas.workout.WorkoutListResponse])
+@router.post("/batch", response_model=list[schemas.workout.WorkoutListResponse])
 async def create_workouts_batch(
-    workouts_data: List[schemas.workout.WorkoutCreate],
+    workouts_data: list[schemas.workout.WorkoutCreate],
     workout_service: WorkoutService = Depends(get_workout_service),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -164,31 +171,56 @@ async def get_next_generated_workout(request: Request, workout_service: WorkoutS
 async def get_first_generated_workout(
     workout_service: WorkoutService = Depends(get_workout_service),
 ):
-    """
-    Fetches the first generated workout (with smallest id)
-    """
     return await workout_service.get_first_generated_workout()
 
 
 @router.get("/debug/microcycle/{microcycle_id}")
 async def debug_microcycle(microcycle_id: int, workout_service: WorkoutService = Depends(get_workout_service)):
-    """Debug endpoint to check if any workouts exist for a microcycle"""
     workouts = await workout_service.get_workouts_by_microcycle_ids([microcycle_id])
     return {
         "microcycle_id": microcycle_id,
-        "workouts_found": len(workouts) > 0,
         "workout_count": len(workouts),
+        "workouts_found": len(workouts) > 0,
     }
 
 
-@router.post("/by-microcycles", response_model=List[schemas.workout.WorkoutListResponse])
+@router.post("/debug/cleanup-user")
+async def debug_cleanup_user(
+    user_id: str = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db),
+):
+    if not DEBUG:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Debug cleanup endpoint disabled")
+
+    deleted_sessions = 0
+    deleted_workouts = 0
+
+    result_sessions = await db.execute(select(models.WorkoutSession).where(models.WorkoutSession.user_id == user_id))
+    sessions = list(result_sessions.scalars().all())
+    for s in sessions:
+        await db.delete(s)
+        deleted_sessions += 1
+
+    result_workouts = await db.execute(select(models.Workout).where(models.Workout.user_id == user_id))
+    workouts = list(result_workouts.scalars().all())
+    for w in workouts:
+        await db.delete(w)
+        deleted_workouts += 1
+
+    await db.commit()
+
+    return {
+        "user_id": user_id,
+        "deleted_sessions": deleted_sessions,
+        "deleted_workouts": deleted_workouts,
+    }
+
+
+@router.post("/by-microcycles", response_model=list[schemas.workout.WorkoutListResponse])
 async def get_workouts_by_microcycles(
-    microcycle_ids: List[int] = Body(..., embed=True),
+    microcycle_ids: list[int] = Body(..., embed=True),
     workout_service: WorkoutService = Depends(get_workout_service),
 ):
-    """
-    Fetches workouts associated with the given microcycle IDs.
-    """
     try:
         logger.debug(
             "workouts_by_microcycles_requested",
@@ -210,15 +242,11 @@ async def get_workouts_by_microcycles(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/applied-plans/{applied_plan_id}/details", response_model=List[schemas.workout.WorkoutPlanDetailItem])
+@router.get("/applied-plans/{applied_plan_id}/details", response_model=list[schemas.workout.WorkoutPlanDetailItem])
 async def get_plan_details_with_exercises(
     applied_plan_id: int,
     workout_service: WorkoutService = Depends(get_workout_service),
 ):
-    """
-    Fetch all workouts for a plan with exercise IDs included.
-    Designed for plan analysis tools.
-    """
     return await workout_service.get_plan_details_with_exercises(applied_plan_id)
 
 
@@ -228,19 +256,18 @@ async def shift_schedule_in_plan(
     from_order_index: int = Body(...),
     delta_days: int = Body(...),
     delta_index: int = Body(...),
-    exclude_ids: Optional[List[int]] = Body(default=None),
+    exclude_ids: list[int] | None = Body(default=None),
     only_future: bool = Body(default=True),
-    baseline_date: Optional[str] = Body(default=None),
+    baseline_date: str | None = Body(default=None),
     workout_service: WorkoutService = Depends(get_workout_service),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Batch shift scheduled_for and plan_order_index for workouts in a plan."""
     try:
         parsed_baseline = None
         if baseline_date:
             try:
                 parsed_baseline = datetime.fromisoformat(baseline_date)
-            except Exception:
+            except ValueError:
                 parsed_baseline = None
         summary = await workout_service.shift_schedule_in_plan(
             applied_plan_id=applied_plan_id,
@@ -281,9 +308,9 @@ async def shift_schedule_in_plan_async(
     from_order_index: int = Body(...),
     delta_days: int = Body(...),
     delta_index: int = Body(...),
-    exclude_ids: Optional[List[int]] = Body(default=None),
+    exclude_ids: list[int] | None = Body(default=None),
     only_future: bool = Body(default=True),
-    baseline_date: Optional[str] = Body(default=None),
+    baseline_date: str | None = Body(default=None),
     user_id: str = Depends(get_current_user_id),
 ):
     try:
@@ -298,24 +325,26 @@ async def shift_schedule_in_plan_async(
             only_future=only_future,
             baseline_date=baseline_date,
         )
-        signature = shift_schedule_in_plan_task.s(
-            user_id=user_id,
-            applied_plan_id=applied_plan_id,
-            from_order_index=from_order_index,
-            delta_days=delta_days,
-            delta_index=delta_index,
-            exclude_ids=exclude_ids,
-            only_future=only_future,
-            baseline_date=baseline_date,
+        payload = enqueue_task(
+            shift_schedule_in_plan_task,
+            logger=logger,
+            log_event="workout_schedule_shift_async_enqueued",
+            task_kwargs={
+                "user_id": user_id,
+                "applied_plan_id": applied_plan_id,
+                "from_order_index": from_order_index,
+                "delta_days": delta_days,
+                "delta_index": delta_index,
+                "exclude_ids": exclude_ids,
+                "only_future": only_future,
+                "baseline_date": baseline_date,
+            },
+            log_extra={
+                "user_id": user_id,
+                "applied_plan_id": applied_plan_id,
+            },
         )
-        async_result = signature.apply_async()
-        logger.info(
-            "workout_schedule_shift_async_enqueued",
-            user_id=user_id,
-            applied_plan_id=applied_plan_id,
-            task_id=async_result.id,
-        )
-        return schemas.TaskSubmissionResponse(task_id=async_result.id, status=async_result.status)
+        return schemas.TaskSubmissionResponse(**payload)
     except Exception as e:
         logger.exception(
             "workout_schedule_shift_async_error",
@@ -331,14 +360,11 @@ async def shift_schedule_in_plan_async(
 
 @router.get("/schedule/tasks/{task_id}", response_model=schemas.TaskStatusResponse)
 async def get_schedule_task_status(task_id: str):
-    result = AsyncResult(task_id, app=celery_app)
-    response = schemas.TaskStatusResponse(task_id=task_id, status=result.status)
-    if result.failed():
-        response.error = str(result.result)
-    elif result.successful():
-        response.result = result.result
-    response.meta = result.info if isinstance(result.info, dict) else None
-    return response
+    return build_task_status_response(
+        task_id=task_id,
+        celery_app=celery_app,
+        response_model=schemas.TaskStatusResponse,
+    )
 
 
 @router.post("/applied-plans/{applied_plan_id}/mass-edit-sets", response_model=schemas.AppliedPlanMassEditResult)
@@ -348,11 +374,6 @@ async def applied_plan_mass_edit_sets(
     workout_service: WorkoutService = Depends(get_workout_service),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Apply mass edit actions to exercise instances/sets for an applied plan.
-
-    This endpoint operates on generated workouts linked to the given applied_plan_id
-    and updates sets stored in exercises-service via its public API.
-    """
     try:
         logger.info(
             "applied_plan_mass_edit_requested",
@@ -398,19 +419,22 @@ async def applied_plan_mass_edit_sets_async(
             applied_plan_id=applied_plan_id,
             mode=command.mode,
         )
-        signature = applied_plan_mass_edit_sets_task.s(
-            user_id=user_id,
-            applied_plan_id=applied_plan_id,
-            command=command.model_dump(),
+        payload = enqueue_task(
+            applied_plan_mass_edit_sets_task,
+            logger=logger,
+            log_event="applied_plan_mass_edit_async_enqueued",
+            task_kwargs={
+                "user_id": user_id,
+                "applied_plan_id": applied_plan_id,
+                "command": command.model_dump(),
+            },
+            log_extra={
+                "user_id": user_id,
+                "applied_plan_id": applied_plan_id,
+                "mode": command.mode,
+            },
         )
-        async_result = signature.apply_async()
-        logger.info(
-            "applied_plan_mass_edit_async_enqueued",
-            user_id=user_id,
-            applied_plan_id=applied_plan_id,
-            task_id=async_result.id,
-        )
-        return schemas.TaskSubmissionResponse(task_id=async_result.id, status=async_result.status)
+        return schemas.TaskSubmissionResponse(**payload)
     except Exception as e:
         logger.exception(
             "applied_plan_mass_edit_async_error",
@@ -431,13 +455,6 @@ async def shift_applied_plan_schedule(
     workout_service: WorkoutService = Depends(get_workout_service),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Shift scheduled_for dates for workouts in an applied plan starting from a given date.
-
-    This endpoint is primarily used by the mobile client and the assistant to
-    implement operations like "shift all not-yet-completed workouts starting
-    from this week by +1 day" for the current applied plan.
-    """
-
     try:
         logger.info(
             "applied_plan_schedule_shift_requested",
@@ -476,8 +493,6 @@ async def shift_applied_plan_schedule_async(
     command: schemas.AppliedPlanScheduleShiftCommand,
     user_id: str = Depends(get_current_user_id),
 ):
-    """Enqueue applied-plan schedule shift as a Celery task and return task id/status."""
-
     try:
         logger.info(
             "applied_plan_schedule_shift_async_requested",
@@ -488,22 +503,25 @@ async def shift_applied_plan_schedule_async(
             only_future=command.only_future,
             status_in=command.status_in,
         )
-        signature = applied_plan_schedule_shift_task.s(
-            user_id=user_id,
-            applied_plan_id=applied_plan_id,
-            from_date=command.from_date.isoformat(),
-            days=command.days,
-            only_future=command.only_future,
-            status_in=command.status_in,
+        payload = enqueue_task(
+            applied_plan_schedule_shift_task,
+            logger=logger,
+            log_event="applied_plan_schedule_shift_async_enqueued",
+            task_kwargs={
+                "user_id": user_id,
+                "applied_plan_id": applied_plan_id,
+                "from_date": command.from_date.isoformat(),
+                "days": command.days,
+                "only_future": command.only_future,
+                "status_in": command.status_in,
+            },
+            log_extra={
+                "user_id": user_id,
+                "applied_plan_id": applied_plan_id,
+                "days": command.days,
+            },
         )
-        async_result = signature.apply_async()
-        logger.info(
-            "applied_plan_schedule_shift_async_enqueued",
-            user_id=user_id,
-            applied_plan_id=applied_plan_id,
-            task_id=async_result.id,
-        )
-        return schemas.TaskSubmissionResponse(task_id=async_result.id, status=async_result.status)
+        return schemas.TaskSubmissionResponse(**payload)
     except Exception as e:
         logger.exception(
             "applied_plan_schedule_shift_async_error",

@@ -19,7 +19,7 @@ import '../services/plan_service.dart';
 import '../services/api_client.dart';
 import 'active_plan_screen.dart';
 
-// Provider for PlanService
+
 final planServiceProvider = Provider<PlanService>((ref) => PlanService(apiClient: ref.watch(apiClientProvider)));
 
 final manualWorkoutsNotifierProvider = StateNotifierProvider<ManualWorkoutsNotifier, AsyncValue<List<Workout>>>((ref) {
@@ -27,23 +27,23 @@ final manualWorkoutsNotifierProvider = StateNotifierProvider<ManualWorkoutsNotif
   return ManualWorkoutsNotifier(workoutService);
 });
 
-  // Provider for next workout in active plan (by sequence order via client-side selection)
+
   final nextWorkoutProvider = FutureProvider<Workout?>((ref) async {
     final planService = ref.watch(planServiceProvider);
     final workoutService = ref.watch(workoutServiceProvider);
-    // Get active plan
+
     debugPrint('[WorkoutsScreen] Fetching active plan...');
     final activePlan = await planService.getActivePlan();
     if (activePlan == null) return null;
     debugPrint('[WorkoutsScreen] Active plan id=${activePlan.id}');
-    // Fetch all workouts for active plan
+
     debugPrint('[WorkoutsScreen] Fetching workouts for active plan...');
     final workouts = await workoutService.getWorkoutsByAppliedPlan(activePlan.id);
     debugPrint('[WorkoutsScreen] Received ${workouts.length} workouts for active plan');
     if (workouts.isEmpty) return null;
-    // Sort by plan order
+
     workouts.sort((a, b) => (a.planOrderIndex ?? 1 << 30).compareTo(b.planOrderIndex ?? 1 << 30));
-    // Choose first not completed
+
     for (final w in workouts) {
       final completed = (w.status?.toLowerCase() == 'completed') || (w.completedAt != null);
       if (!completed) {
@@ -51,7 +51,7 @@ final manualWorkoutsNotifierProvider = StateNotifierProvider<ManualWorkoutsNotif
         return w;
       }
     }
-    return null; // all completed
+    return null;
   });
 
 class WorkoutsScreen extends ConsumerStatefulWidget {
@@ -61,7 +61,7 @@ class WorkoutsScreen extends ConsumerStatefulWidget {
   ConsumerState<WorkoutsScreen> createState() => _WorkoutsScreenState();
 }
 
-// State notifier for manual workouts
+
 class ManualWorkoutsNotifier extends StateNotifier<AsyncValue<List<Workout>>> {
   final WorkoutService _workoutService;
   final int _limit = 20;
@@ -132,11 +132,11 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
   final ScrollController _scrollController = ScrollController();
   final PageController _bannerController = PageController();
   int _bannerIndex = 0;
-  
+
   Future<List<Map<String, dynamic>>> _fetchActivePlanWorkouts() async {
     final apiClient = ref.read(apiClientProvider);
     final response = await apiClient.get(ApiConfig.activePlanWorkoutsEndpoint);
-    
+
     if (response is List) {
       return List<Map<String, dynamic>>.from(response.map((item) => item as Map<String, dynamic>));
     } else {
@@ -147,7 +147,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
   @override
   void initState() {
     super.initState();
-    // Trigger initial load
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(manualWorkoutsNotifierProvider.notifier).loadInitial();
     });
@@ -170,8 +170,8 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
   Future<void> _showCreateWorkoutDialog() async {
     _nameController.clear();
     final workoutService = ref.read(workoutServiceProvider);
-    
-    // Dialog-local controllers/state
+
+
     final notesController = TextEditingController();
     bool startNow = false;
 
@@ -304,7 +304,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                       Expanded(
                         child: RefreshIndicator(
                           onRefresh: () async {
-                            // Refresh both manual workouts and the next planned workout card
+
                             ref.invalidate(nextWorkoutProvider);
                             await Future.wait([
                               ref.read(manualWorkoutsNotifierProvider.notifier).loadInitial(),
@@ -612,7 +612,7 @@ class _PlansSection extends StatelessWidget {
                         builder: (_) => WorkoutDetailScreen(workoutId: nextWorkout.id!),
                       ),
                     );
-                    // Invalidate to fetch the next workout in plan when returning
+
                     ref.invalidate(nextWorkoutProvider);
                   },
                   child: card,

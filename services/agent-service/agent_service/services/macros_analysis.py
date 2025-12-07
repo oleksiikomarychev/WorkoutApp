@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any
 
 import httpx
 import structlog
@@ -9,8 +9,7 @@ from .tool_agent import ToolSpec
 logger = structlog.get_logger(__name__)
 
 
-async def fetch_plan_macros(calendar_plan_id: int, user_id: str) -> List[Dict[str, Any]]:
-    """Fetch all macros definitions for a calendar plan."""
+async def fetch_plan_macros(calendar_plan_id: int, user_id: str) -> list[dict[str, Any]]:
     url = f"{settings.plans_service_url}/plans/calendar-plans/{calendar_plan_id}/macros/"
     headers = {"X-User-Id": user_id}
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -21,10 +20,7 @@ async def fetch_plan_macros(calendar_plan_id: int, user_id: str) -> List[Dict[st
         return resp.json()
 
 
-def format_macros_definitions(macros: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Summarize the macro definitions into a format suitable for the LLM to explain.
-    """
+def format_macros_definitions(macros: list[dict[str, Any]]) -> dict[str, Any]:
     if not macros:
         return {"count": 0, "message": "No macros (automation rules) found for this plan."}
 
@@ -36,7 +32,6 @@ def format_macros_definitions(macros: List[Dict[str, Any]]) -> Dict[str, Any]:
         condition = rule.get("condition", {})
         action = rule.get("action", {})
 
-        # Simplify for LLM consumption
         macro_info = {
             "name": m.get("name", "Unnamed"),
             "active": m.get("is_active", True),
@@ -53,8 +48,6 @@ def format_macros_definitions(macros: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def create_macros_analysis_tool(user_id: str) -> ToolSpec:
-    """ToolSpec for analyzing the automation rules (macros) attached to a plan template."""
-
     parameters_schema = {
         "type": "object",
         "required": ["calendar_plan_id"],
@@ -66,7 +59,7 @@ def create_macros_analysis_tool(user_id: str) -> ToolSpec:
         },
     }
 
-    async def handler(args: Dict[str, Any]) -> Dict[str, Any]:
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
         calendar_plan_id = args.get("calendar_plan_id")
         if not calendar_plan_id:
             raise ValueError("calendar_plan_id is required")

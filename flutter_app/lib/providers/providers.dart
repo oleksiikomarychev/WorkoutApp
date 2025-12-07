@@ -8,12 +8,12 @@ import 'package:workout_app/models/workout_session.dart';
 import 'package:workout_app/models/user_stats.dart';
 import 'package:workout_app/constants/profile_constants.dart';
 
-// API Client Provider
+
 final apiClientProvider = Provider<ApiClient>((ref) {
   return ApiClient();
 });
 
-// Workout Session Service Provider
+
 final workoutSessionServiceProvider = Provider<WorkoutSessionService>((ref) {
   final apiClient = ref.watch(apiClientProvider);
   return WorkoutSessionService(apiClient);

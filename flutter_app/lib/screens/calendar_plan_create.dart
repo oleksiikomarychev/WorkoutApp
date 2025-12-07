@@ -71,7 +71,7 @@ class SetDraft {
     if (effort != null) effortCtrl.text = effort.toString();
     if (volume != null) volumeCtrl.text = volume.toString();
 
-    // Добавляем слушатели для отслеживания изменений
+
     intensityCtrl.addListener(() {
       lastIntensityChange = DateTime.now();
     });
@@ -89,7 +89,7 @@ class SetDraft {
     volume = double.tryParse(volumeCtrl.text);
   }
 
-  /// Определяет, какой параметр был изменен первым
+
   String? getFirstEditedField() {
     final times = [
       if (lastIntensityChange != null) MapEntry('intensity', lastIntensityChange!),
@@ -99,11 +99,11 @@ class SetDraft {
 
     if (times.isEmpty) return null;
 
-    times.sort((a, b) => a.value.compareTo(b.value)); // Сортируем по времени возрастания (первый введенный)
+    times.sort((a, b) => a.value.compareTo(b.value));
     return times.first.key;
   }
 
-  /// Очищает первый введенный параметр
+
   void clearFirstEditedField() {
     final firstField = getFirstEditedField();
     switch (firstField) {
@@ -123,7 +123,7 @@ class SetDraft {
         lastVolumeChange = null;
         break;
       default:
-        // Если не удалось определить, очищаем effort (RPE) по умолчанию
+
         effortCtrl.clear();
         effort = null;
         lastEffortChange = null;
@@ -158,8 +158,8 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
   void initState() {
     super.initState();
     _rpeService = provider_package.Provider.of<RpeService>(context, listen: false);
-    
-    // Add initial mesocycle with one microcycle
+
+
     _mesocycles.add(MesocycleCreate(
       name: '',
       microcycleLengthDays: 7,
@@ -199,7 +199,7 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
       final oldCount = _mesocycles[index].microcycles.length;
       _mesocycles[index] = _mesocycles[index].copyWith(microcycles: []);
 
-      // Automatically generate microcycles
+
       for (int i = 0; i < microcyclesCount; i++) {
         _mesocycles[index].microcycles.add(MicrocycleCreate(
           name: 'Microcycle ${i+1}',
@@ -214,8 +214,8 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
   void _updateMicrocycleLengthDays(int index, int microcycleLengthDays) {
     setState(() {
       _mesocycles[index] = _mesocycles[index].copyWith(microcycleLengthDays: microcycleLengthDays);
-      
-      // Update all existing microcycles to match the new length
+
+
       for (int i = 0; i < _mesocycles[index].microcycles.length; i++) {
         _mesocycles[index].microcycles[i] = _mesocycles[index].microcycles[i].copyWith(daysCount: microcycleLengthDays);
       }
@@ -225,11 +225,11 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
   void _addExerciseForDay(int mesocycleIndex, int microcycleIndex, int day, ExerciseDefinition exercise) {
     setState(() {
       final schedule = _mesocycles[mesocycleIndex].microcycles[microcycleIndex].schedule;
-      
-      // Initialize day if not exists
+
+
       schedule['$day'] ??= [Workout(name: 'Workout ${(schedule['$day']?.length ?? 0) + 1}', exercises: [])];
-      
-      // Add exercise to the first workout of the day
+
+
       schedule['$day']!.first.exercises.add(
         ExerciseWithSets(
           exercise: exercise,
@@ -270,7 +270,7 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
     });
 
     try {
-      // Create the plan data
+
       final planData = {
         'name': _planNameController.text,
         'duration_weeks': _mesocycles.fold<int>(0, (sum, meso) => sum + meso.microcycles.length),
@@ -283,7 +283,7 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
         const SnackBar(content: Text('Plan created successfully')),
       );
 
-      Navigator.pop(context); // Go back to the plans screen
+      Navigator.pop(context);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to create plan: $e')),
@@ -404,7 +404,7 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
           keyboardType: TextInputType.number,
           inputFormatters: [
             FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
-            LengthLimitingTextInputFormatter(5), // Ограничение длины
+            LengthLimitingTextInputFormatter(5),
           ],
           decoration: InputDecoration(hintText: 'Intensity (%)')
         )),
@@ -413,7 +413,7 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
           keyboardType: TextInputType.number,
           inputFormatters: [
             FilteringTextInputFormatter.digitsOnly,
-            LengthLimitingTextInputFormatter(3), // Максимум 3 цифры для количества повторений
+            LengthLimitingTextInputFormatter(3),
           ],
           decoration: InputDecoration(hintText: 'Volume')
         )),
@@ -422,7 +422,7 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
           keyboardType: TextInputType.number,
           inputFormatters: [
             FilteringTextInputFormatter.allow(RegExp(r'\d*\.?\d*')),
-            LengthLimitingTextInputFormatter(3), // RPE от 1 до 10
+            LengthLimitingTextInputFormatter(3),
           ],
           decoration: InputDecoration(hintText: 'Effort')
         )),
@@ -586,12 +586,12 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
     try {
       draft.updateFromControllers();
       double? intensity = draft.intensity;
-      double? effort = draft.effort;  // RPE
-      double? volume = draft.volume;    // reps
+      double? effort = draft.effort;
+      double? volume = draft.volume;
 
       print('updateThirdParameter called with: intensity=$intensity, effort=$effort, volume=$volume');
 
-      // Валидация значений
+
       if (intensity != null && intensity > 100) {
         draft.intensityCtrl.text = '100';
         draft.intensity = 100;
@@ -603,28 +603,28 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
         effort = 10;
       }
 
-      // Count non-null parameters
+
       int nonNullCount = 0;
       if (intensity != null) nonNullCount++;
       if (effort != null) nonNullCount++;
       if (volume != null) nonNullCount++;
 
-      // Если все три параметра введены, очищаем первый введенный и пересчитываем его
+
       if (nonNullCount == 3) {
         print('All three parameters entered - clearing the first entered one and recalculating it');
 
-        // Определяем, какой параметр был введен первым
+
         final firstField = draft.getFirstEditedField();
         print('First entered field: $firstField');
 
-        // Очищаем первый введенный параметр
+
         draft.clearFirstEditedField();
         print('Cleared first entered value, now recalculating...');
 
-        // Теперь у нас есть только 2 параметра, пересчитываем очищенный
+
         draft.updateFromControllers();
 
-        // Пересчитываем очищенный параметр на основе оставшихся двух
+
         if (firstField == 'effort' && draft.intensity != null && draft.volume != null) {
           print('Recalculating RPE from intensity and volume');
           final calculatedEffort = await _rpeService.calculateRpe(draft.intensity!, draft.volume!.toInt());
@@ -651,7 +651,7 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
         return;
       }
 
-      // Only recalculate if exactly two parameters are provided
+
       if (nonNullCount == 2) {
         if (intensity != null && volume != null) {
           print('Calculating RPE from intensity and volume (reps)');
@@ -751,7 +751,7 @@ class MicrocycleCreate {
   }
 
   Map<String, dynamic> toJson() {
-    // Build plan_workouts from the schedule map
+
     final List<Map<String, dynamic>> planWorkouts = [];
     final entries = schedule.entries.toList()
       ..sort((a, b) => int.tryParse(a.key)?.compareTo(int.tryParse(b.key) ?? 0) ?? 0);
@@ -760,7 +760,7 @@ class MicrocycleCreate {
       final int day = int.tryParse(entry.key) ?? 0;
       final List<Workout> workouts = entry.value;
 
-      // Flatten all exercises from all workouts within the day
+
       final List<Map<String, dynamic>> exercises = [];
       for (final workout in workouts) {
         for (final ex in workout.exercises) {

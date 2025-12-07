@@ -3,7 +3,7 @@ import 'mesocycle.dart';
 class CalendarPlan {
   final int id;
   final String name;
-  // Legacy top-level schedule (kept for backward compatibility)
+
   final Map<String, dynamic> schedule;
   final int durationWeeks;
   final bool isActive;
@@ -11,9 +11,9 @@ class CalendarPlan {
   final bool isOriginal;
   final DateTime? startDate;
   final DateTime? endDate;
-  // New nested structure
+
   final List<Mesocycle> mesocycles;
-  // Plan metadata
+
   final String? primaryGoal;
   final String? intendedExperienceLevel;
   final int? intendedFrequencyPerWeek;

@@ -159,7 +159,7 @@ class _PlanMicrocycleEditorState extends State<PlanMicrocycleEditor> {
   }
 
   Map<String, List<ExerciseScheduleItemDto>> _toSchedule(Microcycle micro) {
-    // Convert planWorkouts (by day_label like "Day 1") into schedule map keyed by day number string
+
     final map = <String, List<ExerciseScheduleItemDto>>{};
     for (final pw in micro.planWorkouts) {
       final label = pw.dayLabel.trim();

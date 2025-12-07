@@ -6,7 +6,6 @@ from sqlalchemy.orm import relationship
 
 from .database import Base
 
-# Define enum type
 workout_type_enum = Enum("manual", "generated", name="workouttypeenum")
 
 
@@ -17,14 +16,12 @@ class Workout(Base):
     user_id = Column(String(255), nullable=False, index=True)
     name = Column(String(255), nullable=False, index=True)
 
-    # Plan linkage and scheduling
     applied_plan_id = Column(Integer, nullable=True)
     microcycle_id = Column(Integer, nullable=True)
     plan_order_index = Column(Integer, nullable=True)
     scheduled_for = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
 
-    # Metadata
     notes = Column(String, nullable=True)
     status = Column(String(64), nullable=True)
     started_at = Column(DateTime, nullable=True)
@@ -32,7 +29,7 @@ class Workout(Base):
     rpe_session = Column(Float, nullable=True)
     location = Column(String(255), nullable=True)
     readiness_score = Column(Integer, nullable=True)
-    # Add workout type classification
+
     workout_type = Column(workout_type_enum, nullable=False, default="manual")
 
     sessions = relationship(
@@ -45,11 +42,9 @@ class Workout(Base):
     exercises = relationship("WorkoutExercise", back_populates="workout", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return "<Workout(id=%s, name='%s', applied_plan_id=%s, order=%s)>" % (
-            self.id,
-            self.name,
-            self.applied_plan_id,
-            self.plan_order_index,
+        return (
+            f"<Workout(id={self.id}, name='{self.name}', "
+            f"applied_plan_id={self.applied_plan_id}, order={self.plan_order_index})>"
         )
 
 
@@ -88,16 +83,13 @@ class WorkoutSession(Base):
     started_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     finished_at = Column(DateTime, nullable=True)
     status = Column(String(50), nullable=False, default="active")
-    # Derived at finish; seconds
+
     duration_seconds = Column(Integer, nullable=True)
     progress = Column(JSON, nullable=False, default=dict)
-    # Persisted suggestion built on finish; used by client to prompt applying macros
+
     macro_suggestion = Column(JSON, nullable=True)
 
     workout = relationship("Workout", back_populates="sessions")
 
     def __repr__(self):
-        return "<WorkoutSession(id=%s, workout_id=%s, status=%s)>" % (self.id, self.workout_id, self.status)
-
-
-# Removed CalendarPlan model because it resides in the plans-service
+        return f"<WorkoutSession(id={self.id}, workout_id={self.workout_id}, status={self.status})>"

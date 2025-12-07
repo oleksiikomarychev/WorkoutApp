@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any
 
 import structlog
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
@@ -30,6 +30,12 @@ async def create_calendar_plan(
         logger.info(
             "calendar_plan_create_requested",
             user_id=user_id,
+            name=getattr(plan_data, "name", None),
+            duration_weeks=getattr(plan_data, "duration_weeks", None),
+        )
+        logger.debug(
+            "calendar_plan_create_payload",
+            user_id=user_id,
             payload=plan_data.model_dump(),
         )
         result = await CalendarPlanService.create_plan(db, plan_data, user_id)
@@ -55,36 +61,48 @@ async def create_plan_variant(
     return await CalendarPlanService.create_variant(db, plan_id, user_id, variant_data)
 
 
-@router.get("/{plan_id}/variants", response_model=List[CalendarPlanSummaryResponse])
+@router.get("/{plan_id}/variants", response_model=list[CalendarPlanSummaryResponse])
 async def list_plan_variants(
     plan_id: int,
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
-) -> List[CalendarPlanSummaryResponse]:
+) -> list[CalendarPlanSummaryResponse]:
     return await CalendarPlanService.list_variants(db, plan_id, user_id)
 
 
-@router.get("/", response_model=List[CalendarPlanResponse])
+@router.get("/", response_model=list[CalendarPlanResponse])
 async def get_all_plans(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
     roots_only: bool = Query(True, description="Return only original plans (id == root_plan_id)"),
-) -> List[CalendarPlanResponse]:
+) -> list[CalendarPlanResponse]:
     try:
         return await CalendarPlanService.get_all_plans(db, user_id, roots_only=roots_only)
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
-@router.get("/favorites", response_model=List[CalendarPlanResponse])
+@router.get("/favorites", response_model=list[CalendarPlanResponse])
 async def get_favorite_plans(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
-) -> List[CalendarPlanResponse]:
+) -> list[CalendarPlanResponse]:
     try:
         return await CalendarPlanService.get_favorite_plans(db, user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to get favorite plans: {str(e)}") from e
+
+
+@router.get("/{plan_id}/flattened-workouts", response_model=list[dict[str, Any]])
+async def get_flattened_workouts(
+    plan_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    try:
+        return await CalendarPlanService.get_flattened_workouts(db, plan_id, user_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.get("/{plan_id}", response_model=CalendarPlanResponse)
@@ -97,24 +115,23 @@ async def get_calendar_plan(
         plan = await CalendarPlanService.get_plan(db, plan_id, user_id)
         if not plan:
             raise HTTPException(status_code=404, detail="Plan not found")
-        # Convert to response model
+
         plan_data = CalendarPlanResponse.model_validate(plan)
         return plan_data
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
-@router.get("/{plan_id}/workouts", response_model=List[Dict[str, Any]])
+@router.get("/{plan_id}/workouts", response_model=list[dict[str, Any]])
 async def get_plan_workouts(
     plan_id: int,
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
     compute: bool = Query(True, description="Apply normalization computations"),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     if compute:
         return await CalendarPlanService.generate_workouts(db, plan_id, user_id)
     else:
-        # Return base workout structure without computations
         return []
 
 
@@ -163,7 +180,6 @@ async def mass_edit_calendar_plan(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Применить LLM mass-edit/replace операции к упражнениям плана"""
     try:
         logger.info(
             "calendar_plan_mass_edit_requested",

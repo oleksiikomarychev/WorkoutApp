@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'mass_edit_tool_widget.dart';
 import 'schedule_shift_tool_widget.dart';
 
-/// Factory that returns the appropriate Tool Widget based on the payload type/variant.
+
 class ToolWidgetFactory extends ConsumerWidget {
   const ToolWidgetFactory({
     super.key,
@@ -15,7 +15,7 @@ class ToolWidgetFactory extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final variant = payload['variant']?.toString();
-    // We can check 'tool' or 'type' if variant is not enough in future
+
 
     switch (variant) {
       case 'applied_plan':

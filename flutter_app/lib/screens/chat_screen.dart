@@ -11,12 +11,12 @@ import '../widgets/chat_tools/tool_widget_factory.dart';
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key, this.embedded = false, this.transparentBackground = false});
 
-  /// When true, renders the chat content without its own Scaffold/AppBar
-  /// so it can be embedded inside a parent Scaffold (e.g., tab).
+
+
   final bool embedded;
 
-  /// When true, avoids drawing an extra card background so the parent can
-  /// provide its own blur/overlay styling.
+
+
   final bool transparentBackground;
 
   @override
@@ -105,7 +105,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final canSend = chatState.connectionState == ChatConnectionState.connected ||
         chatState.connectionState == ChatConnectionState.reconnecting;
 
-    // Listen for error changes and new messages to auto-scroll
+
     ref.listen<ChatState>(
       chatControllerProvider,
       (previous, next) {
@@ -125,7 +125,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
       },
     );
- 
+
 
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -227,7 +227,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final message = messages[index];
       final isUser = message.role == ChatRole.user;
       return Padding(
-        key: ValueKey('${message.id}_$index'),  // Use message ID instead of timestamp
+        key: ValueKey('${message.id}_$index'),
         padding: const EdgeInsets.only(bottom: 12),
         child: Align(
           alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -408,9 +408,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 void _scrollToBottom() {
   WidgetsBinding.instance.addPostFrameCallback((_) {
     if (!_scrollController.hasClients || !_scrollController.position.hasContentDimensions) return;
-    
-    // Check if the scroll position is valid
-    if (_scrollController.position.maxScrollExtent > 0 && 
+
+
+    if (_scrollController.position.maxScrollExtent > 0 &&
         _scrollController.position.maxScrollExtent.isFinite) {
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
@@ -573,7 +573,7 @@ void _scrollToBottom() {
         final alias = item['alias']?.toString() ?? '';
         if (alias.isEmpty) continue;
         final name = item['name']?.toString() ?? '';
-        final keyword = alias.substring(1); // strip leading '/'
+        final keyword = alias.substring(1);
         final aliasLower = alias.toLowerCase();
         final keywordLower = keyword.toLowerCase();
         if (query.isNotEmpty &&
@@ -600,7 +600,7 @@ void _scrollToBottom() {
         final alias = item['alias']?.toString() ?? '';
         if (alias.isEmpty) continue;
         final name = item['name']?.toString() ?? '';
-        final keyword = alias.substring(1); // strip leading '/'
+        final keyword = alias.substring(1);
         final aliasLower = alias.toLowerCase();
         final keywordLower = keyword.toLowerCase();
         if (query.isNotEmpty &&

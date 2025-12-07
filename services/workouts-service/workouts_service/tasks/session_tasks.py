@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 from celery import shared_task
@@ -23,7 +23,7 @@ def _run_async(coro):
     return asyncio.run(coro)
 
 
-async def _finish_session_postprocess_async(session_id: int, user_id: str) -> Dict[str, Any]:
+async def _finish_session_postprocess_async(session_id: int, user_id: str) -> dict[str, Any]:
     async with AsyncSessionLocal() as db:
         service = SessionService(db, user_id=user_id)
 
@@ -46,15 +46,15 @@ async def _finish_session_postprocess_async(session_id: int, user_id: str) -> Di
             .filter(Workout.id == session.workout_id)
         )
         workout = result.scalars().first()
-        workout_id: Optional[int] = int(workout.id) if workout and workout.id is not None else None
-        applied_plan_id: Optional[int] = (
+        workout_id: int | None = int(workout.id) if workout and workout.id is not None else None
+        applied_plan_id: int | None = (
             int(workout.applied_plan_id) if workout and workout.applied_plan_id is not None else None
         )
 
         sync_payload = None
         if workout:
             try:
-                finished_at = session.finished_at or datetime.now(timezone.utc).replace(tzinfo=None)
+                finished_at = session.finished_at or datetime.now(UTC).replace(tzinfo=None)
                 sync_payload = await service._prepare_user_max_payload(workout, session, finished_at)
             except Exception as exc:  # pragma: no cover - best effort logging
                 logger.exception(
@@ -77,7 +77,7 @@ async def _finish_session_postprocess_async(session_id: int, user_id: str) -> Di
                     workout_id=workout_id,
                 )
 
-        suggestion: Optional[Dict[str, Any]] = None
+        suggestion: dict[str, Any] | None = None
         if applied_plan_id:
             try:
                 suggestion = await service._compute_macro_suggestion(applied_plan_id)
@@ -146,7 +146,7 @@ async def _finish_session_postprocess_async(session_id: int, user_id: str) -> Di
     queue=DEFAULT_QUEUE,
     max_retries=2,
 )
-def finish_session_postprocess_task(self, *, session_id: int, user_id: str) -> Dict[str, Any]:
+def finish_session_postprocess_task(self, *, session_id: int, user_id: str) -> dict[str, Any]:
     try:
         return _run_async(_finish_session_postprocess_async(session_id=session_id, user_id=user_id))
     except Exception as exc:  # pragma: no cover - rely on Celery retry semantics

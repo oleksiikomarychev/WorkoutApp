@@ -8,7 +8,6 @@ Create Date: 2025-10-28 04:36:00.000000
 import sqlalchemy as sa
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision = "c1f2a3b4d5e6"
 down_revision = "b2c3d4e5f6a7"
 branch_labels = None
@@ -19,7 +18,6 @@ def upgrade():
     bind = op.get_bind()
     insp = sa.inspect(bind)
 
-    # mesocycle_templates
     if "mesocycle_templates" not in insp.get_table_names():
         op.create_table(
             "mesocycle_templates",
@@ -35,7 +33,7 @@ def upgrade():
             sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
             sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
         )
-    # ensure indexes exist
+
     existing_meso_idx = (
         {ix["name"] for ix in insp.get_indexes("mesocycle_templates")}
         if "mesocycle_templates" in insp.get_table_names()
@@ -52,7 +50,6 @@ def upgrade():
         except Exception:
             pass
 
-    # microcycle_templates
     if "microcycle_templates" not in insp.get_table_names():
         op.create_table(
             "microcycle_templates",

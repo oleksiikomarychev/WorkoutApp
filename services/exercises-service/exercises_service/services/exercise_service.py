@@ -12,9 +12,9 @@ class ExerciseService:
         current_dir = Path(__file__).resolve().parent
         metadata_path = current_dir / ".." / "muscle_metadata.json"
         try:
-            with open(metadata_path, "r") as f:
+            with open(metadata_path) as f:
                 data = json.load(f)
-            # Валидация структуры
+
             for muscle_key, muscle_data in data.items():
                 if not isinstance(muscle_data, dict):
                     raise ValueError(f"Muscle data for '{muscle_key}' must be a dictionary")
@@ -24,14 +24,11 @@ class ExerciseService:
                     raise ValueError(f"Muscle '{muscle_key}' must have a string 'group'")
             cls.MUSCLE_LABELS = data
         except FileNotFoundError:
-            # Файл не найден
             cls.MUSCLE_LABELS = {}
             raise
         except json.JSONDecodeError as e:
-            # Ошибка формата JSON
             cls.MUSCLE_LABELS = {}
             raise ValueError(f"Invalid JSON in muscle_metadata.json: {e}") from e
         except Exception:
-            # Другие ошибки
             cls.MUSCLE_LABELS = {}
             raise

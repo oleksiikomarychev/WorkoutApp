@@ -1,5 +1,5 @@
 import math
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -21,7 +21,7 @@ class CalendarPlanInstanceService:
             raise ValueError("User context required")
         return self.user_id
 
-    def list_instances(self) -> List[CalendarPlanInstanceResponse]:
+    def list_instances(self) -> list[CalendarPlanInstanceResponse]:
         user_id = self._require_user_id()
         instances = (
             self.db.query(CalendarPlanInstance)
@@ -31,7 +31,7 @@ class CalendarPlanInstanceService:
         )
         return [self._to_response(i) for i in instances]
 
-    def get_instance(self, instance_id: int) -> Optional[CalendarPlanInstanceResponse]:
+    def get_instance(self, instance_id: int) -> CalendarPlanInstanceResponse | None:
         user_id = self._require_user_id()
         inst = (
             self.db.query(CalendarPlanInstance)
@@ -62,7 +62,7 @@ class CalendarPlanInstanceService:
     def create_from_plan(self, plan_id: int) -> CalendarPlanInstanceResponse:
         try:
             user_id = self._require_user_id()
-            # User can only create an instance from their own plan or a global one
+
             plan = (
                 self.db.query(CalendarPlan)
                 .filter(
@@ -74,13 +74,11 @@ class CalendarPlanInstanceService:
             if not plan:
                 raise ValueError("Plan not found or permission denied")
 
-            # If legacy top-level schedule is provided, keep backward compatibility
             if plan.schedule:
                 schedule_with_ids = self._index_schedule(plan.schedule)
                 duration_weeks = plan.duration_weeks
             else:
-                # New hierarchical structure: concatenate all microcycles in order into a flat schedule
-                flat_schedule: Dict[str, List[Dict[str, Any]]] = {}
+                flat_schedule: dict[str, list[dict[str, Any]]] = {}
                 day_counter = 0
                 total_days = 0
                 try:
@@ -93,25 +91,23 @@ class CalendarPlanInstanceService:
                         for mc in microcycles:
                             mc_sched = mc.schedule or {}
 
-                            # Order microcycle days by numeric suffix of keys like 'day1', 'day2', ...
                             def _day_key(dk: str) -> int:
                                 try:
                                     return int(str(dk).lower().replace("day", ""))
-                                except Exception:
+                                except ValueError:
                                     return 0
 
                             for _, items in sorted(mc_sched.items(), key=lambda kv: _day_key(kv[0])):
                                 day_counter += 1
                                 flat_schedule[f"day{day_counter}"] = items or []
                     total_days = day_counter
-                except Exception:
-                    # If anything goes wrong, keep empty schedule; client can still edit later
+                except (TypeError, AttributeError):
+                    # Fallback if mesocycle/microcycle structure is unexpected
                     flat_schedule = {}
                     total_days = 0
 
-                # Normalize and index sets/items
                 schedule_with_ids = self._index_schedule(flat_schedule)
-                # Preserve full plan duration if available; else derive from total_days
+
                 if plan.duration_weeks:
                     duration_weeks = max(1, plan.duration_weeks)
                 else:
@@ -135,11 +131,10 @@ class CalendarPlanInstanceService:
         try:
             user_id = self._require_user_id()
             schedule = data.schedule
-            # trust incoming ids; otherwise index if empty
+
             if not schedule:
                 schedule = {}
             else:
-                # Convert Pydantic objects into plain JSON-serializable dicts
                 schedule = self._dump_schedule(schedule)
             plan = (
                 self.db.query(CalendarPlan)
@@ -185,7 +180,6 @@ class CalendarPlanInstanceService:
             if data.duration_weeks is not None:
                 inst.duration_weeks = data.duration_weeks
             if data.schedule is not None:
-                # Convert Pydantic objects into plain JSON-serializable dicts
                 inst.schedule = self._dump_schedule(data.schedule)
             self.db.commit()
             self.db.refresh(inst)
@@ -194,12 +188,8 @@ class CalendarPlanInstanceService:
             self.db.rollback()
             raise
 
-    def _index_schedule(self, schedule: Dict[str, List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:
-        """Add stable incremental ids for items and sets within each day.
-        Also normalize set structure to dicts with keys: intensity, effort, volume.
-        Some stored plans might keep sets as positional arrays like [intensity, effort, volume].
-        """
-        result: Dict[str, List[Dict[str, Any]]] = {}
+    def _index_schedule(self, schedule: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
+        result: dict[str, list[dict[str, Any]]] = {}
         for day, items in (schedule or {}).items():
             new_items = []
             for i, item in enumerate(items or [], start=1):
@@ -209,7 +199,7 @@ class CalendarPlanInstanceService:
                     intensity = None
                     effort = None
                     volume = None
-                    # Normalize various possible shapes
+
                     if isinstance(s, dict):
                         intensity = s.get("intensity")
                         effort = s.get("effort")
@@ -222,7 +212,6 @@ class CalendarPlanInstanceService:
                         if len(s) > 2:
                             volume = s[2]
                     else:
-                        # Unknown shape; keep as None
                         pass
 
                     ns = {
@@ -241,27 +230,22 @@ class CalendarPlanInstanceService:
             result[day] = new_items
         return result
 
-    def _dump_schedule(self, schedule: Dict[str, List[Any]]) -> Dict[str, List[Dict[str, Any]]]:
-        """Convert a schedule possibly containing Pydantic models into a plain JSON-serializable dict.
-        Accepts Dict[str, List[ExerciseScheduleItemInstance]] and returns Dict[str, List[dict]].
-        """
-        dumped: Dict[str, List[Dict[str, Any]]] = {}
+    def _dump_schedule(self, schedule: dict[str, list[Any]]) -> dict[str, list[dict[str, Any]]]:
+        dumped: dict[str, list[dict[str, Any]]] = {}
         for day, items in (schedule or {}).items():
-            dumped_items: List[Dict[str, Any]] = []
+            dumped_items: list[dict[str, Any]] = []
             for item in items or []:
-                # Pydantic item may have .model_dump(); if it's already dict, keep it
                 if hasattr(item, "model_dump"):
                     item_dict = item.model_dump()
                 elif isinstance(item, dict):
                     item_dict = item
                 else:
-                    # Fallback: best-effort extraction
                     item_dict = {
                         "id": getattr(item, "id", None),
                         "exercise_id": getattr(item, "exercise_id", None),
                         "sets": getattr(item, "sets", []),
                     }
-                # Ensure sets are plain dicts
+
                 sets = []
                 for s in item_dict.get("sets", []) or []:
                     if hasattr(s, "model_dump"):
@@ -287,6 +271,6 @@ class CalendarPlanInstanceService:
             id=inst.id,
             source_plan_id=inst.source_plan_id,
             name=inst.name,
-            schedule=inst.schedule,  # already indexed
+            schedule=inst.schedule,
             duration_weeks=inst.duration_weeks,
         )

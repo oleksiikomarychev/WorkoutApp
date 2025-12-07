@@ -1,7 +1,7 @@
 import logging
 import os
+from collections.abc import Iterable
 from datetime import date
-from typing import Iterable, Optional
 
 import httpx
 
@@ -9,9 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 class UserMaxClient:
-    """Async HTTP client for pushing strength PRs into user-max-service."""
-
-    def __init__(self, base_url: Optional[str] = None, timeout: float = 5.0) -> None:
+    def __init__(self, base_url: str | None = None, timeout: float = 5.0) -> None:
         base_env = base_url or os.getenv("USER_MAX_SERVICE_URL")
         self.base_url = (base_env or "http://user-max-service:8003").rstrip("/")
         self.timeout = timeout
@@ -24,10 +22,13 @@ class UserMaxClient:
         url = f"{self.base_url}/user-max/bulk"
         headers = {"X-User-Id": user_id}
         logger.info(
-            "UserMaxClient.push_entries: sending %d entries to %s for user %s | payload=%s",
+            "UserMaxClient.push_entries: sending %d entries to %s for user %s",
             len(payload),
             url,
             user_id,
+        )
+        logger.debug(
+            "UserMaxClient.push_entries payload=%s",
             payload,
         )
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -35,14 +36,17 @@ class UserMaxClient:
                 response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
                 logger.info(
-                    "UserMaxClient.push_entries: success | status=%d response=%s",
+                    "UserMaxClient.push_entries: success | status=%d",
                     response.status_code,
+                )
+                logger.debug(
+                    "UserMaxClient.push_entries response_text=%s",
                     response.text[:200],
                 )
-            except Exception as exc:
+            except (httpx.RequestError, httpx.HTTPStatusError) as exc:
                 logger.exception("UserMaxClient.push_entries failed: %s", exc)
 
-    def _normalize_entry(self, entry: dict) -> Optional[dict]:
+    def _normalize_entry(self, entry: dict) -> dict | None:
         try:
             exercise_id = int(entry["exercise_id"])
             max_weight = float(entry["max_weight"])
@@ -60,6 +64,6 @@ class UserMaxClient:
                 "rep_max": rep_max,
                 "date": date_str,
             }
-        except Exception:
-            logger.warning("UserMaxClient: invalid entry discarded: %s", entry)
+        except (TypeError, ValueError, KeyError) as exc:
+            logger.warning("UserMaxClient: invalid entry discarded: %s (error: %s)", entry, exc)
             return None

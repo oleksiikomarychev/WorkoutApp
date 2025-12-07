@@ -75,7 +75,7 @@ class MacrosListScreen extends ConsumerWidget {
                                   ),
                                 );
                                 if (updated != null) {
-                                  // on return, notifier already updated via editor save
+
                                 }
                               },
                             ),
@@ -131,7 +131,7 @@ class MacrosListScreen extends ConsumerWidget {
             ),
           );
           if (created != null) {
-            // list auto refresh handled in editor save
+
           }
         },
         label: const Text('Add Macro'),

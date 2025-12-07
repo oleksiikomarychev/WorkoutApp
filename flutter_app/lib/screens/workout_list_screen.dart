@@ -18,12 +18,12 @@ import 'workout_detail_screen.dart';
 
 class WorkoutListScreen extends StatefulWidget {
   final int progressionId;
-  
+
   const WorkoutListScreen({
     super.key,
     required this.progressionId,
   });
-  
+
   @override
   State<WorkoutListScreen> createState() => _WorkoutListScreenState();
 }
@@ -32,7 +32,7 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
   late Future<List<Workout>> _workoutsFuture;
   bool _isRefreshing = false;
   late Future<Workout?> _nextWorkoutFuture;
-  
+
   final TextEditingController _nameController = TextEditingController();
 
   @override
@@ -41,7 +41,7 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
     _loadWorkouts();
     _loadNextWorkout();
   }
-  
+
   Future<void> _loadWorkouts() async {
     final workoutService = Provider.of<WorkoutService>(context, listen: false);
     if (widget.progressionId > 0) {
@@ -81,15 +81,15 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
       }
     }();
   }
-  
+
   Future<void> _refreshWorkouts() async {
     setState(() {
       _isRefreshing = true;
     });
-    
+
     await _loadWorkouts();
     await _loadNextWorkout();
-    
+
     if (mounted) {
       setState(() {
         _isRefreshing = false;
@@ -101,7 +101,7 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
 
   void _showAddWorkoutDialog() {
     _nameController.clear();
-    
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -137,7 +137,7 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
                     );
                     return;
                   }
-                  
+
                   try {
                     final workoutService = Provider.of<WorkoutService>(context, listen: false);
                     final workout = Workout(
@@ -145,7 +145,7 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
                       exerciseInstances: [],
                       id: null,
                     );
-                    
+
                     await workoutService.createWorkout(workout);
                     if (mounted) {
                       Navigator.pop(context);
@@ -174,12 +174,12 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
     _nameController.dispose();
     super.dispose();
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    
+
     return AssistantChatHost(
       builder: (context, openChat) {
         return Scaffold(
@@ -195,7 +195,7 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 12),
           children: [
-            // Next Workout section (from active plan)
+
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               child: FutureBuilder<Workout?>(
@@ -230,7 +230,7 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
                         if (result == true && mounted) {
                           await _refreshWorkouts();
                         } else {
-                          // Ensure next workout card is refreshed after returning
+
                           await _loadNextWorkout();
                           if (mounted) setState(() {});
                         }
@@ -240,7 +240,7 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
                 },
               ),
             ),
-            // Workouts list section
+
             FutureBuilder<List<Workout>>(
               future: _workoutsFuture,
               builder: (context, snapshot) {
@@ -319,8 +319,8 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
                             builder: (context) => WorkoutDetailScreen(workoutId: workout.id!),
                           ),
                         );
-                        
-                        // Refresh the workout list if we got back a true result
+
+
                         if (result == true && mounted) {
                           await _refreshWorkouts();
                         }
@@ -341,11 +341,11 @@ class _WorkoutListScreenState extends State<WorkoutListScreen> {
       },
     );
   }
-  
+
   String _getExerciseCountText(int count) {
     if (count % 10 == 1 && count % 100 != 11) {
       return 'упражнение';
-    } else if ([2, 3, 4].contains(count % 10) && 
+    } else if ([2, 3, 4].contains(count % 10) &&
         ![12, 13, 14].contains(count % 100)) {
       return 'упражнения';
     } else {

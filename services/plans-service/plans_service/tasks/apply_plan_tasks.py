@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List
+from typing import Any
 
 from celery import shared_task
 from celery.utils.log import get_task_logger
@@ -23,9 +23,9 @@ def _run_async(coro):
 async def _apply_plan_async(
     plan_id: int,
     user_id: str,
-    compute_data: Dict[str, Any],
-    user_max_ids: List[int],
-) -> Dict[str, Any]:
+    compute_data: dict[str, Any],
+    user_max_ids: list[int],
+) -> dict[str, Any]:
     async with AsyncSessionLocal() as session:
         service = AppliedCalendarPlanService(session, user_id)
         compute = ApplyPlanComputeSettings.model_validate(compute_data)
@@ -47,7 +47,7 @@ async def _apply_macros_async(
     applied_plan_id: int,
     user_id: str,
     index_offset: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     async with AsyncSessionLocal() as session:
         engine = MacroEngine(session, user_id)
         preview = await engine.run_for_applied_plan(
@@ -57,7 +57,7 @@ async def _apply_macros_async(
         )
 
         svc = AppliedCalendarPlanService(session, user_id)
-        plan_changes_results: List[Dict[str, Any]] = []
+        plan_changes_results: list[dict[str, Any]] = []
         for item in preview.get("preview") or []:
             for ch in item.get("plan_changes") or []:
                 if ch.get("type") == "Inject_Mesocycle":
@@ -98,9 +98,9 @@ def apply_plan_task(
     *,
     plan_id: int,
     user_id: str,
-    compute: Dict[str, Any],
-    user_max_ids: List[int],
-) -> Dict[str, Any]:
+    compute: dict[str, Any],
+    user_max_ids: list[int],
+) -> dict[str, Any]:
     try:
         return _run_async(
             _apply_plan_async(
@@ -127,7 +127,7 @@ def apply_plan_macros_task(
     applied_plan_id: int,
     user_id: str,
     index_offset: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     try:
         return _run_async(
             _apply_macros_async(

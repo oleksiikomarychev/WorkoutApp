@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,21 +45,20 @@ async def create_coach_athlete_link(
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ) -> CoachAthleteLinkResponse:
-    # Текущий пользователь считается тренером
     link = await create_link(db, coach_id=user_id, payload=payload)
     CRM_LINKS_CREATED_TOTAL.inc()
     return link
 
 
-@router.get("/my/athletes", response_model=List[CoachAthleteLinkResponse])
+@router.get("/my/athletes", response_model=list[CoachAthleteLinkResponse])
 async def get_my_athletes(
-    status: Optional[CoachAthleteStatus] = Query(None),
-    tags: Optional[List[int]] = Query(None, description="Список ID тегов для фильтрации"),
+    status: CoachAthleteStatus | None = Query(None),
+    tags: list[int] | None = Query(None, description="Список ID тегов для фильтрации"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
-) -> List[CoachAthleteLinkResponse]:
+) -> list[CoachAthleteLinkResponse]:
     return await list_athletes_for_coach(
         db,
         coach_id=user_id,
@@ -72,15 +69,15 @@ async def get_my_athletes(
     )
 
 
-@router.get("/my/coaches", response_model=List[CoachAthleteLinkResponse])
+@router.get("/my/coaches", response_model=list[CoachAthleteLinkResponse])
 async def get_my_coaches(
-    status: Optional[CoachAthleteStatus] = Query(None),
-    tags: Optional[List[int]] = Query(None, description="Список ID тегов для фильтрации"),
+    status: CoachAthleteStatus | None = Query(None),
+    tags: list[int] | None = Query(None, description="Список ID тегов для фильтрации"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
-) -> List[CoachAthleteLinkResponse]:
+) -> list[CoachAthleteLinkResponse]:
     return await list_coaches_for_athlete(
         db,
         athlete_id=user_id,
@@ -123,14 +120,14 @@ async def create_note(
     return note
 
 
-@router.get("/{link_id}/notes", response_model=List[CoachAthleteNoteResponse])
+@router.get("/{link_id}/notes", response_model=list[CoachAthleteNoteResponse])
 async def list_notes(
     link_id: int,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
-) -> List[CoachAthleteNoteResponse]:
+) -> list[CoachAthleteNoteResponse]:
     return await list_notes_for_link(
         db=db,
         link_id=link_id,
@@ -166,12 +163,12 @@ async def create_coach_tag(
     return tag
 
 
-@router.get("/tags", response_model=List[CoachAthleteTagResponse])
+@router.get("/tags", response_model=list[CoachAthleteTagResponse])
 async def list_coach_tags(
     include_inactive: bool = Query(False),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
-) -> List[CoachAthleteTagResponse]:
+) -> list[CoachAthleteTagResponse]:
     return await list_tags(db=db, acting_user_id=user_id, include_inactive=include_inactive)
 
 
