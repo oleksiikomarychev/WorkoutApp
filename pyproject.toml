@@ -29,6 +29,9 @@ dependencies = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 
+# Explicitly set default loop scope for async fixtures to avoid pytest-asyncio deprecation
+asyncio_default_fixture_loop_scope = "function"
+
 [tool.setuptools]
 packages = ["app"]
 package-dir = { "" = "app" }
