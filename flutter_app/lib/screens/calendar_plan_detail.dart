@@ -242,6 +242,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   final Map<int, CalendarPlan> _variantCache = {};
   bool _prefetchingVariants = false;
   bool _changingVariant = false;
+  bool _updatingPublic = false;
   List<UserMax> _userMaxList = [];
   Map<int, List<UserMax>> _userMaxesByExerciseId = {};
   Map<String, List<UserMax>> _userMaxesByName = {};
@@ -1871,6 +1872,60 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
               _buildInfoRow('Frequency', '${_currentPlan.intendedFrequencyPerWeek} sessions/week'),
             if (_currentPlan.sessionDurationTargetMin != null)
               _buildInfoRow('Session length', '${_currentPlan.sessionDurationTargetMin} min'),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Text('Public template'),
+                const Spacer(),
+                Switch(
+                  value: _currentPlan.isPublic,
+                  onChanged: _updatingPublic
+                      ? null
+                      : (value) async {
+                          setState(() {
+                            _updatingPublic = true;
+                          });
+                          try {
+                            final updated = await PlanApi.updateCalendarPlanPublic(
+                              planId: _currentPlan.id,
+                              isPublic: value,
+                            );
+                            if (!mounted) return;
+                            _setPlan(updated);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  value
+                                      ? 'План сделан публичным'
+                                      : 'План скрыт (только для вас)',
+                                ),
+                              ),
+                            );
+                          } catch (e) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Не удалось обновить видимость плана: $e')),
+                            );
+                          } finally {
+                            if (mounted) {
+                              setState(() {
+                                _updatingPublic = false;
+                              });
+                            }
+                          }
+                        },
+                ),
+              ],
+            ),
+            if (_updatingPublic)
+              const Align(
+                alignment: Alignment.centerRight,
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
             if (_currentPlan.requiredEquipment != null &&
                 _currentPlan.requiredEquipment!.isNotEmpty) ...[
               const SizedBox(height: 8),

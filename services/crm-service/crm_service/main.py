@@ -4,6 +4,7 @@ from sentry_sdk import set_tag
 
 from .logging_config import configure_logging
 from .routers.analytics import router as analytics_router
+from .routers.billing import router as billing_router
 from .routers.coach_planning import router as coach_router
 from .routers.relationships import router as relationships_router
 
@@ -30,3 +31,4 @@ async def health() -> dict[str, str]:
 app.include_router(relationships_router)
 app.include_router(analytics_router)
 app.include_router(coach_router)
+app.include_router(billing_router)

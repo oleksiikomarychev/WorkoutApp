@@ -97,6 +97,13 @@ async def proxy_update_profile_me(request: Request) -> Response:
     return await _proxy_request_analytics(request, target_url, headers)
 
 
+@analytics_router.post("/profile/me/stripe/connect/onboarding-link")
+async def proxy_profile_stripe_connect_onboarding_link(request: Request) -> Response:
+    headers = gateway_main._forward_headers(request)
+    target_url = f"{gateway_main.ACCOUNTS_SERVICE_URL}/profile/me/stripe/connect/onboarding-link"
+    return await _proxy_request_analytics(request, target_url, headers)
+
+
 @analytics_router.patch("/profile/me/coaching")
 async def proxy_update_profile_coaching(request: Request) -> Response:
     headers = gateway_main._forward_headers(request)

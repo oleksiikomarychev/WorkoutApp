@@ -26,6 +26,7 @@ asgi-correlation-id = "4.3.1"
 prometheus-fastapi-instrumentator = "6.1.0"
 prometheus-client = "0.16.0"
 sentry-sdk = { version = "2.0.0", extras = ["fastapi"] }
+stripe = "^8.0.0"
 backend-common = { path = "../../libs/backend-common", develop = true }
 
 [tool.poetry.group.test.dependencies]

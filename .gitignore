@@ -36,3 +36,4 @@ services/agent-service/agent_service/prompts
 services/calendar_plans.json
 analysis_results.txt
 achievements.md
+render.txt

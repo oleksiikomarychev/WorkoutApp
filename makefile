@@ -46,35 +46,41 @@ sync:
 
 # Docker release tooling
 .PHONY: build-all push-all release \
-	build-gateway build-rpe build-exercises build-user-max build-workouts build-plans build-agent \
-	push-gateway push-rpe push-exercises push-user-max push-workouts push-plans push-agent
+	build-gateway build-rpe build-exercises build-user-max build-workouts build-plans build-agent build-accounts build-crm \
+	push-gateway push-rpe push-exercises push-user-max push-workouts push-plans push-agent push-accounts push-crm
 
 REGISTRY ?= docker.io/oleksiikomarychev
 TAG ?= latest
 
 # Build images
 build-gateway:
-	docker build -t $(REGISTRY)/workoutapp-gateway:$(TAG) ./gateway
+	docker build -t $(REGISTRY)/workoutapp-gateway:$(TAG) -f gateway/Dockerfile .
 
 build-rpe:
 	docker build -t $(REGISTRY)/workoutapp-rpe-service:$(TAG) ./services/rpe-service
 
 build-exercises:
-	docker build -t $(REGISTRY)/workoutapp-exercises-service:$(TAG) ./services/exercises-service
+	docker build -t $(REGISTRY)/workoutapp-exercises-service:$(TAG) -f services/exercises-service/Dockerfile .
 
 build-user-max:
-	docker build -t $(REGISTRY)/workoutapp-user-max-service:$(TAG) ./services/user-max-service
+	docker build -t $(REGISTRY)/workoutapp-user-max-service:$(TAG) -f services/user-max-service/Dockerfile .
 
 build-workouts:
-	docker build -t $(REGISTRY)/workoutapp-workouts-service:$(TAG) ./services/workouts-service
+	docker build -t $(REGISTRY)/workoutapp-workouts-service:$(TAG) -f services/workouts-service/Dockerfile .
 
 build-plans:
-	docker build -t $(REGISTRY)/workoutapp-plans-service:$(TAG) ./services/plans-service
+	docker build -t $(REGISTRY)/workoutapp-plans-service:$(TAG) -f services/plans-service/Dockerfile .
 
 build-agent:
-	docker build -t $(REGISTRY)/workoutapp-agent-service:$(TAG) ./services/agent-service
+	docker build -t $(REGISTRY)/workoutapp-agent-service:$(TAG) -f services/agent-service/Dockerfile .
 
-build-all: build-gateway build-rpe build-exercises build-user-max build-workouts build-plans build-agent
+build-accounts:
+	docker build -t $(REGISTRY)/workoutapp-accounts-service:$(TAG) -f services/accounts-service/Dockerfile .
+
+build-crm:
+	docker build -t $(REGISTRY)/workoutapp-crm-service:$(TAG) -f services/crm-service/Dockerfile .
+
+build-all: build-gateway build-rpe build-exercises build-user-max build-workouts build-plans build-agent build-accounts build-crm
 
 # Push images
 push-gateway:
@@ -98,7 +104,13 @@ push-plans:
 push-agent:
 	docker push $(REGISTRY)/workoutapp-agent-service:$(TAG)
 
-push-all: push-gateway push-rpe push-exercises push-user-max push-workouts push-plans push-agent
+push-accounts:
+	docker push $(REGISTRY)/workoutapp-accounts-service:$(TAG)
+
+push-crm:
+	docker push $(REGISTRY)/workoutapp-crm-service:$(TAG)
+
+push-all: push-gateway push-rpe push-exercises push-user-max push-workouts push-plans push-agent push-accounts push-crm
 
 # Build and push
 release: build-all push-all

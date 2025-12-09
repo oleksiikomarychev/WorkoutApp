@@ -5,6 +5,7 @@ class CalendarPlanSummary {
   final bool isActive;
   final int rootPlanId;
   final bool isOriginal;
+  final bool isPublic;
   final String? primaryGoal;
   final String? intendedExperienceLevel;
   final int? intendedFrequencyPerWeek;
@@ -17,6 +18,7 @@ class CalendarPlanSummary {
     required this.isActive,
     required this.rootPlanId,
     required this.isOriginal,
+    this.isPublic = false,
     this.primaryGoal,
     this.intendedExperienceLevel,
     this.intendedFrequencyPerWeek,
@@ -31,6 +33,7 @@ class CalendarPlanSummary {
       isActive: json['is_active'] as bool? ?? true,
       rootPlanId: json['root_plan_id'] as int? ?? json['id'] as int,
       isOriginal: json['is_original'] as bool? ?? (json['root_plan_id'] == null || json['root_plan_id'] == json['id']),
+      isPublic: json['is_public'] as bool? ?? false,
       primaryGoal: json['primary_goal'] as String?,
       intendedExperienceLevel: json['intended_experience_level'] as String?,
       intendedFrequencyPerWeek: json['intended_frequency_per_week'] as int?,

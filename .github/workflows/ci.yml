@@ -71,7 +71,7 @@ jobs:
           # Install optional test extras if defined
           python -m pip install ".[test]" || echo "No [test] extra for this service"
           # Ensure pytest is available
-          python -m pip install pytest==8.2.0
+          python -m pip install pytest==8.2.0 "pytest-asyncio>=0.24.0"
 
       - name: Run tests
         run: pytest -q
@@ -225,7 +225,7 @@ jobs:
       - name: Install e2e test dependencies
         run: |
           python -m pip install -U pip
-          python -m pip install pytest httpx
+          python -m pip install pytest==8.2.0 "pytest-asyncio>=0.24.0" httpx
 
       - name: Build service images
         run: |

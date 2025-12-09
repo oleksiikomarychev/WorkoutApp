@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:workout_app/widgets/primary_app_bar.dart';
 import 'package:workout_app/widgets/assistant_chat_host.dart';
+import 'package:workout_app/services/base_api_service.dart';
 
 import '../config/constants/theme_constants.dart';
 import '../models/user_profile.dart';
@@ -83,6 +84,11 @@ class PublicUserProfileScreen extends ConsumerWidget {
   Widget _buildContent(BuildContext context, WidgetRef ref, UserProfile profile, UserStats stats) {
     final currentUser = FirebaseAuth.instance.currentUser;
     final isSelf = currentUser != null && currentUser.uid == profile.userId;
+    final coaching = profile.coaching;
+    final canRequestCoaching = !isSelf &&
+        coaching != null &&
+        coaching.enabled &&
+        coaching.acceptingClients;
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
@@ -94,9 +100,8 @@ class PublicUserProfileScreen extends ConsumerWidget {
               profile: profile,
               isOwner: false,
               subtitle: profile.userId,
-              onRequestCoaching: (!isSelf && (profile.coaching?.acceptingClients ?? false))
-                  ? () => _showRequestDialog(context, ref, profile)
-                  : null,
+              onRequestCoaching:
+                  canRequestCoaching ? () => _showRequestDialog(context, ref, profile) : null,
               showCoachingCard: true,
               additionalSections: [
                 const SizedBox(height: 24),
@@ -162,8 +167,14 @@ class PublicUserProfileScreen extends ConsumerWidget {
       }
     } catch (e) {
       if (context.mounted) {
+        String message;
+        if (e is ApiException) {
+          message = e.message;
+        } else {
+          message = 'Failed to send request: $e';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to send request: $e')),
+          SnackBar(content: Text(message)),
         );
       }
     }

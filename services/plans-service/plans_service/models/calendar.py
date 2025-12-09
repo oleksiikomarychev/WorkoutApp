@@ -23,6 +23,7 @@ class CalendarPlan(Base):
     name = Column(String(255), nullable=False)
     duration_weeks = Column(Integer, nullable=False)
     is_active = Column(Boolean, default=True, server_default=text("true"))
+    is_public = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     user_id = Column(String(255), nullable=False, index=True)
     root_plan_id = Column(Integer, ForeignKey("calendar_plans.id", ondelete="RESTRICT"), nullable=False, index=True)
 

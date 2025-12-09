@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 import structlog
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
@@ -15,6 +15,7 @@ from ..metrics import (
     CRM_MASS_EDIT_REQUESTS_TOTAL,
     CRM_WORKOUT_UPDATES_TOTAL,
 )
+from ..models import CoachAthletePayment
 from ..models.relationships import CoachAthleteLink
 from ..schemas.coach_planning import CoachWorkoutsMassEditRequest
 from .relationships_service import _log_coach_athlete_event
@@ -27,6 +28,29 @@ class CoachAthleteLinkInactiveError(HTTPException):
         super().__init__(status_code=status.HTTP_403_FORBIDDEN, detail="Coach-athlete link inactive")
 
 
+class SubscriptionRequiredError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No active subscription for this coach-athlete link",
+        )
+
+
+async def _has_active_subscription_for_link(db: AsyncSession, link_id: int) -> bool:
+    stmt = (
+        select(CoachAthletePayment.id)
+        .where(
+            CoachAthletePayment.link_id == link_id,
+            CoachAthletePayment.status == "succeeded",
+            CoachAthletePayment.valid_until.isnot(None),
+            CoachAthletePayment.valid_until > func.now(),
+        )
+        .limit(1)
+    )
+    res = await db.execute(stmt)
+    return res.scalar_one_or_none() is not None
+
+
 async def _ensure_active_link(db: AsyncSession, coach_id: str, athlete_id: str) -> CoachAthleteLink:
     stmt = select(CoachAthleteLink).where(
         CoachAthleteLink.coach_id == coach_id,
@@ -37,6 +61,9 @@ async def _ensure_active_link(db: AsyncSession, coach_id: str, athlete_id: str) 
     link = res.scalar_one_or_none()
     if not link:
         raise CoachAthleteLinkInactiveError()
+    has_active = await _has_active_subscription_for_link(db, link_id=link.id)
+    if not has_active:
+        raise SubscriptionRequiredError()
     return link
 
 

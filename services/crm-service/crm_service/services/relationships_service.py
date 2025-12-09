@@ -9,6 +9,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import settings
 from ..models.relationships import (
     CoachAthleteEvent,
     CoachAthleteLink,
@@ -65,6 +66,39 @@ async def _get_tag_or_404(db: AsyncSession, tag_id: int) -> CoachAthleteTag:
     if not tag:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found")
     return tag
+
+
+async def _fetch_coach_profile(coach_id: str) -> dict:
+    base_url = settings.accounts_service_url.rstrip("/")
+    url = f"{base_url}/profile/{coach_id}"
+    timeout = httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=10.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            resp = await client.get(url)
+        except httpx.RequestError as exc:  # pragma: no cover - network errors
+            logger.warning("relationships_fetch_coach_profile_failed", coach_id=coach_id, error=str(exc))
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed to fetch coach profile",
+            ) from exc
+    if resp.status_code == 404:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Coach profile not found")
+    if resp.status_code >= 400:
+        logger.warning(
+            "relationships_fetch_coach_profile_bad_status",
+            coach_id=coach_id,
+            status_code=resp.status_code,
+            body=resp.text[:200],
+        )
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to fetch coach profile")
+    try:
+        return resp.json()
+    except Exception as exc:
+        logger.warning("relationships_fetch_coach_profile_invalid_json", coach_id=coach_id, error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Invalid coach profile response",
+        ) from exc
 
 
 async def create_link(
@@ -131,6 +165,39 @@ async def create_link(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Current user must match either coach or athlete",
         )
+
+    if initiated_by_athlete:
+        if not resolved_coach_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Coach id is required",
+            )
+        profile = await _fetch_coach_profile(resolved_coach_id)
+        coaching = profile.get("coaching") or {}
+        if not coaching.get("enabled"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Coach is not available for coaching",
+            )
+        if not coaching.get("accepting_clients"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Coach is not accepting new clients",
+            )
+        rate_plan = coaching.get("rate_plan") or {}
+        currency = rate_plan.get("currency")
+        amount_minor = rate_plan.get("amount_minor")
+        connect_account_id = coaching.get("stripe_connect_account_id")
+        if not connect_account_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Coach Stripe Connect account is not configured",
+            )
+        if not currency or amount_minor is None or amount_minor <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Coach rate plan is not configured",
+            )
 
     initial_status = CoachAthleteStatus.active if initiated_by_coach else CoachAthleteStatus.pending
 
