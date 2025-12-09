@@ -155,4 +155,21 @@ class ProfileService extends BaseApiService {
       rethrow;
     }
   }
+
+  Future<Map<String, dynamic>> createStripeConnectOnboardingLink() async {
+    try {
+      final response = await apiClient.post(
+        ApiConfig.profileMeStripeConnectOnboardingEndpoint,
+        const <String, dynamic>{},
+        context: 'ProfileService.createStripeConnectOnboardingLink',
+      );
+      if (response is Map<String, dynamic>) {
+        return Map<String, dynamic>.from(response);
+      }
+      throw Exception('Unexpected onboarding link response: $response');
+    } catch (e, st) {
+      handleError('Failed to create Stripe Connect onboarding link', e, st);
+      rethrow;
+    }
+  }
 }

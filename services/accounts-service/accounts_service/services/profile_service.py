@@ -117,6 +117,7 @@ def build_coaching_response(
         experience_years=entity.experience_years,
         timezone=entity.timezone,
         rate_plan=rate_plan,
+        stripe_connect_account_id=entity.stripe_connect_account_id,
         created_at=entity.created_at,
         updated_at=entity.updated_at,
     )

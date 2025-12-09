@@ -1,3 +1,4 @@
+from .payments import CoachAthletePayment
 from .relationships import (
     CoachAthleteEvent,
     CoachAthleteLink,
@@ -12,4 +13,5 @@ __all__ = [
     "CoachAthleteNote",
     "CoachAthleteTag",
     "CoachAthleteLinkTag",
+    "CoachAthletePayment",
 ]

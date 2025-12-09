@@ -16,6 +16,8 @@ import 'package:workout_app/config/constants/route_names.dart';
 import 'dart:typed_data';
 import 'package:workout_app/widgets/floating_header_bar.dart';
 import 'package:workout_app/widgets/assistant_chat_host.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:workout_app/services/base_api_service.dart';
 import '../widgets/user_profile_view.dart';
 
 const int kActivityWeeks = 48;
@@ -627,6 +629,48 @@ class UserProfileScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _startStripeConnectOnboarding(BuildContext context, WidgetRef ref) async {
+    try {
+      final svc = ref.read(sl.profileServiceProvider);
+      final result = await svc.createStripeConnectOnboardingLink();
+      final urlStr = (result['onboarding_url'] ?? result['url'])?.toString();
+      if (urlStr == null || urlStr.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to get Stripe onboarding link')),
+          );
+        }
+        return;
+      }
+      final uri = Uri.tryParse(urlStr);
+      if (uri == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Invalid Stripe onboarding URL')),
+          );
+        }
+        return;
+      }
+      final canLaunch = await canLaunchUrl(uri);
+      if (!canLaunch) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Cannot open Stripe onboarding URL')),
+          );
+        }
+        return;
+      }
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      ref.invalidate(userProfileProvider);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to start Stripe onboarding: $e')),
+        );
+      }
+    }
+  }
+
   Widget _buildContent(BuildContext context, WidgetRef ref, UserStats stats, User? user, UserProfile profile) {
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -823,6 +867,14 @@ class UserProfileScreen extends ConsumerWidget {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               child: Text(enabled ? 'Manage coaching profile' : 'Enable coaching features'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () => _startStripeConnectOnboarding(context, ref),
+              child: const Text('Connect Stripe payouts'),
             ),
           ),
           const SizedBox(height: 12),
@@ -1454,6 +1506,39 @@ class UserProfileScreen extends ConsumerWidget {
     }
 
     final svc = ref.read(sl.profileServiceProvider);
+
+    if (acceptingClients) {
+      final currency = rateCurrencyController.text.trim();
+      final amountMinor = _parseAmount(rateAmountController.text);
+      if (currency.isEmpty || amountMinor == null || amountMinor <= 0) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Please configure your coaching rate (currency and amount) before accepting clients.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      final currentCoaching = profile.coaching;
+      if (currentCoaching == null ||
+          currentCoaching.stripeConnectAccountId == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Please connect Stripe payouts before accepting clients.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+    }
+
     try {
       await svc.updateCoachingProfile(
         enabled: enabled,
@@ -1480,8 +1565,14 @@ class UserProfileScreen extends ConsumerWidget {
       }
     } catch (e) {
       if (context.mounted) {
+        String message;
+        if (e is ApiException) {
+          message = e.message;
+        } else {
+          message = 'Failed to update coaching profile: $e';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update coaching profile: $e')),
+          SnackBar(content: Text(message)),
         );
       }
     }

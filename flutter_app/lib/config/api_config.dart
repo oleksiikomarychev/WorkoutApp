@@ -182,6 +182,8 @@ class ApiConfig {
   static String get profileMeEndpoint => buildEndpoint('/profile/me');
   static String profileByIdEndpoint(String userId) => buildEndpoint('/profile/$userId');
   static String get profileMeCoachingEndpoint => buildEndpoint('/profile/me/coaching');
+  static String get profileMeStripeConnectOnboardingEndpoint =>
+      buildEndpoint('/profile/me/stripe/connect/onboarding-link');
   static String get profileSettingsEndpoint => buildEndpoint('/profile/settings');
   static String get usersAllEndpoint => buildEndpoint('/users/all');
 
@@ -213,7 +215,10 @@ class ApiConfig {
       buildEndpoint('/crm/coach/athletes/$athleteId/exercises/$instanceId');
   static String crmCoachMassEditEndpoint(String athleteId) =>
       buildEndpoint('/crm/coach/athletes/$athleteId/workouts/mass-edit');
-
+  static String crmBillingSubscriptionEndpoint(int linkId) =>
+      buildEndpoint('/crm/billing/links/$linkId/subscription');
+  static String crmBillingCheckoutSessionEndpoint(int linkId) =>
+      buildEndpoint('/crm/billing/links/$linkId/checkout-session');
 
   static String get crmAnalyticsMyAthletesEndpoint => buildEndpoint('/crm/analytics/coaches/my/athletes');
   static String get crmAnalyticsMySummaryEndpoint => buildEndpoint('/crm/analytics/coaches/my/summary');

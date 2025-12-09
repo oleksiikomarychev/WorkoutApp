@@ -61,6 +61,7 @@ class CoachingProfileResponse(BaseModel):
     experience_years: int | None = None
     timezone: str | None = None
     rate_plan: CoachingRatePlan | None = None
+    stripe_connect_account_id: str | None = None
     created_at: datetime
     updated_at: datetime
 

@@ -13,6 +13,7 @@ import 'package:workout_app/services/profile_service.dart';
 import 'package:workout_app/services/crm_relationships_service.dart';
 import 'package:workout_app/services/crm_coach_service.dart';
 import 'package:workout_app/services/crm_analytics_service.dart';
+import 'package:workout_app/services/crm_billing_service.dart';
 import 'package:workout_app/services/users_service.dart';
 import 'package:workout_app/services/social_service.dart';
 import 'package:workout_app/services/messaging_service.dart';
@@ -58,6 +59,10 @@ final crmRelationshipsServiceProvider = Provider<CrmRelationshipsService>((ref) 
 
 final crmCoachServiceProvider = Provider<CrmCoachService>((ref) {
   return CrmCoachService(ref.watch(apiClientProvider));
+});
+
+final crmBillingServiceProvider = Provider<CrmBillingService>((ref) {
+  return CrmBillingService(ref.watch(apiClientProvider));
 });
 
 final crmAnalyticsServiceProvider = Provider<CrmAnalyticsService>((ref) {

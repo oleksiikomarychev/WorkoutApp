@@ -1,3 +1,6 @@
+import os
+
+import stripe
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +23,13 @@ from ..services.profile_service import (
     ensure_profile_and_settings,
     parse_unit_system,
 )
+
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_CONNECT_RETURN_URL = os.getenv("STRIPE_CONNECT_RETURN_URL")
+STRIPE_CONNECT_REFRESH_URL = os.getenv("STRIPE_CONNECT_REFRESH_URL")
+
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -47,6 +57,34 @@ async def update_coaching_profile_me(
         coaching.enabled = payload.enabled
         modified = True
     if payload.accepting_clients is not None:
+        if payload.accepting_clients:
+            final_enabled = coaching.enabled if payload.enabled is None else payload.enabled
+            if not final_enabled:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Coaching must be enabled before accepting clients",
+                )
+
+            preview_currency = coaching.rate_currency
+            preview_amount_minor = coaching.rate_amount_minor
+            if payload.rate_plan is not None:
+                rp_preview = payload.rate_plan.model_dump(exclude_unset=True)
+                if "currency" in rp_preview:
+                    preview_currency = rp_preview.get("currency")
+                if "amount_minor" in rp_preview:
+                    preview_amount_minor = rp_preview.get("amount_minor")
+
+            if not coaching.stripe_connect_account_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Coach Stripe Connect account is not configured",
+                )
+            if not preview_currency or preview_amount_minor is None or preview_amount_minor <= 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Coach rate plan is not configured",
+                )
+
         coaching.accepting_clients = payload.accepting_clients
         modified = True
     if payload.tagline is not None:
@@ -209,3 +247,62 @@ async def update_settings(
         created_at=settings.created_at,
         updated_at=settings.updated_at,
     )
+
+
+@router.post("/me/stripe/connect/onboarding-link")
+async def create_stripe_connect_onboarding_link(
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Stripe secret key not configured",
+        )
+    if not STRIPE_CONNECT_RETURN_URL or not STRIPE_CONNECT_REFRESH_URL:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Stripe Connect URLs not configured",
+        )
+
+    coaching = await ensure_coaching_profile(db, user_id)
+    account_id = coaching.stripe_connect_account_id
+
+    try:
+        if not account_id:
+            account = stripe.Account.create(
+                type="express",
+                capabilities={
+                    "card_payments": {"requested": True},
+                    "transfers": {"requested": True},
+                },
+            )
+            account_id = account.get("id")
+            if not account_id:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Stripe did not return account id",
+                )
+            coaching.stripe_connect_account_id = account_id
+            await db.commit()
+            await db.refresh(coaching)
+
+        account_link = stripe.AccountLink.create(
+            account=account_id,
+            refresh_url=STRIPE_CONNECT_REFRESH_URL,
+            return_url=STRIPE_CONNECT_RETURN_URL,
+            type="account_onboarding",
+        )
+    except Exception as exc:  # pragma: no cover - external Stripe errors
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to create Stripe Connect onboarding link",
+        ) from exc
+
+    url = account_link.get("url")
+    if not url:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Stripe did not return onboarding url",
+        )
+    return {"onboarding_url": url}

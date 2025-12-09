@@ -71,10 +71,16 @@ jobs:
           # Install optional test extras if defined
           python -m pip install ".[test]" || echo "No [test] extra for this service"
           # Ensure pytest is available
-          python -m pip install pytest==8.2.0
+          python -m pip install pytest==8.2.0 "pytest-asyncio>=0.24.0"
 
-      - name: Run tests
-        run: pytest -q
+      - name: Run tests (if present)
+        run: |
+          if [ -d tests ] || ls test_*.py *_test.py 1>/dev/null 2>&1; then
+            echo "Running pytest in $(pwd)"
+            pytest -q
+          else
+            echo "No tests found in $(pwd); skipping pytest."
+          fi
 
   seed:
     name: Build seed SQLite DBs
@@ -225,7 +231,7 @@ jobs:
       - name: Install e2e test dependencies
         run: |
           python -m pip install -U pip
-          python -m pip install pytest httpx
+          python -m pip install pytest==8.2.0 "pytest-asyncio>=0.24.0" httpx
 
       - name: Build service images
         run: |

@@ -92,6 +92,7 @@ class CoachingProfile {
   final CoachingRatePlan? ratePlan;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final String? stripeConnectAccountId;
 
   const CoachingProfile({
     required this.enabled,
@@ -105,6 +106,7 @@ class CoachingProfile {
     required this.ratePlan,
     required this.createdAt,
     required this.updatedAt,
+    this.stripeConnectAccountId,
   });
 
   factory CoachingProfile.fromJson(Map<String, dynamic> json) {
@@ -128,6 +130,7 @@ class CoachingProfile {
           DateTime.fromMillisecondsSinceEpoch(0),
       updatedAt: DateTime.tryParse(json['updated_at']?.toString() ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
+      stripeConnectAccountId: json['stripe_connect_account_id'] as String?,
     );
   }
 
@@ -143,6 +146,7 @@ class CoachingProfile {
         'rate_plan': ratePlan?.toJson(),
         'created_at': createdAt.toIso8601String(),
         'updated_at': updatedAt.toIso8601String(),
+        'stripe_connect_account_id': stripeConnectAccountId,
       };
 
   CoachingProfile copyWith({
@@ -157,6 +161,7 @@ class CoachingProfile {
     CoachingRatePlan? ratePlan,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? stripeConnectAccountId,
   }) {
     return CoachingProfile(
       enabled: enabled ?? this.enabled,
@@ -170,6 +175,8 @@ class CoachingProfile {
       ratePlan: ratePlan ?? this.ratePlan,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      stripeConnectAccountId:
+          stripeConnectAccountId ?? this.stripeConnectAccountId,
     );
   }
 }

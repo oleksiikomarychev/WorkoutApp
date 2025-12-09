@@ -18,5 +18,9 @@ class Settings:
     def agent_service_url(self) -> str:
         return os.getenv("AGENT_SERVICE_URL", "http://agent-service:8006")
 
+    @property
+    def accounts_service_url(self) -> str:
+        return os.getenv("ACCOUNTS_SERVICE_URL", "http://accounts-service:8007")
+
 
 settings = Settings()

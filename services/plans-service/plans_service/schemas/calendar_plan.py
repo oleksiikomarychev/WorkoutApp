@@ -24,6 +24,8 @@ class UserMaxResponse(BaseModel):
 class CalendarPlanBase(BaseModel):
     name: str = Field(..., max_length=255, description="Plan name must be 1-255 characters")
 
+    is_public: bool = Field(default=False, description="Whether the plan template is public")
+
     primary_goal: str | None = Field(
         default=None,
         description="Primary goal of the plan (e.g. strength, hypertrophy, recomposition)",
@@ -203,6 +205,8 @@ class CalendarPlanUpdate(BaseModel):
     required_equipment: list[str] | None = None
     supported_constraints: list[str] | None = None
 
+    is_public: bool | None = None
+
 
 class AppliedCalendarPlanBase(BaseModel):
     start_date: datetime | None = None
@@ -260,6 +264,7 @@ class CalendarPlanSummaryResponse(BaseModel):
     is_favorite: bool = False
     root_plan_id: int
     is_original: bool = True
+    is_public: bool = False
     primary_goal: str | None = None
     intended_experience_level: str | None = None
     intended_frequency_per_week: int | None = None
@@ -285,6 +290,7 @@ class CalendarPlanResponse(BaseModel):
     is_active: bool
     root_plan_id: int
     is_original: bool = True
+    is_public: bool = False
     primary_goal: str | None = None
     intended_experience_level: str | None = None
     intended_frequency_per_week: int | None = None

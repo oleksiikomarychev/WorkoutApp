@@ -90,4 +90,20 @@ class PlanApi {
     ) as Map<String, dynamic>;
     return CalendarPlan.fromJson(data);
   }
+
+  static Future<CalendarPlan> updateCalendarPlanPublic({
+    required int planId,
+    required bool isPublic,
+  }) async {
+    final endpoint = ApiConfig.updateCalendarPlanEndpoint(planId.toString());
+    final payload = {
+      'is_public': isPublic,
+    };
+    final data = await _apiClient.put(
+      endpoint,
+      payload,
+      context: 'updateCalendarPlanPublic',
+    ) as Map<String, dynamic>;
+    return CalendarPlan.fromJson(data);
+  }
 }

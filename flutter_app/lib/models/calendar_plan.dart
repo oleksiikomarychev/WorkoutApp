@@ -9,6 +9,7 @@ class CalendarPlan {
   final bool isActive;
   final int? rootPlanId;
   final bool isOriginal;
+  final bool isPublic;
   final DateTime? startDate;
   final DateTime? endDate;
 
@@ -30,6 +31,7 @@ class CalendarPlan {
     this.isActive = false,
     this.rootPlanId,
     this.isOriginal = true,
+    this.isPublic = false,
     this.startDate,
     this.endDate,
     this.mesocycles = const [],
@@ -51,6 +53,7 @@ class CalendarPlan {
       isActive: json['is_active'] ?? false,
       rootPlanId: json['root_plan_id'] as int?,
       isOriginal: (json['is_original'] as bool?) ?? (json['root_plan_id'] == null || json['root_plan_id'] == json['id']),
+      isPublic: json['is_public'] as bool? ?? false,
       startDate: json['start_date'] != null ? DateTime.parse(json['start_date']) : null,
       endDate: json['end_date'] != null ? DateTime.parse(json['end_date']) : null,
       mesocycles: (json['mesocycles'] as List<dynamic>? ?? [])
@@ -79,6 +82,7 @@ class CalendarPlan {
       'is_active': isActive,
       'root_plan_id': rootPlanId,
       'is_original': isOriginal,
+      'is_public': isPublic,
       'start_date': startDate?.toIso8601String(),
       'end_date': endDate?.toIso8601String(),
       'mesocycles': mesocycles.map((e) => e.toJson()).toList(),

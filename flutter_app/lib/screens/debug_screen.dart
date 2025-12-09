@@ -14,6 +14,8 @@ import 'calendar_plan_create.dart';
 import 'calendar_plan_detail.dart';
 import 'calendar_plans_screen.dart';
 import 'chat_screen.dart';
+import 'coach_athlete_plan_screen.dart';
+import 'coaching/my_coaches_screen.dart';
 import 'exercise_form_screen.dart';
 import 'exercise_list_screen.dart';
 import 'exercise_selection_screen.dart';
@@ -25,8 +27,10 @@ import 'macros/macros_preview_screen.dart';
 import 'plan_editor_screen.dart';
 import 'plan_microcycle_editor.dart';
 import 'progression_detail_screen.dart';
+import 'public_user_profile_screen.dart';
 import 'session_history_screen.dart';
 import 'session_log_screen.dart';
+import 'social/social_feed_screen.dart';
 import 'splash_screen_new.dart';
 import 'user_max_screen.dart';
 import 'user_profile_screen.dart';
@@ -35,8 +39,11 @@ import 'workout_detail_screen.dart';
 import 'workout_list_screen.dart';
 import 'workout_session_history_screen.dart';
 import 'workouts_screen.dart';
+import 'package:workout_app/screens/coach/athlete_detail_screen.dart';
+import 'package:workout_app/screens/coach/coach_chat_screen.dart';
 import 'package:workout_app/screens/coach/coach_dashboard_screen.dart';
 import 'package:workout_app/screens/coach/coach_athletes_screen.dart';
+import 'package:workout_app/screens/coach/coach_relationships_screen.dart';
 
 class DebugScreen extends StatelessWidget {
   const DebugScreen({super.key});
@@ -73,6 +80,7 @@ class DebugScreen extends StatelessWidget {
       'Workout Session History': (context) => const WorkoutSessionHistoryScreen(workoutId: 1),
       'Coach Dashboard (CRM)': (context) => const CoachDashboardScreen(),
       'Coach Athletes (CRM)': (context) => const CoachAthletesScreen(),
+      ..._coachAndSocialScreens(),
     };
 
     return AssistantChatHost(
@@ -92,6 +100,7 @@ class DebugScreen extends StatelessWidget {
             title: const Text('Clear cache'),
             onTap: () {},
           ),
+          const Divider(),
           ...screens.entries.map((entry) {
             return ListTile(
               title: Text(entry.key),
@@ -103,6 +112,31 @@ class DebugScreen extends StatelessWidget {
     );
       },
     );
+  }
+
+  Map<String, WidgetBuilder> _coachAndSocialScreens() {
+    return {
+      'Coach Chat (stub)': (context) => CoachChatScreen(
+            args: CoachChatScreenArgs(
+              channelId: 'debug-channel',
+              title: 'Debug Coach Chat',
+            ),
+          ),
+      'Coach Relationships': (context) => const CoachRelationshipsScreen(),
+      'Coach Athlete Detail (stub)': (context) => const AthleteDetailScreen(
+            athleteId: 'debug-athlete',
+          ),
+      'Coach Athlete Plan (stub)': (context) => const CoachAthletePlanScreen(
+            athleteId: 'debug-athlete',
+            athleteName: 'Debug Athlete',
+          ),
+      'My Coaches': (context) => const MyCoachesScreen(),
+      'Social Feed': (context) => const SocialFeedScreen(),
+      'Public User Profile (stub)': (context) => const PublicUserProfileScreen(
+            userId: 'debug-user',
+            initialName: 'Debug User',
+          ),
+    };
   }
 
 CalendarPlan _stubCalendarPlan() {

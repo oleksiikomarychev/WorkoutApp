@@ -15,7 +15,7 @@ from backend_common.fastapi_app import (
     instrument_with_metrics,
 )
 from fastapi import FastAPI, HTTPException, Request, Response, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from redis.asyncio import Redis
 from sentry_sdk import set_tag, set_user
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -217,6 +217,11 @@ _PUBLIC_PATHS = {
     "/redoc",
     "/redoc/",
     "/metrics",
+    "/payment/success",
+    "/payment/cancel",
+    "/stripe/connect/return",
+    "/stripe/connect/refresh",
+    "/api/v1/crm/billing/stripe/webhook",
 }
 _INTERNAL_GATEWAY_SECRET = (os.getenv("INTERNAL_GATEWAY_SECRET") or "").strip()
 
@@ -531,6 +536,114 @@ async def get_authenticated_user(request: Request) -> dict:
     }
 
 
+@app.get("/payment/success", response_class=HTMLResponse, include_in_schema=False)
+async def payment_success_page() -> HTMLResponse:
+    html = """<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"utf-8\" />
+  <title>Payment successful</title>
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont,
+        'Segoe UI', sans-serif;
+      padding: 2rem;
+      text-align: center;
+    }
+    .status { font-size: 1.4rem; margin-bottom: 0.5rem; }
+    .hint { color: #555; font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <div class=\"status\">Payment completed successfully.</div>
+  <div class=\"hint\">You can close this page and return to the app.</div>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
+@app.get("/payment/cancel", response_class=HTMLResponse, include_in_schema=False)
+async def payment_cancel_page() -> HTMLResponse:
+    html = """<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"utf-8\" />
+  <title>Payment cancelled</title>
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont,
+        'Segoe UI', sans-serif;
+      padding: 2rem;
+      text-align: center;
+    }
+    .status { font-size: 1.4rem; margin-bottom: 0.5rem; }
+    .hint { color: #555; font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <div class=\"status\">Payment was cancelled.</div>
+  <div class=\"hint\">You can close this page and return to the app to try again.</div>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
+@app.get("/stripe/connect/return", response_class=HTMLResponse, include_in_schema=False)
+async def stripe_connect_return_page() -> HTMLResponse:
+    html = """<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"utf-8\" />
+  <title>Stripe Connect onboarding</title>
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont,
+        'Segoe UI', sans-serif;
+      padding: 2rem;
+      text-align: center;
+    }
+    .status { font-size: 1.4rem; margin-bottom: 0.5rem; }
+    .hint { color: #555; font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <div class=\"status\">Stripe Connect onboarding completed.</div>
+  <div class=\"hint\">You can close this page and return to the app.</div>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
+@app.get("/stripe/connect/refresh", response_class=HTMLResponse, include_in_schema=False)
+async def stripe_connect_refresh_page() -> HTMLResponse:
+    html = """<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"utf-8\" />
+  <title>Stripe Connect onboarding</title>
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont,
+        'Segoe UI', sans-serif;
+      padding: 2rem;
+      text-align: center;
+    }
+    .status { font-size: 1.4rem; margin-bottom: 0.5rem; }
+    .hint { color: #555; font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <div class=\"status\">Stripe Connect onboarding needs to be refreshed.</div>
+  <div class=\"hint\">You can close this page and restart onboarding from the app.</div>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
 async def fetch_service_spec(url: str) -> dict:
     timeout = httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=10.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
@@ -756,7 +869,10 @@ async def _fetch_target_profile(user_id: str) -> dict:
         raise HTTPException(status_code=404, detail="User profile not found")
     if resp.status_code >= 400:
         raise HTTPException(status_code=resp.status_code, detail="Failed to fetch target profile")
-    resp.json()
+    data = resp.json()
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=502, detail="Invalid profile response format")
+    return data
 
 
 app.include_router(rpe_router)

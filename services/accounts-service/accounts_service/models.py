@@ -78,6 +78,7 @@ class UserCoachingProfile(Base):
     rate_type = Column(String(32), nullable=True)
     rate_currency = Column(String(3), nullable=True)
     rate_amount_minor = Column(Integer, nullable=True)
+    stripe_connect_account_id = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True),
