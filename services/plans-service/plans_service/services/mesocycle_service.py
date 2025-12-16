@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -259,22 +260,35 @@ class MesocycleService:
             existing_by_day: dict[int, PlanWorkout] = {}
             for pw in existing_workouts:
                 day_idx: int | None = None
-                label = (pw.day_label or "").strip().lower()
-                if label.startswith("day "):
-                    try:
-                        day_idx = int(label[4:].strip())
-                    except ValueError:
-                        day_idx = None
+                label = (pw.day_label or "").strip()
+                if label:
+                    m = re.search(r"\bday\D*(\d+)\b", label, flags=re.IGNORECASE)
+                    if m:
+                        try:
+                            day_idx = int(m.group(1))
+                        except ValueError:
+                            day_idx = None
                 if day_idx is None:
                     day_idx = (pw.order_index or 0) + 1
                 existing_by_day[day_idx] = pw
 
             for raw_day, items in (data.schedule or {}).items():
                 day_idx: int | None = None
-                try:
-                    day_idx = int(str(raw_day).strip().split()[-1])
-                except (ValueError, IndexError):
-                    day_idx = None
+                if raw_day is not None:
+                    if isinstance(raw_day, int):
+                        day_idx = raw_day
+                    else:
+                        raw_str = str(raw_day).strip()
+                        if raw_str:
+                            try:
+                                day_idx = int(raw_str)
+                            except ValueError:
+                                m = re.search(r"\bday\D*(\d+)\b", raw_str, flags=re.IGNORECASE)
+                                if m:
+                                    try:
+                                        day_idx = int(m.group(1))
+                                    except ValueError:
+                                        day_idx = None
                 if day_idx is None or day_idx < 1:
                     continue
 

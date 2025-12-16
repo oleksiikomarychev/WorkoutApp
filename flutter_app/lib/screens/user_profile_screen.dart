@@ -772,6 +772,7 @@ class UserProfileScreen extends ConsumerWidget {
     final coaching = profile.coaching;
     final enabled = coaching?.enabled ?? false;
     final accepting = coaching?.acceptingClients ?? false;
+    final eligibleForCoaching = profile.coachingEligibility?.eligible ?? false;
 
     return Container(
       width: double.infinity,
@@ -813,80 +814,83 @@ class UserProfileScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 16),
-          if (!enabled)
+          if (enabled)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if ((coaching?.tagline?.isNotEmpty ?? false)) ...[
+                  Text(
+                    coaching!.tagline!,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                if ((coaching?.description?.isNotEmpty ?? false)) ...[
+                  Text(
+                    coaching!.description!,
+                    style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if ((coaching?.specializations ?? []).isNotEmpty)
+                      _coachingChip('Focus', coaching!.specializations.join(', ')),
+                    if ((coaching?.languages ?? []).isNotEmpty)
+                      _coachingChip('Languages', coaching!.languages.join(', ')),
+                    if (coaching?.experienceYears != null)
+                      _coachingChip('Experience', '${coaching!.experienceYears} yrs'),
+                    if ((coaching?.timezone?.isNotEmpty ?? false))
+                      _coachingChip('Timezone', coaching!.timezone!),
+                    if (coaching?.ratePlan != null)
+                      _coachingChip(
+                        'Rate',
+                        coaching!.ratePlan!.amountMinor != null && coaching.ratePlan!.currency != null
+                            ? '${(coaching.ratePlan!.amountMinor! / 100).toStringAsFixed(0)} ${coaching.ratePlan!.currency!.toUpperCase()} ${coaching.ratePlan!.type ?? ''}'
+                            : (coaching.ratePlan!.type ?? 'Custom rate'),
+                      ),
+                  ],
+                ),
+              ],
+            )
+          else if (eligibleForCoaching)
             const Text(
               'Turn on coaching features to let other athletes see a "Hire" button on your profile and manage your athletes via the CRM tab.',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
             )
-          else ...[
-            if ((coaching?.tagline?.isNotEmpty ?? false)) ...[
-              Text(
-                coaching!.tagline!,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-            ],
-            if ((coaching?.description?.isNotEmpty ?? false)) ...[
-              Text(
-                coaching!.description!,
-                style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 12),
-            ],
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                if ((coaching?.specializations ?? []).isNotEmpty)
-                  _coachingChip('Focus', coaching!.specializations.join(', ')),
-                if ((coaching?.languages ?? []).isNotEmpty)
-                  _coachingChip('Languages', coaching!.languages.join(', ')),
-                if (coaching?.experienceYears != null)
-                  _coachingChip('Experience', '${coaching!.experienceYears} yrs'),
-                if ((coaching?.timezone?.isNotEmpty ?? false))
-                  _coachingChip('Timezone', coaching!.timezone!),
-                if (coaching?.ratePlan != null)
-                  _coachingChip(
-                    'Rate',
-                    coaching!.ratePlan!.amountMinor != null && coaching.ratePlan!.currency != null
-                        ? '${(coaching.ratePlan!.amountMinor! / 100).toStringAsFixed(0)} ${coaching.ratePlan!.currency!.toUpperCase()} ${coaching.ratePlan!.type ?? ''}'
-                        : (coaching.ratePlan!.type ?? 'Custom rate'),
-                  ),
-              ],
-            ),
-          ],
+          else
+            const SizedBox.shrink(),
           const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () => _showCoachingProfileDialog(context, ref, profile),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.textPrimary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          if (enabled || eligibleForCoaching)
+            Center(
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => _showCoachingProfileDialog(context, ref, profile),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: enabled ? AppColors.primary : AppColors.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(enabled ? 'Manage coaching profile' : 'Enable coaching features'),
+                ),
               ),
-              child: Text(enabled ? 'Manage coaching profile' : 'Enable coaching features'),
             ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () => _startStripeConnectOnboarding(context, ref),
-              child: const Text('Connect Stripe payouts'),
-            ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () {
-                Navigator.of(context).pushNamed(RouteNames.myCoaches);
-              },
-              child: const Text('My coaches'),
-            ),
-          ),
+          if (enabled || eligibleForCoaching) ...[
+            const SizedBox(height: 12),
+            if (!enabled)
+              TextButton(
+                onPressed: () => _startStripeConnectOnboarding(context, ref),
+                child: const Text('Connect Stripe payouts'),
+              )
+            else if (!accepting)
+              const Text(
+                'To appear in the coaches directory and accept new clients, enable "Accepting new clients" and connect Stripe payouts.',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+          ],
         ],
       ),
     );

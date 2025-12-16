@@ -170,8 +170,19 @@ def get_rpe_summary() -> str:
 ALLOWED_VOLUME_KEYS = {
     "chest",
     "back",
+    "lats",
+    "rows",
+    "traps",
+    "lowerback",
     "legs",
+    "quads",
+    "hamstrings",
+    "calves",
+    "glutes",
     "arms",
+    "biceps",
+    "triceps",
+    "forearms",
     "shoulders",
     "core",
     "upper",
@@ -328,7 +339,7 @@ def _format_available_exercises_preview(available_exercises: list[dict[str, Any]
     for raw in available_exercises[:limit]:
         ex_id = raw.get("id")
         name = raw.get("name", "")
-        pattern = raw.get("movement_pattern") or raw.get("pattern") or "unknown"
+        pattern = raw.get("pattern") or "unknown"
         equipment = raw.get("equipment") or raw.get("category") or raw.get("type") or "unspecified"
         lines.append(f"{ex_id}: {name} | pattern={pattern} | equipment={equipment}")
     if len(available_exercises) > limit:

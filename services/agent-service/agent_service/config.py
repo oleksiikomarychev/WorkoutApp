@@ -8,7 +8,7 @@ class Settings:
 
     @property
     def llm_model(self) -> str:
-        return os.getenv("LLM_MODEL", "gemini-2.0-flash")
+        return os.getenv("LLM_MODEL", "gemini-2.5-flash-lite")
 
     @property
     def staged_llm_provider(self) -> str:

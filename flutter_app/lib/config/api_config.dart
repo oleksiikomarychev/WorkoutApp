@@ -123,6 +123,9 @@ class ApiConfig {
   static String createPlanVariantEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/variants');
   static String addFavoritePlanEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/favorite');
   static String removeFavoritePlanEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/favorite');
+  static String recalcCalendarPlanSetsEndpoint(String planId) => buildEndpoint('/plans/calendar-plans/$planId/recalc-sets');
+  static String rootPlanAdoptersStatsEndpoint(String rootPlanId) =>
+      buildEndpoint('/plans/adoption/root-plans/$rootPlanId/stats');
   static String listMesocyclesEndpoint(String planId) => buildEndpoint('/plans/mesocycles/$planId/mesocycles');
   static String createMesocycleEndpoint(String planId) => buildEndpoint('/plans/mesocycles/$planId/mesocycles');
   static String updateMesocycleEndpoint(String mesocycleId) => buildEndpoint('/plans/mesocycles/$mesocycleId');

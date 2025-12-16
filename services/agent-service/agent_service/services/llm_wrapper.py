@@ -60,7 +60,12 @@ async def generate_structured_output(
         HumanMessage(content=prompt),
     ]
 
-    response = await llm.ainvoke(messages, max_output_tokens=max_output_tokens)
+    try:
+        response = await llm.ainvoke(messages, max_output_tokens=max_output_tokens)
+    except TypeError as exc:
+        if "max_output_tokens" not in str(exc):
+            raise
+        response = await llm.ainvoke(messages)
     text = response.content if isinstance(response.content, str) else str(response.content)
     text = text.strip()
 

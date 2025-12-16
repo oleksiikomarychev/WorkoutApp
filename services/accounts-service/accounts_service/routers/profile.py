@@ -1,6 +1,7 @@
 import os
 
 import stripe
+from backend_common.http_client import ServiceClient
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +12,7 @@ from ..metrics import (
     SETTINGS_UPDATED_TOTAL,
 )
 from ..schemas import (
+    CoachingEligibilityResponse,
     CoachingProfileUpdateRequest,
     ProfileResponse,
     ProfileUpdateRequest,
@@ -27,6 +29,7 @@ from ..services.profile_service import (
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_CONNECT_RETURN_URL = os.getenv("STRIPE_CONNECT_RETURN_URL")
 STRIPE_CONNECT_REFRESH_URL = os.getenv("STRIPE_CONNECT_REFRESH_URL")
+PLANS_SERVICE_URL = os.getenv("PLANS_SERVICE_URL")
 
 if STRIPE_SECRET_KEY:
     stripe.api_key = STRIPE_SECRET_KEY
@@ -40,6 +43,21 @@ async def get_profile_me(
     db: AsyncSession = Depends(get_db),
 ) -> ProfileResponse:
     data = await ensure_profile_and_settings(db, user_id)
+    if PLANS_SERVICE_URL:
+        async with ServiceClient() as client:
+            url = f"{PLANS_SERVICE_URL}/plans/adoption/coaching-eligibility/me"
+            payload = await client.get_json(
+                url,
+                headers={"X-User-Id": user_id},
+                default=None,
+                expected_status=200,
+                user_id=user_id,
+            )
+            if isinstance(payload, dict):
+                try:
+                    data.coaching_eligibility = CoachingEligibilityResponse.model_validate(payload)
+                except Exception:
+                    data.coaching_eligibility = None
     return build_profile_response(data)
 
 
@@ -54,6 +72,39 @@ async def update_coaching_profile_me(
     modified = False
 
     if payload.enabled is not None:
+        if payload.enabled:
+            if not PLANS_SERVICE_URL:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Plans service is not configured",
+                )
+            async with ServiceClient() as client:
+                url = f"{PLANS_SERVICE_URL}/plans/adoption/coaching-eligibility/me"
+                raw = await client.get_json(
+                    url,
+                    headers={"X-User-Id": user_id},
+                    default=None,
+                    expected_status=200,
+                    user_id=user_id,
+                )
+                if not isinstance(raw, dict):
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail="Failed to fetch coaching eligibility",
+                    )
+                try:
+                    eligibility = CoachingEligibilityResponse.model_validate(raw)
+                except Exception:
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail="Invalid coaching eligibility response",
+                    )
+                data.coaching_eligibility = eligibility
+                if not eligibility.eligible:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Coaching is not yet available for this account",
+                    )
         coaching.enabled = payload.enabled
         modified = True
     if payload.accepting_clients is not None:

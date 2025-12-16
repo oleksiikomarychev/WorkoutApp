@@ -1,6 +1,7 @@
 import asyncio
 import math
 import os
+import re
 import urllib.parse
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
@@ -10,6 +11,7 @@ import httpx
 import structlog
 from backend_common.http_client import ServiceClient
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -19,6 +21,7 @@ from ..models.calendar import (
     CalendarPlan,
     Mesocycle,
     Microcycle,
+    PlanAdopter,
     PlanExercise,
     PlanWorkout,
 )
@@ -127,10 +130,10 @@ class AppliedCalendarPlanService:
         base = os.getenv("EXERCISES_SERVICE_URL", "http://exercises-service:8002")
         headers = self._auth_headers()
         params = {"ids": ",".join(str(eid) for eid in sorted(exercise_ids))}
-        url = f"{base.rstrip('/')}/exercises/definitions"
+        url = f"{base.rstrip('/')}/exercises/definitions/"
 
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
                 response = await client.get(url, params=params, headers=headers)
                 response.raise_for_status()
                 data = response.json()
@@ -146,7 +149,7 @@ class AppliedCalendarPlanService:
                         continue
                     meta[ex_id] = item
                 return meta
-        except (httpx.RequestError, ValueError):
+        except (httpx.HTTPError, ValueError):
             logger.warning("_fetch_exercise_metadata_failed", exercise_ids=list(exercise_ids), exc_info=True)
             return {}
 
@@ -297,6 +300,8 @@ class AppliedCalendarPlanService:
             if not base_plan:
                 raise ValueError(f"План с ID {plan_id} не найден")
 
+            root_plan_id = base_plan.root_plan_id if base_plan.root_plan_id is not None else base_plan.id
+
             stmt = (
                 select(Mesocycle)
                 .join(Mesocycle.calendar_plan)
@@ -409,6 +414,7 @@ class AppliedCalendarPlanService:
                 return round(ratio) * step
 
             plan_order = 0
+            current_day_offset = 0
             meso_id_to_micro: dict[int, list[Microcycle]] = {}
             for mc in microcycles:
                 meso_id_to_micro.setdefault(mc.mesocycle_id, []).append(mc)
@@ -451,11 +457,50 @@ class AppliedCalendarPlanService:
                         if micro_len == 0:
                             micro_len = 7
 
-                    for di, (day_key, workouts) in enumerate(schedule_dict.items(), start=1):
-                        label = f"M{mi}-MC{mci}-D{di}: {day_key}"
+                    indexed_schedule: dict[int, tuple[str, list[dict[str, Any]]]] = {}
+                    fallback_idx = 0
+                    for raw_label, workouts in schedule_dict.items():
+                        label_str = str(raw_label) if raw_label is not None else ""
+                        day_idx_local: int | None = None
+                        if label_str:
+                            m = re.search(r"\bDay\s*(\d+)\b", label_str, flags=re.IGNORECASE)
+                            if m:
+                                try:
+                                    day_idx_local = int(m.group(1))
+                                except ValueError:
+                                    day_idx_local = None
+                        if day_idx_local is None:
+                            fallback_idx += 1
+                            day_idx_local = fallback_idx
+
+                        existing = indexed_schedule.get(day_idx_local)
+                        if existing is not None:
+                            existing_label, existing_list = existing
+                            existing_list.extend(workouts)
+                            if not existing_label and label_str:
+                                existing_label = label_str
+                            indexed_schedule[day_idx_local] = (existing_label, existing_list)
+                        else:
+                            indexed_schedule[day_idx_local] = (label_str, list(workouts))
+
+                    if indexed_schedule:
+                        try:
+                            max_label_idx = max(indexed_schedule.keys())
+                            if max_label_idx > micro_len:
+                                micro_len = max_label_idx
+                        except ValueError:
+                            pass
+
+                    for local_day in range(1, micro_len + 1):
+                        day_label_str, workouts_for_day = indexed_schedule.get(local_day, (f"Day {local_day}", []))
+                        label = f"M{mi}-MC{mci}-D{local_day}: {day_label_str}"
                         calculated_schedule[label] = []
 
-                        for workout_index, workout_payload in enumerate(workouts, start=1):
+                        if not workouts_for_day:
+                            current_day_offset += 1
+                            continue
+
+                        for workout_index, workout_payload in enumerate(workouts_for_day, start=1):
                             workout_exercises: list[dict[str, Any]] = []
 
                             for exercise in workout_payload.get("exercises", []):
@@ -536,12 +581,16 @@ class AppliedCalendarPlanService:
                             workouts_to_generate.append(
                                 {
                                     "name": workout_name,
-                                    "scheduled_for": (applied_plan.start_date + timedelta(days=plan_order)).isoformat(),
+                                    "scheduled_for": (
+                                        applied_plan.start_date + timedelta(days=current_day_offset)
+                                    ).isoformat(),
                                     "plan_order_index": plan_order,
                                     "exercises": workout_exercises,
                                 }
                             )
                             plan_order += 1
+
+                        current_day_offset += 1
 
                     self._apply_normalization(
                         effective_1rms,
@@ -582,6 +631,17 @@ class AppliedCalendarPlanService:
 
             applied_plan.user_max_ids = [um["id"] for um in ordered_user_maxes]
             self.db.add(applied_plan)
+
+            adopter_insert = (
+                insert(PlanAdopter)
+                .values(
+                    root_plan_id=int(root_plan_id),
+                    adopter_user_id=user_id,
+                    first_applied_at=applied_plan.start_date,
+                )
+                .on_conflict_do_nothing(index_elements=["root_plan_id", "adopter_user_id"])
+            )
+            await self.db.execute(adopter_insert)
             await self.db.commit()
             await self.db.refresh(applied_plan)
 
@@ -1382,8 +1442,14 @@ class AppliedCalendarPlanService:
                 items = list(schedule.items())
 
                 def _key(x):
+                    raw = str(x[0]).strip() if x and x[0] is not None else ""
+                    if not raw:
+                        return 0
+                    m = re.search(r"\bday\D*(\d+)\b", raw, flags=re.IGNORECASE)
+                    if not m:
+                        return 0
                     try:
-                        return int(str(x[0]).strip().split()[-1])
+                        return int(m.group(1))
                     except (TypeError, ValueError):
                         return 0
 
@@ -1411,10 +1477,18 @@ class AppliedCalendarPlanService:
                             }
                         )
                     if workout_exercises:
-                        try:
-                            day_idx = int(str(day_key).strip().split()[-1])
+                        day_idx: int | None = None
+                        raw = str(day_key).strip() if day_key is not None else ""
+                        if raw:
+                            m = re.search(r"\bday\D*(\d+)\b", raw, flags=re.IGNORECASE)
+                            if m:
+                                try:
+                                    day_idx = int(m.group(1))
+                                except (TypeError, ValueError):
+                                    day_idx = None
+                        if day_idx is not None:
                             w_name = f"{tpl_resp.name}: Day {day_idx}"
-                        except (TypeError, ValueError):
+                        else:
                             w_name = f"{tpl_resp.name}: {str(day_key)}"
                         out.append(
                             {

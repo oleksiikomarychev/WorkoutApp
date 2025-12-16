@@ -166,9 +166,12 @@ async def delete_calendar_plan(
     plan_id: int,
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
+    cascade: bool = Query(False, description="Cascade delete variants and applied instances"),
 ):
     try:
-        await CalendarPlanService.delete_plan(db, plan_id, user_id)
+        await CalendarPlanService.delete_plan(db, plan_id, user_id, cascade=cascade)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error") from e
 
@@ -196,4 +199,29 @@ async def mass_edit_calendar_plan(
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+
+
+@router.post("/{plan_id}/recalc-sets", response_model=CalendarPlanResponse)
+async def recalc_calendar_plan_sets(
+    plan_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    try:
+        logger.info(
+            "calendar_plan_recalc_requested",
+            user_id=user_id,
+            plan_id=plan_id,
+        )
+        result = await CalendarPlanService.recalc_sets(db, plan_id, user_id)
+        logger.info(
+            "calendar_plan_recalc_success",
+            user_id=user_id,
+            plan_id=plan_id,
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail="Internal server error") from e

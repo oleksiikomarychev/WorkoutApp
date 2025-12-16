@@ -45,6 +45,15 @@ async def update_exercise_definition(
     return await service.update_definition(exercise_list_id, exercise_update)
 
 
+@router.post("/batch-upsert", response_model=list[schemas.ExerciseListResponse])
+async def batch_upsert_exercise_definitions(
+    exercises: list[schemas.ExerciseListCreate],
+    db: AsyncSession = Depends(get_db),
+):
+    service = ExerciseDefinitionService(db)
+    return await service.batch_upsert_definitions(exercises)
+
+
 @router.delete("/{exercise_list_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_exercise_definition(exercise_list_id: int, db: AsyncSession = Depends(get_db)):
     service = ExerciseDefinitionService(db)

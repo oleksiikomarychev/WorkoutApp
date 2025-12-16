@@ -42,6 +42,36 @@ class UserSettings {
   }
 }
 
+class CoachingEligibility {
+  final bool eligible;
+  final int threshold;
+  final int maxUniqueAdopters;
+  final int? bestRootPlanId;
+
+  const CoachingEligibility({
+    required this.eligible,
+    required this.threshold,
+    required this.maxUniqueAdopters,
+    required this.bestRootPlanId,
+  });
+
+  factory CoachingEligibility.fromJson(Map<String, dynamic> json) {
+    return CoachingEligibility(
+      eligible: json['eligible'] as bool? ?? false,
+      threshold: json['threshold'] as int? ?? 100,
+      maxUniqueAdopters: json['max_unique_adopters'] as int? ?? 0,
+      bestRootPlanId: json['best_root_plan_id'] as int?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'eligible': eligible,
+        'threshold': threshold,
+        'max_unique_adopters': maxUniqueAdopters,
+        'best_root_plan_id': bestRootPlanId,
+      };
+}
+
 class CoachingRatePlan {
   final String? type;
   final String? currency;
@@ -201,6 +231,7 @@ class UserProfile {
   final double? weeklyGainCoef;
   final DateTime? lastActiveAt;
   final CoachingProfile? coaching;
+  final CoachingEligibility? coachingEligibility;
 
   const UserProfile({
     required this.userId,
@@ -222,6 +253,7 @@ class UserProfile {
     this.weeklyGainCoef,
     this.lastActiveAt,
     this.coaching,
+    this.coachingEligibility,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -249,6 +281,9 @@ class UserProfile {
       coaching: json['coaching'] is Map<String, dynamic>
           ? CoachingProfile.fromJson(json['coaching'] as Map<String, dynamic>)
           : null,
+      coachingEligibility: json['coaching_eligibility'] is Map<String, dynamic>
+          ? CoachingEligibility.fromJson(json['coaching_eligibility'] as Map<String, dynamic>)
+          : null,
     );
   }
 
@@ -272,6 +307,7 @@ class UserProfile {
         'weekly_gain_coef': weeklyGainCoef,
         'last_active_at': lastActiveAt?.toIso8601String(),
         'coaching': coaching?.toJson(),
+        'coaching_eligibility': coachingEligibility?.toJson(),
       };
 
   UserProfile copyWith({
@@ -292,6 +328,7 @@ class UserProfile {
     double? weeklyGainCoef,
     DateTime? lastActiveAt,
     CoachingProfile? coaching,
+    CoachingEligibility? coachingEligibility,
   }) {
     return UserProfile(
       userId: userId,
@@ -315,6 +352,7 @@ class UserProfile {
       weeklyGainCoef: weeklyGainCoef ?? this.weeklyGainCoef,
       lastActiveAt: lastActiveAt ?? this.lastActiveAt,
       coaching: coaching ?? this.coaching,
+      coachingEligibility: coachingEligibility ?? this.coachingEligibility,
     );
   }
 }

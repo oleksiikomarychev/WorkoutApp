@@ -351,6 +351,7 @@ services:
       - .env
     environment:
       - ACCOUNTS_DATABASE_URL=${ACCOUNTS_DATABASE_URL}
+      - PLANS_SERVICE_URL=http://plans-service:8005
       - APP_ENV=${APP_ENV}
       - SENTRY_DSN=${SENTRY_DSN}
       - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}

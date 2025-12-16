@@ -141,7 +141,8 @@ class MicrocycleCreate(MicrocycleBase):
         for i, label in enumerate(day_labels):
             if i < len(self.plan_workouts):
                 workout = self.plan_workouts[i]
-                workout.day_label = label
+                if not workout.day_label:
+                    workout.day_label = label
                 new_workouts.append(workout)
         self.plan_workouts = new_workouts
         return self
@@ -443,3 +444,23 @@ class PlanMassEditCommand(BaseModel):
     mode: Literal["preview", "apply"] = "preview"
     filter: PlanExerciseFilter
     actions: PlanExerciseActions
+
+
+class PlanAdoptersListResponse(BaseModel):
+    root_plan_id: int
+    total: int
+    limit: int
+    offset: int
+    adopters: list[str] = Field(default_factory=list)
+
+
+class PlanAdoptersStatsResponse(BaseModel):
+    root_plan_id: int
+    unique_adopters: int
+
+
+class CoachingEligibilityResponse(BaseModel):
+    eligible: bool
+    threshold: int
+    max_unique_adopters: int
+    best_root_plan_id: int | None = None

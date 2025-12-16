@@ -14,6 +14,10 @@ if config.config_file_name is not None:
 
 db_url = os.getenv("AGENT_DATABASE_URL")
 if not db_url:
+    db_url = os.getenv("DATABASE_URL")
+if not db_url:
+    db_url = config.get_main_option("sqlalchemy.url")
+if not db_url:
     raise ValueError("AGENT_DATABASE_URL environment variable not set")
 
 

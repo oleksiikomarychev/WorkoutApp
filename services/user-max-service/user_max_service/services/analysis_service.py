@@ -102,7 +102,7 @@ class AlgorithmicLLMHelper:
         )
         try:
             resp = self.client.models.generate_content(
-                model=os.getenv("LLM_MODEL", "gemini-2.0-flash"),
+                model=os.getenv("LLM_MODEL", "gemini-2.5-flash-lite"),
                 contents=prompt,
                 config={"response_mime_type": "application/json"},
             )
@@ -146,7 +146,7 @@ class AlgorithmicLLMHelper:
 
         try:
             resp = self.client.models.generate_content(
-                model=os.getenv("LLM_MODEL", "gemini-2.0-flash"),
+                model=os.getenv("LLM_MODEL", "gemini-2.5-flash-lite"),
                 contents=prompt,
                 config={"response_mime_type": "application/json"},
             )
@@ -178,7 +178,7 @@ class AlgorithmicLLMHelper:
                 "Верни строго JSON массив индексов, например: [0, 5]."
             )
             resp = self.client.models.generate_content(
-                model=os.getenv("LLM_MODEL", "gemini-2.0-flash"),
+                model=os.getenv("LLM_MODEL", "gemini-2.5-flash-lite"),
                 contents=prompt,
                 config={"response_mime_type": "application/json"},
             )

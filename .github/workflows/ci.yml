@@ -133,15 +133,19 @@ jobs:
 
       - name: Run Alembic migrations to seed DB
         working-directory: ${{ matrix.service }}
-        env:
-          DATABASE_URL: sqlite:///${{ github.workspace }}/${{ matrix.db_file }}
-        run: alembic upgrade head
+        run: |
+          DB_URL="sqlite:///${{ github.workspace }}/${{ matrix.db_file }}"
+          export DATABASE_URL="$DB_URL"
+          export ${{ matrix.env_var }}="$DB_URL"
+          echo "Running alembic migrations for ${{ matrix.service }} with DB_URL=$DB_URL and env var ${{ matrix.env_var }}"
+          alembic upgrade head
 
       - name: Run plans-service seed scripts
         if: ${{ matrix.run_plans_seed == true }}
         working-directory: ${{ matrix.service }}
         env:
           DATABASE_URL: sqlite:///${{ github.workspace }}/${{ matrix.db_file }}
+          PLANS_DATABASE_URL: sqlite:///${{ github.workspace }}/${{ matrix.db_file }}
         run: |
           python -m plans_service.scripts.seed_exercises
           python -m plans_service.scripts.seed_user_maxes

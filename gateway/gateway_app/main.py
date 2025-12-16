@@ -30,6 +30,7 @@ from gateway_app.routes.exercises import (
     exercises_instances_router,
 )
 from gateway_app.routes.plans import (
+    plans_adoption_router,
     plans_applied_router,
     plans_calendar_router,
     plans_instances_router,
@@ -885,6 +886,7 @@ app.include_router(workout_metrics_router)
 app.include_router(sessions_router)
 app.include_router(plans_applied_router)
 app.include_router(plans_calendar_router)
+app.include_router(plans_adoption_router)
 app.include_router(plans_instances_router)
 app.include_router(plans_mesocycles_router)
 app.include_router(plans_templates_router)
