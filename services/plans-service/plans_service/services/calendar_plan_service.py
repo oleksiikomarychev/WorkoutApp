@@ -3,11 +3,12 @@ from typing import Any
 
 import structlog
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import CircularDependencyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from .. import rpc
 from ..metrics import (
     CALENDAR_PLAN_VARIANTS_CREATED_TOTAL,
     CALENDAR_PLANS_CREATED_TOTAL,
@@ -21,6 +22,8 @@ from ..models.calendar import (
     AppliedCalendarPlan,
     AppliedMesocycle,
     AppliedMicrocycle,
+    AppliedPlanWorkout,
+    AppliedWorkout,
     CalendarPlan,
     Mesocycle,
     Microcycle,
@@ -272,14 +275,30 @@ class CalendarPlanService:
         return CalendarPlanService._get_plan_response(created_variant)
 
     async def list_variants(db: AsyncSession, plan_id: int, user_id: str) -> list[CalendarPlanSummaryResponse]:
-        stmt = select(CalendarPlan).where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
+        stmt = select(CalendarPlan).where(
+            CalendarPlan.id == plan_id,
+            or_(
+                CalendarPlan.user_id == user_id,
+                CalendarPlan.is_public.is_(True),
+            ),
+        )
         res = await db.execute(stmt)
         base = res.scalars().first()
         if not base:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found or permission denied")
         root_id = base.root_plan_id
 
-        stmt2 = select(CalendarPlan).where(CalendarPlan.root_plan_id == root_id).order_by(CalendarPlan.id.asc())
+        stmt2 = (
+            select(CalendarPlan)
+            .where(
+                CalendarPlan.root_plan_id == root_id,
+                or_(
+                    CalendarPlan.user_id == user_id,
+                    CalendarPlan.is_public.is_(True),
+                ),
+            )
+            .order_by(CalendarPlan.id.asc())
+        )
         res2 = await db.execute(stmt2)
         items = res2.scalars().all()
         summaries: list[CalendarPlanSummaryResponse] = []
@@ -330,7 +349,13 @@ class CalendarPlanService:
                     .selectinload(PlanWorkout.exercises)
                     .selectinload(PlanExercise.sets)
                 )
-                .where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
+                .where(
+                    CalendarPlan.id == plan_id,
+                    or_(
+                        CalendarPlan.user_id == user_id,
+                        CalendarPlan.is_public.is_(True),
+                    ),
+                )
             )
             result = await db.execute(stmt)
             plan = result.scalars().first()
@@ -386,7 +411,12 @@ class CalendarPlanService:
                     .selectinload(PlanWorkout.exercises)
                     .selectinload(PlanExercise.sets)
                 )
-                .where(CalendarPlan.user_id == user_id)
+                .where(
+                    or_(
+                        CalendarPlan.user_id == user_id,
+                        CalendarPlan.is_public.is_(True),
+                    )
+                )
             )
             if roots_only:
                 stmt = stmt.where(CalendarPlan.id == CalendarPlan.root_plan_id)
@@ -710,37 +740,33 @@ class CalendarPlanService:
 
             if is_apply_mode and changed:
                 await db.commit()
-                await db.refresh(plan)
                 PLAN_MASS_EDITS_APPLIED_TOTAL.inc()
                 await invalidate_plans_cache(user_id, plan_ids=[plan_id])
+
+                result2 = await db.execute(stmt)
+                plan = result2.scalars().first()
+                if not plan:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Plan not found or permission denied",
+                    )
 
             return CalendarPlanService._get_plan_response(plan)
         except HTTPException:
             raise
         except Exception as e:
+            await db.rollback()
             logger.exception("calendar_plan_mass_edit_failed", plan_id=plan_id, user_id=user_id)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to apply mass edit: {str(e)}",
             )
 
-    async def update_plan(
-        db: AsyncSession, plan_id: int, plan_data: CalendarPlanUpdate, user_id: str
+    async def recalc_sets(
+        db: AsyncSession,
+        plan_id: int,
+        user_id: str,
     ) -> CalendarPlanResponse:
-        stmt = select(CalendarPlan).where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
-        result = await db.execute(stmt)
-        plan = result.scalars().first()
-        if not plan:
-            raise ValueError("Plan not found or permission denied")
-        for field, value in plan_data.model_dump(exclude_none=True).items():
-            setattr(plan, field, value)
-
-        await db.commit()
-        await db.refresh(plan)
-        await invalidate_plans_cache(user_id, plan_ids=[plan_id])
-        return CalendarPlanService._get_plan_response(plan)
-
-    async def delete_plan(db: AsyncSession, plan_id: int, user_id: str) -> None:
         try:
             stmt = (
                 select(CalendarPlan)
@@ -749,12 +775,121 @@ class CalendarPlanService:
                     .selectinload(Mesocycle.microcycles)
                     .selectinload(Microcycle.plan_workouts)
                     .selectinload(PlanWorkout.exercises)
-                    .selectinload(PlanExercise.sets),
-                    selectinload(CalendarPlan.applied_instances).selectinload(AppliedCalendarPlan.workouts),
-                    selectinload(CalendarPlan.applied_instances)
-                    .selectinload(AppliedCalendarPlan.mesocycles)
-                    .selectinload(AppliedMesocycle.microcycles)
-                    .selectinload(AppliedMicrocycle.workouts),
+                    .selectinload(PlanExercise.sets)
+                )
+                .where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
+            )
+            result = await db.execute(stmt)
+            plan = result.scalars().first()
+
+            if not plan:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Plan not found or permission denied",
+                )
+
+            changed = False
+            headers = {"X-User-Id": user_id}
+
+            for mesocycle in plan.mesocycles or []:
+                for microcycle in mesocycle.microcycles or []:
+                    for workout in microcycle.plan_workouts or []:
+                        for exercise in workout.exercises or []:
+                            for plan_set in exercise.sets or []:
+                                intensity = plan_set.intensity
+                                effort = plan_set.effort
+                                volume = plan_set.volume
+
+                                provided = [v is not None for v in (intensity, effort, volume)]
+                                if sum(provided) != 2:
+                                    continue
+
+                                try:
+                                    if intensity is not None and effort is not None and volume is None:
+                                        new_volume = await rpc.get_volume(
+                                            float(intensity), float(effort), headers=headers
+                                        )
+                                        plan_set.volume = int(new_volume)
+                                        changed = True
+                                    elif volume is not None and effort is not None and intensity is None:
+                                        new_intensity = await rpc.get_intensity(
+                                            float(volume), float(effort), headers=headers
+                                        )
+                                        plan_set.intensity = int(new_intensity)
+                                        changed = True
+                                    elif volume is not None and intensity is not None and effort is None:
+                                        new_effort = await rpc.get_effort(
+                                            float(volume), float(intensity), headers=headers
+                                        )
+                                        plan_set.effort = int(new_effort)
+                                        changed = True
+                                except Exception as exc:  # noqa: BLE001
+                                    logger.warning(
+                                        "plan_set_recalc_failed",
+                                        plan_id=plan_id,
+                                        plan_set_id=getattr(plan_set, "id", None),
+                                        error=str(exc),
+                                    )
+                                    continue
+
+            if changed:
+                await db.commit()
+                result2 = await db.execute(stmt)
+                plan = result2.scalars().first()
+                if not plan:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Plan not found or permission denied",
+                    )
+
+            await invalidate_plans_cache(user_id, plan_ids=[plan_id])
+
+            return CalendarPlanService._get_plan_response(plan)
+        except HTTPException:
+            raise
+        except Exception as e:  # noqa: BLE001
+            await db.rollback()
+            logger.exception("calendar_plan_recalc_failed", plan_id=plan_id, user_id=user_id)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to recalc plan sets: {str(e)}",
+            )
+
+    async def update_plan(
+        db: AsyncSession, plan_id: int, plan_data: CalendarPlanUpdate, user_id: str
+    ) -> CalendarPlanResponse:
+        stmt = (
+            select(CalendarPlan)
+            .options(
+                selectinload(CalendarPlan.mesocycles)
+                .selectinload(Mesocycle.microcycles)
+                .selectinload(Microcycle.plan_workouts)
+                .selectinload(PlanWorkout.exercises)
+                .selectinload(PlanExercise.sets)
+            )
+            .where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
+        )
+        result = await db.execute(stmt)
+        plan = result.scalars().first()
+        if not plan:
+            raise ValueError("Plan not found or permission denied")
+        for field, value in plan_data.model_dump(exclude_none=True).items():
+            setattr(plan, field, value)
+
+        await db.commit()
+        await invalidate_plans_cache(user_id, plan_ids=[plan_id])
+
+        result2 = await db.execute(stmt)
+        plan2 = result2.scalars().first()
+        if not plan2:
+            raise ValueError("Plan not found or permission denied")
+        return CalendarPlanService._get_plan_response(plan2)
+
+    async def delete_plan(db: AsyncSession, plan_id: int, user_id: str, cascade: bool = False) -> None:
+        try:
+            stmt = (
+                select(CalendarPlan)
+                .options(
                     selectinload(CalendarPlan.variants),
                 )
                 .where(CalendarPlan.id == plan_id, CalendarPlan.user_id == user_id)
@@ -768,37 +903,81 @@ class CalendarPlanService:
                     detail="Plan not found or permission denied",
                 )
 
+            # Determine all calendar plan ids to delete (root + variants when cascade=true)
+            variant_ids: list[int] = []
             if plan.root_plan_id == plan.id and plan.variants:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Cannot delete the original plan while variants exist. Delete variants first.",
+                if not cascade:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=(
+                            "Cannot delete the original plan while variants exist. "
+                            "Delete variants first or retry with cascade=true."
+                        ),
+                    )
+                variant_ids = [v.id for v in (plan.variants or [])]
+                logger.warning(
+                    "calendar_plan_cascade_delete_root_with_variants",
+                    plan_id=plan.id,
+                    user_id=user_id,
+                    variants_count=len(variant_ids),
+                    variant_ids=variant_ids,
                 )
 
-            for mesocycle in plan.mesocycles:
-                for micro_cycle in mesocycle.microcycles:
-                    for workout in micro_cycle.plan_workouts:
-                        for exercise in workout.exercises:
-                            for plan_set in exercise.sets:
-                                await db.delete(plan_set)
-                            await db.delete(exercise)
-                        await db.delete(workout)
-                    await db.delete(micro_cycle)
-                await db.delete(mesocycle)
+            plan_ids_to_delete: list[int] = [plan.id, *variant_ids]
 
-            for applied_plan in plan.applied_instances:
-                for workout in applied_plan.workouts:
-                    await db.delete(workout)
-                for applied_meso in applied_plan.mesocycles:
-                    for applied_micro in applied_meso.microcycles:
-                        for applied_workout in applied_micro.workouts:
-                            await db.delete(applied_workout)
-                        await db.delete(applied_micro)
-                    await db.delete(applied_meso)
-                await db.delete(applied_plan)
+            # First, delete applied_* graph referencing these calendar plans to avoid FK violations
+            applied_plan_ids_subq = select(AppliedCalendarPlan.id).where(
+                AppliedCalendarPlan.calendar_plan_id.in_(plan_ids_to_delete)
+            )
+            applied_mesocycle_ids_subq = select(AppliedMesocycle.id).where(
+                AppliedMesocycle.applied_plan_id.in_(applied_plan_ids_subq)
+            )
+            applied_microcycle_ids_subq = select(AppliedMicrocycle.id).where(
+                AppliedMicrocycle.applied_mesocycle_id.in_(applied_mesocycle_ids_subq)
+            )
 
-            await db.delete(plan)
+            # Delete deepest children first
+            await db.execute(
+                delete(AppliedWorkout).where(AppliedWorkout.applied_microcycle_id.in_(applied_microcycle_ids_subq))
+            )
+            await db.execute(
+                delete(AppliedPlanWorkout).where(AppliedPlanWorkout.applied_plan_id.in_(applied_plan_ids_subq))
+            )
+            await db.execute(
+                delete(AppliedMicrocycle).where(AppliedMicrocycle.applied_mesocycle_id.in_(applied_mesocycle_ids_subq))
+            )
+            await db.execute(
+                delete(AppliedMesocycle).where(AppliedMesocycle.applied_plan_id.in_(applied_plan_ids_subq))
+            )
+            await db.execute(
+                delete(AppliedCalendarPlan).where(AppliedCalendarPlan.calendar_plan_id.in_(plan_ids_to_delete))
+            )
+
+            # Then delete calendar plans themselves (variants first if needed)
+            if variant_ids:
+                await db.execute(
+                    delete(CalendarPlan).where(
+                        CalendarPlan.root_plan_id == plan.id,
+                        CalendarPlan.id != plan.id,
+                        CalendarPlan.user_id == user_id,
+                    )
+                )
+                await db.execute(
+                    delete(CalendarPlan).where(
+                        CalendarPlan.id == plan.id,
+                        CalendarPlan.user_id == user_id,
+                    )
+                )
+            else:
+                await db.execute(
+                    delete(CalendarPlan).where(
+                        CalendarPlan.id == plan.id,
+                        CalendarPlan.user_id == user_id,
+                    )
+                )
+
             await db.commit()
-            await invalidate_plans_cache(user_id, plan_ids=[plan_id])
+            await invalidate_plans_cache(user_id, plan_ids=plan_ids_to_delete)
         except HTTPException as e:
             await db.rollback()
             raise e

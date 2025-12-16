@@ -34,6 +34,7 @@ class ProfileResponse(BaseModel):
     updated_at: datetime
     settings: SettingsResponse
     coaching: CoachingProfileResponse | None = None
+    coaching_eligibility: CoachingEligibilityResponse | None = None
 
 
 class UserSummaryResponse(BaseModel):
@@ -64,6 +65,13 @@ class CoachingProfileResponse(BaseModel):
     stripe_connect_account_id: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class CoachingEligibilityResponse(BaseModel):
+    eligible: bool
+    threshold: int
+    max_unique_adopters: int
+    best_root_plan_id: int | None = None
 
 
 class CoachingRatePlanUpdate(BaseModel):

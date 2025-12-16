@@ -10,6 +10,7 @@ plans_calendar_router = APIRouter(prefix="/api/v1/plans/calendar-plans")
 plans_instances_router = APIRouter(prefix="/api/v1/plans/calendar-plan-instances")
 plans_mesocycles_router = APIRouter(prefix="/api/v1/plans/mesocycles")
 plans_templates_router = APIRouter(prefix="/api/v1/plans/mesocycle-templates")
+plans_adoption_router = APIRouter(prefix="/api/v1/plans/adoption")
 
 
 @plans_applied_router.post("/apply-async/{plan_id}")
@@ -73,5 +74,13 @@ async def proxy_plans_mesocycles(request: Request, path: str = "") -> Response:
 async def proxy_plans_templates(request: Request, path: str = "") -> Response:
     suffix = "" if not path else (path if path.startswith("/") else f"/{path}")
     target_url = f"{gateway_main.PLANS_SERVICE_URL}/plans/mesocycle-templates{suffix}"
+    headers = gateway_main._forward_headers(request)
+    return await gateway_main._proxy_request(request, target_url, headers)
+
+
+@plans_adoption_router.api_route("{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_plans_adoption(request: Request, path: str = "") -> Response:
+    suffix = "" if not path else (path if path.startswith("/") else f"/{path}")
+    target_url = f"{gateway_main.PLANS_SERVICE_URL}/plans/adoption{suffix}"
     headers = gateway_main._forward_headers(request)
     return await gateway_main._proxy_request(request, target_url, headers)

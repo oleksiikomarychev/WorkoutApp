@@ -16,7 +16,7 @@ db_url = os.getenv("PLANS_DATABASE_URL")
 if db_url and db_url.startswith("postgresql+asyncpg://"):
     db_url = db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
-if db_url is None:
+if not db_url:
     raise RuntimeError("PLANS_DATABASE_URL environment variable is required for Alembic migrations")
 
 config.set_main_option("sqlalchemy.url", db_url)

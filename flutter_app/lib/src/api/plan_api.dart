@@ -106,4 +106,25 @@ class PlanApi {
     ) as Map<String, dynamic>;
     return CalendarPlan.fromJson(data);
   }
+
+
+  static Future<CalendarPlan> recalcCalendarPlanSets(int planId) async {
+    final endpoint = ApiConfig.recalcCalendarPlanSetsEndpoint(planId.toString());
+    final data = await _apiClient.post(
+      endpoint,
+      const {},
+      context: 'recalcCalendarPlanSets',
+    ) as Map<String, dynamic>;
+    return CalendarPlan.fromJson(data);
+  }
+
+  static Future<int> getRootPlanAdoptersCount(int rootPlanId) async {
+    final data = await _apiClient.get(
+      ApiConfig.rootPlanAdoptersStatsEndpoint(rootPlanId.toString()),
+    ) as Map<String, dynamic>;
+    final raw = data['unique_adopters'];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString() ?? '') ?? 0;
+  }
 }

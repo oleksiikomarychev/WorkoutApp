@@ -37,3 +37,7 @@ services/calendar_plans.json
 analysis_results.txt
 achievements.md
 render.txt
+services/exersices.json
+services/exercises-service/exercises_service/muscle_metadata.json
+flutter_app/assets/env/*.env
+!flutter_app/assets/env/*.env.example

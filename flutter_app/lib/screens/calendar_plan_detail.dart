@@ -255,11 +255,15 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
 
 
   final List<String> _metrics = const ['sets', 'volume', 'intensity', 'effort'];
-  String _metricX = 'effort';
-  String _metricY = 'effort';
+  String _metricX = 'intensity';
+  String _metricY = 'intensity';
   late List<PlanAnalyticsPoint> _planAnalytics;
-  _TimeBucket _timeBucket = _TimeBucket.microcycle;
+  _TimeBucket _timeBucket = _TimeBucket.session;
   bool _analyticsExpanded = true;
+
+  int? _adoptersCount;
+  bool _adoptersLoading = false;
+  String? _adoptersError;
 
 
   late final ApiClient _apiClient;
@@ -271,6 +275,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   final Set<String> _selectedMuscles = {};
   bool _loadingMeta = true;
   String? _metaError;
+  bool _recalcInProgress = false;
 
   String? _normalizeExerciseName(String? name) {
     final value = name?.trim();
@@ -331,6 +336,28 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       _indexUserMaxes(userMaxes);
     } catch (e) {
       print('Failed to fetch user maxes: $e');
+    }
+  }
+
+  Future<void> _fetchAdoptersCount() async {
+    if (_adoptersLoading) return;
+    setState(() {
+      _adoptersLoading = true;
+      _adoptersError = null;
+    });
+    try {
+      final count = await PlanApi.getRootPlanAdoptersCount(_rootPlanId);
+      if (!mounted) return;
+      setState(() {
+        _adoptersCount = count;
+        _adoptersLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _adoptersError = 'Не удалось загрузить счетчик применений: $e';
+        _adoptersLoading = false;
+      });
     }
   }
 
@@ -488,9 +515,43 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     _planExerciseDefinitionIds = exerciseData.$1;
     _planExerciseNames = exerciseData.$2;
     _fetchUserMaxes();
+    _fetchAdoptersCount();
     _planAnalytics = _computePlanAnalytics(_currentPlan);
     _loadExerciseMeta();
     _fetchVariants();
+  }
+
+  Future<void> _recalcPlanSets() async {
+    if (_recalcInProgress) return;
+    setState(() {
+      _recalcInProgress = true;
+    });
+    try {
+      final planId = _currentPlan.id;
+      if (planId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Нет ID плана для пересчёта')),
+        );
+        return;
+      }
+      final updated = await PlanApi.recalcCalendarPlanSets(planId);
+      if (!mounted) return;
+      _setPlan(updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('План пересчитан')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось пересчитать план: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _recalcInProgress = false;
+        });
+      }
+    }
   }
 
   Future<void> _fetchVariants() async {
@@ -795,6 +856,17 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                                     );
                                   }
                                 },
+                              ),
+                              IconButton(
+                                icon: _recalcInProgress
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.auto_fix_high),
+                                tooltip: 'Пересчитать сеты (RPE)',
+                                onPressed: _recalcInProgress ? null : _recalcPlanSets,
                               ),
                               IconButton(
                                 icon: const Icon(Icons.check),
@@ -1859,6 +1931,22 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
             const SizedBox(height: 8),
             _buildInfoRow('Duration', '${_currentPlan.durationWeeks} weeks'),
             _buildInfoRow('Active', _currentPlan.isActive ? 'Yes' : 'No'),
+            _buildInfoRow(
+              'Applied by',
+              _adoptersLoading
+                  ? 'Loading...'
+                  : (_adoptersError != null
+                      ? '—'
+                      : ((_adoptersCount ?? 0).toString())),
+            ),
+            if (_adoptersError != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  _adoptersError!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                ),
+              ),
             if (_currentPlan.startDate != null)
               _buildInfoRow('Start Date', _currentPlan.startDate!.toLocal().toString().split(' ')[0]),
             if (_currentPlan.endDate != null)

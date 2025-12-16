@@ -102,6 +102,12 @@ class ExerciseDefinitionService:
         await invalidate_exercise_cache(definition_ids=[exercise_list_id])
         return schemas.ExerciseListResponse.model_validate(updated)
 
+    async def batch_upsert_definitions(self, exercises: list[schemas.ExerciseListCreate]):
+        payloads = [item.model_dump() for item in exercises]
+        result = await self.repository.batch_upsert_exercise_definitions(self.db, payloads)
+        await invalidate_exercise_cache(definition_ids=[item.id for item in result])
+        return [schemas.ExerciseListResponse.model_validate(item) for item in result]
+
     async def delete_definition(self, exercise_list_id: int):
         result = await self.repository.delete_exercise_definition(self.db, exercise_list_id)
         await invalidate_exercise_cache(definition_ids=[exercise_list_id])

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import tool as lc_tool
 
 from ..prompts.tool_agent import build_tools_decision_system_prompt
@@ -33,13 +33,16 @@ def _build_langchain_tools(tools: list[ToolSpec]):
 
     for spec in tools:
 
-        async def _tool_impl(_spec: ToolSpec = spec, **kwargs: Any) -> Any:
-            return await _spec.handler(dict(kwargs))
+        def _make_tool_impl(bound_spec: ToolSpec):
+            async def _tool_impl(**kwargs: Any) -> Any:
+                return await bound_spec.handler(dict(kwargs))
+
+            return _tool_impl
 
         wrapped = lc_tool(
-            name=spec.name,
+            spec.name,
             description=f"{spec.description}. Parameters schema: {spec.parameters_schema!r}",
-        )(_tool_impl)
+        )(_make_tool_impl(spec))
 
         lc_tools.append(wrapped)
 
@@ -54,6 +57,7 @@ def _create_agent_executor(tools: list[ToolSpec], temperature: float) -> AgentEx
     for t in tools:
         tools_descriptions.append(f"- {t.name}: {t.description}. Parameters JSON schema: {t.parameters_schema!r}")
     tools_block = "\n".join(tools_descriptions)
+    tools_block = tools_block.replace("{", "{{").replace("}", "}}")
     build_tools_decision_system_prompt(tools_block)
 
     system_text = (
@@ -82,11 +86,18 @@ def _create_agent_executor(tools: list[ToolSpec], temperature: float) -> AgentEx
         [
             ("system", system_text),
             ("human", "{input}"),
+            MessagesPlaceholder("agent_scratchpad"),
         ]
     )
 
     agent = create_tool_calling_agent(llm, lc_tools, prompt)
-    return AgentExecutor(agent=agent, tools=lc_tools, max_iterations=5, verbose=False)
+    return AgentExecutor(
+        agent=agent,
+        tools=lc_tools,
+        max_iterations=5,
+        verbose=False,
+        return_intermediate_steps=True,
+    )
 
 
 async def run_tools_agent(

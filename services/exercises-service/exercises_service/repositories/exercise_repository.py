@@ -39,6 +39,39 @@ class ExerciseRepository:
         return result.scalars().first()
 
     @staticmethod
+    async def get_exercise_definitions_by_names(db: AsyncSession, names: list[str]) -> list[ExerciseList]:
+        if not names:
+            return []
+        query = select(ExerciseList).where(ExerciseList.name.in_(names))
+        result = await db.execute(query)
+        return result.scalars().all()
+
+    @staticmethod
+    async def batch_upsert_exercise_definitions(db: AsyncSession, exercises: list[dict]) -> list[ExerciseList]:
+        names = [item.get("name") for item in exercises]
+        existing = await ExerciseRepository.get_exercise_definitions_by_names(db, names)
+        existing_by_name = {e.name: e for e in existing}
+
+        result_items: list[ExerciseList] = []
+        for payload in exercises:
+            name = payload.get("name")
+            if name in existing_by_name:
+                db_item = existing_by_name[name]
+                for key, value in payload.items():
+                    setattr(db_item, key, value)
+                result_items.append(db_item)
+            else:
+                db_item = ExerciseList(**payload)
+                db.add(db_item)
+                result_items.append(db_item)
+
+        await db.flush()
+        await db.commit()
+        for item in result_items:
+            await db.refresh(item)
+        return result_items
+
+    @staticmethod
     async def create_exercise_definition(db, exercise: dict):
         db_exercise = ExerciseList(**exercise)
         db.add(db_exercise)

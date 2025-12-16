@@ -1,4 +1,5 @@
 import math
+import re
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -92,8 +93,14 @@ class CalendarPlanInstanceService:
                             mc_sched = mc.schedule or {}
 
                             def _day_key(dk: str) -> int:
+                                raw = str(dk).strip()
+                                if not raw:
+                                    return 0
+                                m = re.search(r"\bday\D*(\d+)\b", raw, flags=re.IGNORECASE)
+                                if not m:
+                                    return 0
                                 try:
-                                    return int(str(dk).lower().replace("day", ""))
+                                    return int(m.group(1))
                                 except ValueError:
                                     return 0
 

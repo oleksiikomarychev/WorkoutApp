@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
 
 class PrimaryAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -79,6 +80,7 @@ class PrimaryAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     final chipColor = backgroundColor ?? Colors.white.withOpacity(0.12);
+    final VoidCallback? effectiveOnTitleTap = onTitleTap ?? AssistantChatHost.of(context)?.openChat;
     final TextStyle effectiveTitleStyle = titleTextStyle ??
         Theme.of(context).textTheme.titleMedium?.copyWith(
               color: Colors.white,
@@ -136,11 +138,11 @@ class PrimaryAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
       );
 
-      if (onTitleTap != null) {
+      if (effectiveOnTitleTap != null) {
         resolvedTitle = Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: onTitleTap,
+            onTap: effectiveOnTitleTap,
             borderRadius: BorderRadius.circular(999),
             child: resolvedTitle,
           ),

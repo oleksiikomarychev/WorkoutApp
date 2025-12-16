@@ -25,6 +25,86 @@ class ToolResultDispatcher:
         tool_res = result.tool_result
         tool_name = result.tool_name
 
+        if tool_name == "recommend_calendar_plans":
+            if isinstance(tool_res, dict) and tool_res.get("error"):
+                await websocket.send_json(
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": f"Не удалось подобрать план: {tool_res.get('error')}",
+                        "session_id": session_id,
+                    }
+                )
+                return chat_state, True
+
+            matches = []
+            if isinstance(tool_res, dict):
+                matches = tool_res.get("matches") or []
+
+            if not isinstance(matches, list) or not matches:
+                msg = (
+                    "В текущем списке не нашёл подходящих планов. "
+                    "Попробуй уточнить критерии или ослабить ограничения."
+                )
+                if isinstance(tool_res, dict) and tool_res.get("message"):
+                    msg = str(tool_res.get("message"))
+                await websocket.send_json(
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": msg,
+                        "session_id": session_id,
+                    }
+                )
+                return chat_state, True
+
+            lines: list[str] = ["Подходящие планы из списка на экране:"]
+            for i, m in enumerate(matches[:5], start=1):
+                if not isinstance(m, dict):
+                    continue
+                pid = m.get("id")
+                name = m.get("name")
+                weeks = m.get("duration_weeks")
+                freq = m.get("intended_frequency_per_week")
+                goal = m.get("primary_goal")
+                lvl = m.get("intended_experience_level")
+                vol = m.get("volume_inferred")
+                reasons = m.get("reasons")
+                reasons_str = ""
+                if isinstance(reasons, list) and reasons:
+                    reasons_str = " | " + "; ".join(str(r) for r in reasons[:3])
+
+                meta_parts = []
+                if weeks is not None:
+                    meta_parts.append(f"{weeks}w")
+                if freq is not None:
+                    meta_parts.append(f"{freq}x/week")
+                if vol:
+                    meta_parts.append(f"vol={vol}")
+                if goal:
+                    meta_parts.append(f"goal={goal}")
+                if lvl:
+                    meta_parts.append(f"lvl={lvl}")
+                meta = " • ".join(meta_parts)
+
+                header = f"{i}) [{pid}] {name}"
+                if meta:
+                    header += f" — {meta}"
+                lines.append(header + reasons_str)
+
+            lines.append("\nХочешь, чтобы я выбрал 1 лучший вариант или составил shortlist из 2-3?")
+
+            await websocket.send_json(
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": "\n".join(lines),
+                    "session_id": session_id,
+                }
+            )
+
+            return chat_state, True
+
         if tool_name == "applied_plan_schedule_shift":
             summary = tool_res.get("summary") or {}
             command = tool_res.get("schedule_shift_command") or {}

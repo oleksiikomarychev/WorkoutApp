@@ -6,6 +6,7 @@ from ..prompts.tool_agent import (
     build_coach_athlete_plan_tools_arguments_prompt,
     build_coach_athletes_tools_arguments_prompt,
 )
+from .calendar_plans_recommender import recommend_calendar_plans_tool
 from .coach_athlete_analysis import analyze_athlete_history_tool
 from .coach_portfolio_analysis import analyze_coach_athletes_portfolio_tool
 from .entity_resolver import (
@@ -110,6 +111,30 @@ class ScreenToolsBuilder:
             arguments_prompt = (
                 "Screen: user_profile. The user is viewing their global training stats and profile. "
                 f"User message: {content}"
+            )
+        elif screen == "calendar_plans":
+            tools = [
+                recommend_calendar_plans_tool(user_id, session_context),
+            ]
+
+            entities = session_context.get("entities") or {}
+            plans_raw = None
+            if isinstance(entities, dict):
+                plans_raw = entities.get("calendar_plans")
+            if plans_raw is None:
+                plans_raw = session_context.get("calendar_plans")
+            plans_count = len(plans_raw) if isinstance(plans_raw, list) else 0
+
+            arguments_prompt = (
+                "Screen: calendar_plans. The user is browsing a list of training plans. "
+                "If the user asks to find, compare, shortlist, or pick a plan based on criteria "
+                "(e.g. frequency per week, duration weeks, goal, experience level, 'high volume'), "
+                "YOU MUST call the `recommend_calendar_plans` tool. "
+                "When calling the tool, ALWAYS pass the user's request text via the `user_request` argument. "
+                "The tool will analyze the list of plans currently visible on the screen which is "
+                "provided via context. "
+                f"Plans on screen: {plans_count}. "
+                f"User request: {content}"
             )
         elif screen in ("user_max", "analytics"):
             tools = [

@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    func,
     text,
 )
 from sqlalchemy.orm import declarative_base, relationship
@@ -97,6 +98,20 @@ class AppliedCalendarPlan(Base):
             f"id={self.id}, calendar_plan_id={self.calendar_plan_id}, "
             f"start_date={self.start_date}, end_date={self.end_date})>"
         )
+
+
+class PlanAdopter(Base):
+    __tablename__ = "plan_adopters"
+
+    root_plan_id = Column(Integer, ForeignKey("calendar_plans.id", ondelete="CASCADE"), primary_key=True)
+    adopter_user_id = Column(String(255), primary_key=True)
+    first_applied_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    root_plan = relationship("CalendarPlan")
+
+    def __repr__(self):
+        return f"<PlanAdopter(root_plan_id={self.root_plan_id}, adopter_user_id='{self.adopter_user_id}')>"
 
 
 class AppliedPlanWorkout(Base):

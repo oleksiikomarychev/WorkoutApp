@@ -1186,8 +1186,8 @@ class MacroEngine:
         if not httpx:
             return None
         try:
-            async with httpx.AsyncClient(timeout=6.0) as client:
-                url = f"{base}/exercises/definitions"
+            async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
+                url = f"{base}/exercises/definitions/"
                 res = await client.get(url)
                 if res.status_code != 200:
                     return None

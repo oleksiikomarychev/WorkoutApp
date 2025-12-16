@@ -15,6 +15,7 @@ from .redis_client import close_redis, init_redis
 from .routers import (
     applied_calendar_plans,
     calendar_plans,
+    coach_eligibility,
     macros,
     mesocycles,
     templates,
@@ -100,6 +101,7 @@ app.add_middleware(
 
 app.include_router(applied_calendar_plans.router, prefix="/plans", tags=["Applied Plans"])
 app.include_router(calendar_plans.router, prefix="/plans", tags=["Calendar Plans"])
+app.include_router(coach_eligibility.router, prefix="/plans", tags=["Plan Adoption"])
 app.include_router(mesocycles.router, prefix="/plans", tags=["Mesocycles"])
 app.include_router(macros.router, prefix="/plans", tags=["Plan Macros"])
 app.include_router(templates.router, prefix="/plans", tags=["Mesocycle Templates"])

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -217,10 +219,18 @@ class TemplateService:
             schedule = tm.schedule_json or {}
 
             for raw_day, items in schedule.items():
-                try:
-                    day_idx = int(str(raw_day).strip().split()[-1])
-                except (ValueError, IndexError):
-                    day_idx = None
+                day_idx: int | None = None
+                raw_str = str(raw_day).strip() if raw_day is not None else ""
+                if raw_str:
+                    try:
+                        day_idx = int(raw_str)
+                    except ValueError:
+                        m = re.search(r"\bday\D*(\d+)\b", raw_str, flags=re.IGNORECASE)
+                        if m:
+                            try:
+                                day_idx = int(m.group(1))
+                            except ValueError:
+                                day_idx = None
                 if day_idx is None:
                     continue
                 pw = PlanWorkout(

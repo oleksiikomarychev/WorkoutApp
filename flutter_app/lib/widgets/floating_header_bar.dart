@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:workout_app/widgets/assistant_chat_host.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
 
 class FloatingHeaderBar extends StatelessWidget {
@@ -26,6 +27,8 @@ class FloatingHeaderBar extends StatelessWidget {
       Color(0xFF1976D2),
       Color(0xFF5E35B1),
     ];
+
+    final VoidCallback? effectiveOnTitleTap = onTitleTap ?? AssistantChatHost.of(context)?.openChat;
 
     final theme = Theme.of(context);
     final textStyle = theme.textTheme.titleMedium?.copyWith(
@@ -69,11 +72,11 @@ class FloatingHeaderBar extends StatelessWidget {
         child: Text(title, style: textStyle, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
       ),
     );
-    if (onTitleTap != null) {
+    if (effectiveOnTitleTap != null) {
       titleWidget = Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTitleTap,
+          onTap: effectiveOnTitleTap,
           borderRadius: BorderRadius.circular(999),
           child: titleWidget,
         ),

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import UnitSystem, UserCoachingProfile, UserProfile, UserSettings
 from ..schemas import (
+    CoachingEligibilityResponse,
     CoachingProfileResponse,
     CoachingRatePlan,
     ProfileResponse,
@@ -19,6 +20,7 @@ class ProfileData:
     profile: UserProfile
     settings: UserSettings
     coaching: UserCoachingProfile | None = None
+    coaching_eligibility: CoachingEligibilityResponse | None = None
 
 
 async def _fetch_profile(db: AsyncSession, user_id: str) -> UserProfile | None:
@@ -90,6 +92,7 @@ def build_profile_response(data: ProfileData) -> ProfileResponse:
             updated_at=data.settings.updated_at,
         ),
         coaching=build_coaching_response(data.coaching),
+        coaching_eligibility=data.coaching_eligibility,
     )
 
 

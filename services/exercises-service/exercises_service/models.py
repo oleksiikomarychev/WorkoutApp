@@ -15,14 +15,19 @@ class ExerciseList(Base):
     synergist_muscles = Column(JSON, nullable=True)
     movement_type = Column(String(32), nullable=True)
     region = Column(String(32), nullable=True)
-    category = Column(String(64), nullable=True)
-    movement_pattern = Column(String(64), nullable=True)
-    is_competition_lift = Column(Integer, nullable=True)
+    root_exercise_id = Column(Integer, ForeignKey("exercise_list.id", ondelete="SET NULL"), nullable=True)
 
     instances = relationship(
         "ExerciseInstance",
         back_populates="exercise_definition",
         cascade="all, delete-orphan",
+    )
+
+    root_exercise = relationship(
+        "ExerciseList",
+        remote_side=[id],
+        foreign_keys=[root_exercise_id],
+        backref="variants",
     )
 
     def __repr__(self):

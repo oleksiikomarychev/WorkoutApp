@@ -32,9 +32,10 @@ class ExerciseListBase(BaseModel):
     synergist_muscles: list[str] | None = Field(None, description="Synergist muscles involved")
     movement_type: MovementType | None = Field(None, description="compound or isolation")
     region: Region | None = Field(None, description="upper or lower")
-    category: str | None = Field(None, description="Logical category, e.g. main_lift/accessory/isolation/conditioning")
-    movement_pattern: str | None = Field(None, description="Movement pattern, e.g. horizontal_press/hinge/squat/row")
-    is_competition_lift: bool | None = Field(None, description="Whether this exercise is a competition lift variant")
+    root_exercise_id: int | None = Field(
+        None,
+        description=("ID of the root/base exercise definition this exercise is a variant of"),
+    )
 
 
 class ExerciseListCreate(ExerciseListBase):

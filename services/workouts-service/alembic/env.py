@@ -48,7 +48,7 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    db_url = os.getenv("WORKOUTS_DATABASE_URL")
+    db_url = os.getenv("WORKOUTS_DATABASE_URL") or os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
     if not db_url:
         raise RuntimeError("WORKOUTS_DATABASE_URL environment variable is not set")
 
