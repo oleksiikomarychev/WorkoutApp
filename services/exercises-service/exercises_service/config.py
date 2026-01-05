@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     EXERCISES_REDIS_DB: int = 0
     EXERCISES_REDIS_PASSWORD: str | None = None
 
+    EXERCISES_MEDIA_DIR: str = "exercise_media"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 

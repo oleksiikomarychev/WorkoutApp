@@ -1,11 +1,12 @@
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform, kReleaseMode;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
 class ApiConfig {
 
   static const String androidEmulatorBaseUrl = 'http://10.0.2.2:8000';
   static const String localBaseUrl = 'http://localhost:8000';
-  static const String productionBaseUrl = 'https://workoutapp-gateway-latest.onrender.com';
+  static const String productionBaseUrl = 'http://46.62.207.163:8000';
 
   static const int connectionTimeout = 30;
   static const int receiveTimeout = 30;
@@ -18,10 +19,15 @@ class ApiConfig {
 
 
   static String getBaseUrl() {
-    if (kReleaseMode) return productionBaseUrl;
+    final envBaseUrl = dotenv.isInitialized
+        ? (dotenv.maybeGet('API_BASE_URL') ?? '')
+        : '';
+    if (envBaseUrl.isNotEmpty) {
+      return envBaseUrl;
+    }
     if (kIsWeb) return localBaseUrl;
-
-
+    if (kReleaseMode) return productionBaseUrl;
+    
     if (defaultTargetPlatform == TargetPlatform.android) {
       return androidEmulatorBaseUrl;
     }
@@ -56,6 +62,10 @@ class ApiConfig {
   static String exerciseDefinitionByIdEndpoint(String exerciseListId) => buildEndpoint('/exercises/definitions/$exerciseListId');
   static String updateExerciseDefinitionEndpoint(String exerciseListId) => buildEndpoint('/exercises/definitions/$exerciseListId');
   static String deleteExerciseDefinitionEndpoint(String exerciseListId) => buildEndpoint('/exercises/definitions/$exerciseListId');
+  static String uploadExerciseImageEndpoint(String exerciseListId) =>
+      buildEndpoint('/exercises/definitions/$exerciseListId/media/image');
+  static String uploadExerciseGifEndpoint(String exerciseListId) =>
+      buildEndpoint('/exercises/definitions/$exerciseListId/media/gif');
   static String exerciseInstanceByIdEndpoint(String instanceId) => buildEndpoint('/exercises/instances/$instanceId');
   static String updateExerciseInstanceEndpoint(String instanceId) => buildEndpoint('/exercises/instances/$instanceId');
   static String deleteExerciseInstanceEndpoint(String instanceId) => buildEndpoint('/exercises/instances/$instanceId');
@@ -103,6 +113,8 @@ class ApiConfig {
   static String getUserAppliedPlansEndpoint() => buildEndpoint('/plans/applied-plans/user');
   static String getAppliedPlanDetailsEndpoint(String planId) => buildEndpoint('/plans/applied-plans/$planId');
   static String getAppliedPlansEndpoint() => buildEndpoint('/plans/applied-plans');
+  static String advanceAppliedPlanIndexEndpoint(String appliedPlanId) =>
+      buildEndpoint('/plans/applied-plans/$appliedPlanId/advance-index');
   static String getAllPlansEndpoint() => buildEndpoint('/plans/calendar-plans');
   static String createCalendarPlanEndpoint() => buildEndpoint('/plans/calendar-plans');
   static String getFavoritePlansEndpoint() => buildEndpoint('/plans/calendar-plans/favorites');
@@ -149,7 +161,7 @@ class ApiConfig {
   static String get getActivePlanEndpoint => buildEndpoint('plans/applied-plans/active');
 
   static String get activePlanEndpoint => buildEndpoint('plans/applied-plans/active');
-  static String get activePlanWorkoutsEndpoint => buildEndpoint('$activePlanEndpoint/workouts');
+  static String get activePlanWorkoutsEndpoint => buildEndpoint('plans/applied-plans/active/workouts');
   static String nextWorkoutInActivePlanEndpoint(String planId) =>
       buildEndpoint('/plans/$planId/next-workout');
   static String appliedPlanAnalyticsEndpoint(String planId) =>

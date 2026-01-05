@@ -172,61 +172,64 @@ class PrimaryAppBar extends StatelessWidget implements PreferredSizeWidget {
       toolbarHeight: _toolbarHeight,
       titleSpacing: 0,
       bottom: bottom,
-      flexibleSpace: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-              child: Container(
-                height: 56,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: _gradientColors,
+      flexibleSpace: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                child: Container(
+                  height: 56,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: _gradientColors,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color(0x331B1F3B),
+                        blurRadius: 36,
+                        offset: Offset(0, 22),
+                        spreadRadius: 4,
+                      ),
+                      BoxShadow(
+                        color: Color(0x14000000),
+                        blurRadius: 16,
+                        offset: Offset(0, 6),
+                      ),
+                    ],
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Color(0x331B1F3B),
-                      blurRadius: 36,
-                      offset: Offset(0, 22),
-                      spreadRadius: 4,
-                    ),
-                    BoxShadow(
-                      color: Color(0x14000000),
-                      blurRadius: 16,
-                      offset: Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    if (resolvedLeading != null)
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [resolvedLeading!],
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      if (resolvedLeading != null)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [resolvedLeading!],
+                          ),
                         ),
-                      ),
-                    if (wrappedActions.isNotEmpty)
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: wrappedActions,
+                      if (wrappedActions.isNotEmpty)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: wrappedActions,
+                          ),
                         ),
-                      ),
-                    if (resolvedTitle != null)
-                      Center(
-                        child: resolvedTitle,
-                      ),
-                  ],
+                      if (resolvedTitle != null)
+                        Center(
+                          child: resolvedTitle,
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),

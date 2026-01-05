@@ -14,6 +14,9 @@ class ExerciseDefinition with _$ExerciseDefinition {
     @JsonKey(name: 'synergist_muscles') List<String>? synergistMuscles,
     @JsonKey(name: 'movement_type') String? movementType,
     @JsonKey(name: 'region') String? region,
+    @JsonKey(name: 'root_exercise_id') int? rootExerciseId,
+    @JsonKey(name: 'image_url') String? imageUrl,
+    @JsonKey(name: 'gif_url') String? gifUrl,
     double? oneRepMax,
   }) = _ExerciseDefinition;
 

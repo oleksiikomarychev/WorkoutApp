@@ -11,7 +11,6 @@ import 'package:workout_app/screens/debug_screen.dart';
 import 'package:workout_app/screens/coach/coach_dashboard_screen.dart';
 import 'package:workout_app/screens/social/social_feed_screen.dart';
 import 'package:workout_app/widgets/custom_bottom_nav_bar.dart';
-import 'package:workout_app/widgets/primary_app_bar.dart';
 import 'package:workout_app/widgets/assistant_chat_host.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
 import 'package:workout_app/config/api_config.dart';
@@ -144,89 +143,19 @@ class _HomeScreenNewState extends ConsumerState<HomeScreenNew> {
       });
     }
 
-    final theme = Theme.of(context);
-    final mediaQuery = MediaQuery.of(context);
-    final bottomPadding = mediaQuery.padding.bottom;
-
-    final bool showOuterAppBar = _activeTab == HomeTab.debug;
-
     return AssistantChatHost(
       builder: (context, openChat) {
         return Scaffold(
-          appBar: !showOuterAppBar
-              ? null
-              : PrimaryAppBar(
-                  title: _tabTitle(_activeTab),
-                  onTitleTap: openChat,
-                  actions: [
-                    PopupMenuButton<String>(
-                  onSelected: (value) async {
-                    if (value == 'logout') {
-
-                      final shouldLogout = await showDialog<bool>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Выйти из аккаунта?'),
-                          content: const Text('Вы уверены, что хотите выйти?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(false),
-                              child: const Text('Отмена'),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(true),
-                              child: const Text('Выйти'),
-                            ),
-                          ],
-                        ),
-                      );
-
-                      if (shouldLogout == true && mounted) {
-                        try {
-                          try {
-                            final chat = pv.Provider.of<ChatService>(context, listen: false);
-                            await chat.disconnect();
-                          } catch (_) {}
-                          await FirebaseAuth.instance.signOut();
-
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Ошибка при выходе: $e'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        }
-                      }
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    PopupMenuItem<String>(
-                      value: 'logout',
-                      child: Row(
-                        children: const [
-                          Icon(Icons.logout, size: 20),
-                          SizedBox(width: 12),
-                          Text('Выйти'),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
           body: _tabBody(_activeTab),
           bottomNavigationBar: CustomBottomNavBar(
-        currentIndex: tabs.indexOf(_activeTab).clamp(0, tabs.length - 1),
-        onTap: (index) {
-          if (index < 0 || index >= tabs.length) return;
-          _onItemTapped(tabs[index]);
-        },
-        items: tabs.map(_navItemFor).toList(),
-      ),
-    );
+            currentIndex: tabs.indexOf(_activeTab).clamp(0, tabs.length - 1),
+            onTap: (index) {
+              if (index < 0 || index >= tabs.length) return;
+              _onItemTapped(tabs[index]);
+            },
+            items: tabs.map(_navItemFor).toList(),
+          ),
+        );
       },
     );
   }

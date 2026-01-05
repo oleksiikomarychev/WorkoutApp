@@ -1,6 +1,6 @@
 import 'package:firebase_ui_auth/firebase_ui_auth.dart' as fui;
 import 'package:firebase_ui_oauth_google/firebase_ui_oauth_google.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -11,15 +11,37 @@ class SignInScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final googleClientId = dotenv.env['GOOGLE_WEB_CLIENT_ID'];
+    const androidClientIdFallback =
+        '282810209663-2c8gaol6ijkhp96tc1c70fuj4bdvpgse.apps.googleusercontent.com';
+    const googleClientIdOverride = String.fromEnvironment(
+      'GOOGLE_WEB_CLIENT_ID',
+      defaultValue: '',
+    );
+    final googleClientIdFromEnv = dotenv.isInitialized
+        ? (dotenv.maybeGet('GOOGLE_WEB_CLIENT_ID') ?? '')
+        : '';
+    final googleClientId = googleClientIdOverride.isNotEmpty
+        ? googleClientIdOverride
+        : googleClientIdFromEnv;
+
+    final androidClientIdFromEnv = dotenv.isInitialized
+        ? (dotenv.maybeGet('GOOGLE_ANDROID_CLIENT_ID') ?? '')
+        : '';
+    final androidClientId = androidClientIdFromEnv.isNotEmpty
+        ? androidClientIdFromEnv
+        : androidClientIdFallback;
+
+    final providerClientId = kIsWeb
+        ? googleClientId
+        : (defaultTargetPlatform == TargetPlatform.android ? androidClientId : googleClientId);
     final providers = <fui.AuthProvider>[
       fui.EmailAuthProvider(),
     ];
 
-    if (googleClientId != null && googleClientId.isNotEmpty) {
+    if (providerClientId.isNotEmpty) {
       providers.add(
         GoogleProvider(
-          clientId: googleClientId,
+          clientId: providerClientId,
         ),
       );
     }

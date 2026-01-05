@@ -7,3 +7,8 @@ final workoutProvider = FutureProvider.family<Workout, int>((ref, workoutId) asy
   final workoutService = ref.watch(workoutServiceProvider);
   return await workoutService.getWorkoutWithDetails(workoutId);
 });
+
+final workoutSWRProvider = StreamProvider.family<Workout, int>((ref, workoutId) {
+  final workoutService = ref.watch(workoutServiceProvider);
+  return workoutService.getWorkoutWithDetailsSWR(workoutId);
+});

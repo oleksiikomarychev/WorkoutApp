@@ -11,7 +11,10 @@ logger = logging.getLogger(__name__)
 class UserMaxClient:
     def __init__(self, base_url: str | None = None, timeout: float = 5.0) -> None:
         base_env = base_url or os.getenv("USER_MAX_SERVICE_URL")
-        self.base_url = (base_env or "http://user-max-service:8003").rstrip("/")
+        resolved = (base_env or "http://user-max-service:8003").rstrip("/")
+        if resolved and not resolved.startswith("http"):
+            resolved = "http://" + resolved
+        self.base_url = resolved
         self.timeout = timeout
 
     async def push_entries(self, entries: Iterable[dict], user_id: str) -> None:
@@ -19,8 +22,20 @@ class UserMaxClient:
         if not payload:
             logger.info("UserMaxClient.push_entries: no valid entries to send")
             return
-        url = f"{self.base_url}/user-max/bulk"
+
+        internal_secret = (os.getenv("INTERNAL_GATEWAY_SECRET") or os.getenv("GATEWAY_INTERNAL_SECRET") or "").strip()
+        gateway_url = (os.getenv("GATEWAY_URL") or "").strip().rstrip("/")
+        if gateway_url and not gateway_url.startswith("http"):
+            gateway_url = "http://" + gateway_url
+
+        if gateway_url and self.base_url == gateway_url:
+            url = f"{self.base_url}/api/v1/user-max/bulk"
+        else:
+            url = f"{self.base_url}/user-max/bulk"
+
         headers = {"X-User-Id": user_id}
+        if internal_secret:
+            headers["X-Internal-Secret"] = internal_secret
         logger.info(
             "UserMaxClient.push_entries: sending %d entries to %s for user %s",
             len(payload),

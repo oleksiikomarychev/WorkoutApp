@@ -5,6 +5,7 @@
         <domain includeSubdomains="true">10.0.2.2</domain>
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">46.62.207.163</domain>
     </domain-config>
     <!-- Allow cleartext to your Mac LAN IP (replace with your actual LAN IP if different) -->
     <domain-config cleartextTrafficPermitted="true">

@@ -19,6 +19,16 @@ final workoutSessionServiceProvider = Provider<WorkoutSessionService>((ref) {
   return WorkoutSessionService(apiClient);
 });
 
+final sessionsHistorySWRProvider = StreamProvider.family<List<WorkoutSession>, int>((ref, workoutId) {
+  final svc = ref.watch(workoutSessionServiceProvider);
+  return svc.listSessionsSWR(workoutId);
+});
+
+final allSessionsHistorySWRProvider = StreamProvider<List<WorkoutSession>>((ref) {
+  final svc = ref.watch(workoutSessionServiceProvider);
+  return svc.listAllSessionsSWR();
+});
+
 final completedSessionsProviderFamily = FutureProvider.family<List<WorkoutSession>, int?>((ref, workoutId) async {
   final svc = ref.watch(workoutSessionServiceProvider);
   final items = workoutId != null

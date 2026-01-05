@@ -41,8 +41,16 @@ def configure_cors_from_env(
     origins_env: str = "CORS_ORIGINS",
     allow_credentials_env: str = "CORS_ALLOW_CREDENTIALS",
 ) -> None:
-    cors_origins = os.getenv(origins_env, "*")
-    allow_origins = [o.strip() for o in cors_origins.split(",")] if cors_origins != "*" else ["*"]
+    cors_origins = (os.getenv(origins_env, "*") or "*").strip()
+    if not cors_origins:
+        cors_origins = "*"
+
+    if cors_origins == "*":
+        allow_origins = ["*"]
+    else:
+        allow_origins = [o.strip() for o in cors_origins.split(",") if o.strip()]
+        if not allow_origins:
+            allow_origins = ["*"]
 
     env_allow_credentials = os.getenv(allow_credentials_env, "true").lower() in {
         "1",

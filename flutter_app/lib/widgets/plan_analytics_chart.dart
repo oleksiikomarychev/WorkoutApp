@@ -21,7 +21,7 @@ class PlanAnalyticsChart extends StatelessWidget {
   final List<PlanAnalyticsPoint> points;
   final String metricX;
   final String metricY;
-  final int bottomLabelModulo;
+  final int? bottomLabelModulo;
   final bool showScatterAxisTitles;
   final String emptyText;
 
@@ -30,7 +30,7 @@ class PlanAnalyticsChart extends StatelessWidget {
     required this.points,
     required this.metricX,
     required this.metricY,
-    this.bottomLabelModulo = 2,
+    this.bottomLabelModulo,
     this.showScatterAxisTitles = true,
     this.emptyText = 'Нет данных для плана',
   });
@@ -80,6 +80,12 @@ class PlanAnalyticsChart extends StatelessWidget {
     final adjustedMin = minBound == maxBound ? minBound : math.min(minBound, maxBound);
     final adjustedMax = minBound == maxBound ? minBound + yInterval : math.max(minBound, maxBound);
 
+    final maxLabels = 6;
+    final effectiveModulo = math.max(
+      1,
+      bottomLabelModulo ?? (labels.length / maxLabels).ceil(),
+    );
+
     return LineChart(
       LineChartData(
         minY: adjustedMin,
@@ -92,7 +98,7 @@ class PlanAnalyticsChart extends StatelessWidget {
               getTitlesWidget: (value, meta) {
                 final idx = value.toInt();
                 if (idx < 0 || idx >= labels.length) return const SizedBox.shrink();
-                if (idx % bottomLabelModulo != 0) return const SizedBox.shrink();
+                if (idx % effectiveModulo != 0) return const SizedBox.shrink();
                 return SideTitleWidget(
                   meta: meta,
                   child: Text(labels[idx], style: const TextStyle(fontSize: 10)),

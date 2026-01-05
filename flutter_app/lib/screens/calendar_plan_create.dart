@@ -153,6 +153,7 @@ class CalendarPlanCreate extends ConsumerStatefulWidget {
 class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
   bool updating = false;
   late RpeService _rpeService;
+  static const List<String> _normalizationUnits = ['kg', '%'];
 
   @override
   void initState() {
@@ -255,6 +256,293 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
       editingDay = day;
       selectedExercises[day] = exercise.exercise;
     });
+  }
+
+  void _replaceMicrocycle(int mesocycleIndex, int microcycleIndex, MicrocycleCreate updated) {
+    final updatedMicrocycles = List<MicrocycleCreate>.from(_mesocycles[mesocycleIndex].microcycles);
+    updatedMicrocycles[microcycleIndex] = updated;
+    _mesocycles[mesocycleIndex] = _mesocycles[mesocycleIndex].copyWith(microcycles: updatedMicrocycles);
+  }
+
+  void _updateMicrocycleNameField(int mesocycleIndex, int microcycleIndex, String name) {
+    setState(() {
+      final micro = _mesocycles[mesocycleIndex].microcycles[microcycleIndex];
+      _replaceMicrocycle(mesocycleIndex, microcycleIndex, micro.copyWith(name: name));
+    });
+  }
+
+  void _updateMicrocycleNormalizationValue(int mesocycleIndex, int microcycleIndex, String rawValue) {
+    final sanitized = rawValue.replaceAll(',', '.');
+    final trimmed = sanitized.trim();
+    setState(() {
+      final micro = _mesocycles[mesocycleIndex].microcycles[microcycleIndex];
+      _replaceMicrocycle(
+        mesocycleIndex,
+        microcycleIndex,
+        micro.copyWith(
+          normalizationValueInput: trimmed,
+          resetNormalizationValue: trimmed.isEmpty,
+        ),
+      );
+    });
+  }
+
+  void _updateMicrocycleNormalizationUnit(int mesocycleIndex, int microcycleIndex, String? unit) {
+    final trimmed = unit?.trim() ?? '';
+    setState(() {
+      final micro = _mesocycles[mesocycleIndex].microcycles[microcycleIndex];
+      _replaceMicrocycle(
+        mesocycleIndex,
+        microcycleIndex,
+        micro.copyWith(
+          normalizationUnit: trimmed.isEmpty ? null : trimmed,
+          resetNormalizationUnit: trimmed.isEmpty,
+        ),
+      );
+    });
+  }
+
+  void _addNormalizationRule(int mesocycleIndex, int microcycleIndex) {
+    setState(() {
+      final micro = _mesocycles[mesocycleIndex].microcycles[microcycleIndex];
+      final rules = List<NormalizationRuleDraft>.from(micro.normalizationRules);
+      rules.add(NormalizationRuleDraft());
+      _replaceMicrocycle(mesocycleIndex, microcycleIndex, micro.copyWith(normalizationRules: rules));
+    });
+  }
+
+  void _removeNormalizationRule(int mesocycleIndex, int microcycleIndex, int ruleIndex) {
+    setState(() {
+      final micro = _mesocycles[mesocycleIndex].microcycles[microcycleIndex];
+      final rules = List<NormalizationRuleDraft>.from(micro.normalizationRules);
+      if (ruleIndex >= 0 && ruleIndex < rules.length) {
+        rules.removeAt(ruleIndex);
+        _replaceMicrocycle(mesocycleIndex, microcycleIndex, micro.copyWith(normalizationRules: rules));
+      }
+    });
+  }
+
+  void _updateNormalizationRule(
+    int mesocycleIndex,
+    int microcycleIndex,
+    int ruleIndex,
+    void Function(NormalizationRuleDraft rule) updater,
+  ) {
+    final micro = _mesocycles[mesocycleIndex].microcycles[microcycleIndex];
+    final rules = List<NormalizationRuleDraft>.from(micro.normalizationRules);
+    if (ruleIndex < 0 || ruleIndex >= rules.length) {
+      return;
+    }
+    updater(rules[ruleIndex]);
+    setState(() {
+      _replaceMicrocycle(mesocycleIndex, microcycleIndex, micro.copyWith(normalizationRules: rules));
+    });
+  }
+
+  String _normalizationSummary(MicrocycleCreate microcycle) {
+    final value = microcycle.normalizationValueInput.trim();
+    final unit = microcycle.normalizationUnit?.trim() ?? '';
+    final rulesCount = microcycle.normalizationRules.length;
+    if (value.isEmpty || unit.isEmpty) {
+      return rulesCount > 0 ? 'Индивид. правил: $rulesCount' : 'Нормализация не задана';
+    }
+    final unitLabel = unit == '%' ? '% от 1RM' : 'кг';
+    final rulesLabel = rulesCount > 0 ? ', правил: $rulesCount' : '';
+    return 'Δ $value $unitLabel$rulesLabel';
+  }
+
+  Widget _buildNormalizationSection(int mesocycleIndex, int microIndex, MicrocycleCreate microcycle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Нормализация после микроцикла',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                key: ValueKey('norm-value-$mesocycleIndex-$microIndex'),
+                initialValue: microcycle.normalizationValueInput,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                decoration: const InputDecoration(
+                  labelText: 'Изменение (например, -2.5)',
+                  hintText: 'В кг или %',
+                ),
+                onChanged: (value) => _updateMicrocycleNormalizationValue(mesocycleIndex, microIndex, value),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                key: ValueKey('norm-unit-$mesocycleIndex-$microIndex'),
+                value: microcycle.normalizationUnit,
+                hint: const Text('Ед. измерения'),
+                items: _normalizationUnits
+                    .map(
+                      (unit) => DropdownMenuItem(
+                        value: unit,
+                        child: Text(unit == '%' ? '% (мультипликативно)' : 'кг (абсолютно)'),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) => _updateMicrocycleNormalizationUnit(mesocycleIndex, microIndex, value),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Можно указать одно общее изменение и/или список правил для конкретных упражнений, групп мышц или target-мышц.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Правила нормализации', style: TextStyle(fontWeight: FontWeight.w600)),
+            TextButton.icon(
+              onPressed: () => _addNormalizationRule(mesocycleIndex, microIndex),
+              icon: const Icon(Icons.add),
+              label: const Text('Добавить правило'),
+            ),
+          ],
+        ),
+        if (microcycle.normalizationRules.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8.0),
+            child: Text('Пока нет индивидуальных правил'),
+          )
+        else
+          ...microcycle.normalizationRules.asMap().entries.map(
+                (entry) => _buildNormalizationRuleCard(
+                  mesocycleIndex,
+                  microIndex,
+                  entry.key,
+                  entry.value,
+                ),
+              ),
+      ],
+    );
+  }
+
+  Widget _buildNormalizationRuleCard(
+    int mesocycleIndex,
+    int microIndex,
+    int ruleIndex,
+    NormalizationRuleDraft rule,
+  ) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Правило ${ruleIndex + 1}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                IconButton(
+                  tooltip: 'Удалить правило',
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => _removeNormalizationRule(mesocycleIndex, microIndex, ruleIndex),
+                ),
+              ],
+            ),
+            TextFormField(
+              key: ValueKey('rule-ex-$mesocycleIndex-$microIndex-$ruleIndex'),
+              initialValue: rule.exerciseIdsRaw,
+              decoration: const InputDecoration(
+                labelText: 'ID упражнений (через запятую)',
+                hintText: 'Напр.: 12, 45, 103',
+              ),
+              onChanged: (value) => _updateNormalizationRule(
+                mesocycleIndex,
+                microIndex,
+                ruleIndex,
+                (r) => r.exerciseIdsRaw = value,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              key: ValueKey('rule-mg-$mesocycleIndex-$microIndex-$ruleIndex'),
+              initialValue: rule.muscleGroupsRaw,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Muscle groups (через запятую)',
+                hintText: 'Напр.: chest, quads',
+              ),
+              onChanged: (value) => _updateNormalizationRule(
+                mesocycleIndex,
+                microIndex,
+                ruleIndex,
+                (r) => r.muscleGroupsRaw = value,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              key: ValueKey('rule-target-$mesocycleIndex-$microIndex-$ruleIndex'),
+              initialValue: rule.targetMusclesRaw,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Target muscles (через запятую)',
+                hintText: 'Напр.: biceps_long, lats',
+              ),
+              onChanged: (value) => _updateNormalizationRule(
+                mesocycleIndex,
+                microIndex,
+                ruleIndex,
+                (r) => r.targetMusclesRaw = value,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    key: ValueKey('rule-value-$mesocycleIndex-$microIndex-$ruleIndex'),
+                    initialValue: rule.valueRaw,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                    decoration: const InputDecoration(labelText: 'Δ значение'),
+                    onChanged: (value) => _updateNormalizationRule(
+                      mesocycleIndex,
+                      microIndex,
+                      ruleIndex,
+                      (r) => r.valueRaw = value,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    key: ValueKey('rule-unit-$mesocycleIndex-$microIndex-$ruleIndex'),
+                    value: rule.unit,
+                    hint: const Text('Ед. изм.'),
+                    items: _normalizationUnits
+                        .map(
+                          (unit) => DropdownMenuItem(
+                            value: unit,
+                            child: Text(unit == '%' ? '% (мультипликативно)' : 'кг (абсолютно)'),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) => _updateNormalizationRule(
+                      mesocycleIndex,
+                      microIndex,
+                      ruleIndex,
+                      (r) => r.unit = value,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _savePlan() async {
@@ -490,11 +778,23 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
             ),
             const SizedBox(height: 8),
             const Text('Microcycles', style: TextStyle(fontWeight: FontWeight.bold)),
-            ...mesocycle.microcycles.map((microcycle) {
-              final microIndex = mesocycle.microcycles.indexOf(microcycle);
+            ...mesocycle.microcycles.asMap().entries.map((entry) {
+              final microIndex = entry.key;
+              final microcycle = entry.value;
               return ExpansionTile(
-                title: Text(microcycle.name),
+                title: Text(microcycle.name.isEmpty ? 'Microcycle ${microIndex + 1}' : microcycle.name),
+                subtitle: Text(_normalizationSummary(microcycle)),
+                childrenPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 children: [
+                  TextFormField(
+                    key: ValueKey('micro-name-$index-$microIndex'),
+                    initialValue: microcycle.name,
+                    decoration: const InputDecoration(labelText: 'Название микроцикла'),
+                    onChanged: (value) => _updateMicrocycleNameField(index, microIndex, value),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildNormalizationSection(index, microIndex, microcycle),
+                  const Divider(height: 32),
                   for (int day = 1; day <= microcycle.daysCount; day++) ...[
                     ListTile(
                       title: Text('Day $day'),
@@ -504,71 +804,71 @@ class _CalendarPlanCreateState extends ConsumerState<CalendarPlanCreate> {
                       ),
                       onTap: () => _startEditingDay(index, microIndex, day),
                     ),
-                    ...(microcycle.schedule['$day'] ?? []).map((workout) => Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(left: 16.0),
-                          child: Text(workout.name ?? '', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                        ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: workout.exercises.length,
-                          itemBuilder: (context, index) {
-                            final exercise = workout.exercises[index];
-                            return ListTile(
-                              title: Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: exercise.setDrafts[0].intensityCtrl,
-                                      decoration: InputDecoration(labelText: 'Intensity'),
-                                      keyboardType: TextInputType.number,
-                                      inputFormatters: [
-                                        FilteringTextInputFormatter.allow(RegExp(r'\d*\.?\d*')),
-                                        LengthLimitingTextInputFormatter(5),
-                                      ],
-                                      onChanged: (value) {
-                                        updateThirdParameter(exercise.setDrafts[0]);
-                                      },
+                    ...(microcycle.schedule['$day'] ?? []).map(
+                      (workout) => Column(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(left: 16.0, bottom: 4),
+                            child: Text(
+                              workout.name ?? '',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: workout.exercises.length,
+                            itemBuilder: (context, exerciseIndex) {
+                              final exercise = workout.exercises[exerciseIndex];
+                              return ListTile(
+                                title: Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: exercise.setDrafts[0].intensityCtrl,
+                                        decoration: const InputDecoration(labelText: 'Intensity'),
+                                        keyboardType: TextInputType.number,
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter.allow(RegExp(r'\d*\.?\d*')),
+                                          LengthLimitingTextInputFormatter(5),
+                                        ],
+                                        onChanged: (value) => updateThirdParameter(exercise.setDrafts[0]),
+                                      ),
                                     ),
-                                  ),
-                                  SizedBox(width: 8),
-                                  Expanded(
-                                    child: TextField(
-                                      controller: exercise.setDrafts[0].volumeCtrl,
-                                      decoration: InputDecoration(labelText: 'Volume'),
-                                      keyboardType: TextInputType.number,
-                                      inputFormatters: [
-                                        FilteringTextInputFormatter.digitsOnly,
-                                        LengthLimitingTextInputFormatter(3),
-                                      ],
-                                      onChanged: (value) {
-                                        updateThirdParameter(exercise.setDrafts[0]);
-                                      },
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: exercise.setDrafts[0].volumeCtrl,
+                                        decoration: const InputDecoration(labelText: 'Volume'),
+                                        keyboardType: TextInputType.number,
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter.digitsOnly,
+                                          LengthLimitingTextInputFormatter(3),
+                                        ],
+                                        onChanged: (value) => updateThirdParameter(exercise.setDrafts[0]),
+                                      ),
                                     ),
-                                  ),
-                                  SizedBox(width: 8),
-                                  Expanded(
-                                    child: TextField(
-                                      controller: exercise.setDrafts[0].effortCtrl,
-                                      decoration: InputDecoration(labelText: 'Effort'),
-                                      keyboardType: TextInputType.number,
-                                      inputFormatters: [
-                                        FilteringTextInputFormatter.allow(RegExp(r'\d*\.?\d*')),
-                                        LengthLimitingTextInputFormatter(3),
-                                      ],
-                                      onChanged: (value) {
-                                        updateThirdParameter(exercise.setDrafts[0]);
-                                      },
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: exercise.setDrafts[0].effortCtrl,
+                                        decoration: const InputDecoration(labelText: 'Effort'),
+                                        keyboardType: TextInputType.number,
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter.allow(RegExp(r'\d*\.?\d*')),
+                                          LengthLimitingTextInputFormatter(3),
+                                        ],
+                                        onChanged: (value) => updateThirdParameter(exercise.setDrafts[0]),
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    )),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ],
               );
@@ -728,30 +1028,45 @@ class MicrocycleCreate {
   final int daysCount;
   final Map<String, List<Workout>> schedule;
   final int orderIndex;
+  final String normalizationValueInput;
+  final String? normalizationUnit;
+  final List<NormalizationRuleDraft> normalizationRules;
 
   MicrocycleCreate({
     required this.name,
     required this.daysCount,
     required this.schedule,
     required this.orderIndex,
-  });
+    this.normalizationValueInput = '',
+    this.normalizationUnit,
+    List<NormalizationRuleDraft>? normalizationRules,
+  }) : normalizationRules = normalizationRules ?? const [];
 
   MicrocycleCreate copyWith({
     String? name,
     int? daysCount,
     Map<String, List<Workout>>? schedule,
     int? orderIndex,
+    String? normalizationValueInput,
+    String? normalizationUnit,
+    List<NormalizationRuleDraft>? normalizationRules,
+    bool resetNormalizationValue = false,
+    bool resetNormalizationUnit = false,
   }) {
     return MicrocycleCreate(
       name: name ?? this.name,
       daysCount: daysCount ?? this.daysCount,
       schedule: schedule ?? this.schedule,
       orderIndex: orderIndex ?? this.orderIndex,
+      normalizationValueInput: resetNormalizationValue
+          ? ''
+          : (normalizationValueInput ?? this.normalizationValueInput),
+      normalizationUnit: resetNormalizationUnit ? null : (normalizationUnit ?? this.normalizationUnit),
+      normalizationRules: normalizationRules ?? this.normalizationRules,
     );
   }
 
   Map<String, dynamic> toJson() {
-
     final List<Map<String, dynamic>> planWorkouts = [];
     final entries = schedule.entries.toList()
       ..sort((a, b) => int.tryParse(a.key)?.compareTo(int.tryParse(b.key) ?? 0) ?? 0);
@@ -759,7 +1074,6 @@ class MicrocycleCreate {
     for (final entry in entries) {
       final int day = int.tryParse(entry.key) ?? 0;
       final List<Workout> workouts = entry.value;
-
 
       final List<Map<String, dynamic>> exercises = [];
       for (final workout in workouts) {
@@ -777,11 +1091,82 @@ class MicrocycleCreate {
       }
     }
 
+    final sanitizedValue = normalizationValueInput.replaceAll(',', '.').trim();
+    final normalizedValue = double.tryParse(sanitizedValue);
+    final normalizedUnit = (normalizationUnit ?? '').trim();
+    final rulePayloads = normalizationRules
+        .map((rule) => rule.toJson())
+        .whereType<Map<String, dynamic>>()
+        .toList();
+
     return {
       'name': name,
       'days_count': daysCount,
       'order_index': orderIndex,
       'plan_workouts': planWorkouts,
+      if (normalizedValue != null) 'normalization_value': normalizedValue,
+      if (normalizedUnit.isNotEmpty) 'normalization_unit': normalizedUnit,
+      if (rulePayloads.isNotEmpty) 'normalization_rules': rulePayloads,
     };
   }
 }
+
+class NormalizationRuleDraft {
+  String exerciseIdsRaw;
+  String muscleGroupsRaw;
+  String targetMusclesRaw;
+  String valueRaw;
+  String? unit;
+
+  NormalizationRuleDraft({
+    this.exerciseIdsRaw = '',
+    this.muscleGroupsRaw = '',
+    this.targetMusclesRaw = '',
+    this.valueRaw = '',
+    this.unit,
+  });
+
+  Map<String, dynamic>? toJson() {
+    final sanitizedValue = valueRaw.replaceAll(',', '.').trim();
+    final value = double.tryParse(sanitizedValue);
+    final unitValue = (unit ?? '').trim();
+    if (value == null || unitValue.isEmpty) {
+      return null;
+    }
+
+    final exerciseIds = exerciseIdsRaw
+        .split(RegExp(r'[,\s]+'))
+        .map((token) => int.tryParse(token))
+        .whereType<int>()
+        .toSet()
+        .toList()
+      ..sort();
+    final muscleGroups = muscleGroupsRaw
+        .split(RegExp(r'[,\n]+'))
+        .map((token) => token.trim())
+        .where((token) => token.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    final targetMuscles = targetMusclesRaw
+        .split(RegExp(r'[,\n]+'))
+        .map((token) => token.trim())
+        .where((token) => token.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+
+    if (exerciseIds.isEmpty && muscleGroups.isEmpty && targetMuscles.isEmpty) {
+      return null;
+    }
+
+    return {
+      'exercise_ids': exerciseIds,
+      'muscle_groups': muscleGroups,
+      'target_muscles': targetMuscles,
+      'value': value,
+      'unit': unitValue,
+    };
+  }
+}
+

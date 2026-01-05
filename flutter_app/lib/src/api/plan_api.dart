@@ -37,8 +37,17 @@ class PlanApi {
       endpoint,
       payload,
       queryParams: query,
+      timeout: const Duration(seconds: 120),
       context: 'applyPlan',
     ) as List<dynamic>;
+
+    await _apiClient.invalidateCacheGroups(const [
+      'plans:active',
+      'plans:list',
+      'plans:variants',
+      'workouts:list',
+      'workouts:history_all',
+    ]);
     return data.map((json) => Workout.fromJson(json as Map<String, dynamic>)).toList();
   }
 
@@ -88,6 +97,14 @@ class PlanApi {
         'name': name,
       },
     ) as Map<String, dynamic>;
+
+    await _apiClient.invalidateCacheGroups([
+      'plans:list',
+      'plans:variants',
+      'plans:variants:$planId',
+      'plans:detail',
+      'plans:detail:$planId',
+    ]);
     return CalendarPlan.fromJson(data);
   }
 
@@ -104,6 +121,13 @@ class PlanApi {
       payload,
       context: 'updateCalendarPlanPublic',
     ) as Map<String, dynamic>;
+
+    await _apiClient.invalidateCacheGroups([
+      'plans:list',
+      'plans:detail',
+      'plans:detail:$planId',
+      'plans:variants',
+    ]);
     return CalendarPlan.fromJson(data);
   }
 
@@ -115,6 +139,12 @@ class PlanApi {
       const {},
       context: 'recalcCalendarPlanSets',
     ) as Map<String, dynamic>;
+
+    await _apiClient.invalidateCacheGroups([
+      'plans:detail',
+      'plans:detail:$planId',
+      'plans:list',
+    ]);
     return CalendarPlan.fromJson(data);
   }
 

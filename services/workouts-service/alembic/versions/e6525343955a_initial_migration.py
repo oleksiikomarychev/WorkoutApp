@@ -10,8 +10,10 @@ depends_on = None
 
 
 def upgrade():
-    op.execute("DROP TYPE IF EXISTS workouttypeenum")
-    op.execute("CREATE TYPE workouttypeenum AS ENUM ('manual', 'generated')")
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute("DROP TYPE IF EXISTS workouttypeenum")
+        op.execute("CREATE TYPE workouttypeenum AS ENUM ('manual', 'generated')")
     workout_type = sa.Enum("manual", "generated", name="workouttypeenum", create_type=False)
 
     op.create_table(
@@ -78,4 +80,6 @@ def downgrade():
     op.drop_table("workout_exercises")
     op.drop_index(op.f("ix_workouts_name"), table_name="workouts")
     op.drop_table("workouts")
-    op.execute("DROP TYPE IF EXISTS workouttypeenum")
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute("DROP TYPE IF EXISTS workouttypeenum")

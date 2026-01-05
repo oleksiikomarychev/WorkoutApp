@@ -16,22 +16,25 @@ depends_on = None
 
 
 def upgrade():
+    bind = op.get_bind()
     workout_type_enum = sa.Enum("manual", "generated", name="workouttypeenum")
-    workout_type_enum.create(op.get_bind(), checkfirst=True)
+    if bind.dialect.name == "postgresql":
+        workout_type_enum.create(bind, checkfirst=True)
 
     op.execute("UPDATE workouts SET workout_type = 'manual' " "WHERE workout_type NOT IN ('manual', 'generated')")
 
-    with op.batch_alter_table("workouts") as batch_op:
-        batch_op.alter_column("workout_type", server_default=None)
+    if bind.dialect.name == "postgresql":
+        with op.batch_alter_table("workouts") as batch_op:
+            batch_op.alter_column("workout_type", server_default=None)
 
-        batch_op.alter_column(
-            "workout_type",
-            type_=workout_type_enum,
-            existing_type=sa.VARCHAR(50),
-            postgresql_using="workout_type::workouttypeenum",
-            nullable=False,
-            server_default="manual",
-        )
+            batch_op.alter_column(
+                "workout_type",
+                type_=workout_type_enum,
+                existing_type=sa.VARCHAR(50),
+                postgresql_using="workout_type::workouttypeenum",
+                nullable=False,
+                server_default="manual",
+            )
 
     op.create_index(op.f("ix_workouts_workout_type"), "workouts", ["workout_type"], unique=False)
 
@@ -39,6 +42,8 @@ def upgrade():
 def downgrade():
     op.drop_index(op.f("ix_workouts_workout_type"), table_name="workouts")
 
+    bind = op.get_bind()
     workout_type_enum = sa.Enum("manual", "generated", name="workouttypeenum")
-    with op.batch_alter_table("workouts") as batch_op:
-        batch_op.alter_column("workout_type", type_=sa.VARCHAR(50), existing_type=workout_type_enum, nullable=True)
+    if bind.dialect.name == "postgresql":
+        with op.batch_alter_table("workouts") as batch_op:
+            batch_op.alter_column("workout_type", type_=sa.VARCHAR(50), existing_type=workout_type_enum, nullable=True)

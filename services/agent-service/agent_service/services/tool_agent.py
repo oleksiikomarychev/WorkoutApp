@@ -1,3 +1,4 @@
+import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -5,9 +6,49 @@ from typing import Any
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import tool as lc_tool
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from ..prompts.tool_agent import build_tools_decision_system_prompt
 from .langchain_runtime import get_chat_llm
+
+
+class _GenericToolArgsSchema(BaseModel):
+    kwargs: Any | None = None
+
+    model_config = ConfigDict(extra="allow")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_tool_input(cls, data: Any):
+        if isinstance(data, str):
+            try:
+                parsed = json.loads(data)
+            except Exception:
+                return {"input": data}
+            return parsed if isinstance(parsed, dict) else {"input": data}
+
+        if not isinstance(data, dict):
+            return {"input": data}
+
+        if "kwargs" not in data:
+            return data
+
+        kwargs_val = data.get("kwargs")
+        rest = {k: v for k, v in data.items() if k != "kwargs"}
+
+        if isinstance(kwargs_val, dict):
+            return {**kwargs_val, **rest}
+
+        if isinstance(kwargs_val, str):
+            try:
+                parsed_kwargs = json.loads(kwargs_val)
+            except Exception:
+                return data
+            if isinstance(parsed_kwargs, dict):
+                return {**parsed_kwargs, **rest}
+            return data
+
+        return data
 
 
 @dataclass
@@ -42,6 +83,7 @@ def _build_langchain_tools(tools: list[ToolSpec]):
         wrapped = lc_tool(
             spec.name,
             description=f"{spec.description}. Parameters schema: {spec.parameters_schema!r}",
+            args_schema=_GenericToolArgsSchema,
         )(_make_tool_impl(spec))
 
         lc_tools.append(wrapped)

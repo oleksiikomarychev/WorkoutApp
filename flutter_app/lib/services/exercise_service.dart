@@ -6,6 +6,7 @@ import 'logger_service.dart';
 import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/models/muscle_info.dart';
 import 'package:workout_app/models/progression_template.dart';
+import 'package:http_parser/http_parser.dart';
 
 class ExerciseService extends BaseApiService {
   final ApiClient _apiClient;
@@ -36,6 +37,40 @@ class ExerciseService extends BaseApiService {
       }
     } catch (e, stackTrace) {
       handleError('Failed to get exercise definitions', e, stackTrace);
+      rethrow;
+    }
+  }
+
+  Future<ExerciseDefinition> uploadExerciseGif({
+    required int exerciseId,
+    required List<int> bytes,
+    required String filename,
+    MediaType? contentType,
+  }) async {
+    try {
+      final endpoint = ApiConfig.uploadExerciseGifEndpoint(exerciseId.toString());
+      _logger.d('Uploading exercise gif | endpoint=$endpoint | filename=$filename | bytes=${bytes.length}');
+
+      final response = await _apiClient.postMultipart(
+        endpoint,
+        bytes: bytes,
+        fileField: 'file',
+        filename: filename,
+        contentType: contentType,
+        context: 'ExerciseService.uploadExerciseGif',
+      );
+
+      if (response is Map<String, dynamic>) {
+        return ExerciseDefinition.fromJson(response);
+      }
+
+      handleError(
+        'Invalid response format when uploading exercise gif',
+        Exception('Expected an exercise definition object'),
+      );
+      throw Exception('Failed to upload exercise gif');
+    } catch (e, stackTrace) {
+      handleError('Failed to upload exercise gif', e, stackTrace);
       rethrow;
     }
   }
@@ -187,6 +222,40 @@ class ExerciseService extends BaseApiService {
   Future<List<ProgressionTemplate>> getTemplates() async {
 
     return [];
+  }
+
+  Future<ExerciseDefinition> uploadExerciseImage({
+    required int exerciseId,
+    required List<int> bytes,
+    required String filename,
+    MediaType? contentType,
+  }) async {
+    try {
+      final endpoint = ApiConfig.uploadExerciseImageEndpoint(exerciseId.toString());
+      _logger.d('Uploading exercise image | endpoint=$endpoint | filename=$filename | bytes=${bytes.length}');
+
+      final response = await _apiClient.postMultipart(
+        endpoint,
+        bytes: bytes,
+        fileField: 'file',
+        filename: filename,
+        contentType: contentType,
+        context: 'ExerciseService.uploadExerciseImage',
+      );
+
+      if (response is Map<String, dynamic>) {
+        return ExerciseDefinition.fromJson(response);
+      }
+
+      handleError(
+        'Invalid response format when uploading exercise image',
+        Exception('Expected an exercise definition object'),
+      );
+      throw Exception('Failed to upload exercise image');
+    } catch (e, stackTrace) {
+      handleError('Failed to upload exercise image', e, stackTrace);
+      rethrow;
+    }
   }
 
 

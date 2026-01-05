@@ -14,13 +14,9 @@ import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
 import 'package:workout_app/widgets/primary_app_bar.dart';
 import 'package:workout_app/widgets/assistant_chat_host.dart';
-import '../models/applied_calendar_plan.dart';
-import '../services/plan_service.dart';
-import '../services/api_client.dart';
 import 'active_plan_screen.dart';
 
-
-final planServiceProvider = Provider<PlanService>((ref) => PlanService(apiClient: ref.watch(apiClientProvider)));
+import 'dart:async';
 
 final manualWorkoutsNotifierProvider = StateNotifierProvider<ManualWorkoutsNotifier, AsyncValue<List<Workout>>>((ref) {
   final workoutService = ref.watch(workoutServiceProvider);
@@ -28,31 +24,106 @@ final manualWorkoutsNotifierProvider = StateNotifierProvider<ManualWorkoutsNotif
 });
 
 
-  final nextWorkoutProvider = FutureProvider<Workout?>((ref) async {
-    final planService = ref.watch(planServiceProvider);
-    final workoutService = ref.watch(workoutServiceProvider);
+final nextWorkoutProvider = StreamProvider<Workout?>((ref) {
+  final apiClient = ref.watch(apiClientProvider);
+  final workoutService = ref.watch(workoutServiceProvider);
 
-    debugPrint('[WorkoutsScreen] Fetching active plan...');
-    final activePlan = await planService.getActivePlan();
-    if (activePlan == null) return null;
-    debugPrint('[WorkoutsScreen] Active plan id=${activePlan.id}');
+  return (() async* {
+    try {
+      await for (final data in apiClient.getSWR(
+        ApiConfig.activePlanWorkoutsEndpoint + '/summary',
+        context: 'WorkoutsScreen.nextWorkout.activePlanWorkouts.summary',
+        ttlSeconds: 60,
+        groups: const ['plans:active_workouts'],
+        skipNetworkIfFresh: true,
+      )) {
+        if (data is! List) {
+          yield null;
+          continue;
+        }
 
-    debugPrint('[WorkoutsScreen] Fetching workouts for active plan...');
-    final workouts = await workoutService.getWorkoutsByAppliedPlan(activePlan.id);
-    debugPrint('[WorkoutsScreen] Received ${workouts.length} workouts for active plan');
-    if (workouts.isEmpty) return null;
+        final items = data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+        if (items.isEmpty) {
+          yield null;
+          continue;
+        }
 
-    workouts.sort((a, b) => (a.planOrderIndex ?? 1 << 30).compareTo(b.planOrderIndex ?? 1 << 30));
+        bool isCompletedSummary(Map<String, dynamic> m) {
+          final status = (m['status']?.toString() ?? '').toLowerCase();
+          if (status == 'completed') return true;
+          return m['completed_at'] != null;
+        }
 
-    for (final w in workouts) {
-      final completed = (w.status?.toLowerCase() == 'completed') || (w.completedAt != null);
-      if (!completed) {
-        debugPrint('[WorkoutsScreen] Next by order: id=${w.id}, idx=${w.planOrderIndex}, status=${w.status}');
-        return w;
+        DateTime? parseDate(dynamic raw) {
+          if (raw == null) return null;
+          if (raw is DateTime) return raw;
+          if (raw is String) return DateTime.tryParse(raw);
+          return null;
+        }
+
+        items.sort((a, b) {
+          final ao = a['order_index'];
+          final bo = b['order_index'];
+          final ai = ao is int ? ao : int.tryParse(ao?.toString() ?? '') ?? 0;
+          final bi = bo is int ? bo : int.tryParse(bo?.toString() ?? '') ?? 0;
+          return ai.compareTo(bi);
+        });
+
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+
+        Map<String, dynamic>? chosen;
+        Map<String, dynamic>? pastFallback;
+
+        for (final m in items) {
+          if (isCompletedSummary(m)) continue;
+          final dt = parseDate(m['scheduled_for'])?.toLocal();
+          if (dt == null) {
+            chosen ??= m;
+            continue;
+          }
+          final day = DateTime(dt.year, dt.month, dt.day);
+          if (!day.isBefore(today)) {
+            chosen = m;
+            break;
+          }
+          pastFallback ??= m;
+        }
+
+        final selected = chosen ?? pastFallback;
+        if (selected == null) {
+          yield null;
+          continue;
+        }
+
+        final rawId = selected['id'];
+        final workoutId = rawId is int ? rawId : int.tryParse(rawId?.toString() ?? '');
+        if (workoutId == null) {
+          yield null;
+          continue;
+        }
+
+        Workout? resolved;
+        try {
+          await for (final w in workoutService.getWorkoutWithDetailsSWR(workoutId, ttlSeconds: 600)) {
+            resolved = w;
+            break;
+          }
+        } catch (_) {
+          resolved = null;
+        }
+
+        yield resolved;
       }
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) {
+        yield null;
+        return;
+      }
+      rethrow;
     }
-    return null;
-  });
+  })();
+});
 
 class WorkoutsScreen extends ConsumerStatefulWidget {
   const WorkoutsScreen({super.key});
@@ -69,9 +140,16 @@ class ManualWorkoutsNotifier extends StateNotifier<AsyncValue<List<Workout>>> {
   bool _hasMore = true;
   bool _isLoadingMore = false;
   List<Workout> _items = [];
+  StreamSubscription<List<Workout>>? _sub;
 
   ManualWorkoutsNotifier(this._workoutService) : super(const AsyncValue.loading()) {
     loadInitial();
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
   }
 
   bool get hasMore => _hasMore;
@@ -79,20 +157,26 @@ class ManualWorkoutsNotifier extends StateNotifier<AsyncValue<List<Workout>>> {
   List<Workout> get items => _items;
 
   Future<void> loadInitial() async {
-    state = const AsyncValue.loading();
+    await _sub?.cancel();
+
+    if (_items.isEmpty) {
+      state = const AsyncValue.loading();
+    }
     _skip = 0;
     _hasMore = true;
     _items = [];
-    try {
-      final page = await _workoutService.getWorkoutsByType(WorkoutType.manual);
-      _items = page;
-      _hasMore = page.length == _limit;
-      _skip = _items.length;
-      state = AsyncValue.data(_items);
-    } catch (e, stackTrace) {
-      state = AsyncValue.error(e, stackTrace);
-      rethrow;
-    }
+
+    _sub = _workoutService.getWorkoutsByTypeSWR(WorkoutType.manual).listen(
+      (workouts) {
+        _items = workouts;
+        _hasMore = workouts.length == _limit;
+        _skip = _items.length;
+        state = AsyncValue.data(_items);
+      },
+      onError: (e, st) {
+        state = AsyncValue.error(e, st is StackTrace ? st : StackTrace.current);
+      },
+    );
   }
 
   Future<void> loadMore() async {
@@ -132,17 +216,6 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
   final ScrollController _scrollController = ScrollController();
   final PageController _bannerController = PageController();
   int _bannerIndex = 0;
-
-  Future<List<Map<String, dynamic>>> _fetchActivePlanWorkouts() async {
-    final apiClient = ref.read(apiClientProvider);
-    final response = await apiClient.get(ApiConfig.activePlanWorkoutsEndpoint);
-
-    if (response is List) {
-      return List<Map<String, dynamic>>.from(response.map((item) => item as Map<String, dynamic>));
-    } else {
-      throw Exception('Failed to load active plan workouts: response is not a list');
-    }
-  }
 
   @override
   void initState() {
@@ -322,13 +395,28 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                                 manualWorkoutsState: manualWorkoutsState,
                                 onRetry: () => ref.read(manualWorkoutsNotifierProvider.notifier).loadInitial(),
                                 onOpenWorkout: (workoutId) async {
+                                  // Warm detail cache in background to reduce perceived latency on first open.
+                                  // Do not await: navigation should stay responsive.
+                                  try {
+                                    // ignore: unawaited_futures
+                                    ref.read(workoutServiceProvider).getWorkoutWithDetailsSWR(workoutId).first;
+                                  } catch (_) {}
+
                                   await Navigator.of(context).push(
                                     MaterialPageRoute(
                                       builder: (_) => WorkoutDetailScreen(workoutId: workoutId),
                                     ),
                                   );
                                   if (!mounted) return;
-                                  await ref.read(manualWorkoutsNotifierProvider.notifier).loadInitial();
+                                  try {
+                                    await ref.read(apiClientProvider).invalidateCacheGroups(const [
+                                      'workouts:list',
+                                      'workouts:detail',
+                                    ]);
+                                  } catch (_) {}
+                                  // Refresh list without blocking the UI thread.
+                                  // ignore: unawaited_futures
+                                  ref.read(manualWorkoutsNotifierProvider.notifier).loadInitial();
                                 },
                                 readNotifier: () => ref.read(manualWorkoutsNotifierProvider.notifier),
                                 buildError: buildError,
@@ -495,7 +583,11 @@ class _PlansSection extends StatelessWidget {
             final subtitle = nextWorkout?.name ?? 'No upcoming workouts';
             final scheduleText = isCompleted
                 ? 'All workouts completed or no active plan'
-                : 'Scheduled for ${nextWorkout!.scheduledFor != null ? DateFormat('MMM d, yyyy').format(nextWorkout.scheduledFor!) : 'today'}';
+                : (() {
+                    final w = nextWorkout;
+                    final date = w.scheduledFor?.toLocal();
+                    return 'Scheduled for ${date != null ? DateFormat('MMM d, yyyy').format(date) : 'today'}';
+                  })();
 
             final card = Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
@@ -656,12 +748,15 @@ class _LibrarySection extends StatelessWidget {
               icon: Icons.sports_gymnastics,
               title: 'Workout Library',
             ),
-            TextButton(
-              onPressed: () {},
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.primary,
-              ),
-              child: const Text('View All'),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: onCreateWorkout,
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Start Workout'),
+                ),
+              ],
             ),
           ],
         ),
@@ -680,11 +775,6 @@ class _LibrarySection extends StatelessWidget {
                 icon: Icons.fitness_center,
                 title: 'No Manual Workouts',
                 description: 'Create a manual workout',
-                action: ElevatedButton.icon(
-                  onPressed: onCreateWorkout,
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('Start Workout'),
-                ),
               );
             }
 
@@ -822,7 +912,7 @@ class _WorkoutCard extends StatelessWidget {
       return '$minutes min session';
     }
     if (workout.scheduledFor != null) {
-      return 'Scheduled ${DateFormat('MMM d').format(workout.scheduledFor!)}';
+      return 'Scheduled ${DateFormat('MMM d').format(workout.scheduledFor!.toLocal())}';
     }
     return 'Manual session';
   }

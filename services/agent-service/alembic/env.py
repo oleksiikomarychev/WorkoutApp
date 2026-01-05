@@ -34,6 +34,7 @@ target_metadata = Base.metadata
 def run_migrations_offline():
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
+        version_table_schema="public",
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
@@ -53,7 +54,12 @@ def run_migrations_online():
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata, file_template="%(rev)s_%(slug)s")
+        context.configure(
+            version_table_schema="public",
+            connection=connection,
+            target_metadata=target_metadata,
+            file_template="%(rev)s_%(slug)s",
+        )
         with context.begin_transaction():
             context.run_migrations()
 

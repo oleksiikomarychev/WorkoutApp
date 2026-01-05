@@ -17,6 +17,9 @@ class ExerciseList(Base):
     region = Column(String(32), nullable=True)
     root_exercise_id = Column(Integer, ForeignKey("exercise_list.id", ondelete="SET NULL"), nullable=True)
 
+    image_url = Column(String(512), nullable=True)
+    gif_url = Column(String(512), nullable=True)
+
     instances = relationship(
         "ExerciseInstance",
         back_populates="exercise_definition",

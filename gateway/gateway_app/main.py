@@ -84,7 +84,7 @@ except ImportError:  # pragma: no cover
 
 _DEFAULT_PROXY_TIMEOUT = float(os.getenv("PROXY_REQUEST_TIMEOUT_SECONDS", "45"))
 _DEFAULT_CONNECT_TIMEOUT = float(os.getenv("PROXY_CONNECT_TIMEOUT_SECONDS", "10"))
-_PLANS_APPLY_TIMEOUT = float(os.getenv("PLANS_APPLY_TIMEOUT_SECONDS", str(max(_DEFAULT_PROXY_TIMEOUT, 90.0))))
+_PLANS_APPLY_TIMEOUT = float(os.getenv("PLANS_APPLY_TIMEOUT_SECONDS", str(max(_DEFAULT_PROXY_TIMEOUT, 180.0))))
 _GET_RETRIES = int(os.getenv("PROXY_GET_RETRIES", "3"))
 _GET_RETRY_BASE_DELAY = float(os.getenv("PROXY_GET_RETRY_BASE_DELAY_SECONDS", "0.3"))
 
@@ -212,6 +212,7 @@ _FIREBASE_AUDIENCE: str | None = os.getenv("FIREBASE_PROJECT_ID")
 _FIREBASE_ISSUER: str | None = None
 _PUBLIC_PATHS = {
     "/api/v1/health",
+    "/api/v1/workouts/health",
     "/openapi.json",
     "/docs",
     "/docs/",
@@ -319,6 +320,11 @@ def _is_public_route(method: str, path: str) -> bool:
             return True
 
         if path.startswith("/api/v1/avatars/") and path.endswith(".png"):
+            return True
+
+        if path.startswith("/api/v1/exercises/definitions/") and (
+            path.endswith("/media/image") or path.endswith("/media/gif")
+        ):
             return True
     return False
 
@@ -478,15 +484,50 @@ class FirebaseAuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-configure_cors_from_env(app)
 add_correlation_id_middleware(app, header_name="X-Request-ID")
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(FirebaseAuthMiddleware)
+configure_cors_from_env(app)
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+        )
+    logger.error(
+        "unhandled_exception",
+        path=str(request.url.path),
+        method=request.method,
+        exc_info=True,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Internal server error"},
+    )
 
 
 @app.get("/api/v1/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/api/v1/workouts/health")
+async def workouts_health(request: Request) -> dict:
+    if not WORKOUTS_SERVICE_URL:
+        return {"status": "ok", "workouts_service": {"ok": False, "error": "not_configured"}}
+    headers = _forward_headers(request)
+    timeout = httpx.Timeout(connect=3.0, read=3.0, write=3.0, pool=3.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            url = f"{WORKOUTS_SERVICE_URL}/health"
+            r = await client.get(url, headers=headers, follow_redirects=True)
+            ok = 200 <= r.status_code < 300
+            return {"status": "ok", "workouts_service": {"ok": ok, "status": r.status_code}}
+        except Exception as exc:
+            return {"status": "ok", "workouts_service": {"ok": False, "error": type(exc).__name__}}
 
 
 @app.get("/api/v1/upstreams/health")

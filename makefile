@@ -52,6 +52,8 @@ sync:
 REGISTRY ?= docker.io/oleksiikomarychev
 TAG ?= latest
 
+PLATFORMS ?= linux/amd64,linux/arm64
+
 # Build images
 build-gateway:
 	docker build -t $(REGISTRY)/workoutapp-gateway:$(TAG) -f gateway/Dockerfile .
@@ -81,6 +83,37 @@ build-crm:
 	docker build -t $(REGISTRY)/workoutapp-crm-service:$(TAG) -f services/crm-service/Dockerfile .
 
 build-all: build-gateway build-rpe build-exercises build-user-max build-workouts build-plans build-agent build-accounts build-crm
+
+.PHONY: release-all
+
+release-gateway:
+	docker buildx build --platform $(PLATFORMS) --push -t $(REGISTRY)/workoutapp-gateway:$(TAG) -f gateway/Dockerfile .
+
+release-rpe:
+	docker buildx build --platform $(PLATFORMS) --push -t $(REGISTRY)/workoutapp-rpe-service:$(TAG) ./services/rpe-service
+
+release-exercises:
+	docker buildx build --platform $(PLATFORMS) --push -t $(REGISTRY)/workoutapp-exercises-service:$(TAG) -f services/exercises-service/Dockerfile .
+
+release-user-max:
+	docker buildx build --platform $(PLATFORMS) --push -t $(REGISTRY)/workoutapp-user-max-service:$(TAG) -f services/user-max-service/Dockerfile .
+
+release-workouts:
+	docker buildx build --platform $(PLATFORMS) --push -t $(REGISTRY)/workoutapp-workouts-service:$(TAG) -f services/workouts-service/Dockerfile .
+
+release-plans:
+	docker buildx build --platform $(PLATFORMS) --push -t $(REGISTRY)/workoutapp-plans-service:$(TAG) -f services/plans-service/Dockerfile .
+
+release-agent:
+	docker buildx build --platform $(PLATFORMS) --push -t $(REGISTRY)/workoutapp-agent-service:$(TAG) -f services/agent-service/Dockerfile .
+
+release-accounts:
+	docker buildx build --platform $(PLATFORMS) --push -t $(REGISTRY)/workoutapp-accounts-service:$(TAG) -f services/accounts-service/Dockerfile .
+
+release-crm:
+	docker buildx build --platform $(PLATFORMS) --push -t $(REGISTRY)/workoutapp-crm-service:$(TAG) -f services/crm-service/Dockerfile .
+
+release-all: release-gateway release-rpe release-exercises release-user-max release-workouts release-plans release-agent release-accounts release-crm
 
 # Push images
 push-gateway:
@@ -113,4 +146,67 @@ push-crm:
 push-all: push-gateway push-rpe push-exercises push-user-max push-workouts push-plans push-agent push-accounts push-crm
 
 # Build and push
-release: build-all push-all
+release: release-all
+
+# === CDC / Analytics (Postgres -> Debezium -> Kafka -> ClickHouse) ===
+.PHONY: analytics-up analytics-down analytics-setup analytics-status analytics-logs
+
+# Запустить CDC/Analytics стек (локально)
+analytics-up:
+	docker compose --profile analytics up -d
+
+# Остановить CDC/Analytics стек
+analytics-down:
+	docker compose --profile analytics down
+
+# Полная настройка CDC пайплайна (после analytics-up)
+analytics-setup:
+	@echo "=== Настройка CDC пайплайна ==="
+	@echo ""
+	@echo "1. Настройте Postgres (выполните SQL вручную):"
+	./analytics/scripts/setup-postgres.sh
+	@echo ""
+	@echo "2. Задеплойте Debezium коннекторы:"
+	./analytics/scripts/deploy-connectors.sh
+	@echo ""
+	@echo "3. Инициализируйте ClickHouse таблицы:"
+	./analytics/scripts/init-clickhouse.sh
+
+# Проверить статус CDC пайплайна
+analytics-status:
+	./analytics/scripts/check-status.sh
+
+# Логи CDC компонентов
+analytics-logs:
+	docker compose --profile analytics logs -f --tail=100
+
+# Только деплой коннекторов
+analytics-deploy-connectors:
+	./analytics/scripts/deploy-connectors.sh
+
+# Только инициализация ClickHouse
+analytics-init-clickhouse:
+	./analytics/scripts/init-clickhouse.sh
+
+# Открыть ClickHouse клиент
+analytics-clickhouse-cli:
+	docker exec -it clickhouse clickhouse-client
+
+# Открыть Kafka UI (http://localhost:8084)
+analytics-kafka-ui:
+	@echo "Kafka UI: http://localhost:8084"
+	@open http://localhost:8084 2>/dev/null || xdg-open http://localhost:8084 2>/dev/null || echo "Open http://localhost:8084 in browser"
+
+# Production: Запустить CDC/Analytics стек
+analytics-up-prod:
+	docker compose -f docker-compose.prod.yml --profile analytics up -d
+
+# Production: Остановить CDC/Analytics стек
+analytics-down-prod:
+	docker compose -f docker-compose.prod.yml --profile analytics down
+
+# Production: Полная настройка
+analytics-setup-prod:
+	./analytics/scripts/setup-postgres.sh prod
+	./analytics/scripts/deploy-connectors.sh prod
+	./analytics/scripts/init-clickhouse.sh prod

@@ -2,12 +2,14 @@ import logging
 import os
 import sys
 from collections.abc import Iterable
+from urllib.parse import urlparse
 
 import sentry_sdk
 import structlog
 from asgi_correlation_id.context import correlation_id
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
+from sentry_sdk.utils import BadDsn
 from structlog.contextvars import merge_contextvars
 
 
@@ -50,20 +52,27 @@ def configure_logging(default_service_name: str, extra_sentry_integrations: Iter
     app_env = os.getenv("APP_ENV", "local")
     is_dev = app_env in {"local", "dev"}
 
-    if os.getenv("SENTRY_DSN"):
+    dsn = (os.getenv("SENTRY_DSN") or "").strip()
+    dsn_scheme = urlparse(dsn).scheme
+    if dsn and dsn not in {"${SENTRY_DSN}", "${SENTRY_DSN:-}"} and dsn_scheme in {"http", "https"}:
         integrations = [FastApiIntegration()]
         if extra_sentry_integrations is not None:
             integrations.extend(list(extra_sentry_integrations))
         integrations.append(sentry_logging)
 
-        sentry_sdk.init(
-            dsn=os.getenv("SENTRY_DSN"),
-            environment=app_env,
-            integrations=integrations,
-            traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0")),
-            send_default_pii=False,
-        )
-        sentry_sdk.set_tag("service", service_name)
+        try:
+            sentry_sdk.init(
+                dsn=dsn,
+                environment=app_env,
+                integrations=integrations,
+                traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0")),
+                send_default_pii=False,
+            )
+            sentry_sdk.set_tag("service", service_name)
+        except BadDsn:
+            pass
+        except Exception:
+            pass
 
     timestamper = structlog.processors.TimeStamper(fmt="iso", utc=True)
 

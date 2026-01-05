@@ -193,7 +193,7 @@ async def get_by_exercise(
 
 @router.get("/by-exercises", response_model=list[schemas.UserMaxResponse])
 async def get_user_maxes_by_exercises(
-    exercise_ids: list[int],
+    exercise_ids: list[int] = Query(..., alias="exercise_ids"),
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):

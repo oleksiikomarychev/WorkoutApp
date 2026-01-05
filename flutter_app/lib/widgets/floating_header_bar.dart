@@ -99,63 +99,78 @@ class FloatingHeaderBar extends StatelessWidget {
         )
         .toList(growable: false);
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-            child: Container(
-              height: 56,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: gradientColors,
+    final Widget? decoratedLeading = leading == null
+        ? null
+        : Container(
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              color: Colors.white.withOpacity(0.12),
+            ),
+            child: IconTheme(
+              data: const IconThemeData(color: Colors.white),
+              child: leading!,
+            ),
+          );
+
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+              child: Container(
+                height: 56,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: gradientColors,
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x331B1F3B),
+                      blurRadius: 36,
+                      offset: Offset(0, 22),
+                      spreadRadius: 4,
+                    ),
+                    BoxShadow(
+                      color: Color(0x14000000),
+                      blurRadius: 16,
+                      offset: Offset(0, 6),
+                    ),
+                  ],
                 ),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x331B1F3B),
-                    blurRadius: 36,
-                    offset: Offset(0, 22),
-                    spreadRadius: 4,
-                  ),
-                  BoxShadow(
-                    color: Color(0x14000000),
-                    blurRadius: 16,
-                    offset: Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  if (leading != null)
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          leading!,
-                          const SizedBox(width: 8),
-                        ],
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: decoratedLeading ?? const SizedBox.shrink(),
                       ),
                     ),
-                  Center(
-                    child: titleWidget,
-                  ),
-                  if (decoratedActions.isNotEmpty)
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: decoratedActions,
+                    Expanded(
+                      flex: 2,
+                      child: Center(child: titleWidget),
+                    ),
+                    Flexible(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: decoratedActions.isEmpty
+                            ? const SizedBox.shrink()
+                            : Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: decoratedActions,
+                              ),
                       ),
                     ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

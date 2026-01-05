@@ -37,6 +37,9 @@ class ExerciseListBase(BaseModel):
         description=("ID of the root/base exercise definition this exercise is a variant of"),
     )
 
+    image_url: str | None = Field(None, description="URL to exercise image (png/jpg)")
+    gif_url: str | None = Field(None, description="URL to exercise gif animation")
+
 
 class ExerciseListCreate(ExerciseListBase):
     pass

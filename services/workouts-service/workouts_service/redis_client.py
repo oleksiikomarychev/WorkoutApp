@@ -96,6 +96,8 @@ async def invalidate_workout_cache(
 
     if invalidate_lists:
         keys.add(workout_list_key(user_id, None))
+        keys.add(workout_list_key(user_id, "manual"))
+        keys.add(workout_list_key(user_id, "generated"))
 
     if not keys:
         return

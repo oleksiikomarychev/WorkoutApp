@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../models/exercise_definition.dart';
-import '../screens/exercise_form_screen.dart';
 import '../services/exercise_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/services/service_locator.dart';

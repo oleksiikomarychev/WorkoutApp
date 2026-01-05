@@ -158,36 +158,90 @@ async def _assemble_workout_for_client(
         if workout_type == "generated":
             exercises = workout_data.get("exercises") or []
             if exercises:
-                mapped_instances: list[dict] = []
-                for ex in exercises:
-                    sets = []
-                    for s in ex.get("sets", []):
-                        sets.append(
-                            {
-                                "id": None,
-                                "reps": s.get("volume"),
-                                "weight": s.get("working_weight")
-                                if s.get("working_weight") is not None
-                                else s.get("weight"),
-                                "rpe": s.get("effort"),
-                                "effort": s.get("effort"),
-                                "effort_type": "RPE",
-                                "intensity": s.get("intensity"),
-                                "order": None,
-                            }
-                        )
-                    mapped_instances.append(
-                        {
-                            "id": None,
-                            "exercise_list_id": ex.get("exercise_id"),
-                            "sets": sets,
+                created_instances: list[dict] = []
+                async with ServiceClient() as client:
+                    for ex in exercises:
+                        ex_id = ex.get("exercise_id")
+                        if ex_id is None:
+                            continue
+
+                        sets_payload: list[dict] = []
+                        for s in ex.get("sets", []):
+                            reps = s.get("volume")
+                            if reps is None:
+                                reps = s.get("reps")
+                            sets_payload.append(
+                                {
+                                    "reps": reps,
+                                    "weight": s.get("working_weight")
+                                    if s.get("working_weight") is not None
+                                    else s.get("weight"),
+                                    "rpe": s.get("effort"),
+                                    "effort": s.get("effort"),
+                                    "effort_type": "RPE",
+                                    "intensity": s.get("intensity"),
+                                }
+                            )
+
+                        payload = {
+                            "exercise_list_id": ex_id,
+                            "sets": sets_payload,
                             "notes": ex.get("notes"),
                             "order": None,
-                            "workout_id": workout_id,
                             "user_max_id": None,
                         }
-                    )
-                workout_data["exercise_instances"] = mapped_instances
+
+                        resp = await client.post(
+                            instances_url,
+                            headers=headers,
+                            json=payload,
+                            expected_status=(201,),
+                            workout_id=workout_id,
+                        )
+                        if resp.success and isinstance(resp.data, dict):
+                            created_instances.append(resp.data)
+                        else:
+                            gateway_main.logger.error(
+                                "generated_instances_create_failed",
+                                workout_id=workout_id,
+                                exercise_list_id=ex_id,
+                                status_code=resp.status_code,
+                                error=resp.error,
+                            )
+
+                if created_instances:
+                    workout_data["exercise_instances"] = created_instances
+                else:
+                    mapped_instances: list[dict] = []
+                    for ex in exercises:
+                        sets = []
+                        for s in ex.get("sets", []):
+                            sets.append(
+                                {
+                                    "id": None,
+                                    "reps": s.get("volume"),
+                                    "weight": s.get("working_weight")
+                                    if s.get("working_weight") is not None
+                                    else s.get("weight"),
+                                    "rpe": s.get("effort"),
+                                    "effort": s.get("effort"),
+                                    "effort_type": "RPE",
+                                    "intensity": s.get("intensity"),
+                                    "order": None,
+                                }
+                            )
+                        mapped_instances.append(
+                            {
+                                "id": None,
+                                "exercise_list_id": ex.get("exercise_id"),
+                                "sets": sets,
+                                "notes": ex.get("notes"),
+                                "order": None,
+                                "workout_id": workout_id,
+                                "user_max_id": None,
+                            }
+                        )
+                    workout_data["exercise_instances"] = mapped_instances
             else:
                 plan_instances = await _derive_exercise_instances_from_plan(
                     applied_plan_id=workout_data.get("applied_plan_id"),
@@ -210,7 +264,7 @@ async def _assemble_workout_for_client(
         ids = [int(i) for i in ids if isinstance(i, int | str) and str(i).isdigit()]
         if ids:
             q = ",".join(str(i) for i in sorted(set(ids)))
-            defs_url = f"{gateway_main.EXERCISES_SERVICE_URL}/exercises/definitions"
+            defs_url = f"{gateway_main.EXERCISES_SERVICE_URL}/exercises/definitions/"
             async with ServiceClient() as client:
                 defs_list = await client.get_json(
                     defs_url,
@@ -522,15 +576,28 @@ async def start_workout(workout_id: int, request: Request):
     async with httpx.AsyncClient() as client:
         workout_res = await client.get(f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/{workout_id}", headers=headers)
         if workout_res.status_code != 200:
-            return JSONResponse(content=workout_res.json(), status_code=workout_res.status_code)
+            try:
+                return JSONResponse(content=workout_res.json(), status_code=workout_res.status_code)
+            except ValueError:
+                return JSONResponse(
+                    content={"detail": workout_res.text or "Upstream error"},
+                    status_code=workout_res.status_code,
+                )
         workout_data = workout_res.json()
 
-    workout_data = await _assemble_workout_for_client(
-        workout_data=workout_data,
-        workout_id=workout_id,
-        headers=headers,
-        include=include,
-    )
+    try:
+        workout_data = await _assemble_workout_for_client(
+            workout_data=workout_data,
+            workout_id=workout_id,
+            headers=headers,
+            include=include,
+        )
+    except Exception:
+        gateway_main.logger.error(
+            "finish_workout_assemble_failed",
+            workout_id=workout_id,
+            exc_info=True,
+        )
     return JSONResponse(content=workout_data)
 
 
@@ -546,7 +613,11 @@ async def finish_workout(workout_id: int, request: Request):
     headers = gateway_main._forward_headers(request)
     include = _parse_include_expand(request)
 
-    async with httpx.AsyncClient() as client:
+    proxy_timeout = float(getattr(gateway_main, "_DEFAULT_PROXY_TIMEOUT", 45.0))
+    connect_timeout = float(getattr(gateway_main, "_DEFAULT_CONNECT_TIMEOUT", 10.0))
+    timeout = httpx.Timeout(connect=connect_timeout, read=proxy_timeout, write=proxy_timeout, pool=connect_timeout)
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
         active_res = await client.get(
             f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/sessions/{workout_id}/active",
             headers=headers,
@@ -558,30 +629,117 @@ async def finish_workout(workout_id: int, request: Request):
                 headers=headers,
             )
             if workout_res.status_code != 200:
-                return JSONResponse(content=workout_res.json(), status_code=workout_res.status_code)
-            workout_data = workout_res.json()
-            workout_data = await _assemble_workout_for_client(
-                workout_data=workout_data,
-                workout_id=workout_id,
-                headers=headers,
-                include=include,
-            )
+                try:
+                    return JSONResponse(content=workout_res.json(), status_code=workout_res.status_code)
+                except ValueError:
+                    return JSONResponse(
+                        content={"detail": workout_res.text or "Upstream error"},
+                        status_code=workout_res.status_code,
+                    )
+            try:
+                workout_data = workout_res.json()
+            except ValueError:
+                return JSONResponse(
+                    content={"detail": workout_res.text or "Invalid response from workouts service"},
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                )
+            try:
+                workout_data = await _assemble_workout_for_client(
+                    workout_data=workout_data,
+                    workout_id=workout_id,
+                    headers=headers,
+                    include=include,
+                )
+            except Exception:
+                gateway_main.logger.error(
+                    "finish_workout_assemble_failed",
+                    workout_id=workout_id,
+                    exc_info=True,
+                )
             return JSONResponse(content=workout_data)
 
-        active = active_res.json()
-        session_id = active.get("id")
+        try:
+            active = active_res.json()
+        except ValueError:
+            active = None
+            gateway_main.logger.error(
+                "session_active_parse_failed",
+                workout_id=workout_id,
+                status_code=active_res.status_code,
+                body_preview=(active_res.text or "")[:500],
+            )
+        session_id = active.get("id") if isinstance(active, dict) else None
+
+        if not session_id:
+            workout_res = await client.get(
+                f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/{workout_id}",
+                headers=headers,
+            )
+            if workout_res.status_code != 200:
+                try:
+                    return JSONResponse(content=workout_res.json(), status_code=workout_res.status_code)
+                except ValueError:
+                    return JSONResponse(
+                        content={"detail": workout_res.text or "Upstream error"},
+                        status_code=workout_res.status_code,
+                    )
+            try:
+                workout_data = workout_res.json()
+            except ValueError:
+                return JSONResponse(
+                    content={"detail": workout_res.text or "Invalid response from workouts service"},
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                )
+            try:
+                workout_data = await _assemble_workout_for_client(
+                    workout_data=workout_data,
+                    workout_id=workout_id,
+                    headers=headers,
+                    include=include,
+                )
+            except Exception:
+                gateway_main.logger.error(
+                    "finish_workout_assemble_failed",
+                    workout_id=workout_id,
+                    exc_info=True,
+                )
+            return JSONResponse(content=workout_data)
 
     body = await request.body()
-    async with httpx.AsyncClient() as client:
-        finish_res = await client.post(
-            f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/sessions/{session_id}/finish",
-            headers=headers,
-            content=body,
-        )
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            finish_res = await client.post(
+                f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/sessions/{session_id}/finish",
+                headers=headers,
+                content=body,
+            )
+        except (httpx.ReadTimeout, httpx.TimeoutException):
+            gateway_main.logger.error(
+                "workout_finish_timeout",
+                workout_id=workout_id,
+                session_id=session_id,
+                exc_info=True,
+            )
+            return JSONResponse(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                content={"detail": "Upstream timeout finishing workout session"},
+            )
         gateway_main.logger.debug("session_finish_response", workout_id=workout_id, status_code=finish_res.status_code)
-        if finish_res.status_code not in (200, 201):
-            return JSONResponse(content=finish_res.json(), status_code=finish_res.status_code)
-        finish_data = finish_res.json()
+        if finish_res.status_code not in (200, 201, 204):
+            try:
+                return JSONResponse(content=finish_res.json(), status_code=finish_res.status_code)
+            except ValueError:
+                return JSONResponse(
+                    content={"detail": finish_res.text or "Upstream error"},
+                    status_code=finish_res.status_code,
+                )
+
+        finish_data = None
+        if finish_res.status_code != 204:
+            try:
+                finish_data = finish_res.json()
+            except ValueError:
+                finish_data = None
 
     try:
         put_payload = {"status": "completed"}
@@ -592,7 +750,7 @@ async def finish_workout(workout_id: int, request: Request):
             if finish_data.get("duration_seconds") is not None:
                 put_payload["duration_seconds"] = finish_data["duration_seconds"]
         workout_put_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/{workout_id}"
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             put_res = await client.put(workout_put_url, headers=headers, json=put_payload)
             gateway_main.logger.debug(
                 "workout_update_after_finish",
@@ -609,18 +767,35 @@ async def finish_workout(workout_id: int, request: Request):
     except Exception:
         gateway_main.logger.error("Failed to invalidate profile cache for user", exc_info=True)
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         workout_res = await client.get(f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/{workout_id}", headers=headers)
         if workout_res.status_code != 200:
-            return JSONResponse(content=workout_res.json(), status_code=workout_res.status_code)
-        workout_data = workout_res.json()
+            try:
+                payload = workout_res.json()
+            except ValueError:
+                payload = {"detail": workout_res.text or "Upstream error"}
+            return JSONResponse(content=payload, status_code=workout_res.status_code)
+        try:
+            workout_data = workout_res.json()
+        except ValueError:
+            return JSONResponse(
+                content={"detail": workout_res.text or "Invalid response from workouts service"},
+                status_code=status.HTTP_502_BAD_GATEWAY,
+            )
 
-    workout_data = await _assemble_workout_for_client(
-        workout_data=workout_data,
-        workout_id=workout_id,
-        headers=headers,
-        include=include,
-    )
+    try:
+        workout_data = await _assemble_workout_for_client(
+            workout_data=workout_data,
+            workout_id=workout_id,
+            headers=headers,
+            include=include,
+        )
+    except Exception:
+        gateway_main.logger.error(
+            "finish_workout_assemble_failed",
+            workout_id=workout_id,
+            exc_info=True,
+        )
     return JSONResponse(content=workout_data)
 
 

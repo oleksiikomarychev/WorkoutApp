@@ -61,6 +61,20 @@ class _BaselineSet {
   const _BaselineSet({required this.reps, this.weight});
 }
 
+class _PendingSetUpdate {
+  final int? reps;
+  final double? weight;
+  final double? rpe;
+  final bool reloadAfter;
+
+  const _PendingSetUpdate({
+    required this.reps,
+    required this.weight,
+    required this.rpe,
+    required this.reloadAfter,
+  });
+}
+
 class WorkoutDetailScreen extends ConsumerWidget {
   final int workoutId;
 
@@ -69,7 +83,7 @@ class WorkoutDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
 
-    final workoutAsync = ref.watch(workoutProvider(workoutId));
+    final workoutAsync = ref.watch(workoutSWRProvider(workoutId));
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -95,15 +109,17 @@ class _WorkoutDetailContent extends StatefulWidget {
 class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   bool _isLoading = false;
   bool _isLoadingExercises = false;
+  final Set<int> _updatingInstanceIds = <int>{};
   List<ExerciseDefinition> _uniqueExercises = [];
   Workout? _workout;
-
-
+  WidgetRef? _ref;
   WorkoutSession? _activeSession;
   Timer? _sessionTimer;
   Duration _elapsed = Duration.zero;
   final ValueNotifier<Duration> _elapsedNotifier = ValueNotifier(Duration.zero);
   final Map<int, Set<int>> _completedByInstance = {};
+  final Set<String> _updatingSetKeys = <String>{};
+  final Map<String, _PendingSetUpdate> _pendingSetUpdates = <String, _PendingSetUpdate>{};
   bool _isTogglingSet = false;
 
 
@@ -139,8 +155,6 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
   double? _weight;
 
-  WidgetRef? _ref;
-
   @override
   void initState() {
     super.initState();
@@ -148,10 +162,12 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     _workout = widget.workout;
     _syncMetadataControllers();
 
+    _rebuildUniqueExercisesFromWorkout();
+
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _loadExercises();
+      _ensureExercisesLoaded();
       if (kDebugMode) {
         _fetchRawWorkoutData();
       }
@@ -168,17 +184,78 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   void didUpdateWidget(covariant _WorkoutDetailContent oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (oldWidget.workout.id != widget.workout.id) {
+    final oldId = oldWidget.workout.id;
+    final newId = widget.workout.id;
+
+    if (oldId != newId) {
       setState(() {
         _workout = widget.workout;
       });
       _syncMetadataControllers();
 
-      _loadExercises();
+      _rebuildUniqueExercisesFromWorkout();
+      _ensureExercisesLoaded();
       if (_workout?.id != null) {
         _loadActiveSession();
       }
+      return;
     }
+
+    if (oldWidget.workout != widget.workout) {
+      setState(() {
+        _workout = widget.workout;
+      });
+      _rebuildUniqueExercisesFromWorkout();
+      _ensureExercisesLoaded();
+      _reconcileEditors();
+    }
+  }
+
+  void _rebuildUniqueExercisesFromWorkout() {
+    final w = _workout;
+    if (w == null) return;
+
+    final Map<int, ExerciseDefinition> byId = <int, ExerciseDefinition>{};
+    for (final inst in w.exerciseInstances) {
+      final def = inst.exerciseDefinition;
+      if (def?.id == null) continue;
+      byId[def!.id!] = def;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _uniqueExercises = byId.values.toList();
+    });
+  }
+
+  Future<void> _ensureExercisesLoaded() async {
+    final w = _workout;
+    if (w == null) return;
+
+    if (_ref == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_ensureExercisesLoaded());
+      });
+      return;
+    }
+
+    final instances = w.exerciseInstances;
+    final hasInstances = instances.isNotEmpty;
+    final missingDefinitions = instances.any((i) => i.exerciseDefinition == null);
+    final hasAnyDefinitions = instances.any((i) => i.exerciseDefinition != null);
+
+    if (!hasInstances) {
+      _rebuildUniqueExercisesFromWorkout();
+      return;
+    }
+
+    if (hasAnyDefinitions && !missingDefinitions) {
+      _rebuildUniqueExercisesFromWorkout();
+      return;
+    }
+
+    await _loadExercises();
   }
 
   Future<void> _maybeShowMacroSuggestion() async {
@@ -253,6 +330,38 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   Future<void> _applyReadinessScaling() async {
     if (_workout == null) return;
     if (_isApplyingReadiness) return;
+
+    final hasMissingIds = _workout!.exerciseInstances.any((inst) {
+      if (inst.id == null) return true;
+      return inst.sets.any((s) => s.id == null);
+    });
+    if (hasMissingIds) {
+      try {
+        await _loadExercises();
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to refresh workout before applying readiness')),
+          );
+        }
+        return;
+      }
+
+      if (_workout == null) return;
+      final stillMissingIds = _workout!.exerciseInstances.any((inst) {
+        if (inst.id == null) return true;
+        return inst.sets.any((s) => s.id == null);
+      });
+      if (stillMissingIds) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Workout is not ready for set updates (missing ids)')),
+          );
+        }
+        return;
+      }
+    }
+
     setState(() {
       _isApplyingReadiness = true;
     });
@@ -265,12 +374,19 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     int updates = 0;
     try {
 
+      final workoutService = _ref!.read(workoutServiceProvider);
+      final List<Future<ExerciseInstance>> updateFutures = <Future<ExerciseInstance>>[];
+
       for (final instance in _workout!.exerciseInstances) {
+        bool instanceChanged = false;
+        final List<ExerciseSetDto> newSets = <ExerciseSetDto>[];
+
         for (int i = 0; i < instance.sets.length; i++) {
           final set = instance.sets[i];
           final String key = _editorKey(instance, i, set);
           final _BaselineSet base = _baselineSets[key] ?? _BaselineSet(reps: set.reps, weight: set.weight);
           final double? baseWeight = base.weight;
+
           double? newWeight;
           bool weightChanged = false;
           if (baseWeight != null) {
@@ -278,23 +394,50 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
             final double step = rawScaled <= 20.0 ? 1.0 : 2.5;
             newWeight = (_roundToStep(rawScaled, step).clamp(0.0, double.infinity));
             final double currentWeight = set.weight ?? baseWeight;
-            weightChanged = (newWeight - currentWeight).abs() > 0.0001;
+            weightChanged = newWeight != null && (newWeight - currentWeight).abs() > 0.0001;
           }
+
           final int newReps = _scaleRepsWithReadiness
               ? ((base.reps * factor).round().clamp(1, 10000))
               : set.reps;
 
           final bool repsChanged = newReps != set.reps;
           final bool changed = repsChanged || weightChanged;
-          if (!changed) continue;
+          if (!changed) {
+            newSets.add(set);
+            continue;
+          }
 
-          await _updateSetField(
-            instance,
-            i,
-            reps: repsChanged ? newReps : null,
-            weight: weightChanged ? newWeight : null,
+          final updatedSet = set.copyWith(
+            reps: repsChanged ? newReps : set.reps,
+            weight: weightChanged ? (newWeight ?? set.weight) : set.weight,
+            order: set.order ?? i,
           );
+          newSets.add(updatedSet);
+          instanceChanged = true;
           updates++;
+        }
+
+        if (!instanceChanged) continue;
+        if (instance.id == null) continue;
+
+        final updatedInstance = instance.copyWith(sets: newSets);
+        updateFutures.add(workoutService.updateExerciseInstance(updatedInstance));
+      }
+
+      if (updateFutures.isNotEmpty) {
+        final savedInstances = await Future.wait(updateFutures);
+        if (_workout != null && mounted) {
+          setState(() {
+            final updatedInstances = List<ExerciseInstance>.from(_workout!.exerciseInstances);
+            for (final saved in savedInstances) {
+              final idx = updatedInstances.indexWhere((i) => i.id == saved.id);
+              if (idx != -1) {
+                updatedInstances[idx] = saved;
+              }
+            }
+            _workout = _workout!.copyWith(exerciseInstances: updatedInstances);
+          });
         }
       }
       _reconcileEditors();
@@ -319,6 +462,14 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         setState(() {
           _isApplyingReadiness = false;
         });
+      }
+
+      if (updates > 0) {
+        try {
+          await _loadExercises();
+        } catch (_) {
+          // ignore: empty_catches
+        }
       }
     }
   }
@@ -372,18 +523,42 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     int? reps,
     double? weight,
     double? rpe,
+    bool reloadAfter = false,
   }) async {
-    if (_isLoading) return;
-    if (setIndex < 0 || setIndex >= instance.sets.length) return;
+    final resolvedInstance = (_workout != null && instance.id != null)
+        ? (_workout!.exerciseInstances
+            .where((i) => i.id == instance.id)
+            .cast<ExerciseInstance?>()
+            .firstWhere((i) => i != null, orElse: () => instance))!
+        : instance;
+
+    if (setIndex < 0 || setIndex >= resolvedInstance.sets.length) return;
+
+    if (_ref == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to update set: app state not ready')),
+        );
+      }
+      return;
+    }
+
+    final current = resolvedInstance.sets[setIndex];
+    final String key = _editorKey(resolvedInstance, setIndex, current);
+    if (_updatingSetKeys.contains(key)) {
+      _pendingSetUpdates[key] = _PendingSetUpdate(
+        reps: reps,
+        weight: weight,
+        rpe: rpe,
+        reloadAfter: reloadAfter,
+      );
+      return;
+    }
+    _updatingSetKeys.add(key);
 
     try {
-      setState(() {
-        _isLoading = true;
-      });
-
-      final current = instance.sets[setIndex];
       final oldSetId = current.id;
-      final wasCompleted = instance.id != null && oldSetId != null && _isSetCompleted(instance.id!, oldSetId);
+      final wasCompleted = resolvedInstance.id != null && oldSetId != null && _isSetCompleted(resolvedInstance.id!, oldSetId);
 
       final updatedSet = current.copyWith(
         reps: reps ?? current.reps,
@@ -396,10 +571,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       ExerciseInstance savedInstance;
       final setId = updatedSet.id ?? current.id;
 
-      if (instance.id != null && setId != null) {
+      if (resolvedInstance.id != null && setId != null) {
 
         savedInstance = await workoutService.updateExerciseSet(
-          instanceId: instance.id!,
+          instanceId: resolvedInstance.id!,
           setId: setId,
           reps: updatedSet.reps,
           weight: updatedSet.weight,
@@ -408,9 +583,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         );
       } else {
 
-        final newSets = List<ExerciseSetDto>.from(instance.sets);
+        final newSets = List<ExerciseSetDto>.from(resolvedInstance.sets);
         newSets[setIndex] = updatedSet;
-        final updatedInstance = instance.copyWith(sets: newSets);
+        final updatedInstance = resolvedInstance.copyWith(sets: newSets);
         savedInstance = await workoutService.updateExerciseInstance(updatedInstance);
       }
 
@@ -424,12 +599,16 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           }
         });
       }
+
       final newSets = savedInstance.sets;
       final newSetId = (setIndex >= 0 && setIndex < newSets.length) ? newSets[setIndex].id : null;
-      if (wasCompleted && instance.id != null && oldSetId != null && newSetId != null && newSetId != oldSetId) {
-        await _handleCompletedSetIdMigration(instance.id!, oldSetId, newSetId);
+      if (wasCompleted && resolvedInstance.id != null && oldSetId != null && newSetId != null && newSetId != oldSetId) {
+        await _handleCompletedSetIdMigration(resolvedInstance.id!, oldSetId, newSetId);
       }
-      await _loadExercises();
+
+      if (reloadAfter) {
+        await _loadExercises();
+      }
       _reconcileEditors();
     } catch (e) {
       if (mounted) {
@@ -438,12 +617,20 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      } else {
-        _isLoading = false;
+      _updatingSetKeys.remove(key);
+
+      final pending = _pendingSetUpdates.remove(key);
+      if (pending != null) {
+        unawaited(
+          _updateSetField(
+            resolvedInstance,
+            setIndex,
+            reps: pending.reps,
+            weight: pending.weight,
+            rpe: pending.rpe,
+            reloadAfter: pending.reloadAfter,
+          ),
+        );
       }
     }
   }
@@ -555,12 +742,22 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   }
 
   Future<void> _addSetToInstance(ExerciseInstance instance) async {
-    if (_isLoading) return;
+    final instanceId = instance.id;
+    if (instanceId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cannot add set: exercise is not saved yet')),
+        );
+      }
+      return;
+    }
+
+    if (_updatingInstanceIds.contains(instanceId)) return;
 
     try {
       print('Adding set to instance ${instance.id}');
       setState(() {
-        _isLoading = true;
+        _updatingInstanceIds.add(instanceId);
       });
 
 
@@ -593,16 +790,25 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
       print('Updated instance with new set: ${updatedInstance.sets.length} total sets');
 
+      if (_workout != null && mounted) {
+        setState(() {
+          final updatedInstances = List<ExerciseInstance>.from(_workout!.exerciseInstances);
+          final index = updatedInstances.indexWhere((i) => i.id == instance.id);
+          if (index != -1) {
+            updatedInstances[index] = updatedInstance;
+            _workout = _workout!.copyWith(exerciseInstances: updatedInstances);
+          }
+        });
+        _reconcileEditors(triggerRebuild: false);
+      }
 
       final workoutService = _ref!.read(workoutServiceProvider);
       final savedInstance = await workoutService.updateExerciseInstance(updatedInstance);
 
       print('Successfully updated instance in backend');
 
-
       if (_workout != null && mounted) {
         setState(() {
-
           final updatedInstances = List<ExerciseInstance>.from(_workout!.exerciseInstances);
           final index = updatedInstances.indexWhere((i) => i.id == savedInstance.id);
           if (index != -1) {
@@ -610,8 +816,8 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
             _workout = _workout!.copyWith(exerciseInstances: updatedInstances);
           }
         });
+        _reconcileEditors(triggerRebuild: false);
       }
-      _reconcileEditors();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -627,7 +833,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     } finally {
       if (mounted) {
         setState(() {
-          _isLoading = false;
+          _updatingInstanceIds.remove(instanceId);
         });
       }
     }
@@ -648,6 +854,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
 
       final exerciseListIds = updatedWorkout.exerciseInstances
+          .where((e) => e.exerciseDefinition == null)
           .map((e) => e.exerciseListId)
           .toSet()
           .toList();
@@ -664,26 +871,23 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
 
         final updatedInstances = updatedWorkout.exerciseInstances.map((instance) {
+          final existing = instance.exerciseDefinition;
+          if (existing != null) return instance;
           final def = exerciseMap[instance.exerciseListId];
           return instance.copyWith(exerciseDefinition: def);
         }).toList();
 
-
-        final exerciseDefinitions = exerciseMap.values.toList();
-
         setState(() {
           _workout = updatedWorkout.copyWith(exerciseInstances: updatedInstances);
-          _uniqueExercises = exerciseDefinitions.cast<ExerciseDefinition>();
-          print('Found ${_uniqueExercises.length} unique exercises');
         });
       } else {
         setState(() {
           _workout = updatedWorkout;
-          _uniqueExercises = [];
-          print('No exercise instances found in workout');
         });
       }
-          _reconcileEditors();
+
+      _rebuildUniqueExercisesFromWorkout();
+      _reconcileEditors();
     } catch (e, stackTrace) {
       print('Error loading exercises: $e');
       print('Stack trace: $stackTrace');
@@ -797,7 +1001,12 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       final saved = await svc.updateWorkout(updated);
       if (!mounted) return;
       setState(() {
-        _workout = saved;
+        final currentInstances = _workout?.exerciseInstances ?? const <ExerciseInstance>[];
+        final savedInstances = saved.exerciseInstances;
+        final savedLooksUsable = savedInstances.isNotEmpty && savedInstances.any((ei) => ei.id != null);
+        _workout = savedLooksUsable
+            ? saved
+            : saved.copyWith(exerciseInstances: currentInstances);
       });
       _syncMetadataControllers();
       if (mounted) {
@@ -922,7 +1131,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       setState(() => _isLoading = true);
 
       final workoutSvc = _ref!.read(workoutServiceProvider);
-      final updated = await workoutSvc.startWorkoutBff(_workout!.id!, includeDefinitions: true);
+      final updated = await workoutSvc.startWorkoutBff(_workout!.id!, includeDefinitions: false);
       if (!mounted) return;
       setState(() {
         _workout = updated;
@@ -932,6 +1141,14 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       });
 
       await _loadActiveSession();
+
+      try {
+        await _ref!.read(apiClientProvider).invalidateCacheGroups([
+          'workouts:detail',
+          'workouts:detail:${_workout!.id!}',
+          'workouts:list',
+        ]);
+      } catch (_) {}
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Workout started')),
       );
@@ -955,7 +1172,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       final workoutSvc = _ref!.read(workoutServiceProvider);
       final updated = await workoutSvc.finishWorkoutBff(
         _workout!.id!,
-        includeDefinitions: true,
+        includeDefinitions: false,
         cancelled: cancelled,
         markWorkoutCompleted: markWorkoutCompleted,
       );
@@ -971,6 +1188,36 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           _durationCtrl.text = (updated.durationSeconds!).toString();
         }
       });
+
+      try {
+        await _ref!.read(apiClientProvider).invalidateCacheGroups([
+          'workouts:detail',
+          'workouts:detail:${updated.id}',
+          'workouts:list',
+        ]);
+      } catch (_) {}
+
+      if (!cancelled && markWorkoutCompleted) {
+        final appliedPlanId = updated.appliedPlanId;
+        if (appliedPlanId != null) {
+          try {
+            final api = _ref!.read(apiClientProvider);
+            await api.post(
+              ApiConfig.advanceAppliedPlanIndexEndpoint(appliedPlanId.toString()),
+              <String, dynamic>{},
+              queryParams: const <String, dynamic>{'by': '1'},
+              context: 'WorkoutDetail.advanceAppliedPlanIndex',
+            );
+            await api.invalidateCacheGroups(const [
+              'plans:active',
+              'plans:active_workouts',
+            ]);
+          } catch (e) {
+            _d('Failed to advance applied plan index: $e');
+          }
+        }
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(cancelled ? 'Session cancelled' : 'Workout finished')),
       );
@@ -1043,19 +1290,53 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     if (instance.id == null || set.id == null) return;
     if (_isTogglingSet) return;
     _isTogglingSet = true;
+
+    final instanceId = instance.id!;
+    final setId = set.id!;
+    final desired = !_isSetCompleted(instanceId, setId);
+
+    final current = _completedByInstance[instanceId] ?? <int>{};
+    final updated = Set<int>.from(current);
+    if (desired) {
+      updated.add(setId);
+    } else {
+      updated.remove(setId);
+    }
+    if (updated.isEmpty) {
+      _completedByInstance.remove(instanceId);
+    } else {
+      _completedByInstance[instanceId] = updated;
+    }
+    if (mounted) {
+      setState(() {});
+    }
     try {
       final svc = _ref!.read(workoutSessionServiceProvider);
-      final desired = !_isSetCompleted(instance.id!, set.id!);
       final session = await svc.updateSetCompletion(
         sessionId: _activeSession!.id!,
-        instanceId: instance.id!,
-        setId: set.id!,
+        instanceId: instanceId,
+        setId: setId,
         completed: desired,
       );
       if (!mounted) return;
       setState(() => _activeSession = session);
       _parseProgressFromSession();
     } catch (e) {
+      final rollbackCurrent = _completedByInstance[instanceId] ?? <int>{};
+      final rollback = Set<int>.from(rollbackCurrent);
+      if (desired) {
+        rollback.remove(setId);
+      } else {
+        rollback.add(setId);
+      }
+      if (rollback.isEmpty) {
+        _completedByInstance.remove(instanceId);
+      } else {
+        _completedByInstance[instanceId] = rollback;
+      }
+      if (mounted) {
+        setState(() {});
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to update set completion: $e')),
@@ -1146,6 +1427,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         setState(() {});
       }
       return;
+    }
+    if (localChanged && mounted) {
+      setState(() {});
     }
     try {
       final svc = _ref!.read(workoutSessionServiceProvider);
@@ -1511,36 +1795,40 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       );
 
       if (selectedExercise != null) {
-        final result = await Navigator.push<Map<String, dynamic>>(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ExerciseFormScreen(
-              exercise: selectedExercise,
-              workoutId: _workout!.id!,
-              defaultOrder: _workout?.exerciseInstances.length,
+        if (selectedExercise.id == null) {
+          throw Exception('Exercise ID is required');
+        }
+
+        final instance = ExerciseInstance(
+          exerciseListId: selectedExercise.id!,
+          exerciseDefinition: selectedExercise,
+          workoutId: _workout!.id!,
+          order: _workout?.exerciseInstances.length,
+          sets: const [
+            ExerciseSetDto(
+              reps: 0,
+              weight: 0.0,
+              order: 0,
             ),
-          ),
+          ],
         );
 
-        final instance = result?['instance'];
-        if (instance is ExerciseInstance) {
-          final workoutService = _ref!.read(workoutServiceProvider);
-          setState(() => _isLoading = true);
-          try {
-            final created = await workoutService.createExerciseInstance(instance);
-            _d('Created new exercise instance: ${created.id}');
-            await _loadExercises();
-          } finally {
-            if (mounted) {
-              setState(() => _isLoading = false);
-            }
-          }
-
+        final workoutService = _ref!.read(workoutServiceProvider);
+        setState(() => _isLoading = true);
+        try {
+          final created = await workoutService.createExerciseInstance(instance);
+          _d('Created new exercise instance: ${created.id}');
+          await _loadExercises();
+        } finally {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Exercise added successfully')),
-            );
+            setState(() => _isLoading = false);
           }
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Exercise added successfully')),
+          );
         }
       }
     } catch (e, stackTrace) {
@@ -1871,9 +2159,11 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: AppShadows.sm,
       ),
-      child: Row(
-        children: [
-          Container(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 420;
+
+          Widget icon = Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: const Color(0xFFE8ECFF),
@@ -1884,29 +2174,30 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
               color: AppColors.primary,
               size: 20,
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Готовность к тренировке',
-                  style: AppTextStyles.titleMedium.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+          );
+
+          Widget titleBlock = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Готовность к тренировке',
+                maxLines: isNarrow ? 2 : 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.titleMedium.copyWith(
+                  fontWeight: FontWeight.w600,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'Коэффициент нагрузки: x${_readinessFactor(_readinessSlider).toStringAsFixed(2)}',
-                  style: AppTextStyles.bodySmall.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Коэффициент нагрузки: x${_readinessFactor(_readinessSlider).toStringAsFixed(2)}',
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: AppColors.textSecondary,
                 ),
-              ],
-            ),
-          ),
-          Row(
+              ),
+            ],
+          );
+
+          Widget controls = Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               SizedBox(
@@ -1964,9 +2255,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                 ),
               ),
             ],
-          ),
-          const SizedBox(width: 12),
-          ElevatedButton(
+          );
+
+          Widget applyButton = ElevatedButton(
             onPressed: (_isApplyingReadiness || _workout == null) ? null : _applyReadinessScaling,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
@@ -1983,8 +2274,42 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   )
                 : const Text('Применить'),
-          ),
-        ],
+          );
+
+          if (!isNarrow) {
+            return Row(
+              children: [
+                icon,
+                const SizedBox(width: 12),
+                Expanded(child: titleBlock),
+                controls,
+                const SizedBox(width: 12),
+                applyButton,
+              ],
+            );
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  icon,
+                  const SizedBox(width: 12),
+                  Expanded(child: titleBlock),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: controls),
+                  const SizedBox(width: 12),
+                  Expanded(child: applyButton),
+                ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -2175,6 +2500,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
   Widget _buildInstanceCard(ExerciseInstance instance) {
     final theme = Theme.of(context);
+    final isUpdating = instance.id != null && _updatingInstanceIds.contains(instance.id!);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -2218,8 +2544,14 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.add_circle_outline, size: 20),
-                      onPressed: () => _addSetToInstance(instance),
+                      icon: isUpdating
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.add_circle_outline, size: 20),
+                      onPressed: (isUpdating || _isLoading) ? null : () => _addSetToInstance(instance),
                       tooltip: 'Add set',
                       color: AppColors.primary,
                       padding: EdgeInsets.zero,
@@ -2494,7 +2826,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     );
   }
 
-  void _reconcileEditors() {
+  void _reconcileEditors({bool triggerRebuild = true}) {
     if (_workout == null) return;
     final validKeys = <String>{};
     _isSyncingFields = true;
@@ -2528,7 +2860,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       _setEditors[k]?.dispose();
       _setEditors.remove(k);
     }
-    if (mounted) setState(() {});
+    if (triggerRebuild && mounted) setState(() {});
   }
 
   @override

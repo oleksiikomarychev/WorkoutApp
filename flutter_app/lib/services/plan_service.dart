@@ -13,6 +13,26 @@ class PlanService extends BaseApiService {
 
   PlanService({required this.apiClient}) : super(apiClient);
 
+  Stream<AppliedCalendarPlan?> getActivePlanSWR({int ttlSeconds = 60}) async* {
+    final endpoint = ApiConfig.getActivePlanEndpoint;
+    yield* apiClient
+        .getSWR(
+          endpoint,
+          context: 'PlanService.getActivePlanSWR',
+          ttlSeconds: ttlSeconds,
+          groups: const ['plans:active'],
+          skipNetworkIfFresh: false,
+          timeout: const Duration(seconds: 30),
+        )
+        .map((data) {
+      if (data == null) return null;
+      if (data is Map<String, dynamic>) {
+        return AppliedCalendarPlan.fromJson(data);
+      }
+      return null;
+    });
+  }
+
   Future<AppliedCalendarPlan?> getActivePlan() async {
     try {
       final endpoint = ApiConfig.getActivePlanEndpoint;
@@ -20,6 +40,7 @@ class PlanService extends BaseApiService {
       final response = await apiClient.get(
         endpoint,
         context: 'PlanService.getActivePlan',
+        timeout: const Duration(seconds: 30),
       );
       if (response is Map<String, dynamic>) {
         _logger.d('Active plan fetched successfully');
@@ -43,9 +64,20 @@ class PlanService extends BaseApiService {
         endpoint,
         {},
         queryParams: {'user_max_ids': userMaxIds.join(',')},
+        timeout: const Duration(seconds: 120),
         context: 'PlanService.applyPlan',
       );
-      return response != null;
+      final ok = response != null;
+      if (ok) {
+        await apiClient.invalidateCacheGroups(const [
+          'plans:active',
+          'plans:list',
+          'plans:variants',
+          'workouts:list',
+          'workouts:history_all',
+        ]);
+      }
+      return ok;
     } catch (e, stackTrace) {
       handleError('Failed to apply plan', e, stackTrace);
       return false;
@@ -114,6 +146,15 @@ class PlanService extends BaseApiService {
       final ok = response != null;
       if (!ok) {
         _logger.w('Cancel applied plan returned null response');
+      } else {
+        await apiClient.invalidateCacheGroups([
+          'plans:active',
+          'plans:list',
+          'plans:variants',
+          'workouts:list',
+          'workouts:history_all',
+          'workouts:history:$appliedPlanId',
+        ]);
       }
       return ok;
     } catch (e, stackTrace) {

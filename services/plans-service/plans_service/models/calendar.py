@@ -65,7 +65,7 @@ class AppliedCalendarPlan(Base):
     calendar_plan_id = Column(Integer, ForeignKey("calendar_plans.id", ondelete="CASCADE"), nullable=False)
     start_date = Column(DateTime, default=datetime.utcnow)
     end_date = Column(DateTime)
-    is_active = Column(Boolean, default=True)
+    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     user_max_ids = Column(JSON, nullable=True)
     current_workout_index = Column(Integer, default=0)
     user_id = Column(String(255), nullable=False, index=True)

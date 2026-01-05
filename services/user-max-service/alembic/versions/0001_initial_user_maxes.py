@@ -6,10 +6,6 @@ Create Date: 2025-08-27 12:08:00.000000
 """
 
 from collections.abc import Sequence
-from typing import Union
-
-import sqlalchemy as sa
-from alembic import op
 
 revision: str = "0001_initial_user_maxes"
 down_revision: str | None = None
@@ -18,14 +14,8 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "user_maxes",
-        sa.Column("id", sa.Integer, primary_key=True, index=True),
-        sa.Column("exercise_id", sa.Integer, nullable=False),
-        sa.Column("max_weight", sa.Integer, nullable=False),
-        sa.Column("rep_max", sa.Integer, nullable=False),
-    )
+    pass
 
 
 def downgrade() -> None:
-    op.drop_table("user_maxes")
+    pass

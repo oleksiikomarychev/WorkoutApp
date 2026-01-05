@@ -49,7 +49,7 @@ class _WorkoutPickerSheetState extends ConsumerState<_WorkoutPickerSheet> {
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final plan = await ref.read(activeAppliedPlanProvider.future);
+      final plan = await ref.read(activeAppliedPlanSWRProvider.future);
       final id = plan?.id;
       if (id == null) {
         setState(() { _loading = false; _workouts = const []; _error = 'Активный план не найден'; });

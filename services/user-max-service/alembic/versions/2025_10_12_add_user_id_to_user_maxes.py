@@ -34,13 +34,16 @@ def upgrade() -> None:
     else:
         column_info = columns["user_id"]
         if not isinstance(column_info["type"], sa.String):
+            alter_kwargs = {}
+            if bind.dialect.name == "postgresql":
+                alter_kwargs["postgresql_using"] = "user_id::text"
             with op.batch_alter_table("user_maxes", schema=None) as batch_op:
                 batch_op.alter_column(
                     "user_id",
                     existing_type=column_info["type"],
                     type_=sa.String(length=255),
                     existing_nullable=column_info["nullable"],
-                    postgresql_using="user_id::text",
+                    **alter_kwargs,
                 )
 
         op.execute(sa.text("UPDATE user_maxes SET user_id = 'legacy-user' WHERE user_id IS NULL"))

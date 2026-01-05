@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:workout_app/widgets/primary_app_bar.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:provider/provider.dart' as pv;
 import 'package:workout_app/widgets/assistant_chat_host.dart';
+import 'package:workout_app/widgets/floating_header_bar.dart';
+import 'package:workout_app/services/chat_service.dart';
 
 import '../models/calendar_plan.dart';
 import '../models/exercise_definition.dart';
@@ -86,32 +90,103 @@ class DebugScreen extends StatelessWidget {
     return AssistantChatHost(
       builder: (context, openChat) {
         return Scaffold(
-          appBar: PrimaryAppBar(
-            title: 'Debug Screen',
-            onTitleTap: openChat,
+          body: SafeArea(
+            child: Stack(
+              children: [
+                ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 104, 16, 16),
+                  children: [
+                    ListTile(
+                      title: const Text('Reset app state'),
+                      onTap: () {},
+                    ),
+                    ListTile(
+                      title: const Text('Clear cache'),
+                      onTap: () {},
+                    ),
+                    const Divider(),
+                    ...screens.entries.map((entry) {
+                      return ListTile(
+                        title: Text(entry.key),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: entry.value)),
+                      );
+                    }),
+                  ],
+                ),
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: FloatingHeaderBar(
+                    title: 'Debug Screen',
+                    onTitleTap: openChat,
+                    actions: [
+                      _buildOverflowMenu(context),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-          body: ListView(
-        children: [
-          ListTile(
-            title: const Text('Reset app state'),
-            onTap: () {},
+        );
+      },
+    );
+  }
+
+  Widget _buildOverflowMenu(BuildContext context) {
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.more_vert),
+      onSelected: (value) {
+        if (value == 'logout') {
+          _handleLogout(context);
+        }
+      },
+      itemBuilder: (context) => const [
+        PopupMenuItem(
+          value: 'logout',
+          child: Text('Log out'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _handleLogout(BuildContext context) async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Выйти из аккаунта?'),
+        content: const Text('Вы уверены, что хотите выйти?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Отмена'),
           ),
-          ListTile(
-            title: const Text('Clear cache'),
-            onTap: () {},
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Выйти'),
           ),
-          const Divider(),
-          ...screens.entries.map((entry) {
-            return ListTile(
-              title: Text(entry.key),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: entry.value)),
-            );
-          }),
         ],
       ),
     );
-      },
-    );
+
+    if (shouldLogout != true || !context.mounted) return;
+
+    try {
+      try {
+        final chat = pv.Provider.of<ChatService>(context, listen: false);
+        await chat.disconnect();
+      } catch (_) {}
+      await FirebaseAuth.instance.signOut();
+      try {
+        await GoogleSignIn().signOut();
+      } catch (_) {}
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ошибка при выходе: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Map<String, WidgetBuilder> _coachAndSocialScreens() {

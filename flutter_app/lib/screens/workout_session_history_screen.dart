@@ -17,39 +17,7 @@ class WorkoutSessionHistoryScreen extends ConsumerStatefulWidget {
 
 class _WorkoutSessionHistoryScreenState extends ConsumerState<WorkoutSessionHistoryScreen> {
   final DateFormat _dateFormat = DateFormat('yyyy-MM-dd HH:mm');
-  bool _isLoading = false;
-  String? _error;
-  List<WorkoutSession> _sessions = const [];
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-    try {
-      final svc = ref.read(workoutSessionServiceProvider);
-      final items = await svc.listSessions(widget.workoutId);
-      setState(() {
-        _sessions = items;
-        if (items.isEmpty) {
-          _error = 'История пуста';
-        }
-      });
-    } catch (e) {
-      setState(() {
-        _error = 'Ошибка загрузки: $e';
-        _sessions = const [];
-      });
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
+  bool _hasValue = false;
 
   String _formatDate(DateTime? dt) => dt == null ? '-' : _dateFormat.format(dt.toLocal());
 
@@ -84,6 +52,10 @@ class _WorkoutSessionHistoryScreenState extends ConsumerState<WorkoutSessionHist
 
   @override
   Widget build(BuildContext context) {
+    final sessionsAsync = ref.watch(sessionsHistorySWRProvider(widget.workoutId));
+
+    final canShowLoader = !_hasValue && sessionsAsync.isLoading;
+
     return AssistantChatHost(
       builder: (context, openChat) {
         return Scaffold(
@@ -94,20 +66,32 @@ class _WorkoutSessionHistoryScreenState extends ConsumerState<WorkoutSessionHist
             actions: [
               IconButton(
                 icon: const Icon(Icons.refresh),
-                onPressed: _isLoading ? null : _load,
+                onPressed: () {
+                  ref.invalidate(sessionsHistorySWRProvider(widget.workoutId));
+                },
               ),
             ],
           ),
-          body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
-              : _sessions.isEmpty
-                  ? const Center(child: Text('Нет данных для отображения'))
-                  : ListView.builder(
-                      itemCount: _sessions.length,
-                      itemBuilder: (_, i) => _tile(_sessions[i]),
-                    ),
+          body: sessionsAsync.when(
+            loading: () => canShowLoader
+                ? const Center(child: CircularProgressIndicator())
+                : const SizedBox.shrink(),
+            error: (e, _) => Center(child: Text('Ошибка загрузки: $e', style: const TextStyle(color: Colors.red))),
+            data: (sessions) {
+              if (!_hasValue) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) setState(() => _hasValue = true);
+                });
+              }
+              if (sessions.isEmpty) {
+                return const Center(child: Text('Нет данных для отображения'));
+              }
+              return ListView.builder(
+                itemCount: sessions.length,
+                itemBuilder: (_, i) => _tile(sessions[i]),
+              );
+            },
+          ),
         );
       },
     );

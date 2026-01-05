@@ -24,9 +24,14 @@ import 'package:workout_app/config/constants/route_names.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-
-  await dotenv.load(fileName: 'assets/env/app.env');
-
+  try {
+    await dotenv.load(fileName: 'assets/env/app.env', isOptional: true);
+  } catch (e) {
+    dotenv.testLoad(fileInput: '');
+    if (kDebugMode) {
+      debugPrint('dotenv load skipped: $e');
+    }
+  }
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,

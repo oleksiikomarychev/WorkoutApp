@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart' as pv;
 import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/services/api_client.dart';
+import 'package:workout_app/services/base_api_service.dart';
 
 
 class AuthMeLoader extends StatefulWidget {
@@ -28,16 +29,26 @@ class _AuthMeLoaderState extends State<AuthMeLoader> {
 
   Future<void> _callAuthMe() async {
     try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        return;
+      }
+      try {
+        final token = await user.getIdToken(true);
+        if (token == null || token.isEmpty) {
+          return;
+        }
+      } catch (_) {
+        return;
+      }
       final api = pv.Provider.of<ApiClient>(context, listen: false);
       await api.get(ApiConfig.buildEndpoint('/auth/me'));
     } catch (e) {
-
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        try {
-          await FirebaseAuth.instance.signOut();
-        } catch (_) {}
+      final shouldLogout = e is ApiException && (e.statusCode == 401 || e.statusCode == 403);
+      if (!shouldLogout) {
+        return;
       }
+      return;
     }
   }
 

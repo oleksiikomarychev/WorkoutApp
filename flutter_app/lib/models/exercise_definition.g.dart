@@ -21,6 +21,9 @@ _$ExerciseDefinitionImpl _$$ExerciseDefinitionImplFromJson(
           .toList(),
       movementType: json['movement_type'] as String?,
       region: json['region'] as String?,
+      rootExerciseId: (json['root_exercise_id'] as num?)?.toInt(),
+      imageUrl: json['image_url'] as String?,
+      gifUrl: json['gif_url'] as String?,
       oneRepMax: (json['oneRepMax'] as num?)?.toDouble(),
     );
 
@@ -35,5 +38,8 @@ Map<String, dynamic> _$$ExerciseDefinitionImplToJson(
       'synergist_muscles': instance.synergistMuscles,
       'movement_type': instance.movementType,
       'region': instance.region,
+      'root_exercise_id': instance.rootExerciseId,
+      'image_url': instance.imageUrl,
+      'gif_url': instance.gifUrl,
       'oneRepMax': instance.oneRepMax,
     };

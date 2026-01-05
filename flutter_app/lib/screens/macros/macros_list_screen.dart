@@ -28,7 +28,7 @@ class MacrosListScreen extends ConsumerWidget {
                 icon: const Icon(Icons.visibility),
                 tooltip: 'Preview/Apply',
                 onPressed: () async {
-                  final active = await ref.read(activeAppliedPlanProvider.future);
+                  final active = await ref.read(activeAppliedPlanSWRProvider.future);
                   final id = active?.id;
                   if (id == null) {
                     if (!context.mounted) return;

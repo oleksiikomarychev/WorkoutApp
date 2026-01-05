@@ -63,10 +63,82 @@ The API Gateway will validate bearer tokens and inject the `X-User-Id` header fo
 
 ## AI Agent Flow
 
-![AI Agent pipeline](gateway/gateway_app/image/AI_Agent_pipeline.png)
+The agent-service implements a **screen-aware agentic system** where available AI tools are dynamically determined by the user's current app screen.
 
-- **Starter**: `services/agent-service/agent_service/main.py` boots FastAPI and creates a session in `ConversationGraph`.
-- **Dialogue Brain**: `services/agent-service/agent_service/services/conversation_graph.py` runs the FSM, calls `AutonomyManager`, and decides which questions to ask.
-- **Data Refinement**: `AutonomyManager` coordinates with prompts from `prompts/conversation.py`, normalizes answers, and checks readiness for generation.
-- **Plan Generation**: `services/agent-service/agent_service/services/plan_generation.py` orchestrates staged LLM steps and assembles the `TrainingPlan`.
-- **Integrations**: `services/agent-service/agent_service/services/plans_service.py` and `services/agent-service/agent_service/services/rpe_rpc.py` persist the result and notify the RPE service.
+### Architecture Overview
+
+```
+┌─────────────────┐     WebSocket      ┌──────────────────────────────────────┐
+│   Flutter App   │◄──────────────────►│           agent-service              │
+│  (screen state) │                    │                                      │
+└────────┬────────┘                    │  ┌────────────────────────────────┐  │
+         │                             │  │     ScreenToolsBuilder         │  │
+         │ screen="active_plan"        │  │  screen → available tools      │  │
+         │ entities={...}              │  └───────────────┬────────────────┘  │
+         │ selection={...}             │                  │                   │
+         ▼                             │                  ▼                   │
+┌─────────────────┐                    │  ┌────────────────────────────────┐  │
+│ Session Context │───────────────────►│  │   LangChain Tool Agent         │  │
+│                 │                    │  │  (Gemini 2.5 Flash)            │  │
+└─────────────────┘                    │  │  - selects tool                │  │
+                                       │  │  - extracts arguments          │  │
+                                       │  │  - executes handler            │  │
+                                       │  └────────────────────────────────┘  │
+                                       └──────────────────────────────────────┘
+```
+
+### Screen-Dependent Tools
+
+| Screen | Available Tools | Use Cases |
+|--------|-----------------|-----------|
+| `active_plan` | `schedule_shift`, `mass_edit`, `plan_analysis` | Shift dates, bulk edit sets/weights, analyze plan |
+| `coach_athlete_plan` | `mass_edit`, `plan_analysis`, `athlete_history` | Edit athlete's plan, analyze progress |
+| `plan_details` | `macros_analysis`, `manage_macros`, `plan_analysis` | Create/explain automation rules |
+| `user_profile` | `completed_workouts_analysis` | Analyze training history |
+| `calendar_plans` | `recommend_calendar_plans` | Find/compare plans by criteria |
+| `user_max` / `analytics` | `user_max_analysis` | Analyze strength records |
+| `coach_athletes` | `coach_portfolio_analysis` | Portfolio-wide athlete insights |
+
+### Key Components
+
+- **Entry Point**: `services/agent-service/agent_service/main.py` — WebSocket `/chat/ws` endpoint with event dispatcher
+- **Tool Router**: `services/agent-service/agent_service/services/screen_tools_builder.py` — maps screen to `ToolSpec` list
+- **Agent Executor**: `services/agent-service/agent_service/services/tool_agent.py` — LangChain agent with Gemini LLM
+- **LLM Wrapper**: `services/agent-service/agent_service/services/llm_wrapper.py` — structured JSON output with schema validation
+
+### Conversation Modes
+
+1. **FSM Mode** (`conversation_graph.py`) — multi-turn dialogue for plan generation with state machine
+2. **Tool Agent Mode** (`tool_agent.py`) — single-turn tool execution based on screen context
+3. **Plain Chat Mode** — direct LLM response when no tool is needed
+
+### Example Flow: Mass Edit
+
+```
+User: "Add 2 sets to all chest exercises from next week"
+  │
+  ▼
+ScreenToolsBuilder.build(screen="active_plan")
+  │ → [schedule_shift, mass_edit, plan_analysis]
+  ▼
+run_tools_agent() → LLM selects mass_edit tool
+  │
+  ▼
+generate_applied_mass_edit_command() → LLM generates JSON:
+  │   {
+  │     "filter": {"scheduled_from": "2025-01-06", "exercise_definition_ids": [101,102]},
+  │     "actions": {"increase_volume_by": 2}
+  │   }
+  ▼
+JSON Schema validation → apply to workouts-service
+  │
+  ▼
+WebSocket notification → UI update
+```
+
+### Integrations
+
+- **plans-service**: Plan persistence and macro rules storage
+- **workouts-service**: Mass edit execution, workout data
+- **exercises-service**: Exercise definitions lookup
+- **user-max-service**: Strength analytics with hybrid statistical + LLM analysis

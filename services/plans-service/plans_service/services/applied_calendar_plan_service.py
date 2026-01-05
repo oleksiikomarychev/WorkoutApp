@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 import structlog
 from backend_common.http_client import ServiceClient
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -185,7 +185,9 @@ class AppliedCalendarPlanService:
             workout_count=len(workouts),
         )
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        timeout_seconds = float(os.getenv("WORKOUT_GENERATION_TIMEOUT_SECONDS", "300"))
+
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             for base in bases:
                 paths = ["workouts/workout-generation/generate"]
                 for path in paths:
@@ -223,7 +225,7 @@ class AppliedCalendarPlanService:
                             body=e.response.text,
                         )
                     except httpx.RequestError as e:
-                        logger.error("apply_plan_rpc_failed", url=url, error=str(e))
+                        logger.error("apply_plan_rpc_failed", url=url, error=(str(e) or repr(e)))
 
         logger.warning("apply_plan_rpc_all_failed", applied_plan_id=applied_plan_id)
         return None
@@ -370,6 +372,11 @@ class AppliedCalendarPlanService:
             exercise_metadata = await self._fetch_exercise_metadata(required_exercises)
             exercise_scope = self._build_exercise_scope(exercise_metadata)
 
+            await self.db.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext(:user_id), 0)"),
+                {"user_id": user_id},
+            )
+
             stmt = (
                 update(AppliedCalendarPlan)
                 .where(
@@ -385,6 +392,7 @@ class AppliedCalendarPlanService:
                 calendar_plan_id=plan_id,
                 start_date=start_date,
                 user_id=user_id,
+                is_active=True,
                 status="active",
             )
             total_days = 0
@@ -855,6 +863,7 @@ class AppliedCalendarPlanService:
                 AppliedCalendarPlan.is_active.is_(True),
                 AppliedCalendarPlan.user_id == user_id,
             )
+            .order_by(AppliedCalendarPlan.start_date.desc(), AppliedCalendarPlan.id.desc())
         )
         result = await self.db.execute(stmt)
         return result.scalars().first()

@@ -1,0 +1,29 @@
+{
+  "name": "plans-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "${PLANS_DB_HOST}",
+    "database.port": "${PLANS_DB_PORT}",
+    "database.user": "debezium",
+    "database.password": "${DEBEZIUM_PASSWORD}",
+    "database.dbname": "${PLANS_DB_NAME}",
+    "database.server.name": "plans-db",
+    "schema.include.list": "public",
+    "table.include.list": "public.calendar_plans,public.mesocycles,public.microcycles,public.plan_workouts,public.plan_exercises,public.plan_sets,public.plan_macros,public.mesocycle_templates,public.microcycle_templates,public.applied_calendar_plans,public.applied_mesocycles,public.applied_microcycles,public.applied_workouts,public.applied_plan_workouts,public.plan_adopters,public.workout_progress",
+    "plugin.name": "pgoutput",
+    "publication.name": "debezium_plans",
+    "slot.name": "debezium_plans_slot",
+    "tombstones.on.delete": "true",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "false",
+    "transforms.unwrap.delete.handling.mode": "rewrite",
+    "transforms.unwrap.add.fields": "op,source.ts_ms",
+    "topic.prefix": "plans-db",
+    "snapshot.mode": "initial"
+  }
+}

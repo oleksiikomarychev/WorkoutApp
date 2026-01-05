@@ -38,6 +38,7 @@ class WorkoutSessionService extends BaseApiService {
       final response = await _apiClient.get(
         endpoint,
         context: 'WorkoutSessionService.getActiveSession',
+        timeout: const Duration(seconds: 30),
       );
       if (response == null) return null;
       if (response is Map<String, dynamic>) {
@@ -80,6 +81,26 @@ class WorkoutSessionService extends BaseApiService {
     }
   }
 
+  Stream<List<WorkoutSession>> listSessionsSWR(int workoutId, {int ttlSeconds = 600}) async* {
+    final endpoint = ApiConfig.getSessionHistoryEndpoint(workoutId.toString());
+    yield* _apiClient
+        .getSWR(
+          endpoint,
+          context: 'WorkoutSessionService.listSessionsSWR',
+          ttlSeconds: ttlSeconds,
+          groups: ['workouts:history', 'workouts:history:$workoutId'],
+        )
+        .map((data) {
+      if (data is List) {
+        return data.whereType<Map<String, dynamic>>().map(WorkoutSession.fromJson).toList();
+      }
+      if (data is Map<String, dynamic>) {
+        return [WorkoutSession.fromJson(data)];
+      }
+      return <WorkoutSession>[];
+    });
+  }
+
   Future<List<WorkoutSession>> listAllSessions() async {
     try {
       final endpoint = ApiConfig.getAllSessionsHistoryEndpoint();
@@ -102,6 +123,26 @@ class WorkoutSessionService extends BaseApiService {
     } catch (e, st) {
       handleError('Failed to list all sessions', e, st);
     }
+  }
+
+  Stream<List<WorkoutSession>> listAllSessionsSWR({int ttlSeconds = 900}) async* {
+    final endpoint = ApiConfig.getAllSessionsHistoryEndpoint();
+    yield* _apiClient
+        .getSWR(
+          endpoint,
+          context: 'WorkoutSessionService.listAllSessionsSWR',
+          ttlSeconds: ttlSeconds,
+          groups: const ['workouts:history_all'],
+        )
+        .map((data) {
+      if (data is List) {
+        return data.whereType<Map<String, dynamic>>().map(WorkoutSession.fromJson).toList();
+      }
+      if (data is Map<String, dynamic>) {
+        return [WorkoutSession.fromJson(data)];
+      }
+      return <WorkoutSession>[];
+    });
   }
 
 

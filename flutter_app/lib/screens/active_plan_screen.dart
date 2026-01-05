@@ -22,6 +22,7 @@ import 'package:workout_app/services/rpe_service.dart';
 import 'package:workout_app/widgets/workout_status_helpers.dart';
 import 'package:workout_app/models/exercise_set_dto.dart';
 import 'package:workout_app/providers/chat_provider.dart';
+import 'package:workout_app/providers/plan_providers.dart';
 import 'package:workout_app/widgets/primary_app_bar.dart';
 import 'package:workout_app/widgets/assistant_chat_host.dart';
 import 'package:workout_app/services/agent_mass_edit_service.dart';
@@ -30,13 +31,8 @@ import 'package:workout_app/screens/user_profile_screen.dart';
 
 final _planServiceProvider = Provider<PlanService>((ref) => PlanService(apiClient: ref.watch(apiClientProvider)));
 
-final activePlanProvider = FutureProvider<AppliedCalendarPlan?>((ref) async {
-  final svc = ref.watch(_planServiceProvider);
-  return await svc.getActivePlan();
-});
-
 final activePlanWorkoutsProvider = FutureProvider<List<Workout>>((ref) async {
-  final plan = await ref.watch(activePlanProvider.future);
+  final plan = ref.watch(activeAppliedPlanSWRProvider).value;
   if (plan == null) return [];
   final workoutSvc = ref.watch(workoutServiceProvider);
   final list = await workoutSvc.getWorkoutsByAppliedPlan(plan.id);
@@ -49,7 +45,7 @@ final activePlanWorkoutsProvider = FutureProvider<List<Workout>>((ref) async {
 });
 
 final activePlanAnalyticsProvider = FutureProvider<PlanAnalyticsResponse?>((ref) async {
-  final plan = await ref.watch(activePlanProvider.future);
+  final plan = ref.watch(activeAppliedPlanSWRProvider).value;
   if (plan == null) return null;
   final svc = ref.watch(_planServiceProvider);
   return await svc.getAppliedPlanAnalytics(plan.id, groupBy: 'order');
@@ -62,7 +58,7 @@ final workoutsByDayProvider = Provider<Map<DateTime, List<Workout>>>((ref) {
   if (!asyncList.hasValue) return const {};
   final map = <DateTime, List<Workout>>{};
   for (final w in asyncList.value ?? const <Workout>[]) {
-    final dt = w.scheduledFor;
+    final dt = w.scheduledFor?.toLocal();
     if (dt == null) continue;
     final key = _dateOnly(dt);
     (map[key] ??= <Workout>[]).add(w);
@@ -87,6 +83,8 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
   bool _useIntensity = false;
   bool _useRpe = false;
   bool _useReps = false;
+  bool _manualDaySelection = false;
+  ProviderSubscription<AsyncValue<List<Workout>>>? _workoutsSub;
   String _intensityMode = 'set';
   String _repsMode = 'set';
   String _rpeMode = 'set';
@@ -112,6 +110,16 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
   void initState() {
     super.initState();
     _selectedDay = _dateOnly(DateTime.now());
+    _focusedDay = _selectedDay!;
+
+    _workoutsSub = ref.listenManual<AsyncValue<List<Workout>>>(
+      activePlanWorkoutsProvider,
+      (previous, next) {
+      final list = next.valueOrNull;
+      if (list == null || !mounted) return;
+      _maybeAutoSelectDayFromWorkouts(list);
+      },
+    );
   }
 
   @override
@@ -120,12 +128,13 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     _rpeCtrl.dispose();
     _repsCtrl.dispose();
     _rangeRefreshTimer?.cancel();
+    _workoutsSub?.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final planAsync = ref.watch(activePlanProvider);
+    final planAsync = ref.watch(activeAppliedPlanSWRProvider);
     final analyticsAsync = ref.watch(activePlanAnalyticsProvider);
     final eventsByDay = ref.watch(workoutsByDayProvider);
 
@@ -160,18 +169,20 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                 if (plan == null) {
                   return const Center(child: Text('No active plan'));
                 }
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildPlanSummary(context, plan),
-                    const SizedBox(height: 8),
-                    _buildAnalyticsAsyncSection(analyticsAsync),
-                    const SizedBox(height: 8),
-                    _buildCalendar(eventsByDay),
-                    const SizedBox(height: 4),
-                    _buildDayHeader(),
-                    Expanded(child: _buildDayList(eventsByDay)),
-                  ],
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 8),
+                      _buildAnalyticsAsyncSection(analyticsAsync),
+                      const SizedBox(height: 8),
+                      _buildCalendar(eventsByDay),
+                      const SizedBox(height: 4),
+                      _buildDayHeader(),
+                      _buildDayList(eventsByDay),
+                    ],
+                  ),
                 );
               },
             ),
@@ -183,7 +194,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
 
   Future<Map<String, dynamic>> _buildChatContext() async {
     try {
-      final plan = await ref.read(activePlanProvider.future);
+      final plan = await ref.read(activeAppliedPlanSWRProvider.future);
       final nowIso = DateTime.now().toUtc().toIso8601String();
       final selectionDate = (_selectedDay ?? _dateOnly(DateTime.now()))
           .toIso8601String()
@@ -302,7 +313,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     final e = DateTime(end.year, end.month, end.day, 23, 59, 59);
     final now = DateTime.now();
     return list.where((w) {
-      final dt = w.scheduledFor;
+      final dt = w.scheduledFor?.toLocal();
       if (dt == null) return false;
       if (dt.isBefore(now)) return false;
       return dt.isAfter(s.subtract(const Duration(seconds: 1))) && dt.isBefore(e.add(const Duration(seconds: 1)));
@@ -334,12 +345,67 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     final list = await ref.read(activePlanWorkoutsProvider.future);
     final now = DateTime.now();
     return list.where((w) {
-      final dt = w.scheduledFor;
+      final dt = w.scheduledFor?.toLocal();
       if (dt == null || dt.isBefore(now)) return false;
       final idx = w.planOrderIndex;
       if (idx == null) return false;
       return indices.contains(idx);
     }).toList();
+  }
+
+  void _maybeAutoSelectDayFromWorkouts(List<Workout> workouts, {bool force = false}) {
+    final today = _dateOnly(DateTime.now());
+    final current = _dateOnly(_selectedDay ?? today);
+
+    final currentWorkouts = workouts.where((w) {
+      final dt = w.scheduledFor?.toLocal();
+      if (dt == null) return false;
+      return _dateOnly(dt) == current;
+    }).toList();
+
+    final hasPendingOnCurrent = currentWorkouts.any((w) => !w.isCompleted);
+
+    final shouldAuto = force ||
+        (!_manualDaySelection && (currentWorkouts.isEmpty || !hasPendingOnCurrent)) ||
+        (current.isBefore(today) && !hasPendingOnCurrent);
+    if (!shouldAuto) return;
+
+    final upcoming = workouts.where((w) {
+      final dt = w.scheduledFor?.toLocal();
+      if (dt == null) return false;
+      if (_dateOnly(dt).isBefore(today)) return false;
+      return !w.isCompleted;
+    }).toList();
+
+    upcoming.sort((a, b) {
+      final da = _dateOnly(a.scheduledFor!.toLocal());
+      final db = _dateOnly(b.scheduledFor!.toLocal());
+      final cmp = da.compareTo(db);
+      if (cmp != 0) return cmp;
+      final ai = a.planOrderIndex ?? 1 << 30;
+      final bi = b.planOrderIndex ?? 1 << 30;
+      return ai.compareTo(bi);
+    });
+
+    if (upcoming.isEmpty) return;
+
+    final desired = _dateOnly(upcoming.first.scheduledFor!.toLocal());
+    if (_selectedDay != null && isSameDay(desired, _selectedDay)) return;
+    if (!mounted) return;
+    setState(() {
+      _selectedDay = desired;
+      _focusedDay = desired;
+    });
+  }
+
+  Future<void> _refreshAfterWorkoutChange() async {
+    ref.invalidate(activePlanWorkoutsProvider);
+    ref.invalidate(activePlanAnalyticsProvider);
+    try {
+      final list = await ref.read(activePlanWorkoutsProvider.future);
+      if (!mounted) return;
+      _maybeAutoSelectDayFromWorkouts(list);
+    } catch (_) {}
   }
 
   Set<int> _computeSelectedPlanIndices() {
@@ -501,7 +567,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
   }
 
   Future<void> _openMassEditDialog() async {
-    final plan = await ref.read(activePlanProvider.future);
+    final plan = await ref.read(activeAppliedPlanSWRProvider.future);
     if (plan == null) {
       if (mounted) _showSnack(context, 'No active plan');
       return;
@@ -806,7 +872,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
   Future<void> _applyMassEdits(DateTime start, DateTime end, {Set<int>? planIndexFilter}) async {
     if (_isApplying) return;
     setState(() => _isApplying = true);
-    final plan = await ref.read(activePlanProvider.future);
+    final plan = await ref.read(activeAppliedPlanSWRProvider.future);
     if (plan == null) {
       if (mounted) _showSnack(context, 'No active plan');
       setState(() => _isApplying = false);
@@ -989,7 +1055,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
   }
 
   Future<void> _openReplaceDialog() async {
-    final plan = await ref.read(activePlanProvider.future);
+    final plan = await ref.read(activeAppliedPlanSWRProvider.future);
     if (plan == null) {
       if (mounted) _showSnack(context, 'No active plan');
       return;
@@ -1180,7 +1246,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     if (_isApplying) return;
     setState(() => _isApplying = true);
     try {
-      final plan = await ref.read(activePlanProvider.future);
+      final plan = await ref.read(activeAppliedPlanSWRProvider.future);
       if (plan == null) {
         if (mounted) _showSnack(context, 'No active plan');
         return;
@@ -1349,7 +1415,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     if (_isApplying) return;
     setState(() => _isApplying = true);
     try {
-      final plan = await ref.read(activePlanProvider.future);
+      final plan = await ref.read(activeAppliedPlanSWRProvider.future);
       if (plan == null) {
         if (mounted) _showSnack(context, 'No active plan');
         return;
@@ -1484,7 +1550,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
       final svc = ref.read(_planServiceProvider);
       final ok = await svc.cancelAppliedPlan(plan.id, dropoutReason: reason);
       if (ok) {
-        ref.invalidate(activePlanProvider);
+        ref.refresh(activeAppliedPlanSWRProvider);
         ref.invalidate(activePlanWorkoutsProvider);
         ref.invalidate(activePlanAnalyticsProvider);
         if (context.mounted) {
@@ -1620,6 +1686,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
         calendarFormat: CalendarFormat.month,
         onDaySelected: (selectedDay, focusedDay) {
           setState(() {
+            _manualDaySelection = true;
             _selectedDay = _dateOnly(selectedDay);
             _focusedDay = focusedDay;
           });
@@ -1669,9 +1736,14 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     final day = _selectedDay ?? _dateOnly(DateTime.now());
     final workouts = eventsByDay[day] ?? const <Workout>[];
     if (workouts.isEmpty) {
-      return const Center(child: Text('No workouts'));
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(child: Text('No workouts')),
+      );
     }
     return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       itemBuilder: (ctx, i) {
         final w = workouts[i];
@@ -1699,8 +1771,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                   MaterialPageRoute(builder: (_) => WorkoutDetailScreen(workoutId: w.id!)),
                 );
                 if (!mounted) return;
-                ref.invalidate(activePlanWorkoutsProvider);
-                ref.invalidate(activePlanAnalyticsProvider);
+                await _refreshAfterWorkoutChange();
               }
             },
           ),
@@ -1749,23 +1820,21 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                             icon: const Icon(Icons.open_in_new),
                             onPressed: () async {
                               if (w.id != null) {
-                                await Navigator.of(context).push(
+                                await Navigator.of(ctx).push(
                                   MaterialPageRoute(builder: (_) => WorkoutDetailScreen(workoutId: w.id!)),
                                 );
                                 if (!mounted) return;
-                                ref.invalidate(activePlanWorkoutsProvider);
-                                ref.invalidate(activePlanAnalyticsProvider);
+                                await _refreshAfterWorkoutChange();
                               }
                             },
                           ),
                           onTap: () async {
                             if (w.id != null) {
-                              await Navigator.of(context).push(
+                              await Navigator.of(ctx).push(
                                 MaterialPageRoute(builder: (_) => WorkoutDetailScreen(workoutId: w.id!)),
                               );
                               if (!mounted) return;
-                              ref.invalidate(activePlanWorkoutsProvider);
-                              ref.invalidate(activePlanAnalyticsProvider);
+                              await _refreshAfterWorkoutChange();
                             }
                           },
                         );
@@ -1783,7 +1852,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
   }
 
   String _timeOrDate(Workout w) {
-    final dt = w.scheduledFor;
+    final dt = w.scheduledFor?.toLocal();
     if (dt == null) return 'Unscheduled';
     return DateFormat('MMM d, yyyy – HH:mm').format(dt);
   }

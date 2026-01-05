@@ -7,25 +7,23 @@ import 'package:workout_app/screens/user_profile_screen.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
 import 'package:workout_app/widgets/floating_header_bar.dart';
 import 'package:workout_app/widgets/assistant_chat_host.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:workout_app/providers/plan_providers.dart';
 import 'calendar_plan_create.dart';
 import 'calendar_plan_detail.dart';
-import 'dart:async';
 
-class CalendarPlansScreen extends StatefulWidget {
+class CalendarPlansScreen extends ConsumerStatefulWidget {
   const CalendarPlansScreen({super.key});
 
   @override
-  State<CalendarPlansScreen> createState() => _CalendarPlansScreenState();
+  ConsumerState<CalendarPlansScreen> createState() => _CalendarPlansScreenState();
 }
 
-class _CalendarPlansScreenState extends State<CalendarPlansScreen> {
+class _CalendarPlansScreenState extends ConsumerState<CalendarPlansScreen> {
   final ApiClient _apiClient = ApiClient.create();
-  List<CalendarPlan> _plans = [];
-  bool _isLoading = true;
-  String? _errorMessage;
 
   Future<Map<String, dynamic>?> _buildChatContext() async {
-    final plans = _plans
+    final plans = (ref.read(calendarPlansProvider).value ?? const <CalendarPlan>[])
         .map(
           (p) => <String, dynamic>{
             'id': p.id,
@@ -56,36 +54,9 @@ class _CalendarPlansScreenState extends State<CalendarPlansScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchPlans();
-  }
-
-  Future<void> _fetchPlans() async {
-    try {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-      });
-
-      final endpoint = ApiConfig.getAllPlansEndpoint();
-      final response = await _apiClient.get('$endpoint?roots_only=true');
-
-      if (response is List) {
-        setState(() {
-          _plans = response.map((json) => CalendarPlan.fromJson(json)).toList();
-          _isLoading = false;
-        });
-      } else {
-        setState(() {
-          _errorMessage = 'Invalid response format';
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'Failed to load plans: $e';
-        _isLoading = false;
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(calendarPlansProvider.notifier).load();
+    });
   }
 
   Future<void> _deletePlan(int planId) async {
@@ -121,8 +92,16 @@ class _CalendarPlansScreenState extends State<CalendarPlansScreen> {
       try {
         await performDelete();
 
+        await _apiClient.invalidateCacheGroups([
+          'plans:list',
+          'plans:detail',
+          'plans:detail:$planId',
+          'plans:variants',
+          'plans:variants:$planId',
+        ]);
+
         setState(() {
-          _plans.removeWhere((plan) => plan.id == planId);
+          ref.read(calendarPlansProvider.notifier).removeLocal(planId);
         });
       } on ApiException catch (e) {
         final message = e.message;
@@ -206,8 +185,18 @@ class _CalendarPlansScreenState extends State<CalendarPlansScreen> {
             try {
               await performDelete(cascade: true);
 
+              await _apiClient.invalidateCacheGroups([
+                'plans:list',
+                'plans:detail',
+                'plans:detail:$planId',
+                'plans:variants',
+                'plans:variants:$planId',
+                'workouts:list',
+                'workouts:history_all',
+              ]);
+
               setState(() {
-                _plans.removeWhere((plan) => plan.id == planId);
+                ref.read(calendarPlansProvider.notifier).removeLocal(planId);
               });
             } on ApiException catch (inner) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -234,6 +223,11 @@ class _CalendarPlansScreenState extends State<CalendarPlansScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final plansAsync = ref.watch(calendarPlansProvider);
+
+    final plans = plansAsync.value ?? const <CalendarPlan>[];
+    final hasData = plansAsync.hasValue && plans.isNotEmpty;
+
     return AssistantChatHost(
       contextBuilder: _buildChatContext,
       builder: (context, openChat) {
@@ -245,78 +239,131 @@ class _CalendarPlansScreenState extends State<CalendarPlansScreen> {
                 bottom: false,
                 child: Stack(
                   children: [
-                    _isLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : _errorMessage != null
-                            ? Center(child: Text(_errorMessage!))
-                            : _plans.isEmpty
-                                ? const Center(child: Text('No plans available'))
-                                : ListView.builder(
-                                    padding: const EdgeInsets.only(
-                                      top: 72,
-                                      left: 16,
-                                      right: 16,
-                                      bottom: 16,
-                                    ),
-                                    itemCount: _plans.length,
-                                    itemBuilder: (context, index) {
-                                      final plan = _plans[index];
-                                      final metaParts = <String>[];
-                                      if (plan.primaryGoal != null && plan.primaryGoal!.isNotEmpty) {
-                                        metaParts.add(plan.primaryGoal!);
-                                      }
-                                      if (plan.intendedExperienceLevel != null && plan.intendedExperienceLevel!.isNotEmpty) {
-                                        metaParts.add(plan.intendedExperienceLevel!);
-                                      }
-                                      if (plan.intendedFrequencyPerWeek != null) {
-                                        metaParts.add('${plan.intendedFrequencyPerWeek}x/week');
-                                      }
-                                      final subtitle = [
-                                        '${plan.durationWeeks} weeks',
-                                        if (plan.mesocycles.isNotEmpty) '${plan.mesocycles.length} mesocycles',
-                                        if (metaParts.isNotEmpty) metaParts.join(' • '),
-                                      ].join(' • ');
+                    plansAsync.when(
+                      loading: () => hasData
+                          ? ListView.builder(
+                              padding: const EdgeInsets.only(
+                                top: 72,
+                                left: 16,
+                                right: 16,
+                                bottom: 16,
+                              ),
+                              itemCount: plans.length,
+                              itemBuilder: (context, index) {
+                                final plan = plans[index];
+                                final metaParts = <String>[];
+                                if (plan.primaryGoal != null && plan.primaryGoal!.isNotEmpty) {
+                                  metaParts.add(plan.primaryGoal!);
+                                }
+                                if (plan.intendedExperienceLevel != null && plan.intendedExperienceLevel!.isNotEmpty) {
+                                  metaParts.add(plan.intendedExperienceLevel!);
+                                }
+                                if (plan.intendedFrequencyPerWeek != null) {
+                                  metaParts.add('${plan.intendedFrequencyPerWeek}x/week');
+                                }
+                                final subtitle = [
+                                  '${plan.durationWeeks} weeks',
+                                  if (plan.mesocycles.isNotEmpty) '${plan.mesocycles.length} mesocycles',
+                                  if (metaParts.isNotEmpty) metaParts.join(' • '),
+                                ].join(' • ');
 
-                                      return Card(
-                                        margin: const EdgeInsets.only(bottom: 16.0),
-                                        child: ListTile(
-                                          title: Text(plan.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                          subtitle: Text(subtitle),
-                                          trailing: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                plan.isActive ? Icons.check_circle : Icons.circle_outlined,
-                                                color: plan.isActive ? Colors.green : Colors.grey,
-                                              ),
-                                              const SizedBox(width: 8),
-                                              IconButton(
-                                                icon: const Icon(Icons.delete, color: Colors.red),
-                                                onPressed: () => _deletePlan(plan.id),
-                                              ),
-                                            ],
-                                          ),
-                                          onTap: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(builder: (context) => CalendarPlanDetail(plan: plan)),
-                                            );
-                                          },
+                                return Card(
+                                  margin: const EdgeInsets.only(bottom: 16.0),
+                                  child: ListTile(
+                                    title: Text(plan.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    subtitle: Text(subtitle),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          plan.isActive ? Icons.check_circle : Icons.circle_outlined,
+                                          color: plan.isActive ? Colors.green : Colors.grey,
                                         ),
+                                        const SizedBox(width: 8),
+                                        IconButton(
+                                          icon: const Icon(Icons.delete, color: Colors.red),
+                                          onPressed: () => _deletePlan(plan.id),
+                                        ),
+                                      ],
+                                    ),
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(builder: (context) => CalendarPlanDetail(plan: plan)),
                                       );
                                     },
                                   ),
+                                );
+                              },
+                            )
+                          : const Center(child: CircularProgressIndicator()),
+                      error: (e, _) => Center(child: Text('Failed to load plans: $e')),
+                      data: (items) {
+                        if (items.isEmpty) {
+                          return const Center(child: Text('No plans available'));
+                        }
+                        return ListView.builder(
+                          padding: const EdgeInsets.only(
+                            top: 72,
+                            left: 16,
+                            right: 16,
+                            bottom: 16,
+                          ),
+                          itemCount: items.length,
+                          itemBuilder: (context, index) {
+                            final plan = items[index];
+                            final metaParts = <String>[];
+                            if (plan.primaryGoal != null && plan.primaryGoal!.isNotEmpty) {
+                              metaParts.add(plan.primaryGoal!);
+                            }
+                            if (plan.intendedExperienceLevel != null && plan.intendedExperienceLevel!.isNotEmpty) {
+                              metaParts.add(plan.intendedExperienceLevel!);
+                            }
+                            if (plan.intendedFrequencyPerWeek != null) {
+                              metaParts.add('${plan.intendedFrequencyPerWeek}x/week');
+                            }
+                            final subtitle = [
+                              '${plan.durationWeeks} weeks',
+                              if (plan.mesocycles.isNotEmpty) '${plan.mesocycles.length} mesocycles',
+                              if (metaParts.isNotEmpty) metaParts.join(' • '),
+                            ].join(' • ');
+
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 16.0),
+                              child: ListTile(
+                                title: Text(plan.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                subtitle: Text(subtitle),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      plan.isActive ? Icons.check_circle : Icons.circle_outlined,
+                                      color: plan.isActive ? Colors.green : Colors.grey,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete, color: Colors.red),
+                                      onPressed: () => _deletePlan(plan.id),
+                                    ),
+                                  ],
+                                ),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (context) => CalendarPlanDetail(plan: plan)),
+                                  );
+                                },
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
                     Align(
                       alignment: Alignment.topCenter,
                       child: FloatingHeaderBar(
                         title: 'Training Plans',
                         onTitleTap: openChat,
-                        actions: [
-                          IconButton(
-                            icon: const Icon(Icons.refresh),
-                            onPressed: _fetchPlans,
-                          ),
-                        ],
                         onProfileTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(builder: (_) => const UserProfileScreen()),

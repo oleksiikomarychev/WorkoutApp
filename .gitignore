@@ -6,6 +6,7 @@ yarn-error.log*
 dev-debug.log
 node_modules/
 .env
+.env.example
 app/config/prompts.py
 .idea
 .vscode
@@ -39,5 +40,4 @@ achievements.md
 render.txt
 services/exersices.json
 services/exercises-service/exercises_service/muscle_metadata.json
-flutter_app/assets/env/*.env
-!flutter_app/assets/env/*.env.example
+flutter_app/setup_firebase.sh

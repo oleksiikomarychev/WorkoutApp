@@ -15,6 +15,61 @@ class WorkoutService extends BaseApiService {
   @override
   WorkoutService({required this.apiClient}) : super(apiClient);
 
+  Stream<List<Workout>> getWorkoutsByTypeSWR(WorkoutType type, {int ttlSeconds = 120}) async* {
+    final typeStr = type.toString().split('.').last;
+    final endpoint = ApiConfig.workoutsByTypeEndpoint(typeStr);
+
+    yield* apiClient
+        .getSWR(
+          endpoint,
+          context: 'WorkoutService.getWorkoutsByTypeSWR',
+          ttlSeconds: ttlSeconds,
+          groups: const ['workouts:list'],
+        )
+        .map((data) {
+      if (data is List) {
+        return data.whereType<Map<String, dynamic>>().map((json) => Workout.fromJson(json)).toList();
+      }
+      return <Workout>[];
+    });
+  }
+
+  Stream<List<Workout>> getWorkoutsByAppliedPlanSWR(int appliedPlanId, {int ttlSeconds = 60}) async* {
+    final endpoint = '${ApiConfig.workoutsEndpoint}?applied_plan_id=$appliedPlanId';
+
+    yield* apiClient
+        .getSWR(
+          endpoint,
+          context: 'WorkoutService.getWorkoutsByAppliedPlanSWR',
+          ttlSeconds: ttlSeconds,
+          groups: ['workouts:active_plan', 'workouts:active_plan:$appliedPlanId'],
+        )
+        .map((data) {
+      if (data is List) {
+        return data.whereType<Map<String, dynamic>>().map((json) => Workout.fromJson(json)).toList();
+      }
+      return <Workout>[];
+    });
+  }
+
+  Stream<Workout> getWorkoutWithDetailsSWR(int id, {int ttlSeconds = 600}) async* {
+    final endpoint = '${ApiConfig.getWorkoutsEndpoint()}/$id?include=exercise_instances.exercise_definition';
+
+    yield* apiClient
+        .getSWR(
+          endpoint,
+          context: 'WorkoutService.getWorkoutWithDetailsSWR',
+          ttlSeconds: ttlSeconds,
+          groups: ['workouts:detail', 'workouts:detail:$id'],
+        )
+        .map((data) {
+      if (data is Map<String, dynamic>) {
+        return Workout.fromJson(data);
+      }
+      throw Exception('Invalid response format for workout details');
+    });
+  }
+
 
   Future<List<Workout>> getWorkoutsPaged({int skip = 0, int limit = 20}) async {
     try {
@@ -74,6 +129,7 @@ class WorkoutService extends BaseApiService {
         endpoint,
         <String, dynamic>{},
         context: 'WorkoutService.startWorkoutBff',
+        timeout: const Duration(seconds: 30),
       );
       if (response is Map<String, dynamic>) {
         return Workout.fromJson(response);
@@ -106,6 +162,7 @@ class WorkoutService extends BaseApiService {
           if (markWorkoutCompleted != null) 'mark_workout_completed': markWorkoutCompleted,
         },
         context: 'WorkoutService.finishWorkoutBff',
+        timeout: const Duration(seconds: 60),
       );
       if (response is Map<String, dynamic>) {
         return Workout.fromJson(response);

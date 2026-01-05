@@ -457,7 +457,7 @@ class WorkoutService:
             for w in request.workouts:
                 for ex in w.exercises:
                     all_exercise_ids.add(int(ex.exercise_id))
-            user_max_list = await calculator._fetch_user_maxes(list(all_exercise_ids))
+            user_max_list = await calculator._fetch_user_maxes(list(all_exercise_ids), user_id=self.user_id)
 
             user_max_by_ex: dict[int, dict] = {}
             for um in user_max_list or []:

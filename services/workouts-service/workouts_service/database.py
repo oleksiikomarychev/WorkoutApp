@@ -18,31 +18,47 @@ if DATABASE_URL:
     DATABASE_URL = ensure_asyncpg_url(DATABASE_URL)
 
 
+connect_args: dict[str, object] = {}
+
 try:
     parsed = urlparse(DATABASE_URL)
     logger.info(f"Using DB URL scheme: {parsed.scheme}")
     logger.info(f"Effective DB URL (redacted): {parsed._replace(netloc='***').geturl()}")
     if parsed.scheme.startswith("postgresql+asyncpg"):
         q = dict(parse_qsl(parsed.query, keep_blank_values=True))
-        sslmode = (q.get("sslmode") or "").strip().lower()
-        if "sslmode" in q:
-            q.pop("sslmode", None)
-            if sslmode in {"require", "verify-full", "verify-ca"}:
-                q.setdefault("ssl", "true")
-            elif sslmode in {"disable"}:
-                q.setdefault("ssl", "false")
+        sslmode_raw = (q.pop("sslmode", "") or "").strip().lower()
+        ssl_raw = (q.pop("ssl", "") or "").strip().lower()
+        q.pop("channel_binding", None)
 
-        ssl_val = q.get("ssl")
-        if isinstance(ssl_val, str) and ssl_val.lower() not in {"true", "false"}:
-            q["ssl"] = "true"
+        def _normalize_sslmode(val: str) -> str:
+            if val in {"true", "1", "yes", "on"}:
+                return "require"
+            if val in {"false", "0", "no", "off"}:
+                return "disable"
+            return val
 
-        removed_channel_binding = q.pop("channel_binding", None)
+        sslmode = _normalize_sslmode(sslmode_raw)
+        if sslmode:
+            if sslmode == "disable":
+                connect_args["ssl"] = False
+            else:
+                connect_args["ssl"] = True
+        elif ssl_raw:
+            ssl_val = _normalize_sslmode(ssl_raw)
+            if ssl_val == "disable":
+                connect_args["ssl"] = False
+            else:
+                connect_args["ssl"] = True
+
         new_query = urlencode(q, doseq=True)
         DATABASE_URL = urlunparse(parsed._replace(query=new_query))
 except Exception:
     pass
 
-engine_args = {}
+engine_args = {"connect_args": connect_args} if connect_args else {}
+
+engine_args.setdefault("pool_pre_ping", True)
+engine_args.setdefault("pool_recycle", int(os.getenv("DB_POOL_RECYCLE_SECONDS", "300")))
 
 engine, AsyncSessionLocal = create_async_engine_and_session(
     DATABASE_URL,

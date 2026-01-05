@@ -1,0 +1,29 @@
+{
+  "name": "crm-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "${CRM_DB_HOST}",
+    "database.port": "${CRM_DB_PORT}",
+    "database.user": "debezium",
+    "database.password": "${DEBEZIUM_PASSWORD}",
+    "database.dbname": "${CRM_DB_NAME}",
+    "database.server.name": "crm-db",
+    "schema.include.list": "public",
+    "table.include.list": "public.coach_athlete_links,public.coach_athlete_events,public.coach_athlete_notes,public.coach_athlete_tags,public.coach_athlete_link_tags,public.coach_athlete_payments",
+    "plugin.name": "pgoutput",
+    "publication.name": "debezium_crm",
+    "slot.name": "debezium_crm_slot",
+    "tombstones.on.delete": "true",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "false",
+    "transforms.unwrap.delete.handling.mode": "rewrite",
+    "transforms.unwrap.add.fields": "op,source.ts_ms",
+    "topic.prefix": "crm-db",
+    "snapshot.mode": "initial"
+  }
+}

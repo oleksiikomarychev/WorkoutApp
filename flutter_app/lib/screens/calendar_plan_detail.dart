@@ -8,6 +8,7 @@ import 'package:workout_app/models/user_max.dart';
 import 'package:workout_app/services/api_client.dart';
 import 'package:workout_app/services/exercise_service.dart';
 import 'package:workout_app/src/api/plan_api.dart';
+import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/src/widgets/apply_plan_widget.dart' show ApplyPlanWidget;
 import 'package:workout_app/models/calendar_plan_summary.dart';
 import 'package:workout_app/screens/plan_editor_screen.dart';
@@ -18,6 +19,7 @@ import 'package:workout_app/screens/user_profile_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/providers/plan_providers.dart';
 import 'package:workout_app/widgets/assistant_chat_host.dart';
+import 'dart:async';
 
 class CalendarPlanDetail extends StatefulWidget {
   final CalendarPlan plan;
@@ -234,6 +236,8 @@ class _SingleSelectSheetState<T> extends State<_SingleSelectSheet<T>> {
   }
 }
 
+enum _HeaderMenuAction { editPlan, recalcSets, profile }
+
 class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
 
   late final CalendarPlan _originalPlan;
@@ -252,6 +256,8 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   List<CalendarPlanSummary> _variants = const [];
   bool _variantsLoading = false;
   String? _variantsError;
+  StreamSubscription<dynamic>? _variantsSub;
+  StreamSubscription<dynamic>? _planSub;
 
 
   final List<String> _metrics = const ['sets', 'volume', 'intensity', 'effort'];
@@ -276,6 +282,83 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   bool _loadingMeta = true;
   String? _metaError;
   bool _recalcInProgress = false;
+
+  String _shortPlanTitle(String title, {int maxChars = 32}) {
+    if (title.length <= maxChars) return title;
+    return '${title.substring(0, maxChars - 1)}…';
+  }
+
+  Widget _buildOverflowMenu() {
+    return PopupMenuButton<_HeaderMenuAction>(
+      icon: const Icon(Icons.more_vert),
+      tooltip: 'Дополнительные действия',
+      onSelected: (action) {
+        switch (action) {
+          case _HeaderMenuAction.editPlan:
+            _openPlanEditor();
+            break;
+          case _HeaderMenuAction.recalcSets:
+            if (!_recalcInProgress) {
+              _recalcPlanSets();
+            }
+            break;
+          case _HeaderMenuAction.profile:
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+            );
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: _HeaderMenuAction.editPlan,
+          child: ListTile(
+            leading: Icon(Icons.edit),
+            title: Text('Редактировать план'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+          ),
+        ),
+        PopupMenuItem(
+          enabled: !_recalcInProgress,
+          value: _HeaderMenuAction.recalcSets,
+          child: ListTile(
+            leading: _recalcInProgress
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.auto_fix_high),
+            title: const Text('Пересчитать сеты (RPE)'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+          ),
+        ),
+        const PopupMenuItem(
+          value: _HeaderMenuAction.profile,
+          child: ListTile(
+            leading: Icon(Icons.account_circle_outlined),
+            title: Text('Профиль'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openPlanEditor() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PlanEditorScreen(plan: _currentPlan),
+      ),
+    );
+    final id = _currentPlan.id;
+    if (id != null) {
+      _subscribePlanById(id);
+    }
+  }
 
   String? _normalizeExerciseName(String? name) {
     final value = name?.trim();
@@ -367,12 +450,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     try {
       for (final v in _variants) {
         if (_variantCache.containsKey(v.id)) continue;
-        try {
-          final full = await PlanApi.getCalendarPlan(v.id);
-          _variantCache[v.id] = full;
-        } catch (_) {
-
-        }
+        _subscribePlanById(v.id);
       }
     } finally {
       _prefetchingVariants = false;
@@ -521,6 +599,46 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     _fetchVariants();
   }
 
+  @override
+  void dispose() {
+    _variantsSub?.cancel();
+    _planSub?.cancel();
+    super.dispose();
+  }
+
+  void _subscribePlanById(int planId) {
+    _planSub?.cancel();
+    setState(() => _changingVariant = true);
+
+    final endpoint = ApiConfig.getCalendarPlanEndpoint(planId.toString());
+    _planSub = _apiClient
+        .getSWR(
+          endpoint,
+          context: 'CalendarPlanDetail.getCalendarPlanSWR',
+          ttlSeconds: 3600,
+          groups: ['plans:detail', 'plans:detail:$planId'],
+        )
+        .listen(
+      (data) {
+        if (!mounted) return;
+        if (data is Map<String, dynamic>) {
+          final full = CalendarPlan.fromJson(data);
+          _variantCache[planId] = full;
+          _setPlan(full);
+        }
+      },
+      onError: (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Не удалось загрузить план: $e')),
+        );
+      },
+      onDone: () {
+        if (mounted) setState(() => _changingVariant = false);
+      },
+    );
+  }
+
   Future<void> _recalcPlanSets() async {
     if (_recalcInProgress) return;
     setState(() {
@@ -555,35 +673,54 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   }
 
   Future<void> _fetchVariants() async {
+    await _variantsSub?.cancel();
     setState(() {
       _variantsLoading = true;
       _variantsError = null;
     });
-    try {
-      final list = await PlanApi.getVariants(_rootPlanId);
-      if (!mounted) return;
-      setState(() {
-        _variants = list;
-        _variantsLoading = false;
 
-        final orig = _variants.where((v) => v.isOriginal).cast<CalendarPlanSummary?>().firstWhere(
-              (v) => v != null,
-              orElse: () => null,
-            );
-        if (orig != null && _originalPlan.id != orig.id) {
-          _originalPlan = _variantCache[orig.id] ?? _originalPlan;
-        }
-      });
+    final endpoint = ApiConfig.listPlanVariantsEndpoint(_rootPlanId.toString());
+    _variantsSub = _apiClient
+        .getSWR(
+          endpoint,
+          context: 'CalendarPlanDetail.getVariantsSWR',
+          ttlSeconds: 900,
+          groups: ['plans:variants', 'plans:variants:$_rootPlanId'],
+        )
+        .listen(
+      (data) {
+        if (!mounted) return;
+        if (data is! List) return;
 
-      // ignore: unawaited_futures
-      _prefetchAllVariants();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _variantsError = 'Не удалось загрузить варианты: $e';
-        _variantsLoading = false;
-      });
-    }
+        final list = data
+            .whereType<Map<String, dynamic>>()
+            .map((j) => CalendarPlanSummary.fromJson(j))
+            .toList(growable: false);
+
+        setState(() {
+          _variants = list;
+          _variantsLoading = false;
+
+          final orig = _variants.where((v) => v.isOriginal).cast<CalendarPlanSummary?>().firstWhere(
+                (v) => v != null,
+                orElse: () => null,
+              );
+          if (orig != null && _originalPlan.id != orig.id) {
+            _originalPlan = _variantCache[orig.id] ?? _originalPlan;
+          }
+        });
+
+        // ignore: unawaited_futures
+        _prefetchAllVariants();
+      },
+      onError: (e) {
+        if (!mounted) return;
+        setState(() {
+          _variantsError = 'Не удалось загрузить варианты: $e';
+          _variantsLoading = false;
+        });
+      },
+    );
   }
 
   void _createVariantDialog() {
@@ -662,7 +799,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     ).then((_) => controller.dispose());
   }
 
-  Future<void> _applyPlan(BuildContext context) async {
+  Future<void> _applyPlan(BuildContext context, WidgetRef ref) async {
     try {
       showModalBottomSheet(
         context: context,
@@ -682,6 +819,8 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                 roundingStep: settings['rounding_step'],
                 roundingMode: settings['rounding_mode'],
               );
+              ref.invalidate(activeAppliedPlanProvider);
+              ref.invalidate(activeAppliedPlanSWRProvider);
               Navigator.of(context).pop();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Plan applied successfully')),
@@ -776,21 +915,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                                                     ),
                                                   );
                                                   if (_currentPlan.id == orig.id) return;
-                                                  setState(() => _changingVariant = true);
-                                                  try {
-                                                    final cached = _variantCache[orig.id];
-                                                    final full = cached ?? await PlanApi.getCalendarPlan(orig.id);
-                                                    if (!mounted) return;
-                                                    _setPlan(full);
-                                                    _variantCache[orig.id] = full;
-                                                  } catch (e) {
-                                                    if (!mounted) return;
-                                                    ScaffoldMessenger.of(context).showSnackBar(
-                                                      SnackBar(content: Text('Не удалось загрузить план: $e')),
-                                                    );
-                                                  } finally {
-                                                    if (mounted) setState(() => _changingVariant = false);
-                                                  }
+                                                  _subscribePlanById(orig.id);
                                                 },
                                               ),
                                               ..._variants
@@ -829,7 +954,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                         Align(
                           alignment: Alignment.topCenter,
                           child: FloatingHeaderBar(
-                            title: _currentPlan.name,
+                            title: _shortPlanTitle(_currentPlan.name),
                             onTitleTap: openChat,
                             leading: IconButton(
                               icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
@@ -837,48 +962,12 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                             ),
                             actions: [
                               IconButton(
-                                icon: const Icon(Icons.edit),
-                                tooltip: 'Редактировать план',
-                                onPressed: () async {
-                                  await Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => PlanEditorScreen(plan: _currentPlan),
-                                    ),
-                                  );
-                                  try {
-                                    final refreshed = await PlanApi.getCalendarPlan(_currentPlan.id);
-                                    if (!mounted) return;
-                                    _setPlan(refreshed);
-                                  } catch (e) {
-                                    if (!mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Не удалось обновить план: $e')),
-                                    );
-                                  }
-                                },
-                              ),
-                              IconButton(
-                                icon: _recalcInProgress
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      )
-                                    : const Icon(Icons.auto_fix_high),
-                                tooltip: 'Пересчитать сеты (RPE)',
-                                onPressed: _recalcInProgress ? null : _recalcPlanSets,
-                              ),
-                              IconButton(
                                 icon: const Icon(Icons.check),
-                                onPressed: () => _applyPlan(context),
+                                onPressed: () => _applyPlan(context, ref),
                                 tooltip: 'Apply Plan',
                               ),
+                              _buildOverflowMenu(),
                             ],
-                            onProfileTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(builder: (_) => const UserProfileScreen()),
-                              );
-                            },
                           ),
                         ),
                       ],
@@ -907,21 +996,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
 
   Future<void> _switchToVariant(CalendarPlanSummary v) async {
     if (v.id == _currentPlan.id) return;
-    setState(() => _changingVariant = true);
-    try {
-      final cached = _variantCache[v.id];
-      final full = cached ?? await PlanApi.getCalendarPlan(v.id);
-      if (!mounted) return;
-      _setPlan(full);
-      _variantCache[v.id] = full;
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Не удалось загрузить план: $e')),
-      );
-    } finally {
-      if (mounted) setState(() => _changingVariant = false);
-    }
+    _subscribePlanById(v.id);
   }
 
   List<PlanAnalyticsPoint> _computePlanAnalytics(
