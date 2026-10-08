@@ -36,8 +36,15 @@ async def _fetch_coaching_profile(db: AsyncSession, user_id: str) -> UserCoachin
 
 
 async def ensure_profile_and_settings(db: AsyncSession, user_id: str) -> ProfileData:
+    if (user_id or "").startswith("deleted:"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User profile not found")
+
     profile = await _fetch_profile(db, user_id)
     settings = await _fetch_settings(db, user_id)
+
+    if profile is not None and getattr(profile, "deleted_at", None) is not None:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Account deleted")
+
     created = False
     if profile is None:
         profile = UserProfile(user_id=user_id, display_name=user_id)
@@ -103,22 +110,15 @@ def build_coaching_response(
         return None
 
     rate_plan = None
-    if any([entity.rate_type, entity.rate_currency, entity.rate_amount_minor is not None]):
-        rate_plan = CoachingRatePlan(
-            type=entity.rate_type,
-            currency=entity.rate_currency,
-            amount_minor=entity.rate_amount_minor,
-        )
+    if entity.rate_amount_minor is not None:
+        rate_plan = CoachingRatePlan(amount_minor=entity.rate_amount_minor)
 
     return CoachingProfileResponse(
         enabled=bool(entity.enabled),
-        accepting_clients=bool(entity.accepting_clients),
         tagline=entity.tagline,
         description=entity.description,
         specializations=list(entity.specializations or []),
         languages=list(entity.languages or []),
-        experience_years=entity.experience_years,
-        timezone=entity.timezone,
         rate_plan=rate_plan,
         stripe_connect_account_id=entity.stripe_connect_account_id,
         created_at=entity.created_at,

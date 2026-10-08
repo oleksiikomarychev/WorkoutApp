@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
 
 class AppTheme {
@@ -10,9 +9,7 @@ class AppTheme {
         seedColor: AppColors.primary,
         brightness: Brightness.light,
       ),
-      textTheme: GoogleFonts.interTextTheme(
-        ThemeData.light().textTheme,
-      ),
+      textTheme: ThemeData.light().textTheme,
       appBarTheme: const AppBarTheme(
         centerTitle: true,
         elevation: 0,
@@ -58,9 +55,7 @@ class AppTheme {
         seedColor: AppColors.primary,
         brightness: Brightness.dark,
       ),
-      textTheme: GoogleFonts.interTextTheme(
-        ThemeData.dark().textTheme,
-      ),
+      textTheme: ThemeData.dark().textTheme,
       appBarTheme: const AppBarTheme(
         centerTitle: true,
         elevation: 0,

@@ -14,13 +14,24 @@ from backend_common.fastapi_app import (
     configure_cors_from_env,
     instrument_with_metrics,
 )
-from fastapi import FastAPI, HTTPException, Request, Response, status
+from fastapi import FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, JSONResponse
 from redis.asyncio import Redis
 from sentry_sdk import set_tag, set_user
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from gateway_app.config import (
+    ACCOUNTS_SERVICE_URL,
+    AGENT_SERVICE_URL,
+    EXERCISES_SERVICE_URL,
+    MESSENGER_APP_ID,
+    PLANS_SERVICE_URL,
+    RPE_SERVICE_URL,
+    USER_MAX_SERVICE_URL,
+    WORKOUTS_SERVICE_URL,
+)
 from gateway_app.logging_config import configure_logging
+from gateway_app.routes.account import account_router
 from gateway_app.routes.agent import agent_router
 from gateway_app.routes.analytics import analytics_router
 from gateway_app.routes.crm import crm_router
@@ -29,6 +40,7 @@ from gateway_app.routes.exercises import (
     exercises_definitions_router,
     exercises_instances_router,
 )
+from gateway_app.routes.messaging import messaging_router
 from gateway_app.routes.plans import (
     plans_adoption_router,
     plans_applied_router,
@@ -39,6 +51,7 @@ from gateway_app.routes.plans import (
 )
 from gateway_app.routes.rpe import rpe_router
 from gateway_app.routes.sessions import sessions_router
+from gateway_app.routes.social import social_router
 from gateway_app.routes.user_max import user_max_router
 from gateway_app.routes.workouts import workout_metrics_router, workouts_router
 
@@ -47,30 +60,6 @@ logger = structlog.get_logger(__name__)
 SERVICE_NAME = os.getenv("SERVICE_NAME", "api-gateway")
 
 
-def _normalize_env_url(var_name: str) -> str | None:
-    raw = (os.getenv(var_name) or "").strip()
-    if not raw:
-        logger.error("env_var_missing", env_var=var_name)
-        return None
-    if not raw.startswith(("http://", "https://")):
-        raw = f"https://{raw}"
-    return raw.rstrip("/")
-
-
-RPE_SERVICE_URL = _normalize_env_url("RPE_SERVICE_URL")
-EXERCISES_SERVICE_URL = _normalize_env_url("EXERCISES_SERVICE_URL")
-USER_MAX_SERVICE_URL = _normalize_env_url("USER_MAX_SERVICE_URL")
-WORKOUTS_SERVICE_URL = _normalize_env_url("WORKOUTS_SERVICE_URL")
-PLANS_SERVICE_URL = _normalize_env_url("PLANS_SERVICE_URL")
-AGENT_SERVICE_URL = _normalize_env_url("AGENT_SERVICE_URL")
-ACCOUNTS_SERVICE_URL = _normalize_env_url("ACCOUNTS_SERVICE_URL")
-CRM_SERVICE_URL = _normalize_env_url("CRM_SERVICE_URL")
-
-SOCIAL_API_URL_RAW = (os.getenv("SOCIAL_API_URL") or "").strip()
-SOCIAL_API_URL = SOCIAL_API_URL_RAW.rstrip("/") if SOCIAL_API_URL_RAW else ""
-MESSAGING_API_URL_RAW = (os.getenv("MESSAGING_API_URL") or "").strip()
-MESSAGING_API_URL = MESSAGING_API_URL_RAW.rstrip("/") if MESSAGING_API_URL_RAW else ""
-MESSENGER_APP_ID = (os.getenv("MESSENGER_APP_ID") or "").strip()
 
 try:
     import firebase_admin
@@ -169,9 +158,14 @@ def _forward_headers(request: Request) -> dict[str, str]:
     return forwarded
 
 
+def _forward_query_params(request: Request) -> list[tuple[str, str]]:
+    # Preserve repeated query params (e.g. layers=a&layers=b).
+    return [(str(k), str(v)) for k, v in request.query_params.multi_items()]
+
+
 async def _proxy_request(request: Request, target_url: str, headers: dict[str, str]) -> Response:
     """Proxy HTTP request to a backend service and return the response."""
-    timeout = httpx.Timeout(connect=_DEFAULT_CONNECT_TIMEOUT, read=_DEFAULT_PROXY_TIMEOUT, write=30.0, pool=30.0)
+    timeout = httpx.Timeout(connect=_DEFAULT_CONNECT_TIMEOUT, read=_DEFAULT_PROXY_TIMEOUT, write=_DEFAULT_PROXY_TIMEOUT, pool=_DEFAULT_PROXY_TIMEOUT)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         body = await request.body()
         response = await client.request(
@@ -179,7 +173,7 @@ async def _proxy_request(request: Request, target_url: str, headers: dict[str, s
             url=target_url,
             headers=headers,
             content=body if body else None,
-            params=request.query_params,
+            params=_forward_query_params(request),
         )
         return Response(
             content=response.content,
@@ -916,6 +910,42 @@ async def _fetch_target_profile(user_id: str) -> dict:
         raise HTTPException(status_code=502, detail="Invalid profile response format")
     return data
 
+async def purge_service(service: str, user_id: str):
+    service_url = f"http://{service}-service/internal/users/{user_id}/purge"
+    async with httpx.AsyncClient() as client:
+        response = await client.post(service_url, headers={"X-Internal-Secret": os.getenv("INTERNAL_GATEWAY_SECRET")})
+    response.raise_for_status()
+    return response.json
+
+@app.post("/internal/users/{user_id}/purge-all")
+async def purge_user_all_services(user_id: str, x_internal_secret: str = Header(None, alias="X-Internal-Secret")):
+    expected_secret = (os.getenv("INTERNAL_GATEWAY_SECRET"))
+    if not expected_secret or x_internal_secret != expected_secret:
+        raise HTTPException(status_code=403, detail="Invalid internal secret")
+    services = [
+        "accounts",
+        "rpe",
+        "exercises",
+        "user-max-service",
+        "workouts",
+        "agent",
+        "crm",
+        "plans",
+    ]
+    results = {}
+    failed_serives = []
+    for service in services:
+        try:
+            result = await purge_service(service, user_id)
+            results[service] = "success"
+        except Exception as e:
+            failed_serives.append(service)
+            logger.error(f"Failed to purge service {service}: {e}")
+
+    if failed_serives:
+        raise HTTPException(status_code=500, detail=f"Failed to purge services: {failed_serives}")
+
+    return {"status": "success", "result": results}
 
 app.include_router(rpe_router)
 app.include_router(exercises_core_router)
@@ -934,3 +964,6 @@ app.include_router(plans_templates_router)
 app.include_router(analytics_router)
 app.include_router(crm_router)
 app.include_router(agent_router)
+app.include_router(account_router)
+app.include_router(social_router)
+app.include_router(messaging_router)

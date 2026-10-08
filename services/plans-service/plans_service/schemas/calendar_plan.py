@@ -49,6 +49,7 @@ class CalendarPlanBase(BaseModel):
         default=None,
         description="List of supported constraint codes (e.g. shoulder_overhead_limit)",
     )
+    nutrition_plan: dict | None = Field(default=None)
 
     class Config:
         from_attributes = True
@@ -67,6 +68,7 @@ class MicrocycleBase(BaseModel):
 class PlanWorkoutBase(BaseModel):
     day_label: str = Field(..., max_length=50, description="Day label, e.g., 'Day 1'")
     order_index: int = Field(default=0, ge=0)
+    nutrition_plan: dict | None = Field(default=None)
 
 
 class PlanWorkoutCreate(PlanWorkoutBase):
@@ -85,6 +87,8 @@ class PlanWorkoutResponse(PlanWorkoutBase):
 class PlanExerciseBase(BaseModel):
     exercise_definition_id: int
     order_index: int = Field(default=0, ge=0)
+    rest_seconds: int | None = Field(default=None, ge=0, description="Planned rest time between sets")
+    notes: str | None = Field(default=None, description="Optional execution notes for the exercise")
 
 
 class PlanExerciseCreate(PlanExerciseBase):
@@ -103,6 +107,15 @@ class PlanExerciseResponse(PlanExerciseBase):
 
 class PlanSetBase(BaseModel):
     order_index: int | None = Field(default=None, ge=0)
+    set_type: str | None = None
+    intensity: int | None = Field(default=None, ge=0, le=110)
+    effort: int | None = Field(default=None, ge=1, le=10)
+    volume: int | None = Field(default=None, ge=1)
+    working_weight: float | None = Field(default=None, exclude=True)
+
+
+class PlanSetSubset(BaseModel):
+    order_index: int | None = Field(default=None, ge=0)
     intensity: int | None = Field(default=None, ge=0, le=110)
     effort: int | None = Field(default=None, ge=1, le=10)
     volume: int | None = Field(default=None, ge=1)
@@ -110,12 +123,24 @@ class PlanSetBase(BaseModel):
 
 
 class PlanSetCreate(PlanSetBase):
-    pass
+    subsets: list[PlanSetSubset] | None = None
+
+    @model_validator(mode="after")
+    def _validate_subsets(self):
+        set_type = (self.set_type or "normal").strip().lower()
+        if set_type in {"drop", "cluster", "rest_pause"}:
+            if not self.subsets:
+                raise ValueError("subsets is required for composite set types")
+        elif set_type == "normal":
+            if self.subsets:
+                raise ValueError("subsets must be empty for normal set type")
+        return self
 
 
 class PlanSetResponse(PlanSetBase):
     id: int
     plan_exercise_id: int | None = None
+    subsets: list[PlanSetSubset] | None = None
 
     class Config:
         from_attributes = True
@@ -329,6 +354,7 @@ class AppliedPlanWorkoutResponse(BaseModel):
     id: int
     workout_id: int
     order_index: int
+    nutrition_plan: dict | None = Field(default=None)
 
     class Config:
         from_attributes = True

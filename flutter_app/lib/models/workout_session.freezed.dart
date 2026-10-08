@@ -1,37 +1,45 @@
 // coverage:ignore-file
-
-
-
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint
+// ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'workout_session.dart';
 
-
-
-
+// **************************************************************************
+// FreezedGenerator
+// **************************************************************************
 
 T _$identity<T>(T value) => value;
 
 final _privateConstructorUsedError = UnsupportedError(
-    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
+  'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models',
+);
 
 WorkoutSession _$WorkoutSessionFromJson(Map<String, dynamic> json) {
   return _WorkoutSession.fromJson(json);
 }
 
-
+/// @nodoc
 mixin _$WorkoutSession {
   int? get id => throw _privateConstructorUsedError;
   @JsonKey(name: 'workout_id')
   int get workoutId => throw _privateConstructorUsedError;
-  @JsonKey(name: 'started_at')
+  @JsonKey(
+    name: 'started_at',
+    fromJson: _parseDateTimeAssumeUtc,
+    toJson: _dateTimeToIsoUtc,
+  )
   DateTime get startedAt => throw _privateConstructorUsedError;
-  @JsonKey(name: 'finished_at')
+  @JsonKey(
+    name: 'finished_at',
+    fromJson: _parseDateTimeAssumeUtcNullable,
+    toJson: _dateTimeToIsoUtcNullable,
+  )
   DateTime? get finishedAt => throw _privateConstructorUsedError;
   String get status => throw _privateConstructorUsedError;
   @JsonKey(name: 'duration_seconds')
   int? get durationSeconds => throw _privateConstructorUsedError;
-  Map<String, dynamic> get progress =>
-      throw _privateConstructorUsedError;
+  Map<String, dynamic> get progress => throw _privateConstructorUsedError;
   @JsonKey(name: 'device_source')
   String? get deviceSource => throw _privateConstructorUsedError;
   @JsonKey(name: 'hr_avg')
@@ -44,39 +52,51 @@ mixin _$WorkoutSession {
   @JsonKey(name: 'injury_flags')
   Map<String, dynamic>? get injuryFlags => throw _privateConstructorUsedError;
 
-
+  /// Serializes this WorkoutSession to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
-
-
+  /// Create a copy of WorkoutSession
+  /// with the given fields replaced by the non-null parameter values.
   @JsonKey(includeFromJson: false, includeToJson: false)
   $WorkoutSessionCopyWith<WorkoutSession> get copyWith =>
       throw _privateConstructorUsedError;
 }
 
-
+/// @nodoc
 abstract class $WorkoutSessionCopyWith<$Res> {
   factory $WorkoutSessionCopyWith(
-          WorkoutSession value, $Res Function(WorkoutSession) then) =
-      _$WorkoutSessionCopyWithImpl<$Res, WorkoutSession>;
+    WorkoutSession value,
+    $Res Function(WorkoutSession) then,
+  ) = _$WorkoutSessionCopyWithImpl<$Res, WorkoutSession>;
   @useResult
-  $Res call(
-      {int? id,
-      @JsonKey(name: 'workout_id') int workoutId,
-      @JsonKey(name: 'started_at') DateTime startedAt,
-      @JsonKey(name: 'finished_at') DateTime? finishedAt,
-      String status,
-      @JsonKey(name: 'duration_seconds') int? durationSeconds,
-      Map<String, dynamic> progress,
-      @JsonKey(name: 'device_source') String? deviceSource,
-      @JsonKey(name: 'hr_avg') int? hrAvg,
-      @JsonKey(name: 'hr_max') int? hrMax,
-      @JsonKey(name: 'hydration_liters') double? hydrationLiters,
-      String? mood,
-      @JsonKey(name: 'injury_flags') Map<String, dynamic>? injuryFlags});
+  $Res call({
+    int? id,
+    @JsonKey(name: 'workout_id') int workoutId,
+    @JsonKey(
+      name: 'started_at',
+      fromJson: _parseDateTimeAssumeUtc,
+      toJson: _dateTimeToIsoUtc,
+    )
+    DateTime startedAt,
+    @JsonKey(
+      name: 'finished_at',
+      fromJson: _parseDateTimeAssumeUtcNullable,
+      toJson: _dateTimeToIsoUtcNullable,
+    )
+    DateTime? finishedAt,
+    String status,
+    @JsonKey(name: 'duration_seconds') int? durationSeconds,
+    Map<String, dynamic> progress,
+    @JsonKey(name: 'device_source') String? deviceSource,
+    @JsonKey(name: 'hr_avg') int? hrAvg,
+    @JsonKey(name: 'hr_max') int? hrMax,
+    @JsonKey(name: 'hydration_liters') double? hydrationLiters,
+    String? mood,
+    @JsonKey(name: 'injury_flags') Map<String, dynamic>? injuryFlags,
+  });
 }
 
-
+/// @nodoc
 class _$WorkoutSessionCopyWithImpl<$Res, $Val extends WorkoutSession>
     implements $WorkoutSessionCopyWith<$Res> {
   _$WorkoutSessionCopyWithImpl(this._value, this._then);
@@ -86,8 +106,8 @@ class _$WorkoutSessionCopyWithImpl<$Res, $Val extends WorkoutSession>
   // ignore: unused_field
   final $Res Function($Val) _then;
 
-
-
+  /// Create a copy of WorkoutSession
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -105,97 +125,113 @@ class _$WorkoutSessionCopyWithImpl<$Res, $Val extends WorkoutSession>
     Object? mood = freezed,
     Object? injuryFlags = freezed,
   }) {
-    return _then(_value.copyWith(
-      id: freezed == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as int?,
-      workoutId: null == workoutId
-          ? _value.workoutId
-          : workoutId // ignore: cast_nullable_to_non_nullable
-              as int,
-      startedAt: null == startedAt
-          ? _value.startedAt
-          : startedAt // ignore: cast_nullable_to_non_nullable
-              as DateTime,
-      finishedAt: freezed == finishedAt
-          ? _value.finishedAt
-          : finishedAt // ignore: cast_nullable_to_non_nullable
-              as DateTime?,
-      status: null == status
-          ? _value.status
-          : status // ignore: cast_nullable_to_non_nullable
-              as String,
-      durationSeconds: freezed == durationSeconds
-          ? _value.durationSeconds
-          : durationSeconds // ignore: cast_nullable_to_non_nullable
-              as int?,
-      progress: null == progress
-          ? _value.progress
-          : progress // ignore: cast_nullable_to_non_nullable
-              as Map<String, dynamic>,
-      deviceSource: freezed == deviceSource
-          ? _value.deviceSource
-          : deviceSource // ignore: cast_nullable_to_non_nullable
-              as String?,
-      hrAvg: freezed == hrAvg
-          ? _value.hrAvg
-          : hrAvg // ignore: cast_nullable_to_non_nullable
-              as int?,
-      hrMax: freezed == hrMax
-          ? _value.hrMax
-          : hrMax // ignore: cast_nullable_to_non_nullable
-              as int?,
-      hydrationLiters: freezed == hydrationLiters
-          ? _value.hydrationLiters
-          : hydrationLiters // ignore: cast_nullable_to_non_nullable
-              as double?,
-      mood: freezed == mood
-          ? _value.mood
-          : mood // ignore: cast_nullable_to_non_nullable
-              as String?,
-      injuryFlags: freezed == injuryFlags
-          ? _value.injuryFlags
-          : injuryFlags // ignore: cast_nullable_to_non_nullable
-              as Map<String, dynamic>?,
-    ) as $Val);
+    return _then(
+      _value.copyWith(
+            id: freezed == id
+                ? _value.id
+                : id // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            workoutId: null == workoutId
+                ? _value.workoutId
+                : workoutId // ignore: cast_nullable_to_non_nullable
+                      as int,
+            startedAt: null == startedAt
+                ? _value.startedAt
+                : startedAt // ignore: cast_nullable_to_non_nullable
+                      as DateTime,
+            finishedAt: freezed == finishedAt
+                ? _value.finishedAt
+                : finishedAt // ignore: cast_nullable_to_non_nullable
+                      as DateTime?,
+            status: null == status
+                ? _value.status
+                : status // ignore: cast_nullable_to_non_nullable
+                      as String,
+            durationSeconds: freezed == durationSeconds
+                ? _value.durationSeconds
+                : durationSeconds // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            progress: null == progress
+                ? _value.progress
+                : progress // ignore: cast_nullable_to_non_nullable
+                      as Map<String, dynamic>,
+            deviceSource: freezed == deviceSource
+                ? _value.deviceSource
+                : deviceSource // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            hrAvg: freezed == hrAvg
+                ? _value.hrAvg
+                : hrAvg // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            hrMax: freezed == hrMax
+                ? _value.hrMax
+                : hrMax // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            hydrationLiters: freezed == hydrationLiters
+                ? _value.hydrationLiters
+                : hydrationLiters // ignore: cast_nullable_to_non_nullable
+                      as double?,
+            mood: freezed == mood
+                ? _value.mood
+                : mood // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            injuryFlags: freezed == injuryFlags
+                ? _value.injuryFlags
+                : injuryFlags // ignore: cast_nullable_to_non_nullable
+                      as Map<String, dynamic>?,
+          )
+          as $Val,
+    );
   }
 }
 
-
+/// @nodoc
 abstract class _$$WorkoutSessionImplCopyWith<$Res>
     implements $WorkoutSessionCopyWith<$Res> {
-  factory _$$WorkoutSessionImplCopyWith(_$WorkoutSessionImpl value,
-          $Res Function(_$WorkoutSessionImpl) then) =
-      __$$WorkoutSessionImplCopyWithImpl<$Res>;
+  factory _$$WorkoutSessionImplCopyWith(
+    _$WorkoutSessionImpl value,
+    $Res Function(_$WorkoutSessionImpl) then,
+  ) = __$$WorkoutSessionImplCopyWithImpl<$Res>;
   @override
   @useResult
-  $Res call(
-      {int? id,
-      @JsonKey(name: 'workout_id') int workoutId,
-      @JsonKey(name: 'started_at') DateTime startedAt,
-      @JsonKey(name: 'finished_at') DateTime? finishedAt,
-      String status,
-      @JsonKey(name: 'duration_seconds') int? durationSeconds,
-      Map<String, dynamic> progress,
-      @JsonKey(name: 'device_source') String? deviceSource,
-      @JsonKey(name: 'hr_avg') int? hrAvg,
-      @JsonKey(name: 'hr_max') int? hrMax,
-      @JsonKey(name: 'hydration_liters') double? hydrationLiters,
-      String? mood,
-      @JsonKey(name: 'injury_flags') Map<String, dynamic>? injuryFlags});
+  $Res call({
+    int? id,
+    @JsonKey(name: 'workout_id') int workoutId,
+    @JsonKey(
+      name: 'started_at',
+      fromJson: _parseDateTimeAssumeUtc,
+      toJson: _dateTimeToIsoUtc,
+    )
+    DateTime startedAt,
+    @JsonKey(
+      name: 'finished_at',
+      fromJson: _parseDateTimeAssumeUtcNullable,
+      toJson: _dateTimeToIsoUtcNullable,
+    )
+    DateTime? finishedAt,
+    String status,
+    @JsonKey(name: 'duration_seconds') int? durationSeconds,
+    Map<String, dynamic> progress,
+    @JsonKey(name: 'device_source') String? deviceSource,
+    @JsonKey(name: 'hr_avg') int? hrAvg,
+    @JsonKey(name: 'hr_max') int? hrMax,
+    @JsonKey(name: 'hydration_liters') double? hydrationLiters,
+    String? mood,
+    @JsonKey(name: 'injury_flags') Map<String, dynamic>? injuryFlags,
+  });
 }
 
-
+/// @nodoc
 class __$$WorkoutSessionImplCopyWithImpl<$Res>
     extends _$WorkoutSessionCopyWithImpl<$Res, _$WorkoutSessionImpl>
     implements _$$WorkoutSessionImplCopyWith<$Res> {
   __$$WorkoutSessionImplCopyWithImpl(
-      _$WorkoutSessionImpl _value, $Res Function(_$WorkoutSessionImpl) _then)
-      : super(_value, _then);
+    _$WorkoutSessionImpl _value,
+    $Res Function(_$WorkoutSessionImpl) _then,
+  ) : super(_value, _then);
 
-
-
+  /// Create a copy of WorkoutSession
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -213,85 +249,97 @@ class __$$WorkoutSessionImplCopyWithImpl<$Res>
     Object? mood = freezed,
     Object? injuryFlags = freezed,
   }) {
-    return _then(_$WorkoutSessionImpl(
-      id: freezed == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as int?,
-      workoutId: null == workoutId
-          ? _value.workoutId
-          : workoutId // ignore: cast_nullable_to_non_nullable
-              as int,
-      startedAt: null == startedAt
-          ? _value.startedAt
-          : startedAt // ignore: cast_nullable_to_non_nullable
-              as DateTime,
-      finishedAt: freezed == finishedAt
-          ? _value.finishedAt
-          : finishedAt // ignore: cast_nullable_to_non_nullable
-              as DateTime?,
-      status: null == status
-          ? _value.status
-          : status // ignore: cast_nullable_to_non_nullable
-              as String,
-      durationSeconds: freezed == durationSeconds
-          ? _value.durationSeconds
-          : durationSeconds // ignore: cast_nullable_to_non_nullable
-              as int?,
-      progress: null == progress
-          ? _value._progress
-          : progress // ignore: cast_nullable_to_non_nullable
-              as Map<String, dynamic>,
-      deviceSource: freezed == deviceSource
-          ? _value.deviceSource
-          : deviceSource // ignore: cast_nullable_to_non_nullable
-              as String?,
-      hrAvg: freezed == hrAvg
-          ? _value.hrAvg
-          : hrAvg // ignore: cast_nullable_to_non_nullable
-              as int?,
-      hrMax: freezed == hrMax
-          ? _value.hrMax
-          : hrMax // ignore: cast_nullable_to_non_nullable
-              as int?,
-      hydrationLiters: freezed == hydrationLiters
-          ? _value.hydrationLiters
-          : hydrationLiters // ignore: cast_nullable_to_non_nullable
-              as double?,
-      mood: freezed == mood
-          ? _value.mood
-          : mood // ignore: cast_nullable_to_non_nullable
-              as String?,
-      injuryFlags: freezed == injuryFlags
-          ? _value._injuryFlags
-          : injuryFlags // ignore: cast_nullable_to_non_nullable
-              as Map<String, dynamic>?,
-    ));
+    return _then(
+      _$WorkoutSessionImpl(
+        id: freezed == id
+            ? _value.id
+            : id // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        workoutId: null == workoutId
+            ? _value.workoutId
+            : workoutId // ignore: cast_nullable_to_non_nullable
+                  as int,
+        startedAt: null == startedAt
+            ? _value.startedAt
+            : startedAt // ignore: cast_nullable_to_non_nullable
+                  as DateTime,
+        finishedAt: freezed == finishedAt
+            ? _value.finishedAt
+            : finishedAt // ignore: cast_nullable_to_non_nullable
+                  as DateTime?,
+        status: null == status
+            ? _value.status
+            : status // ignore: cast_nullable_to_non_nullable
+                  as String,
+        durationSeconds: freezed == durationSeconds
+            ? _value.durationSeconds
+            : durationSeconds // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        progress: null == progress
+            ? _value._progress
+            : progress // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>,
+        deviceSource: freezed == deviceSource
+            ? _value.deviceSource
+            : deviceSource // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        hrAvg: freezed == hrAvg
+            ? _value.hrAvg
+            : hrAvg // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        hrMax: freezed == hrMax
+            ? _value.hrMax
+            : hrMax // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        hydrationLiters: freezed == hydrationLiters
+            ? _value.hydrationLiters
+            : hydrationLiters // ignore: cast_nullable_to_non_nullable
+                  as double?,
+        mood: freezed == mood
+            ? _value.mood
+            : mood // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        injuryFlags: freezed == injuryFlags
+            ? _value._injuryFlags
+            : injuryFlags // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>?,
+      ),
+    );
   }
 }
 
-
+/// @nodoc
 
 @JsonSerializable(explicitToJson: true)
 class _$WorkoutSessionImpl extends _WorkoutSession
     with DiagnosticableTreeMixin {
-  const _$WorkoutSessionImpl(
-      {this.id,
-      @JsonKey(name: 'workout_id') required this.workoutId,
-      @JsonKey(name: 'started_at') required this.startedAt,
-      @JsonKey(name: 'finished_at') this.finishedAt,
-      this.status = 'active',
-      @JsonKey(name: 'duration_seconds') this.durationSeconds,
-      final Map<String, dynamic> progress = const <String, dynamic>{},
-      @JsonKey(name: 'device_source') this.deviceSource,
-      @JsonKey(name: 'hr_avg') this.hrAvg,
-      @JsonKey(name: 'hr_max') this.hrMax,
-      @JsonKey(name: 'hydration_liters') this.hydrationLiters,
-      this.mood,
-      @JsonKey(name: 'injury_flags') final Map<String, dynamic>? injuryFlags})
-      : _progress = progress,
-        _injuryFlags = injuryFlags,
-        super._();
+  const _$WorkoutSessionImpl({
+    this.id,
+    @JsonKey(name: 'workout_id') required this.workoutId,
+    @JsonKey(
+      name: 'started_at',
+      fromJson: _parseDateTimeAssumeUtc,
+      toJson: _dateTimeToIsoUtc,
+    )
+    required this.startedAt,
+    @JsonKey(
+      name: 'finished_at',
+      fromJson: _parseDateTimeAssumeUtcNullable,
+      toJson: _dateTimeToIsoUtcNullable,
+    )
+    this.finishedAt,
+    this.status = 'active',
+    @JsonKey(name: 'duration_seconds') this.durationSeconds,
+    final Map<String, dynamic> progress = const <String, dynamic>{},
+    @JsonKey(name: 'device_source') this.deviceSource,
+    @JsonKey(name: 'hr_avg') this.hrAvg,
+    @JsonKey(name: 'hr_max') this.hrMax,
+    @JsonKey(name: 'hydration_liters') this.hydrationLiters,
+    this.mood,
+    @JsonKey(name: 'injury_flags') final Map<String, dynamic>? injuryFlags,
+  }) : _progress = progress,
+       _injuryFlags = injuryFlags,
+       super._();
 
   factory _$WorkoutSessionImpl.fromJson(Map<String, dynamic> json) =>
       _$$WorkoutSessionImplFromJson(json);
@@ -302,10 +350,18 @@ class _$WorkoutSessionImpl extends _WorkoutSession
   @JsonKey(name: 'workout_id')
   final int workoutId;
   @override
-  @JsonKey(name: 'started_at')
+  @JsonKey(
+    name: 'started_at',
+    fromJson: _parseDateTimeAssumeUtc,
+    toJson: _dateTimeToIsoUtc,
+  )
   final DateTime startedAt;
   @override
-  @JsonKey(name: 'finished_at')
+  @JsonKey(
+    name: 'finished_at',
+    fromJson: _parseDateTimeAssumeUtcNullable,
+    toJson: _dateTimeToIsoUtcNullable,
+  )
   final DateTime? finishedAt;
   @override
   @JsonKey()
@@ -321,7 +377,6 @@ class _$WorkoutSessionImpl extends _WorkoutSession
     // ignore: implicit_dynamic_type
     return EqualUnmodifiableMapView(_progress);
   }
-
 
   @override
   @JsonKey(name: 'device_source')
@@ -396,61 +451,74 @@ class _$WorkoutSessionImpl extends _WorkoutSession
             (identical(other.hydrationLiters, hydrationLiters) ||
                 other.hydrationLiters == hydrationLiters) &&
             (identical(other.mood, mood) || other.mood == mood) &&
-            const DeepCollectionEquality()
-                .equals(other._injuryFlags, _injuryFlags));
+            const DeepCollectionEquality().equals(
+              other._injuryFlags,
+              _injuryFlags,
+            ));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(
-      runtimeType,
-      id,
-      workoutId,
-      startedAt,
-      finishedAt,
-      status,
-      durationSeconds,
-      const DeepCollectionEquality().hash(_progress),
-      deviceSource,
-      hrAvg,
-      hrMax,
-      hydrationLiters,
-      mood,
-      const DeepCollectionEquality().hash(_injuryFlags));
+    runtimeType,
+    id,
+    workoutId,
+    startedAt,
+    finishedAt,
+    status,
+    durationSeconds,
+    const DeepCollectionEquality().hash(_progress),
+    deviceSource,
+    hrAvg,
+    hrMax,
+    hydrationLiters,
+    mood,
+    const DeepCollectionEquality().hash(_injuryFlags),
+  );
 
-
-
+  /// Create a copy of WorkoutSession
+  /// with the given fields replaced by the non-null parameter values.
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   @pragma('vm:prefer-inline')
   _$$WorkoutSessionImplCopyWith<_$WorkoutSessionImpl> get copyWith =>
       __$$WorkoutSessionImplCopyWithImpl<_$WorkoutSessionImpl>(
-          this, _$identity);
+        this,
+        _$identity,
+      );
 
   @override
   Map<String, dynamic> toJson() {
-    return _$$WorkoutSessionImplToJson(
-      this,
-    );
+    return _$$WorkoutSessionImplToJson(this);
   }
 }
 
 abstract class _WorkoutSession extends WorkoutSession {
-  const factory _WorkoutSession(
-      {final int? id,
-      @JsonKey(name: 'workout_id') required final int workoutId,
-      @JsonKey(name: 'started_at') required final DateTime startedAt,
-      @JsonKey(name: 'finished_at') final DateTime? finishedAt,
-      final String status,
-      @JsonKey(name: 'duration_seconds') final int? durationSeconds,
-      final Map<String, dynamic> progress,
-      @JsonKey(name: 'device_source') final String? deviceSource,
-      @JsonKey(name: 'hr_avg') final int? hrAvg,
-      @JsonKey(name: 'hr_max') final int? hrMax,
-      @JsonKey(name: 'hydration_liters') final double? hydrationLiters,
-      final String? mood,
-      @JsonKey(name: 'injury_flags')
-      final Map<String, dynamic>? injuryFlags}) = _$WorkoutSessionImpl;
+  const factory _WorkoutSession({
+    final int? id,
+    @JsonKey(name: 'workout_id') required final int workoutId,
+    @JsonKey(
+      name: 'started_at',
+      fromJson: _parseDateTimeAssumeUtc,
+      toJson: _dateTimeToIsoUtc,
+    )
+    required final DateTime startedAt,
+    @JsonKey(
+      name: 'finished_at',
+      fromJson: _parseDateTimeAssumeUtcNullable,
+      toJson: _dateTimeToIsoUtcNullable,
+    )
+    final DateTime? finishedAt,
+    final String status,
+    @JsonKey(name: 'duration_seconds') final int? durationSeconds,
+    final Map<String, dynamic> progress,
+    @JsonKey(name: 'device_source') final String? deviceSource,
+    @JsonKey(name: 'hr_avg') final int? hrAvg,
+    @JsonKey(name: 'hr_max') final int? hrMax,
+    @JsonKey(name: 'hydration_liters') final double? hydrationLiters,
+    final String? mood,
+    @JsonKey(name: 'injury_flags') final Map<String, dynamic>? injuryFlags,
+  }) = _$WorkoutSessionImpl;
   const _WorkoutSession._() : super._();
 
   factory _WorkoutSession.fromJson(Map<String, dynamic> json) =
@@ -462,10 +530,18 @@ abstract class _WorkoutSession extends WorkoutSession {
   @JsonKey(name: 'workout_id')
   int get workoutId;
   @override
-  @JsonKey(name: 'started_at')
+  @JsonKey(
+    name: 'started_at',
+    fromJson: _parseDateTimeAssumeUtc,
+    toJson: _dateTimeToIsoUtc,
+  )
   DateTime get startedAt;
   @override
-  @JsonKey(name: 'finished_at')
+  @JsonKey(
+    name: 'finished_at',
+    fromJson: _parseDateTimeAssumeUtcNullable,
+    toJson: _dateTimeToIsoUtcNullable,
+  )
   DateTime? get finishedAt;
   @override
   String get status;
@@ -492,8 +568,8 @@ abstract class _WorkoutSession extends WorkoutSession {
   @JsonKey(name: 'injury_flags')
   Map<String, dynamic>? get injuryFlags;
 
-
-
+  /// Create a copy of WorkoutSession
+  /// with the given fields replaced by the non-null parameter values.
   @override
   @JsonKey(includeFromJson: false, includeToJson: false)
   _$$WorkoutSessionImplCopyWith<_$WorkoutSessionImpl> get copyWith =>

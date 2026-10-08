@@ -26,10 +26,16 @@ import 'package:workout_app/providers/plan_providers.dart';
 import 'package:workout_app/widgets/primary_app_bar.dart';
 import 'package:workout_app/widgets/assistant_chat_host.dart';
 import 'package:workout_app/services/agent_mass_edit_service.dart';
+import 'package:workout_app/widgets/loading_indicator.dart';
+import 'package:workout_app/widgets/error_message.dart';
+import 'package:workout_app/widgets/empty_state.dart';
+import 'package:workout_app/screens/calendar_plans_screen.dart';
 import 'package:workout_app/widgets/plan_analytics_chart.dart';
 import 'package:workout_app/screens/user_profile_screen.dart';
 
-final _planServiceProvider = Provider<PlanService>((ref) => PlanService(apiClient: ref.watch(apiClientProvider)));
+final _planServiceProvider = Provider<PlanService>(
+  (ref) => PlanService(apiClient: ref.watch(apiClientProvider)),
+);
 
 final activePlanWorkoutsProvider = FutureProvider<List<Workout>>((ref) async {
   final plan = ref.watch(activeAppliedPlanSWRProvider).value;
@@ -44,7 +50,9 @@ final activePlanWorkoutsProvider = FutureProvider<List<Workout>>((ref) async {
   return list;
 });
 
-final activePlanAnalyticsProvider = FutureProvider<PlanAnalyticsResponse?>((ref) async {
+final activePlanAnalyticsProvider = FutureProvider<PlanAnalyticsResponse?>((
+  ref,
+) async {
   final plan = ref.watch(activeAppliedPlanSWRProvider).value;
   if (plan == null) return null;
   final svc = ref.watch(_planServiceProvider);
@@ -102,7 +110,12 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
   final Map<int, String> _exerciseNameCache = <int, String>{};
   Timer? _rangeRefreshTimer;
 
-  final List<String> _metrics = const ['sets_count', 'volume_sum', 'intensity_avg', 'effort_avg'];
+  final List<String> _metrics = const [
+    'sets_count',
+    'volume_sum',
+    'intensity_avg',
+    'effort_avg',
+  ];
   String _metricX = 'effort_avg';
   String _metricY = 'effort_avg';
 
@@ -115,9 +128,9 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     _workoutsSub = ref.listenManual<AsyncValue<List<Workout>>>(
       activePlanWorkoutsProvider,
       (previous, next) {
-      final list = next.valueOrNull;
-      if (list == null || !mounted) return;
-      _maybeAutoSelectDayFromWorkouts(list);
+        final list = next.valueOrNull;
+        if (list == null || !mounted) return;
+        _maybeAutoSelectDayFromWorkouts(list);
       },
     );
   }
@@ -133,6 +146,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     final planAsync = ref.watch(activeAppliedPlanSWRProvider);
     final analyticsAsync = ref.watch(activePlanAnalyticsProvider);
@@ -144,7 +158,6 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
       contextBuilder: _buildChatContext,
       builder: (context, openChat) {
         return Scaffold(
-          backgroundColor: AppColors.background,
           appBar: PrimaryAppBar.main(
             title: 'Active Plan',
             onTitleTap: openChat,
@@ -153,23 +166,46 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                 icon: const Icon(Icons.account_circle_outlined),
                 onPressed: () async {
                   await Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => const UserProfileScreen(),
+                    ),
                   );
                 },
               ),
             ],
           ),
-          body: SafeArea(
+          body: RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(activeAppliedPlanSWRProvider);
+              ref.invalidate(activePlanAnalyticsProvider);
+              ref.invalidate(activePlanWorkoutsProvider);
+            },
             child: planAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stack) => Center(
-                child: Text('Failed to load active plan: $error'),
+              loading: () => const LoadingIndicator(),
+              error: (error, stack) => ErrorMessage(
+                message: 'Failed to load active plan: $error',
+                onRetry: () => ref.invalidate(activeAppliedPlanSWRProvider),
               ),
               data: (plan) {
                 if (plan == null) {
-                  return const Center(child: Text('No active plan'));
+                  return EmptyState(
+                    icon: Icons.fitness_center,
+                    title: 'No active plan',
+                    description: 'Choose a training plan to start your journey',
+                    action: ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const CalendarPlansScreen(),
+                          ),
+                        );
+                      },
+                      child: const Text('Browse Plans'),
+                    ),
+                  );
                 }
                 return SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.only(bottom: 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -209,9 +245,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
         'timestamp': nowIso,
         'default_mass_edit_target': 'applied',
         'entities': <String, dynamic>{},
-        'selection': <String, dynamic>{
-          'date': selectionDate,
-        },
+        'selection': <String, dynamic>{'date': selectionDate},
       };
 
       final entities = base['entities'] as Map<String, dynamic>;
@@ -241,9 +275,6 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
         entities['active_applied_plan'] = null;
       }
 
-
-
-
       final workouts = await ref.read(activePlanWorkoutsProvider.future);
       final autocomplete = <String, dynamic>{};
 
@@ -253,19 +284,12 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
           final idx = w.planOrderIndex;
           if (idx == null) continue;
           final alias = '/workout_${idx + 1}';
-          items.add({
-            'alias': alias,
-            'name': w.name,
-            'plan_order_index': idx,
-          });
+          items.add({'alias': alias, 'name': w.name, 'plan_order_index': idx});
         }
         if (items.isNotEmpty) {
           autocomplete['workouts'] = items;
         }
       }
-
-
-
 
       final exSvc = ref.read(exerciseServiceProvider);
       final defs = await exSvc.getExerciseDefinitions();
@@ -274,11 +298,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
         for (final d in defs) {
           if (d.name.isEmpty) continue;
           final alias = '/${d.name}';
-          items.add({
-            'alias': alias,
-            'name': d.name,
-            'id': d.id,
-          });
+          items.add({'alias': alias, 'name': d.name, 'id': d.id});
         }
         if (items.isNotEmpty) {
           autocomplete['exercises'] = items;
@@ -307,7 +327,10 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
-  Future<List<Workout>> _filterWorkoutsByRange(DateTime start, DateTime end) async {
+  Future<List<Workout>> _filterWorkoutsByRange(
+    DateTime start,
+    DateTime end,
+  ) async {
     final list = await ref.read(activePlanWorkoutsProvider.future);
     final s = DateTime(start.year, start.month, start.day);
     final e = DateTime(end.year, end.month, end.day, 23, 59, 59);
@@ -316,24 +339,31 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
       final dt = w.scheduledFor?.toLocal();
       if (dt == null) return false;
       if (dt.isBefore(now)) return false;
-      return dt.isAfter(s.subtract(const Duration(seconds: 1))) && dt.isBefore(e.add(const Duration(seconds: 1)));
+      return dt.isAfter(s.subtract(const Duration(seconds: 1))) &&
+          dt.isBefore(e.add(const Duration(seconds: 1)));
     }).toList();
   }
-
 
   Map<int, List<int>> _buildMicroToGlobalIndexMap(AppliedCalendarPlan plan) {
     final map = <int, List<int>>{};
     int idx = 1;
-    final mesoSorted = List.of(plan.calendarPlan.mesocycles)..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    final mesoSorted = List.of(plan.calendarPlan.mesocycles)
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
     for (final meso in mesoSorted) {
-      final microSorted = List.of(meso.microcycles)..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+      final microSorted = List.of(meso.microcycles)
+        ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
       for (final micro in microSorted) {
         final len = micro.planWorkouts.isNotEmpty
             ? micro.planWorkouts.length
             : (micro.daysCount ?? 0);
-        if (len <= 0) { map[micro.id] = const <int>[]; continue; }
+        if (len <= 0) {
+          map[micro.id] = const <int>[];
+          continue;
+        }
         final list = <int>[];
-        for (int i = 0; i < len; i++) { list.add(idx++); }
+        for (int i = 0; i < len; i++) {
+          list.add(idx++);
+        }
         map[micro.id] = list;
       }
     }
@@ -353,7 +383,10 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     }).toList();
   }
 
-  void _maybeAutoSelectDayFromWorkouts(List<Workout> workouts, {bool force = false}) {
+  void _maybeAutoSelectDayFromWorkouts(
+    List<Workout> workouts, {
+    bool force = false,
+  }) {
     final today = _dateOnly(DateTime.now());
     final current = _dateOnly(_selectedDay ?? today);
 
@@ -365,8 +398,10 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
 
     final hasPendingOnCurrent = currentWorkouts.any((w) => !w.isCompleted);
 
-    final shouldAuto = force ||
-        (!_manualDaySelection && (currentWorkouts.isEmpty || !hasPendingOnCurrent)) ||
+    final shouldAuto =
+        force ||
+        (!_manualDaySelection &&
+            (currentWorkouts.isEmpty || !hasPendingOnCurrent)) ||
         (current.isBefore(today) && !hasPendingOnCurrent);
     if (!shouldAuto) return;
 
@@ -441,7 +476,6 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     });
   }
 
-
   Future<void> _warmupExerciseCaches(Iterable<Workout> workouts) async {
     final workoutSvc = ref.read(workoutServiceProvider);
     for (final w in workouts) {
@@ -459,9 +493,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
           }
         }
         _exerciseIdsByWorkout[wid] = ids;
-      } catch (_) {
-
-      }
+      } catch (_) {}
     }
   }
 
@@ -477,7 +509,8 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
             maxLines: 4,
             decoration: const InputDecoration(
               border: OutlineInputBorder(),
-              hintText: 'Например: Увеличь RPE на 1 и добавь по 1 подходу во всех жимах по понедельникам',
+              hintText:
+                  'Например: Увеличь RPE на 1 и добавь по 1 подходу во всех жимах по понедельникам',
             ),
           ),
           actions: [
@@ -523,7 +556,6 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
   }) {
     _rangeRefreshTimer?.cancel();
     _rangeRefreshTimer = Timer(delay, () {
-
       _refreshExerciseNamesForSelection(
         plan: plan,
         start: start,
@@ -533,7 +565,9 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     });
   }
 
-  Future<Map<int, String>> _collectExerciseChoices(Iterable<Workout> workouts) async {
+  Future<Map<int, String>> _collectExerciseChoices(
+    Iterable<Workout> workouts,
+  ) async {
     final workoutSvc = ref.read(workoutServiceProvider);
     final result = <int, String>{};
     for (final w in workouts) {
@@ -589,277 +623,392 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
       isScrollControlled: true,
       showDragHandle: true,
       builder: (ctx) {
-        return StatefulBuilder(builder: (ctx, setModalState) {
-          return SafeArea(
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 12,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('Mass edit (from ${DateFormat('MMM d').format(start)} to ${DateFormat('MMM d').format(end)})', style: AppTextStyles.titleMedium),
-                  const SizedBox(height: 8),
-
-                  Row(
-                    children: [
-                      const Text('Range:'),
-                      const SizedBox(width: 12),
-                      DropdownButton<String>(
-                        value: _rangeMode,
-                        onChanged: (v) async {
-                          setModalState(() { _rangeMode = v ?? 'future'; });
-                          if (_rangeMode == 'cycles' && _selectedMicroIds.isEmpty) {
-
-                            final allMicroIds = <int>{};
-                            for (final m in plan.calendarPlan.mesocycles) {
-                              for (final mc in m.microcycles) { allMicroIds.add(mc.id); }
-                            }
-                            setModalState(() { _selectedMicroIds
-                              ..clear()
-                              ..addAll(allMicroIds); });
-                          }
-                          _debounceRefreshSelection(plan: plan, start: start, end: end, setModalState: setModalState);
-                        },
-                        items: const [
-                          DropdownMenuItem(value: 'future', child: Text('Future from week')),
-                          DropdownMenuItem(value: 'cycles', child: Text('By meso/micro')),
-                        ],
-                      ),
-                    ],
-                  ),
-                  if (_rangeMode == 'cycles') ...[
-                    const SizedBox(height: 6),
-
-                    SizedBox(
-                      height: 200,
-                      child: Scrollbar(
-                        child: ListView(
-                          children: plan.calendarPlan.mesocycles
-                              .map((meso) {
-                                final mesoChecked = meso.microcycles.every((mc) => _selectedMicroIds.contains(mc.id));
-                                return ExpansionTile(
-                                  title: Row(
-                                    children: [
-                                      Checkbox(
-                                        value: mesoChecked,
-                                        onChanged: (v) async {
-                                          setModalState(() {
-                                            if (v == true) {
-                                              for (final mc in meso.microcycles) { _selectedMicroIds.add(mc.id); }
-                                            } else {
-                                              for (final mc in meso.microcycles) { _selectedMicroIds.remove(mc.id); }
-                                            }
-                                          });
-                                          _debounceRefreshSelection(plan: plan, start: start, end: end, setModalState: setModalState);
-                                        },
-                                      ),
-                                      Expanded(child: Text(meso.name)),
-                                    ],
-                                  ),
-                                  children: meso.microcycles.map((mc) {
-                                    final checked = _selectedMicroIds.contains(mc.id);
-                                    return CheckboxListTile(
-                                      dense: true,
-                                      value: checked,
-                                      onChanged: (v) async {
-                                        setModalState(() {
-                                          if (v == true) { _selectedMicroIds.add(mc.id); } else { _selectedMicroIds.remove(mc.id); }
-                                        });
-                                        _debounceRefreshSelection(plan: plan, start: start, end: end, setModalState: setModalState);
-                                      },
-                                      title: Text(mc.name),
-                                      controlAffinity: ListTileControlAffinity.leading,
-                                    );
-                                  }).toList(),
-                                );
-                              })
-                              .toList(),
-                        ),
-                      ),
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  top: 12,
+                  bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Mass edit (from ${DateFormat('MMM d').format(start)} to ${DateFormat('MMM d').format(end)})',
+                      style: AppTextStyles.titleMedium,
                     ),
-                  ],
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _exerciseNames.entries.map((e) {
-                      final selected = _selectedExerciseIds.contains(e.key);
-                      return FilterChip(
-                        label: Text(e.value),
-                        selected: selected,
-                        onSelected: (val) {
-                          setModalState(() {
-                            if (val) {
-                              _selectedExerciseIds.add(e.key);
-                            } else {
-                              _selectedExerciseIds.remove(e.key);
-                            }
-                          });
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Switch(value: _useIntensity, onChanged: (v) => setModalState(() => _useIntensity = v)),
-                      const SizedBox(width: 8),
-                      const Text('Intensity %'),
-                      const SizedBox(width: 8),
-                      DropdownButton<String>(
-                        value: _intensityMode,
-                        onChanged: _useIntensity
-                            ? (v) => setModalState(() => _intensityMode = v ?? 'set')
-                            : null,
-                        items: const [
-                          DropdownMenuItem(value: 'set', child: Text('Set')),
-                          DropdownMenuItem(value: 'offset', child: Text('Offset')),
-                          DropdownMenuItem(value: 'scale', child: Text('Scale')),
-                        ],
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: _intensityCtrl,
-                          enabled: _useIntensity,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: InputDecoration(
-                            hintText: _intensityMode == 'set'
-                                ? 'e.g. 75'
-                                : (_intensityMode == 'offset' ? '+/- % (e.g. -2)' : '× factor (e.g. 1.05)'),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Switch(value: _useRpe, onChanged: (v) => setModalState(() => _useRpe = v)),
-                      const SizedBox(width: 8),
-                      const Text('RPE'),
-                      const SizedBox(width: 8),
-                      DropdownButton<String>(
-                        value: _rpeMode,
-                        onChanged: _useRpe
-                            ? (v) => setModalState(() => _rpeMode = v ?? 'set')
-                            : null,
-                        items: const [
-                          DropdownMenuItem(value: 'set', child: Text('Set')),
-                          DropdownMenuItem(value: 'offset', child: Text('Offset')),
-                        ],
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: _rpeCtrl,
-                          enabled: _useRpe,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: const InputDecoration(hintText: 'e.g. 8'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Switch(value: _useReps, onChanged: (v) => setModalState(() => _useReps = v)),
-                      const SizedBox(width: 8),
-                      const Text('Reps'),
-                      const SizedBox(width: 8),
-                      DropdownButton<String>(
-                        value: _repsMode,
-                        onChanged: _useReps
-                            ? (v) => setModalState(() => _repsMode = v ?? 'set')
-                            : null,
-                        items: const [
-                          DropdownMenuItem(value: 'set', child: Text('Set')),
-                          DropdownMenuItem(value: 'offset', child: Text('Offset')),
-                          DropdownMenuItem(value: 'scale', child: Text('Scale')),
-                        ],
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: _repsCtrl,
-                          enabled: _useReps,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            hintText: _repsMode == 'set'
-                                ? 'e.g. 5'
-                                : (_repsMode == 'offset' ? '+/- reps (e.g. +1)' : '× factor (e.g. 0.9)'),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Text('Recalc target:'),
-                      const SizedBox(width: 12),
-                      DropdownButton<String>(
-                        value: _recalcTarget,
-                        onChanged: (v) => setModalState(() => _recalcTarget = v ?? 'auto'),
-                        items: const [
-                          DropdownMenuItem(value: 'auto', child: Text('Auto')),
-                          DropdownMenuItem(value: 'reps', child: Text('Reps')),
-                          DropdownMenuItem(value: 'rpe', child: Text('RPE')),
-                          DropdownMenuItem(value: 'intensity', child: Text('Intensity')),
-                        ],
-                      ),
-                    ],
-                  ),
-                  if (_recalcTarget == 'rpe')
+                    const SizedBox(height: 8),
+
                     Row(
                       children: [
-                        const Text('Validator:'),
+                        const Text('Range:'),
                         const SizedBox(width: 12),
                         DropdownButton<String>(
-                          value: _fixStrategy,
-                          onChanged: (v) => setModalState(() => _fixStrategy = v ?? 'none'),
+                          value: _rangeMode,
+                          onChanged: (v) async {
+                            setModalState(() {
+                              _rangeMode = v ?? 'future';
+                            });
+                            if (_rangeMode == 'cycles' &&
+                                _selectedMicroIds.isEmpty) {
+                              final allMicroIds = <int>{};
+                              for (final m in plan.calendarPlan.mesocycles) {
+                                for (final mc in m.microcycles) {
+                                  allMicroIds.add(mc.id);
+                                }
+                              }
+                              setModalState(() {
+                                _selectedMicroIds
+                                  ..clear()
+                                  ..addAll(allMicroIds);
+                              });
+                            }
+                            _debounceRefreshSelection(
+                              plan: plan,
+                              start: start,
+                              end: end,
+                              setModalState: setModalState,
+                            );
+                          },
                           items: const [
-                            DropdownMenuItem(value: 'none', child: Text('None')),
-                            DropdownMenuItem(value: 'fixReps', child: Text('Fix Reps')),
-                            DropdownMenuItem(value: 'fixIntensity', child: Text('Fix Intensity')),
+                            DropdownMenuItem(
+                              value: 'future',
+                              child: Text('Future from week'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'cycles',
+                              child: Text('By meso/micro'),
+                            ),
                           ],
                         ),
                       ],
                     ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: () async {
-                          if (_selectedExerciseIds.isEmpty) {
-                            _showSnack(context, 'Select at least one exercise');
-                            return;
-                          }
-                          if (!(_useIntensity || _useRpe || _useReps)) {
-                            _showSnack(context, 'Select at least one parameter');
-                            return;
-                          }
-                          Navigator.of(ctx).pop();
-                          Set<int>? planIdxFilter;
-                          if (_rangeMode == 'cycles') {
-                            planIdxFilter = _computeSelectedPlanIndices();
-                          }
-                          await _applyMassEdits(start, end, planIndexFilter: planIdxFilter);
-                        },
-                        child: const Text('Apply'),
+                    if (_rangeMode == 'cycles') ...[
+                      const SizedBox(height: 6),
+
+                      SizedBox(
+                        height: 200,
+                        child: Scrollbar(
+                          child: ListView(
+                            children: plan.calendarPlan.mesocycles.map((meso) {
+                              final mesoChecked = meso.microcycles.every(
+                                (mc) => _selectedMicroIds.contains(mc.id),
+                              );
+                              return ExpansionTile(
+                                title: Row(
+                                  children: [
+                                    Checkbox(
+                                      value: mesoChecked,
+                                      onChanged: (v) async {
+                                        setModalState(() {
+                                          if (v == true) {
+                                            for (final mc in meso.microcycles) {
+                                              _selectedMicroIds.add(mc.id);
+                                            }
+                                          } else {
+                                            for (final mc in meso.microcycles) {
+                                              _selectedMicroIds.remove(mc.id);
+                                            }
+                                          }
+                                        });
+                                        _debounceRefreshSelection(
+                                          plan: plan,
+                                          start: start,
+                                          end: end,
+                                          setModalState: setModalState,
+                                        );
+                                      },
+                                    ),
+                                    Expanded(child: Text(meso.name)),
+                                  ],
+                                ),
+                                children: meso.microcycles.map((mc) {
+                                  final checked = _selectedMicroIds.contains(
+                                    mc.id,
+                                  );
+                                  return CheckboxListTile(
+                                    dense: true,
+                                    value: checked,
+                                    onChanged: (v) async {
+                                      setModalState(() {
+                                        if (v == true) {
+                                          _selectedMicroIds.add(mc.id);
+                                        } else {
+                                          _selectedMicroIds.remove(mc.id);
+                                        }
+                                      });
+                                      _debounceRefreshSelection(
+                                        plan: plan,
+                                        start: start,
+                                        end: end,
+                                        setModalState: setModalState,
+                                      );
+                                    },
+                                    title: Text(mc.name),
+                                    controlAffinity:
+                                        ListTileControlAffinity.leading,
+                                  );
+                                }).toList(),
+                              );
+                            }).toList(),
+                          ),
+                        ),
                       ),
                     ],
-                  ),
-                ],
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _exerciseNames.entries.map((e) {
+                        final selected = _selectedExerciseIds.contains(e.key);
+                        return FilterChip(
+                          label: Text(e.value),
+                          selected: selected,
+                          onSelected: (val) {
+                            setModalState(() {
+                              if (val) {
+                                _selectedExerciseIds.add(e.key);
+                              } else {
+                                _selectedExerciseIds.remove(e.key);
+                              }
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Switch(
+                          value: _useIntensity,
+                          onChanged: (v) =>
+                              setModalState(() => _useIntensity = v),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('Intensity %'),
+                        const SizedBox(width: 8),
+                        DropdownButton<String>(
+                          value: _intensityMode,
+                          onChanged: _useIntensity
+                              ? (v) => setModalState(
+                                  () => _intensityMode = v ?? 'set',
+                                )
+                              : null,
+                          items: const [
+                            DropdownMenuItem(value: 'set', child: Text('Set')),
+                            DropdownMenuItem(
+                              value: 'offset',
+                              child: Text('Offset'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'scale',
+                              child: Text('Scale'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _intensityCtrl,
+                            enabled: _useIntensity,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: _intensityMode == 'set'
+                                  ? 'e.g. 75'
+                                  : (_intensityMode == 'offset'
+                                        ? '+/- % (e.g. -2)'
+                                        : '× factor (e.g. 1.05)'),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Switch(
+                          value: _useRpe,
+                          onChanged: (v) => setModalState(() => _useRpe = v),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('RPE'),
+                        const SizedBox(width: 8),
+                        DropdownButton<String>(
+                          value: _rpeMode,
+                          onChanged: _useRpe
+                              ? (v) =>
+                                    setModalState(() => _rpeMode = v ?? 'set')
+                              : null,
+                          items: const [
+                            DropdownMenuItem(value: 'set', child: Text('Set')),
+                            DropdownMenuItem(
+                              value: 'offset',
+                              child: Text('Offset'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _rpeCtrl,
+                            enabled: _useRpe,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: const InputDecoration(
+                              hintText: 'e.g. 8',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Switch(
+                          value: _useReps,
+                          onChanged: (v) => setModalState(() => _useReps = v),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('Reps'),
+                        const SizedBox(width: 8),
+                        DropdownButton<String>(
+                          value: _repsMode,
+                          onChanged: _useReps
+                              ? (v) =>
+                                    setModalState(() => _repsMode = v ?? 'set')
+                              : null,
+                          items: const [
+                            DropdownMenuItem(value: 'set', child: Text('Set')),
+                            DropdownMenuItem(
+                              value: 'offset',
+                              child: Text('Offset'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'scale',
+                              child: Text('Scale'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _repsCtrl,
+                            enabled: _useReps,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              hintText: _repsMode == 'set'
+                                  ? 'e.g. 5'
+                                  : (_repsMode == 'offset'
+                                        ? '+/- reps (e.g. +1)'
+                                        : '× factor (e.g. 0.9)'),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Text('Recalc target:'),
+                        const SizedBox(width: 12),
+                        DropdownButton<String>(
+                          value: _recalcTarget,
+                          onChanged: (v) =>
+                              setModalState(() => _recalcTarget = v ?? 'auto'),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'auto',
+                              child: Text('Auto'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'reps',
+                              child: Text('Reps'),
+                            ),
+                            DropdownMenuItem(value: 'rpe', child: Text('RPE')),
+                            DropdownMenuItem(
+                              value: 'intensity',
+                              child: Text('Intensity'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    if (_recalcTarget == 'rpe')
+                      Row(
+                        children: [
+                          const Text('Validator:'),
+                          const SizedBox(width: 12),
+                          DropdownButton<String>(
+                            value: _fixStrategy,
+                            onChanged: (v) =>
+                                setModalState(() => _fixStrategy = v ?? 'none'),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'none',
+                                child: Text('None'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'fixReps',
+                                child: Text('Fix Reps'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'fixIntensity',
+                                child: Text('Fix Intensity'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(),
+                          child: const Text('Cancel'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: () async {
+                            if (_selectedExerciseIds.isEmpty) {
+                              _showSnack(
+                                context,
+                                'Select at least one exercise',
+                              );
+                              return;
+                            }
+                            if (!(_useIntensity || _useRpe || _useReps)) {
+                              _showSnack(
+                                context,
+                                'Select at least one parameter',
+                              );
+                              return;
+                            }
+                            Navigator.of(ctx).pop();
+                            Set<int>? planIdxFilter;
+                            if (_rangeMode == 'cycles') {
+                              planIdxFilter = _computeSelectedPlanIndices();
+                            }
+                            await _applyMassEdits(
+                              start,
+                              end,
+                              planIndexFilter: planIdxFilter,
+                            );
+                          },
+                          child: const Text('Apply'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          );
-        });
+            );
+          },
+        );
       },
     );
 
@@ -869,7 +1018,11 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     });
   }
 
-  Future<void> _applyMassEdits(DateTime start, DateTime end, {Set<int>? planIndexFilter}) async {
+  Future<void> _applyMassEdits(
+    DateTime start,
+    DateTime end, {
+    Set<int>? planIndexFilter,
+  }) async {
     if (_isApplying) return;
     setState(() => _isApplying = true);
     final plan = await ref.read(activeAppliedPlanSWRProvider.future);
@@ -884,8 +1037,11 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     for (final um in plan.userMaxes) {
       oneRmByExercise[um.exerciseId] = um.maxWeight.toDouble();
     }
-    double? parseDouble(String s) => double.tryParse(s.replaceAll(',', '.').trim());
-    final intensityInput = _useIntensity ? parseDouble(_intensityCtrl.text) : null;
+    double? parseDouble(String s) =>
+        double.tryParse(s.replaceAll(',', '.').trim());
+    final intensityInput = _useIntensity
+        ? parseDouble(_intensityCtrl.text)
+        : null;
     final rpeInput = _useRpe ? parseDouble(_rpeCtrl.text) : null;
     final repsInput = _useReps ? parseDouble(_repsCtrl.text) : null;
     try {
@@ -938,7 +1094,10 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
               } else {
                 double? b = baseIntensity;
                 if (b == null && baseRpe != null && baseReps != null) {
-                  final calc = await rpeSvc.calculateIntensity(baseReps, baseRpe);
+                  final calc = await rpeSvc.calculateIntensity(
+                    baseReps,
+                    baseRpe,
+                  );
                   if (calc != null) b = calc;
                 }
                 if (b != null) {
@@ -951,8 +1110,13 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
               }
             }
 
-            final bool chI = intensity != null && (baseIntensity == null || (intensity - baseIntensity).abs() > 0.001);
-            final bool chE = rpe != null && (baseRpe == null || (rpe - baseRpe).abs() > 0.001);
+            final bool chI =
+                intensity != null &&
+                (baseIntensity == null ||
+                    (intensity - baseIntensity).abs() > 0.001);
+            final bool chE =
+                rpe != null &&
+                (baseRpe == null || (rpe - baseRpe).abs() > 0.001);
             final bool chV = reps != null && reps != baseReps;
 
             String recalc = _recalcTarget;
@@ -983,16 +1147,26 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                     int bestReps = reps;
                     double? bestRpe;
                     int bestDelta = 1 << 30;
-                    int start = reps - 6; if (start < 1) start = 1;
-                    int end = reps + 6; if (end > 100) end = 100;
+                    int start = reps - 6;
+                    if (start < 1) start = 1;
+                    int end = reps + 6;
+                    if (end > 100) end = 100;
                     for (int cand = start; cand <= end; cand++) {
                       final r2 = await rpeSvc.calculateRpe(intensity, cand);
                       if (r2 != null) {
                         final d = (cand - reps).abs();
-                        if (d < bestDelta) { bestDelta = d; bestReps = cand; bestRpe = r2; if (d == 0) break; }
+                        if (d < bestDelta) {
+                          bestDelta = d;
+                          bestReps = cand;
+                          bestRpe = r2;
+                          if (d == 0) break;
+                        }
                       }
                     }
-                    if (bestRpe != null) { reps = bestReps; rpe = bestRpe; }
+                    if (bestRpe != null) {
+                      reps = bestReps;
+                      rpe = bestRpe;
+                    }
                   } else if (_fixStrategy == 'fixIntensity' && reps != null) {
                     final ii = await rpeSvc.calculateIntensity(reps, 10);
                     if (ii != null) {
@@ -1016,9 +1190,20 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
             if (intensity != null && oneRm != null && oneRm > 0) {
               newWeight = (oneRm * (intensity / 100.0)).roundTo2p5();
             }
-            final bool changeReps = ((_useReps || recalc == 'reps') && reps != null && reps != set.reps);
-            final bool changeRpe = ((_useRpe || recalc == 'rpe') && rpe != null && (set.rpe == null || (rpe - (set.rpe ?? 0)).abs() > 0.001));
-            final bool changeWeight = ((_useIntensity || recalc == 'intensity' || (intensity != null)) && newWeight != null && (newWeight - set.weight).abs() > 0.001);
+            final bool changeReps =
+                ((_useReps || recalc == 'reps') &&
+                reps != null &&
+                reps != set.reps);
+            final bool changeRpe =
+                ((_useRpe || recalc == 'rpe') &&
+                rpe != null &&
+                (set.rpe == null || (rpe - (set.rpe ?? 0)).abs() > 0.001));
+            final bool changeWeight =
+                ((_useIntensity ||
+                    recalc == 'intensity' ||
+                    (intensity != null)) &&
+                newWeight != null &&
+                (newWeight - set.weight).abs() > 0.001);
             if (!(changeReps || changeRpe || changeWeight)) continue;
             final instanceId = inst.id;
             final setId = set.id;
@@ -1038,7 +1223,9 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                 rpe: changeRpe ? (rpe ?? set.rpe) : set.rpe,
                 weight: changeWeight ? (newWeight ?? set.weight) : set.weight,
               );
-              await workoutSvc.updateExerciseInstance(inst.copyWith(sets: newSets));
+              await workoutSvc.updateExerciseInstance(
+                inst.copyWith(sets: newSets),
+              );
               updatedSets++;
             }
           }
@@ -1076,101 +1263,118 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
       isScrollControlled: true,
       showDragHandle: true,
       builder: (ctx) {
-        return StatefulBuilder(builder: (ctx, setModalState) {
-          return SafeArea(
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 12,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('Replace exercises (from ${DateFormat('MMM d').format(start)} to ${DateFormat('MMM d').format(end)})', style: AppTextStyles.titleMedium),
-                  const SizedBox(height: 8),
-                  Text('Select source exercises:', style: AppTextStyles.titleSmall),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _exerciseNames.entries.map((e) {
-                      final selected = selectedSource.contains(e.key);
-                      return FilterChip(
-                        label: Text(e.value),
-                        selected: selected,
-                        onSelected: (val) {
-                          setModalState(() {
-                            if (val) {
-                              selectedSource.add(e.key);
-                            } else {
-                              selectedSource.remove(e.key);
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  top: 12,
+                  bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Replace exercises (from ${DateFormat('MMM d').format(start)} to ${DateFormat('MMM d').format(end)})',
+                      style: AppTextStyles.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Select source exercises:',
+                      style: AppTextStyles.titleSmall,
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _exerciseNames.entries.map((e) {
+                        final selected = selectedSource.contains(e.key);
+                        return FilterChip(
+                          label: Text(e.value),
+                          selected: selected,
+                          onSelected: (val) {
+                            setModalState(() {
+                              if (val) {
+                                selectedSource.add(e.key);
+                              } else {
+                                selectedSource.remove(e.key);
+                              }
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 12),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(target?.name ?? 'Select target exercise'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        final res = await Navigator.of(ctx).push(
+                          MaterialPageRoute(
+                            builder: (_) => const ExerciseSelectionScreen(),
+                          ),
+                        );
+                        if (res is ExerciseDefinition) {
+                          setModalState(() => target = res);
+                        }
+                      },
+                    ),
+                    Row(
+                      children: [
+                        Switch(
+                          value: preserveIntensity,
+                          onChanged: (v) =>
+                              setModalState(() => preserveIntensity = v),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('Preserve intensity via 1RM'),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(),
+                          child: const Text('Cancel'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: () async {
+                            if (selectedSource.isEmpty) {
+                              _showSnack(
+                                context,
+                                'Select at least one source exercise',
+                              );
+                              return;
                             }
-                          });
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 12),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(target?.name ?? 'Select target exercise'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () async {
-                      final res = await Navigator.of(ctx).push(
-                        MaterialPageRoute(builder: (_) => const ExerciseSelectionScreen()),
-                      );
-                      if (res is ExerciseDefinition) {
-                        setModalState(() => target = res);
-                      }
-                    },
-                  ),
-                  Row(
-                    children: [
-                      Switch(
-                        value: preserveIntensity,
-                        onChanged: (v) => setModalState(() => preserveIntensity = v),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text('Preserve intensity via 1RM'),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: () async {
-                          if (selectedSource.isEmpty) {
-                            _showSnack(context, 'Select at least one source exercise');
-                            return;
-                          }
-                          if (target?.id == null) {
-                            _showSnack(context, 'Select a target exercise');
-                            return;
-                          }
-                          Navigator.of(ctx).pop();
-                          await _confirmAndApplyReplace(
-                            sourceExerciseIds: selectedSource,
-                            target: target!,
-                            start: start,
-                            end: end,
-                            preserveIntensity: preserveIntensity,
-                          );
-                        },
-                        child: const Text('Apply'),
-                      ),
-                    ],
-                  ),
-                ],
+                            if (target?.id == null) {
+                              _showSnack(context, 'Select a target exercise');
+                              return;
+                            }
+                            Navigator.of(ctx).pop();
+                            await _confirmAndApplyReplace(
+                              sourceExerciseIds: selectedSource,
+                              target: target!,
+                              start: start,
+                              end: end,
+                              preserveIntensity: preserveIntensity,
+                            );
+                          },
+                          child: const Text('Apply'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          );
-        });
+            );
+          },
+        );
       },
     );
   }
@@ -1182,7 +1386,11 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     required DateTime end,
     required bool preserveIntensity,
   }) async {
-    final preview = await _simulateReplaceDiffForActivePlan(sourceExerciseIds, start, end);
+    final preview = await _simulateReplaceDiffForActivePlan(
+      sourceExerciseIds,
+      start,
+      end,
+    );
     final totalEx = preview['instances'] ?? 0;
     final totalSets = preview['sets'] ?? 0;
     if (!mounted) return;
@@ -1200,8 +1408,14 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Apply')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Apply'),
+          ),
         ],
       ),
     );
@@ -1216,7 +1430,11 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     }
   }
 
-  Future<Map<String, int>> _simulateReplaceDiffForActivePlan(Set<int> sourceExerciseIds, DateTime start, DateTime end) async {
+  Future<Map<String, int>> _simulateReplaceDiffForActivePlan(
+    Set<int> sourceExerciseIds,
+    DateTime start,
+    DateTime end,
+  ) async {
     final workoutSvc = ref.read(workoutServiceProvider);
     final workouts = await _filterWorkoutsByRange(start, end);
     int instCount = 0, setCount = 0;
@@ -1257,14 +1475,22 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
       for (final um in plan.userMaxes) {
         oneRmByExercise[um.exerciseId] = um.maxWeight.toDouble();
       }
-      _logger.d('Replace: have ${plan.userMaxes.length} userMaxes; keys=${oneRmByExercise.keys.toList()}');
-      double? targetOneRm = target.id != null ? oneRmByExercise[target.id!] : null;
-      _logger.d('Replace: target exerciseId=${target.id}; mapped 1RM from plan=$targetOneRm');
+      _logger.d(
+        'Replace: have ${plan.userMaxes.length} userMaxes; keys=${oneRmByExercise.keys.toList()}',
+      );
+      double? targetOneRm = target.id != null
+          ? oneRmByExercise[target.id!]
+          : null;
+      _logger.d(
+        'Replace: target exerciseId=${target.id}; mapped 1RM from plan=$targetOneRm',
+      );
       if (preserveIntensity) {
         if (targetOneRm == null || targetOneRm <= 0) {
           if (target.id != null) {
             final fetched = await _fetchUserMax1RmByExerciseId(target.id!);
-            _logger.d('Replace: fetched 1RM via API for ${target.id} = $fetched');
+            _logger.d(
+              'Replace: fetched 1RM via API for ${target.id} = $fetched',
+            );
             if (fetched != null && fetched > 0) {
               targetOneRm = fetched;
               oneRmByExercise[target.id!] = fetched;
@@ -1303,8 +1529,10 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
               if (sourceOneRm != null && sourceOneRm > 0 && set.weight > 0) {
                 intensity = (set.weight / sourceOneRm) * 100.0;
               } else if (set.rpe != null) {
-
-                final calc = await rpeSvc.calculateIntensity(set.reps, set.rpe!);
+                final calc = await rpeSvc.calculateIntensity(
+                  set.reps,
+                  set.rpe!,
+                );
                 if (calc != null) intensity = calc;
               }
               if (intensity != null && targetOneRm != null && targetOneRm > 0) {
@@ -1322,7 +1550,11 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
           updatedSets += newSets.length;
         }
       }
-      if (mounted) _showSnack(context, 'Replaced $replacedInstances exercises, updated $updatedSets sets');
+      if (mounted)
+        _showSnack(
+          context,
+          'Replaced $replacedInstances exercises, updated $updatedSets sets',
+        );
       ref.invalidate(activePlanWorkoutsProvider);
     } catch (e) {
       if (mounted) _showSnack(context, 'Replace failed: $e');
@@ -1348,7 +1580,9 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                 children: [
                   TextField(
                     controller: ctrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: InputDecoration(
                       labelText: '1RM (kg)',
                       hintText: 'e.g. 120',
@@ -1356,7 +1590,9 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text('Введите ваш текущий максимум для этого упражнения.'),
+                  const Text(
+                    'Введите ваш текущий максимум для этого упражнения.',
+                  ),
                 ],
               ),
               actions: [
@@ -1366,7 +1602,9 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                 ),
                 FilledButton(
                   onPressed: () {
-                    final parsed = double.tryParse(ctrl.text.replaceAll(',', '.').trim());
+                    final parsed = double.tryParse(
+                      ctrl.text.replaceAll(',', '.').trim(),
+                    );
                     if (parsed == null || parsed <= 0) {
                       setState(() => error = 'Введите число > 0');
                       return;
@@ -1411,6 +1649,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     }
     return null;
   }
+
   Future<void> _shiftScheduleFromSelectedWeek({required int days}) async {
     if (_isApplying) return;
     setState(() => _isApplying = true);
@@ -1433,7 +1672,8 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
         await workoutSvc.updateWorkout(updated);
         shifted++;
       }
-      if (mounted) _showSnack(context, 'Shifted $shifted workouts by +$days day(s)');
+      if (mounted)
+        _showSnack(context, 'Shifted $shifted workouts by +$days day(s)');
       ref.invalidate(activePlanWorkoutsProvider);
     } catch (e) {
       if (mounted) _showSnack(context, 'Shift failed: $e');
@@ -1463,8 +1703,9 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
         statusColor = AppColors.primary;
     }
 
-    final String statusLabel =
-        status.isNotEmpty ? status[0].toUpperCase() + status.substring(1) : 'Active';
+    final String statusLabel = status.isNotEmpty
+        ? status[0].toUpperCase() + status.substring(1)
+        : 'Active';
 
     Future<void> _cancelPlan() async {
       final confirmed = await showDialog<bool>(
@@ -1554,9 +1795,9 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
         ref.invalidate(activePlanWorkoutsProvider);
         ref.invalidate(activePlanAnalyticsProvider);
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Plan cancelled')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Plan cancelled')));
         }
       } else {
         if (context.mounted) {
@@ -1623,14 +1864,17 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
             const SizedBox(height: 4),
             Text(
               'Adherence: ${adherence.toStringAsFixed(1)}%',
-              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
             ),
           ],
           if (dropoutReason != null && dropoutReason.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
               'Dropped: $dropoutReason'
-                  '${droppedAt != null ? ' (${DateFormat('yyyy-MM-dd').format(droppedAt)})' : ''}',
+              '${droppedAt != null ? ' (${DateFormat('yyyy-MM-dd').format(droppedAt)})' : ''}',
               style: const TextStyle(fontSize: 12, color: Colors.redAccent),
             ),
           ],
@@ -1641,7 +1885,11 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
-                icon: const Icon(Icons.cancel, size: 18, color: Colors.redAccent),
+                icon: const Icon(
+                  Icons.cancel,
+                  size: 18,
+                  color: Colors.redAccent,
+                ),
                 label: const Text(
                   'Cancel plan',
                   style: TextStyle(color: Colors.redAccent),
@@ -1655,15 +1903,17 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     );
   }
 
-  Widget _buildAnalyticsAsyncSection(AsyncValue<PlanAnalyticsResponse?> analyticsAsync) {
+  Widget _buildAnalyticsAsyncSection(
+    AsyncValue<PlanAnalyticsResponse?> analyticsAsync,
+  ) {
     return analyticsAsync.when(
-      loading: () => const SizedBox(
-        height: 240,
-        child: Center(child: CircularProgressIndicator()),
-      ),
+      loading: () => const SizedBox(height: 240, child: LoadingIndicator()),
       error: (error, stack) => SizedBox(
         height: 240,
-        child: Center(child: Text('Failed to load analytics: $error')),
+        child: ErrorMessage(
+          message: 'Failed to load analytics: $error',
+          onRetry: () => ref.invalidate(activePlanAnalyticsProvider),
+        ),
       ),
       data: (resp) {
         final points = _mapAnalyticsResponse(resp);
@@ -1675,7 +1925,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
 
   Widget _buildCalendar(Map<DateTime, List<Workout>> eventsByDay) {
     return Container(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       child: TableCalendar<Workout>(
         firstDay: DateTime.utc(2018, 1, 1),
         lastDay: DateTime.utc(2100, 12, 31),
@@ -1723,10 +1973,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(title, style: AppTextStyles.titleMedium),
-          TextButton(
-            onPressed: _openDaySheet,
-            child: const Text('View day'),
-          ),
+          TextButton(onPressed: _openDaySheet, child: const Text('View day')),
         ],
       ),
     );
@@ -1755,7 +2002,12 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
             boxShadow: AppShadows.sm,
           ),
           child: ListTile(
-            title: Text(w.name, style: AppTextStyles.titleSmall.copyWith(fontWeight: FontWeight.w600)),
+            title: Text(
+              w.name,
+              style: AppTextStyles.titleSmall.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             subtitle: Text(_timeOrDate(w)),
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -1763,12 +2015,20 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                 color: st.background,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text(st.label, style: TextStyle(color: st.textColor, fontWeight: FontWeight.w600)),
+              child: Text(
+                st.label,
+                style: TextStyle(
+                  color: st.textColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
             onTap: () async {
               if (w.id != null) {
                 await Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => WorkoutDetailScreen(workoutId: w.id!)),
+                  MaterialPageRoute(
+                    builder: (_) => WorkoutDetailScreen(workoutId: w.id!),
+                  ),
                 );
                 if (!mounted) return;
                 await _refreshAfterWorkoutChange();
@@ -1798,7 +2058,10 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(DateFormat('EEEE, MMM d, yyyy').format(day), style: AppTextStyles.titleMedium),
+                Text(
+                  DateFormat('EEEE, MMM d, yyyy').format(day),
+                  style: AppTextStyles.titleMedium,
+                ),
                 const SizedBox(height: 8),
                 if (workouts.isEmpty)
                   const Padding(
@@ -1813,7 +2076,10 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                         final w = workouts[i];
                         final st = _statusOf(w);
                         return ListTile(
-                          leading: CircleAvatar(backgroundColor: st.dotColor, radius: 6),
+                          leading: CircleAvatar(
+                            backgroundColor: st.dotColor,
+                            radius: 6,
+                          ),
                           title: Text(w.name),
                           subtitle: Text(_timeOrDate(w)),
                           trailing: IconButton(
@@ -1821,7 +2087,10 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                             onPressed: () async {
                               if (w.id != null) {
                                 await Navigator.of(ctx).push(
-                                  MaterialPageRoute(builder: (_) => WorkoutDetailScreen(workoutId: w.id!)),
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        WorkoutDetailScreen(workoutId: w.id!),
+                                  ),
                                 );
                                 if (!mounted) return;
                                 await _refreshAfterWorkoutChange();
@@ -1831,7 +2100,10 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                           onTap: () async {
                             if (w.id != null) {
                               await Navigator.of(ctx).push(
-                                MaterialPageRoute(builder: (_) => WorkoutDetailScreen(workoutId: w.id!)),
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      WorkoutDetailScreen(workoutId: w.id!),
+                                ),
                               );
                               if (!mounted) return;
                               await _refreshAfterWorkoutChange();
@@ -1858,23 +2130,47 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
   }
 
   _StatusView _statusOf(Workout w) {
-    final completed = (w.status?.toLowerCase() == 'completed') || (w.completedAt != null);
+    final completed =
+        (w.status?.toLowerCase() == 'completed') || (w.completedAt != null);
     final inProgress = (w.startedAt != null) && (w.completedAt == null);
     if (completed) {
-      return _StatusView('Completed', const Color(0xFFEFF8F2), Colors.green, Colors.green);
+      return _StatusView(
+        'Completed',
+        const Color(0xFFEFF8F2),
+        Colors.green,
+        Colors.green,
+      );
     } else if (inProgress) {
-      return _StatusView('In Progress', const Color(0xFFEAEFFF), AppColors.primary, AppColors.primary);
+      return _StatusView(
+        'In Progress',
+        const Color(0xFFEAEFFF),
+        AppColors.primary,
+        AppColors.primary,
+      );
     } else {
-      return _StatusView('Planned', const Color(0xFFFFEBEE), Colors.redAccent, Colors.redAccent);
+      return _StatusView(
+        'Planned',
+        const Color(0xFFFFEBEE),
+        Colors.redAccent,
+        Colors.redAccent,
+      );
     }
   }
 
-  ({int planned, int inProgress, int completed}) _statusCounts(List<Workout> list) {
+  ({int planned, int inProgress, int completed}) _statusCounts(
+    List<Workout> list,
+  ) {
     int p = 0, i = 0, c = 0;
     for (final w in list) {
-      final completedB = (w.status?.toLowerCase() == 'completed') || (w.completedAt != null);
+      final completedB =
+          (w.status?.toLowerCase() == 'completed') || (w.completedAt != null);
       final inProgressB = (w.startedAt != null) && (w.completedAt == null);
-      if (completedB) c++; else if (inProgressB) i++; else p++;
+      if (completedB)
+        c++;
+      else if (inProgressB)
+        i++;
+      else
+        p++;
     }
     return (planned: p, inProgress: i, completed: c);
   }
@@ -1917,20 +2213,27 @@ extension _APAnalytics on _ActivePlanScreenState {
       return a.workoutId.compareTo(b.workoutId);
     });
     int order = 0;
-    return items.map((item) {
-      final label = item.date != null
-          ? DateFormat('MMM d').format(item.date!.toLocal())
-          : (item.orderIndex != null ? 'Day ${item.orderIndex}' : '#${order + 1}');
-      return PlanAnalyticsPoint(
-        order: order++,
-        label: label,
-        values: item.metrics,
-        actualValues: item.actualMetrics,
-      );
-    }).toList(growable: false);
+    return items
+        .map((item) {
+          final label = item.date != null
+              ? DateFormat('MMM d').format(item.date!.toLocal())
+              : (item.orderIndex != null
+                    ? 'Day ${item.orderIndex}'
+                    : '#${order + 1}');
+          return PlanAnalyticsPoint(
+            order: order++,
+            label: label,
+            values: item.metrics,
+            actualValues: item.actualMetrics,
+          );
+        })
+        .toList(growable: false);
   }
 
-  Widget _buildActiveAnalyticsSection(List<PlanAnalyticsPoint> analytics, {Map<String, double>? totals}) {
+  Widget _buildActiveAnalyticsSection(
+    List<PlanAnalyticsPoint> analytics, {
+    Map<String, double>? totals,
+  }) {
     return Card(
       elevation: 1,
       color: Colors.white,
@@ -1948,7 +2251,12 @@ extension _APAnalytics on _ActivePlanScreenState {
                     value: _metricX,
                     decoration: const InputDecoration(labelText: 'Ось X'),
                     items: _metrics
-                        .map((m) => DropdownMenuItem<String>(value: m, child: Text(_metricLabel(m))))
+                        .map(
+                          (m) => DropdownMenuItem<String>(
+                            value: m,
+                            child: Text(_metricLabel(m)),
+                          ),
+                        )
                         .toList(),
                     onChanged: (v) => setState(() => _metricX = v ?? _metricX),
                   ),
@@ -1959,7 +2267,12 @@ extension _APAnalytics on _ActivePlanScreenState {
                     value: _metricY,
                     decoration: const InputDecoration(labelText: 'Ось Y'),
                     items: _metrics
-                        .map((m) => DropdownMenuItem<String>(value: m, child: Text(_metricLabel(m))))
+                        .map(
+                          (m) => DropdownMenuItem<String>(
+                            value: m,
+                            child: Text(_metricLabel(m)),
+                          ),
+                        )
                         .toList(),
                     onChanged: (v) => setState(() => _metricY = v ?? _metricY),
                   ),
@@ -2010,7 +2323,11 @@ class _StatusView {
 extension on DateTime {
   DateTime get monday {
     final d = weekday;
-    return DateTime(year, month, day).subtract(Duration(days: d == DateTime.monday ? 0 : d - 1));
+    return DateTime(
+      year,
+      month,
+      day,
+    ).subtract(Duration(days: d == DateTime.monday ? 0 : d - 1));
   }
 }
 
@@ -2019,11 +2336,13 @@ extension on num {
 }
 
 extension on double {
-  double clampDouble(double min, double max) => this < min ? min : (this > max ? max : this);
+  double clampDouble(double min, double max) =>
+      this < min ? min : (this > max ? max : this);
 }
 
 extension on int {
-  int clampInt(int min, int max) => this < min ? min : (this > max ? max : this);
+  int clampInt(int min, int max) =>
+      this < min ? min : (this > max ? max : this);
 }
 
 extension _DateOnly on DateTime {
@@ -2035,6 +2354,7 @@ extension _DateOnly on DateTime {
 }
 
 extension _WorkoutGuards on Workout {
-  bool get isCompleted => (status?.toLowerCase() == 'completed') || (completedAt != null);
+  bool get isCompleted =>
+      (status?.toLowerCase() == 'completed') || (completedAt != null);
   bool get isLiveInProgress => (startedAt != null) && (completedAt == null);
 }

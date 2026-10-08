@@ -44,23 +44,24 @@ class UserSummaryResponse(BaseModel):
     is_public: bool
     created_at: datetime
     last_active_at: datetime | None = None
+    coaching_enabled: bool | None = None
+    average_rating: float | None = None
+    review_count: int | None = None
+    specializations: list[str] = Field(default_factory=list)
+    languages: list[str] = Field(default_factory=list)
+    rate_amount_minor: int | None = None
 
 
 class CoachingRatePlan(BaseModel):
-    type: str | None = None
-    currency: str | None = None
     amount_minor: int | None = None
 
 
 class CoachingProfileResponse(BaseModel):
     enabled: bool
-    accepting_clients: bool
     tagline: str | None = None
     description: str | None = None
     specializations: list[str] = Field(default_factory=list)
     languages: list[str] = Field(default_factory=list)
-    experience_years: int | None = None
-    timezone: str | None = None
     rate_plan: CoachingRatePlan | None = None
     stripe_connect_account_id: str | None = None
     created_at: datetime
@@ -75,20 +76,15 @@ class CoachingEligibilityResponse(BaseModel):
 
 
 class CoachingRatePlanUpdate(BaseModel):
-    type: str | None = None
-    currency: str | None = None
     amount_minor: int | None = None
 
 
 class CoachingProfileUpdateRequest(BaseModel):
     enabled: bool | None = None
-    accepting_clients: bool | None = None
     tagline: str | None = None
     description: str | None = None
     specializations: list[str] | None = None
     languages: list[str] | None = None
-    experience_years: int | None = None
-    timezone: str | None = None
     rate_plan: CoachingRatePlanUpdate | None = None
 
 
@@ -113,6 +109,11 @@ class SettingsUpdateRequest(BaseModel):
     locale: str | None = None
     timezone: str | None = None
     notifications_enabled: bool | None = None
+
+
+class CoachingRatingUpdate(BaseModel):
+    average_rating: float | None = None
+    review_count: int | None = None
 
 
 ProfileResponse.model_rebuild()

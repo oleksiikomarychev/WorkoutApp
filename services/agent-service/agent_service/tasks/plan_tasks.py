@@ -23,8 +23,31 @@ from ..services.rpe_rpc import notify_rpe_plan_created
 logger = get_task_logger(__name__)
 
 
-def _run_async(coro):
-    return asyncio.run(coro)
+def _run_async(coro_or_func):
+    """Run async coroutine in a way that's safe for Celery workers."""
+    import concurrent.futures
+    
+    # Check if it's a coroutine function (callable) or already a coroutine
+    if asyncio.iscoroutinefunction(coro_or_func):
+        # It's a coroutine function, call it to get the coroutine
+        coro = coro_or_func()
+    elif asyncio.iscoroutine(coro_or_func):
+        # It's already a coroutine
+        coro = coro_or_func
+    else:
+        # Assume it's a function that returns a coroutine when called
+        coro = coro_or_func
+    
+    try:
+        # Try to get the current event loop
+        loop = asyncio.get_running_loop()
+        # If we're in an running loop, we need to run in a separate thread
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(asyncio.run, coro)
+            return future.result()
+    except RuntimeError:
+        # No running loop, safe to use asyncio.run directly
+        return asyncio.run(coro)
 
 
 def _persist_plan(plan: TrainingPlan, user_id: str) -> None:

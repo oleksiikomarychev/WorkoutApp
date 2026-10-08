@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:workout_app/src/widgets/snack_utils.dart';
 import 'package:workout_app/models/calendar_plan.dart';
 import 'package:workout_app/models/exercise_definition.dart';
 import 'package:workout_app/models/mesocycle.dart';
@@ -9,15 +10,17 @@ import 'package:workout_app/services/api_client.dart';
 import 'package:workout_app/services/exercise_service.dart';
 import 'package:workout_app/src/api/plan_api.dart';
 import 'package:workout_app/config/api_config.dart';
-import 'package:workout_app/src/widgets/apply_plan_widget.dart' show ApplyPlanWidget;
+import 'package:workout_app/src/widgets/apply_plan_widget.dart'
+    show ApplyPlanWidget;
 import 'package:workout_app/models/calendar_plan_summary.dart';
 import 'package:workout_app/screens/plan_editor_screen.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
-import 'package:workout_app/widgets/floating_header_bar.dart';
+import 'package:workout_app/widgets/primary_app_bar.dart';
 import 'package:workout_app/widgets/plan_analytics_chart.dart';
 import 'package:workout_app/screens/user_profile_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/providers/plan_providers.dart';
+import 'package:workout_app/services/service_locator.dart';
 import 'package:workout_app/widgets/assistant_chat_host.dart';
 import 'dart:async';
 
@@ -36,10 +39,7 @@ class _MultiSelectOption<T> {
   final T value;
   final String label;
 
-  const _MultiSelectOption({
-    required this.value,
-    required this.label,
-  });
+  const _MultiSelectOption({required this.value, required this.label});
 }
 
 class _MultiSelectSheet<T> extends StatefulWidget {
@@ -80,7 +80,12 @@ class _MultiSelectSheetState<T> extends State<_MultiSelectSheet<T>> {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 24),
+        padding: const EdgeInsets.only(
+          top: 16,
+          left: 16,
+          right: 16,
+          bottom: 24,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,7 +100,8 @@ class _MultiSelectSheetState<T> extends State<_MultiSelectSheet<T>> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.of(context).pop(widget.initialSelection),
+                  onPressed: () =>
+                      Navigator.of(context).pop(widget.initialSelection),
                 ),
               ],
             ),
@@ -107,7 +113,8 @@ class _MultiSelectSheetState<T> extends State<_MultiSelectSheet<T>> {
                       .map(
                         (option) => CheckboxListTile(
                           value: _selection.contains(option.value),
-                          onChanged: (checked) => _toggle(option.value, checked ?? false),
+                          onChanged: (checked) =>
+                              _toggle(option.value, checked ?? false),
                           title: Text(option.label),
                           controlAffinity: ListTileControlAffinity.leading,
                           contentPadding: EdgeInsets.zero,
@@ -122,12 +129,14 @@ class _MultiSelectSheetState<T> extends State<_MultiSelectSheet<T>> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: () => Navigator.of(context).pop(widget.initialSelection),
+                  onPressed: () =>
+                      Navigator.of(context).pop(widget.initialSelection),
                   child: const Text('Отмена'),
                 ),
                 const SizedBox(width: 12),
                 ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(Set<T>.from(_selection)),
+                  onPressed: () =>
+                      Navigator.of(context).pop(Set<T>.from(_selection)),
                   child: const Text('Готово'),
                 ),
               ],
@@ -173,7 +182,12 @@ class _SingleSelectSheetState<T> extends State<_SingleSelectSheet<T>> {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 24),
+        padding: const EdgeInsets.only(
+          top: 16,
+          left: 16,
+          right: 16,
+          bottom: 24,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -239,7 +253,6 @@ class _SingleSelectSheetState<T> extends State<_SingleSelectSheet<T>> {
 enum _HeaderMenuAction { editPlan, recalcSets, profile }
 
 class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
-
   late final CalendarPlan _originalPlan;
   late CalendarPlan _currentPlan;
   late final int _rootPlanId;
@@ -259,6 +272,20 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   StreamSubscription<dynamic>? _variantsSub;
   StreamSubscription<dynamic>? _planSub;
 
+  Future<Map<String, dynamic>> _waitPlanTask({
+    required String taskId,
+    required void Function(Map<String, dynamic>) onTick,
+  }) async {
+    while (true) {
+      final status = await PlanApi.getPlanTaskStatus(taskId);
+      onTick(status);
+      final st = (status['status'] ?? '').toString();
+      if (st == 'SUCCESS' || st == 'FAILURE') {
+        return status;
+      }
+      await Future.delayed(const Duration(seconds: 2));
+    }
+  }
 
   final List<String> _metrics = const ['sets', 'volume', 'intensity', 'effort'];
   String _metricX = 'intensity';
@@ -270,7 +297,6 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   int? _adoptersCount;
   bool _adoptersLoading = false;
   String? _adoptersError;
-
 
   late final ApiClient _apiClient;
   late final ExerciseService _exerciseService;
@@ -348,11 +374,42 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     );
   }
 
+  Widget _buildInfoChip({
+    required IconData icon,
+    required String label,
+    double? maxWidth,
+  }) {
+    final chip = Container(
+      constraints: maxWidth != null ? BoxConstraints(maxWidth: maxWidth) : null,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey[200],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.grey[700]),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+    if (maxWidth != null) {
+      return chip;
+    }
+    return chip;
+  }
+
   Future<void> _openPlanEditor() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PlanEditorScreen(plan: _currentPlan),
-      ),
+      MaterialPageRoute(builder: (_) => PlanEditorScreen(plan: _currentPlan)),
     );
     final id = _currentPlan.id;
     if (id != null) {
@@ -488,23 +545,22 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                   TextField(
                     controller: weightController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Вес (кг)',
-                    ),
+                    decoration: const InputDecoration(labelText: 'Вес (кг)'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: repsController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Повторения',
-                    ),
+                    decoration: const InputDecoration(labelText: 'Повторения'),
                   ),
                   if (errorMessage != null) ...[
                     const SizedBox(height: 12),
                     Text(
                       errorMessage!,
-                      style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                   const SizedBox(height: 16),
@@ -514,7 +570,9 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                       onPressed: isSubmitting
                           ? null
                           : () async {
-                              final weight = int.tryParse(weightController.text);
+                              final weight = int.tryParse(
+                                weightController.text,
+                              );
                               final reps = int.tryParse(repsController.text);
                               if (weight == null || weight <= 0) {
                                 setModalState(() {
@@ -539,14 +597,18 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                                   exerciseId: exercise.exerciseDefinitionId,
                                   maxWeight: weight,
                                   repMax: reps,
-                                  date: DateTime.now().toIso8601String().split('T').first,
+                                  date: DateTime.now()
+                                      .toIso8601String()
+                                      .split('T')
+                                      .first,
                                 );
                                 if (Navigator.of(sheetContext).canPop()) {
                                   Navigator.of(sheetContext).pop(true);
                                 }
                               } catch (e) {
                                 setModalState(() {
-                                  errorMessage = 'Не удалось сохранить максимум: $e';
+                                  errorMessage =
+                                      'Не удалось сохранить максимум: $e';
                                   isSubmitting = false;
                                 });
                               }
@@ -574,8 +636,9 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     if (result == true) {
       await _fetchUserMaxes();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Максимум для ${exercise.exerciseName} сохранён')),
+      showAppSnackBar(
+        context,
+        'Максимум для ${exercise.exerciseName} сохранён',
       );
     }
   }
@@ -619,24 +682,26 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
           groups: ['plans:detail', 'plans:detail:$planId'],
         )
         .listen(
-      (data) {
-        if (!mounted) return;
-        if (data is Map<String, dynamic>) {
-          final full = CalendarPlan.fromJson(data);
-          _variantCache[planId] = full;
-          _setPlan(full);
-        }
-      },
-      onError: (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Не удалось загрузить план: $e')),
+          (data) {
+            if (!mounted) return;
+            if (data is Map<String, dynamic>) {
+              final full = CalendarPlan.fromJson(data);
+              _variantCache[planId] = full;
+              _setPlan(full);
+            }
+          },
+          onError: (e) {
+            if (!mounted) return;
+            showAppSnackBar(
+              context,
+              'Не удалось загрузить план: $e',
+              isError: true,
+            );
+          },
+          onDone: () {
+            if (mounted) setState(() => _changingVariant = false);
+          },
         );
-      },
-      onDone: () {
-        if (mounted) setState(() => _changingVariant = false);
-      },
-    );
   }
 
   Future<void> _recalcPlanSets() async {
@@ -647,21 +712,19 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     try {
       final planId = _currentPlan.id;
       if (planId == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Нет ID плана для пересчёта')),
-        );
+        showAppSnackBar(context, 'Нет ID плана для пересчёта', isError: true);
         return;
       }
       final updated = await PlanApi.recalcCalendarPlanSets(planId);
       if (!mounted) return;
       _setPlan(updated);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('План пересчитан')),
-      );
+      showAppSnackBar(context, 'План пересчитан');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Не удалось пересчитать план: $e')),
+      showAppSnackBar(
+        context,
+        'Не удалось пересчитать план: $e',
+        isError: true,
       );
     } finally {
       if (mounted) {
@@ -688,39 +751,39 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
           groups: ['plans:variants', 'plans:variants:$_rootPlanId'],
         )
         .listen(
-      (data) {
-        if (!mounted) return;
-        if (data is! List) return;
+          (data) {
+            if (!mounted) return;
+            if (data is! List) return;
 
-        final list = data
-            .whereType<Map<String, dynamic>>()
-            .map((j) => CalendarPlanSummary.fromJson(j))
-            .toList(growable: false);
+            final list = data
+                .whereType<Map<String, dynamic>>()
+                .map((j) => CalendarPlanSummary.fromJson(j))
+                .toList(growable: false);
 
-        setState(() {
-          _variants = list;
-          _variantsLoading = false;
+            setState(() {
+              _variants = list;
+              _variantsLoading = false;
 
-          final orig = _variants.where((v) => v.isOriginal).cast<CalendarPlanSummary?>().firstWhere(
-                (v) => v != null,
-                orElse: () => null,
-              );
-          if (orig != null && _originalPlan.id != orig.id) {
-            _originalPlan = _variantCache[orig.id] ?? _originalPlan;
-          }
-        });
+              final orig = _variants
+                  .where((v) => v.isOriginal)
+                  .cast<CalendarPlanSummary?>()
+                  .firstWhere((v) => v != null, orElse: () => null);
+              if (orig != null && _originalPlan.id != orig.id) {
+                _originalPlan = _variantCache[orig.id] ?? _originalPlan;
+              }
+            });
 
-        // ignore: unawaited_futures
-        _prefetchAllVariants();
-      },
-      onError: (e) {
-        if (!mounted) return;
-        setState(() {
-          _variantsError = 'Не удалось загрузить варианты: $e';
-          _variantsLoading = false;
-        });
-      },
-    );
+            // ignore: unawaited_futures
+            _prefetchAllVariants();
+          },
+          onError: (e) {
+            if (!mounted) return;
+            setState(() {
+              _variantsError = 'Не удалось загрузить варианты: $e';
+              _variantsLoading = false;
+            });
+          },
+        );
   }
 
   void _createVariantDialog() {
@@ -740,7 +803,9 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                 children: [
                   TextField(
                     controller: controller,
-                    decoration: const InputDecoration(labelText: 'Название варианта'),
+                    decoration: const InputDecoration(
+                      labelText: 'Название варианта',
+                    ),
                     autofocus: true,
                   ),
                   if (error != null)
@@ -748,14 +813,19 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                       padding: const EdgeInsets.only(top: 8.0),
                       child: Text(
                         error!,
-                        style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                 ],
               ),
               actions: [
                 TextButton(
-                  onPressed: submitting ? null : () => Navigator.of(context).pop(),
+                  onPressed: submitting
+                      ? null
+                      : () => Navigator.of(context).pop(),
                   child: const Text('Отмена'),
                 ),
                 FilledButton(
@@ -772,14 +842,15 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                             error = null;
                           });
                           try {
-                            await PlanApi.createVariant(planId: _rootPlanId, name: name);
+                            await PlanApi.createVariant(
+                              planId: _rootPlanId,
+                              name: name,
+                            );
                             if (!mounted) return;
                             Navigator.of(context).pop();
                             await _fetchVariants();
                             if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Вариант создан')),
-                            );
+                            showAppSnackBar(context, 'Вариант создан');
                           } catch (e) {
                             setModalState(() {
                               submitting = false;
@@ -788,7 +859,11 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                           }
                         },
                   child: submitting
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : const Text('Создать'),
                 ),
               ],
@@ -812,22 +887,70 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
           planId: _currentPlan.id,
           onApply: (settings) async {
             try {
-              await PlanApi.applyPlan(
+              final onProgress = settings['on_progress'];
+
+              final submission = await PlanApi.applyPlanAsync(
                 planId: _currentPlan.id,
                 userMaxIds: settings['user_max_ids'],
                 computeWeights: settings['compute_weights'],
                 roundingStep: settings['rounding_step'],
                 roundingMode: settings['rounding_mode'],
               );
+              final taskId = (submission['task_id'] ?? '').toString();
+              if (taskId.isEmpty) {
+                throw Exception('No task_id returned');
+              }
+
+              final status = await _waitPlanTask(
+                taskId: taskId,
+                onTick: (payload) {
+                  final meta = payload['meta'];
+                  if (meta is Map) {
+                    final stage = meta['stage']?.toString();
+                    int? total;
+                    int? done;
+                    try {
+                      final rawTotal = meta['workouts_total'];
+                      final rawDone = meta['workouts_done'];
+                      total = rawTotal is int
+                          ? rawTotal
+                          : int.tryParse(rawTotal?.toString() ?? '');
+                      done = rawDone is int
+                          ? rawDone
+                          : int.tryParse(rawDone?.toString() ?? '');
+                    } catch (_) {}
+
+                    if (onProgress is Function) {
+                      try {
+                        onProgress(stage, total, done);
+                      } catch (_) {}
+                    }
+                  }
+                },
+              );
+
+              if ((status['status'] ?? '').toString() == 'FAILURE') {
+                throw Exception(status['error'] ?? 'Task failed');
+              }
+
+              try {
+                await ref.read(apiClientProvider).invalidateCacheGroups(const [
+                  'plans:active',
+                  'plans:active_workouts',
+                  'plans:list',
+                  'plans:variants',
+                ]);
+              } catch (_) {}
+
               ref.invalidate(activeAppliedPlanProvider);
               ref.invalidate(activeAppliedPlanSWRProvider);
               Navigator.of(context).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Plan applied successfully')),
-              );
+              showAppSnackBar(context, 'Plan applied successfully');
             } catch (e) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Failed to apply plan: $e')),
+              showAppSnackBar(
+                context,
+                'Failed to apply plan: $e',
+                isError: true,
               );
             }
           },
@@ -837,9 +960,9 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
         ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -848,132 +971,153 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     return Consumer(
       builder: (context, ref, _) {
         return AssistantChatHost(
-          initialMessage:
-              'Открываю ассистента из экрана деталей плана (plan_details). Используй переданный контекст, чтобы анализировать план и управлять макросами.',
           contextBuilder: () async {
             return {
               'screen': 'plan_details',
-              'calendar_plan_id': _currentPlan.id,
+              'entities': {
+                'calendar_plan_id': _currentPlan.id,
+                'root_plan_id': _rootPlanId,
+              },
             };
           },
           builder: (context, openChat) {
             return Scaffold(
-              backgroundColor: AppColors.background,
-              body: Stack(
-                children: [
-                  SafeArea(
-                    bottom: false,
-                    child: Stack(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(
-                            top: 72,
-                            left: 12,
-                            right: 12,
-                            bottom: 12,
+              appBar: PrimaryAppBar(
+                title: _shortPlanTitle(_currentPlan.name),
+                onTitleTap: openChat,
+                showBack: true,
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.check),
+                    onPressed: () => _applyPlan(context, ref),
+                    tooltip: 'Apply Plan',
+                  ),
+                  _buildOverflowMenu(),
+                ],
+              ),
+              body: RefreshIndicator(
+                onRefresh: () async => _subscribePlanById(_currentPlan.id),
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildPlanInfo(context),
+                      const SizedBox(height: 12),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 10,
                           ),
-                          child: SingleChildScrollView(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _buildPlanInfo(context),
-                                const SizedBox(height: 12),
-                                Card(
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Text('Варианты', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                        const SizedBox(height: 8),
-                                        if (_variantsLoading || _changingVariant)
-                                          const LinearProgressIndicator(minHeight: 2)
-                                        else if (_variantsError != null)
-                                          Text(_variantsError!, style: const TextStyle(color: Colors.redAccent))
-                                        else
-                                          Wrap(
-                                            spacing: 8,
-                                            runSpacing: 6,
-                                            children: [
-                                              InputChip(
-                                                avatar: const Icon(Icons.star, size: 18, color: Colors.orange),
-                                                label: const Text('Оригинал'),
-                                                selected: (() {
-                                                  final origId = _variants.firstWhere((v) => v.isOriginal, orElse: () => CalendarPlanSummary(id: _rootPlanId, name: '', durationWeeks: 0, isActive: true, rootPlanId: _rootPlanId, isOriginal: true)).id;
-                                                  return _currentPlan.id == origId;
-                                                })(),
-                                                onPressed: () async {
-                                                  final orig = _variants.firstWhere(
-                                                    (v) => v.isOriginal,
-                                                    orElse: () => CalendarPlanSummary(
-                                                      id: _rootPlanId,
-                                                      name: '',
-                                                      durationWeeks: 0,
-                                                      isActive: true,
-                                                      rootPlanId: _rootPlanId,
-                                                      isOriginal: true,
-                                                    ),
-                                                  );
-                                                  if (_currentPlan.id == orig.id) return;
-                                                  _subscribePlanById(orig.id);
-                                                },
-                                              ),
-                                              ..._variants
-                                                  .where((v) => !v.isOriginal)
-                                                  .map(
-                                                    (v) => InputChip(
-                                                      avatar: const Icon(Icons.fork_right, size: 18),
-                                                      label: Text(v.name),
-                                                      selected: v.id == _currentPlan.id,
-                                                      onPressed: v.id == _currentPlan.id
-                                                          ? null
-                                                          : () => _switchToVariant(v),
-                                                    ),
-                                                  ),
-                                              ActionChip(
-                                                avatar: const Icon(Icons.add, size: 18),
-                                                label: const Text('Добавить вариант+'),
-                                                onPressed: _createVariantDialog,
-                                              ),
-                                            ],
-                                          ),
-                                      ],
-                                    ),
-                                  ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Варианты',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                                const SizedBox(height: 12),
-                                _buildAnalyticsSection(context),
-                                const SizedBox(height: 12),
-                                const Text('Mesocycles', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                const SizedBox(height: 8),
-                                ..._currentPlan.mesocycles.map((mesocycle) => _buildMesocycleExpansionTile(mesocycle)),
-                              ],
-                            ),
-                          ),
-                        ),
-                        Align(
-                          alignment: Alignment.topCenter,
-                          child: FloatingHeaderBar(
-                            title: _shortPlanTitle(_currentPlan.name),
-                            onTitleTap: openChat,
-                            leading: IconButton(
-                              icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
-                              onPressed: () => Navigator.of(context).maybePop(),
-                            ),
-                            actions: [
-                              IconButton(
-                                icon: const Icon(Icons.check),
-                                onPressed: () => _applyPlan(context, ref),
-                                tooltip: 'Apply Plan',
                               ),
-                              _buildOverflowMenu(),
+                              const SizedBox(height: 8),
+                              if (_variantsLoading || _changingVariant)
+                                const LinearProgressIndicator(minHeight: 2)
+                              else if (_variantsError != null)
+                                Text(
+                                  _variantsError!,
+                                  style: const TextStyle(
+                                    color: Colors.redAccent,
+                                  ),
+                                )
+                              else
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 6,
+                                  children: [
+                                    InputChip(
+                                      avatar: const Icon(
+                                        Icons.star,
+                                        size: 18,
+                                        color: Colors.orange,
+                                      ),
+                                      label: const Text('Оригинал'),
+                                      selected: (() {
+                                        final origId = _variants
+                                            .firstWhere(
+                                              (v) => v.isOriginal,
+                                              orElse: () => CalendarPlanSummary(
+                                                id: _rootPlanId,
+                                                name: '',
+                                                durationWeeks: 0,
+                                                isActive: true,
+                                                rootPlanId: _rootPlanId,
+                                                isOriginal: true,
+                                              ),
+                                            )
+                                            .id;
+                                        return _currentPlan.id == origId;
+                                      })(),
+                                      onPressed: () async {
+                                        final orig = _variants.firstWhere(
+                                          (v) => v.isOriginal,
+                                          orElse: () => CalendarPlanSummary(
+                                            id: _rootPlanId,
+                                            name: '',
+                                            durationWeeks: 0,
+                                            isActive: true,
+                                            rootPlanId: _rootPlanId,
+                                            isOriginal: true,
+                                          ),
+                                        );
+                                        if (_currentPlan.id == orig.id) return;
+                                        _subscribePlanById(orig.id);
+                                      },
+                                    ),
+                                    ..._variants
+                                        .where((v) => !v.isOriginal)
+                                        .map(
+                                          (v) => InputChip(
+                                            avatar: const Icon(
+                                              Icons.fork_right,
+                                              size: 18,
+                                            ),
+                                            label: Text(v.name),
+                                            selected: v.id == _currentPlan.id,
+                                            onPressed: v.id == _currentPlan.id
+                                                ? null
+                                                : () => _switchToVariant(v),
+                                          ),
+                                        ),
+                                    ActionChip(
+                                      avatar: const Icon(Icons.add, size: 18),
+                                      label: const Text('Добавить variant+'),
+                                      onPressed: _createVariantDialog,
+                                    ),
+                                  ],
+                                ),
                             ],
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildAnalyticsSection(context),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Mesocycles',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ..._currentPlan.mesocycles.map(
+                        (mesocycle) => _buildMesocycleExpansionTile(mesocycle),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             );
           },
@@ -981,6 +1125,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       },
     );
   }
+
   void _setPlan(CalendarPlan plan) {
     final exerciseData = _collectPlanExerciseData(plan);
     setState(() {
@@ -1014,25 +1159,33 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     }
 
     bool _passesFilters(int? exDefId) {
-      final filtersActive = (onlyExerciseIds != null && onlyExerciseIds.isNotEmpty) ||
+      final filtersActive =
+          (onlyExerciseIds != null && onlyExerciseIds.isNotEmpty) ||
           (onlyMuscles != null && onlyMuscles.isNotEmpty);
       if (!filtersActive) {
         return true;
       }
       if (exDefId == null || exDefId == 0) return false;
-      if (onlyExerciseIds != null && onlyExerciseIds.isNotEmpty && !onlyExerciseIds.contains(exDefId)) {
+      if (onlyExerciseIds != null &&
+          onlyExerciseIds.isNotEmpty &&
+          !onlyExerciseIds.contains(exDefId)) {
         return false;
       }
       if (onlyMuscles != null && onlyMuscles.isNotEmpty) {
         final def = _exDefById[exDefId];
         if (def == null) return false;
-        final all = {...(def.targetMuscles ?? const []), ...(def.synergistMuscles ?? const [])};
+        final all = {
+          ...(def.targetMuscles ?? const []),
+          ...(def.synergistMuscles ?? const []),
+        };
         if (all.intersection(onlyMuscles).isEmpty) return false;
       }
       return true;
     }
 
-    Map<String, double> _aggregateSetsFromExercises(List<PlanExercise> exercises) {
+    Map<String, double> _aggregateSetsFromExercises(
+      List<PlanExercise> exercises,
+    ) {
       double setsCount = 0;
       double volume = 0;
       double intensitySum = 0;
@@ -1099,12 +1252,17 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       };
     }
 
-    final mesocycles = [...plan.mesocycles]..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
-    final totalMicrocyclesCount = mesocycles.fold<int>(0, (sum, meso) => sum + meso.microcycles.length);
+    final mesocycles = [...plan.mesocycles]
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    final totalMicrocyclesCount = mesocycles.fold<int>(
+      0,
+      (sum, meso) => sum + meso.microcycles.length,
+    );
 
     if (_timeBucket == _TimeBucket.session) {
       for (final mesocycle in mesocycles) {
-        final microcycles = [...mesocycle.microcycles]..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+        final microcycles = [...mesocycle.microcycles]
+          ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
         for (final micro in microcycles) {
           final workouts = _sortedWorkouts(micro);
           if (workouts.isNotEmpty) {
@@ -1113,7 +1271,13 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
               final values = _aggregateSetsFromExercises(workout.exercises);
               final hasAny = values.values.any((v) => v != 0);
               if (hasAny) {
-                points.add(PlanAnalyticsPoint(order: order, label: 'S$order', values: values));
+                points.add(
+                  PlanAnalyticsPoint(
+                    order: order,
+                    label: 'S$order',
+                    values: values,
+                  ),
+                );
               }
             }
           }
@@ -1125,19 +1289,25 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     if (_timeBucket == _TimeBucket.microcycle) {
       var mOrder = 0;
       for (final mesocycle in mesocycles) {
-        final microcycles = [...mesocycle.microcycles]..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+        final microcycles = [...mesocycle.microcycles]
+          ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
         for (final micro in microcycles) {
           final values = _aggregateMicrocycle(micro);
           final hasAny = values.values.any((v) => v != 0);
           if (hasAny) {
             mOrder += 1;
-            points.add(PlanAnalyticsPoint(order: mOrder, label: 'M$mOrder', values: values));
+            points.add(
+              PlanAnalyticsPoint(
+                order: mOrder,
+                label: 'M$mOrder',
+                values: values,
+              ),
+            );
           }
         }
       }
       return points;
     }
-
 
     int? _tryParseDayNumber(String key) {
       final match = RegExp(r'\\d+').firstMatch(key);
@@ -1150,13 +1320,15 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     double cumulativeDays = 0.0;
 
     for (final mesocycle in mesocycles) {
-      final microcycles = [...mesocycle.microcycles]..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+      final microcycles = [...mesocycle.microcycles]
+        ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
       for (final micro in microcycles) {
         final workouts = _sortedWorkouts(micro);
 
-
         double microLen = (micro.daysCount?.toDouble()) ?? 0.0;
-        if (microLen <= 0 && plan.durationWeeks > 0 && totalMicrocyclesCount > 0) {
+        if (microLen <= 0 &&
+            plan.durationWeeks > 0 &&
+            totalMicrocyclesCount > 0) {
           microLen = (plan.durationWeeks * 7) / totalMicrocyclesCount;
         }
         if (microLen <= 0 && workouts.isNotEmpty) {
@@ -1189,13 +1361,16 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     }
     if (weeks <= 0) return points;
 
-    final bins = List.generate(weeks, (_) => {
-          'sets': 0.0,
-          'volume': 0.0,
-          'intensityWeighted': 0.0,
-          'effortWeighted': 0.0,
-          'weight': 0.0,
-        });
+    final bins = List.generate(
+      weeks,
+      (_) => {
+        'sets': 0.0,
+        'volume': 0.0,
+        'intensityWeighted': 0.0,
+        'effortWeighted': 0.0,
+        'weight': 0.0,
+      },
+    );
 
     for (final s in sessions) {
       final sets = s.values['sets'] ?? 0;
@@ -1207,15 +1382,21 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       if (wIdx >= weeks) wIdx = weeks - 1;
       bins[wIdx]['sets'] = (bins[wIdx]['sets'] as double) + sets;
       bins[wIdx]['volume'] = (bins[wIdx]['volume'] as double) + vol;
-      bins[wIdx]['intensityWeighted'] = (bins[wIdx]['intensityWeighted'] as double) + intVal * sets;
-      bins[wIdx]['effortWeighted'] = (bins[wIdx]['effortWeighted'] as double) + effVal * sets;
+      bins[wIdx]['intensityWeighted'] =
+          (bins[wIdx]['intensityWeighted'] as double) + intVal * sets;
+      bins[wIdx]['effortWeighted'] =
+          (bins[wIdx]['effortWeighted'] as double) + effVal * sets;
       bins[wIdx]['weight'] = (bins[wIdx]['weight'] as double) + sets;
     }
 
     for (var w = 0; w < weeks; w++) {
       final weight = bins[w]['weight'] as double;
-      final intensity = weight > 0 ? (bins[w]['intensityWeighted'] as double) / weight : 0.0;
-      final effort = weight > 0 ? (bins[w]['effortWeighted'] as double) / weight : 0.0;
+      final intensity = weight > 0
+          ? (bins[w]['intensityWeighted'] as double) / weight
+          : 0.0;
+      final effort = weight > 0
+          ? (bins[w]['effortWeighted'] as double) / weight
+          : 0.0;
       final values = <String, double>{
         'sets': bins[w]['sets'] as double,
         'volume': bins[w]['volume'] as double,
@@ -1224,7 +1405,9 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       };
       final hasAny = values.values.any((v) => v != 0);
       if (hasAny) {
-        points.add(PlanAnalyticsPoint(order: w + 1, label: 'W${w + 1}', values: values));
+        points.add(
+          PlanAnalyticsPoint(order: w + 1, label: 'W${w + 1}', values: values),
+        );
       }
     }
 
@@ -1234,7 +1417,9 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   Future<void> _loadExerciseMeta() async {
     try {
       setState(() => _loadingMeta = true);
-      final defs = await _exerciseService.getExercisesByIds(_planExerciseDefinitionIds.toList());
+      final defs = await _exerciseService.getExercisesByIds(
+        _planExerciseDefinitionIds.toList(),
+      );
       final muscles = await _exerciseService.getMuscles();
       final byId = <int, ExerciseDefinition>{
         for (final d in defs)
@@ -1298,10 +1483,12 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
               return _buildFilterDropdown(
                 label: forExercises ? 'Упражнения' : 'Мышцы',
                 valueText: filtersReady
-                    ? (forExercises ? _exerciseSummaryText() : _muscleSummaryText())
+                    ? (forExercises
+                          ? _exerciseSummaryText()
+                          : _muscleSummaryText())
                     : _loadingMeta
-                        ? 'Загрузка…'
-                        : (_metaError ?? ''),
+                    ? 'Загрузка…'
+                    : (_metaError ?? ''),
                 enabled: filtersReady,
                 onTap: forExercises ? _showExerciseFilter : _showMuscleFilter,
               );
@@ -1315,8 +1502,14 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                   spacing: spacing,
                   runSpacing: spacing,
                   children: [
-                    SizedBox(width: fieldWidth, child: _buildMetricPicker('Ось X', true)),
-                    SizedBox(width: fieldWidth, child: _buildMetricPicker('Ось Y', false)),
+                    SizedBox(
+                      width: fieldWidth,
+                      child: _buildMetricPicker('Ось X', true),
+                    ),
+                    SizedBox(
+                      width: fieldWidth,
+                      child: _buildMetricPicker('Ось Y', false),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -1324,8 +1517,14 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                   spacing: spacing,
                   runSpacing: spacing,
                   children: [
-                    SizedBox(width: fieldWidth, child: buildFilterSummary(forExercises: true)),
-                    SizedBox(width: fieldWidth, child: buildFilterSummary(forExercises: false)),
+                    SizedBox(
+                      width: fieldWidth,
+                      child: buildFilterSummary(forExercises: true),
+                    ),
+                    SizedBox(
+                      width: fieldWidth,
+                      child: buildFilterSummary(forExercises: false),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -1337,18 +1536,21 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                           child: Text(
                             _metaError!,
                             key: const ValueKey('metaError'),
-                            style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                            style: const TextStyle(
+                              color: Colors.redAccent,
+                              fontSize: 12,
+                            ),
                           ),
                         )
                       : _loadingMeta
-                          ? const Padding(
-                              padding: EdgeInsets.only(bottom: 4),
-                              child: LinearProgressIndicator(
-                                key: ValueKey('metaLoading'),
-                                minHeight: 4,
-                              ),
-                            )
-                          : const SizedBox.shrink(key: ValueKey('metaIdle')),
+                      ? const Padding(
+                          padding: EdgeInsets.only(bottom: 4),
+                          child: LinearProgressIndicator(
+                            key: ValueKey('metaLoading'),
+                            minHeight: 4,
+                          ),
+                        )
+                      : const SizedBox.shrink(key: ValueKey('metaIdle')),
                 ),
                 const SizedBox(height: 4),
                 Builder(
@@ -1356,7 +1558,11 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                     final totalLabel = Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.scatter_plot, size: 16, color: Color(0xFF6B5BFF)),
+                        const Icon(
+                          Icons.scatter_plot,
+                          size: 16,
+                          color: Color(0xFF6B5BFF),
+                        ),
                         const SizedBox(width: 6),
                         Text(
                           'Всего точек (${_bucketShort()}): ${_planAnalytics.length}',
@@ -1436,13 +1642,20 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                         color: const Color(0xFF8066FF).withOpacity(0.18),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.analytics_outlined, color: Color(0xFF6745FF), size: 18),
+                      child: const Icon(
+                        Icons.analytics_outlined,
+                        color: Color(0xFF6745FF),
+                        size: 18,
+                      ),
                     ),
                     const SizedBox(width: 10),
                     const Expanded(
                       child: Text(
                         'Аналитика плана',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     IconButton(
@@ -1453,7 +1666,9 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                         child: const Icon(Icons.keyboard_arrow_up_rounded),
                       ),
                       onPressed: () {
-                        setState(() => _analyticsExpanded = !_analyticsExpanded);
+                        setState(
+                          () => _analyticsExpanded = !_analyticsExpanded,
+                        );
                       },
                     ),
                   ],
@@ -1461,7 +1676,9 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                 AnimatedCrossFade(
                   firstChild: const SizedBox.shrink(),
                   secondChild: expandedContent,
-                  crossFadeState: _analyticsExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+                  crossFadeState: _analyticsExpanded
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
                   duration: const Duration(milliseconds: 200),
                   alignment: Alignment.topCenter,
                 ),
@@ -1474,10 +1691,13 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   }
 
   List<ExerciseDefinition> _availableExercises() {
-    final defs = _exerciseDefs
-        .where((d) => d.id != null && _planExerciseDefinitionIds.contains(d.id))
-        .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+    final defs =
+        _exerciseDefs
+            .where(
+              (d) => d.id != null && _planExerciseDefinitionIds.contains(d.id),
+            )
+            .toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
     return defs;
   }
 
@@ -1491,7 +1711,8 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     }
 
     for (final def in _exerciseDefs) {
-      if (def.id == null || !_planExerciseDefinitionIds.contains(def.id)) continue;
+      if (def.id == null || !_planExerciseDefinitionIds.contains(def.id))
+        continue;
       for (final key in (def.targetMuscles ?? const [])) {
         presentMuscles[key] = labelFor(key);
       }
@@ -1508,7 +1729,9 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   String _exerciseSummaryText() {
     if (_selectedExerciseIds.isEmpty) return 'Все упражнения';
     final defs = _availableExercises();
-    final selected = defs.where((d) => d.id != null && _selectedExerciseIds.contains(d.id)).toList();
+    final selected = defs
+        .where((d) => d.id != null && _selectedExerciseIds.contains(d.id))
+        .toList();
     if (selected.isEmpty) return 'Фильтр не содержит данных';
     if (selected.length <= 2) {
       return selected.map((d) => d.name).join(', ');
@@ -1520,7 +1743,9 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   String _muscleSummaryText() {
     if (_selectedMuscles.isEmpty) return 'Все мышцы';
     final options = _availableMuscles();
-    final selected = options.where((entry) => _selectedMuscles.contains(entry.key)).toList();
+    final selected = options
+        .where((entry) => _selectedMuscles.contains(entry.key))
+        .toList();
     if (selected.isEmpty) return 'Фильтр не содержит данных';
     if (selected.length <= 2) {
       return selected.map((entry) => entry.value).join(', ');
@@ -1539,22 +1764,38 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[700])),
+        Text(
+          label,
+          style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+        ),
         const SizedBox(height: 2),
         GestureDetector(
           onTap: enabled ? onTap : null,
           child: InputDecorator(
             decoration: InputDecoration(
-              suffixIcon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
-              suffixIconConstraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              suffixIcon: const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 18,
+              ),
+              suffixIconConstraints: const BoxConstraints(
+                minWidth: 28,
+                minHeight: 28,
+              ),
               isDense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 6,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             child: Text(
               valueText,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: enabled ? theme.textTheme.bodyMedium?.color : Colors.grey,
+                color: enabled
+                    ? theme.textTheme.bodyMedium?.color
+                    : Colors.grey,
               ),
             ),
           ),
@@ -1569,16 +1810,20 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     final result = await _showMultiSelectSheet<int>(
       title: 'Выберите упражнения',
       options: options
-          .map((def) => _MultiSelectOption<int>(value: def.id!, label: def.name))
+          .map(
+            (def) => _MultiSelectOption<int>(value: def.id!, label: def.name),
+          )
           .toList(),
       initialSelection: initial,
     );
     if (result == null) return;
-    _applyFilters(beforeRecalc: () {
-      _selectedExerciseIds
-        ..clear()
-        ..addAll(result);
-    });
+    _applyFilters(
+      beforeRecalc: () {
+        _selectedExerciseIds
+          ..clear()
+          ..addAll(result);
+      },
+    );
   }
 
   Future<void> _showMuscleFilter() async {
@@ -1587,22 +1832,34 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     final result = await _showMultiSelectSheet<String>(
       title: 'Выберите мышцы',
       options: options
-          .map((entry) => _MultiSelectOption<String>(value: entry.key, label: entry.value))
+          .map(
+            (entry) => _MultiSelectOption<String>(
+              value: entry.key,
+              label: entry.value,
+            ),
+          )
           .toList(),
       initialSelection: initial,
     );
     if (result == null) return;
-    _applyFilters(beforeRecalc: () {
-      _selectedMuscles
-        ..clear()
-        ..addAll(result);
-    });
+    _applyFilters(
+      beforeRecalc: () {
+        _selectedMuscles
+          ..clear()
+          ..addAll(result);
+      },
+    );
   }
 
   Future<void> _showMetricPicker({required bool isX}) async {
     final current = isX ? _metricX : _metricY;
     final options = _metrics
-        .map((metric) => _MultiSelectOption<String>(value: metric, label: _metricLabel(metric)))
+        .map(
+          (metric) => _MultiSelectOption<String>(
+            value: metric,
+            label: _metricLabel(metric),
+          ),
+        )
         .toList();
 
     final result = await showModalBottomSheet<String>(
@@ -1611,7 +1868,9 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) => _SingleSelectSheet<String>(
-        title: isX ? 'Выберите метрику для оси X' : 'Выберите метрику для оси Y',
+        title: isX
+            ? 'Выберите метрику для оси X'
+            : 'Выберите метрику для оси Y',
         options: options,
         initialValue: current,
       ),
@@ -1654,10 +1913,12 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
 
   void _clearFilters() {
     if (_selectedExerciseIds.isEmpty && _selectedMuscles.isEmpty) return;
-    _applyFilters(beforeRecalc: () {
-      _selectedExerciseIds.clear();
-      _selectedMuscles.clear();
-    });
+    _applyFilters(
+      beforeRecalc: () {
+        _selectedExerciseIds.clear();
+        _selectedMuscles.clear();
+      },
+    );
   }
 
   Widget _buildMetricPicker(String label, bool isX) {
@@ -1715,9 +1976,18 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
 
   Future<void> _showTimeBucketPicker() async {
     final options = <_MultiSelectOption<_TimeBucket>>[
-      _MultiSelectOption(value: _TimeBucket.session, label: _timeBucketLabel(_TimeBucket.session)),
-      _MultiSelectOption(value: _TimeBucket.microcycle, label: _timeBucketLabel(_TimeBucket.microcycle)),
-      _MultiSelectOption(value: _TimeBucket.calendarWeek, label: _timeBucketLabel(_TimeBucket.calendarWeek)),
+      _MultiSelectOption(
+        value: _TimeBucket.session,
+        label: _timeBucketLabel(_TimeBucket.session),
+      ),
+      _MultiSelectOption(
+        value: _TimeBucket.microcycle,
+        label: _timeBucketLabel(_TimeBucket.microcycle),
+      ),
+      _MultiSelectOption(
+        value: _TimeBucket.calendarWeek,
+        label: _timeBucketLabel(_TimeBucket.calendarWeek),
+      ),
     ];
 
     final result = await showModalBottomSheet<_TimeBucket>(
@@ -1737,10 +2007,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     _applyFilters();
   }
 
-  Future<void> _fetchAnalytics() async {
-
-  }
-
+  Future<void> _fetchAnalytics() async {}
 
   Widget _buildPlanWorkoutsTable(List<PlanWorkout> planWorkouts) {
     if (planWorkouts.isEmpty) {
@@ -1790,15 +2057,25 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
-          childrenPadding: const EdgeInsets.only(left: 12.0, right: 12.0, bottom: 8.0),
+          tilePadding: const EdgeInsets.symmetric(
+            horizontal: 12.0,
+            vertical: 4.0,
+          ),
+          childrenPadding: const EdgeInsets.only(
+            left: 12.0,
+            right: 12.0,
+            bottom: 8.0,
+          ),
           title: Row(
             children: [
               Icon(Icons.fitness_center, size: 16, color: Colors.grey[700]),
               const SizedBox(width: 8),
               Text(
                 workout.dayLabel,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
               ),
               const SizedBox(width: 8),
               Text(
@@ -1824,6 +2101,9 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   Widget _buildExerciseCard(PlanExercise exercise, int index) {
     final userMaxes = _userMaxesForExercise(exercise);
     final latestUserMax = _latestUserMax(userMaxes);
+    final hasNotes =
+        (exercise.notes != null && exercise.notes!.trim().isNotEmpty);
+    final hasRest = exercise.restSeconds != null;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8.0),
@@ -1858,14 +2138,38 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
             ],
           ),
           const SizedBox(height: 8),
+          if (hasRest || hasNotes) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                if (hasRest)
+                  _buildInfoChip(
+                    icon: Icons.timer_outlined,
+                    label: 'Rest ${exercise.restSeconds}s',
+                  ),
+                if (hasNotes)
+                  _buildInfoChip(
+                    icon: Icons.sticky_note_2_outlined,
+                    label: exercise.notes!.trim(),
+                    maxWidth: MediaQuery.of(context).size.width - 140,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
           Text(
             latestUserMax != null
                 ? 'Текущий максимум: ${latestUserMax.maxWeight} кг × ${latestUserMax.repMax}'
                 : 'Максимум не задан',
             style: TextStyle(
               fontSize: 12,
-              color: latestUserMax != null ? Colors.green[700] : Colors.grey[600],
-              fontWeight: latestUserMax != null ? FontWeight.w600 : FontWeight.w500,
+              color: latestUserMax != null
+                  ? Colors.green[700]
+                  : Colors.grey[600],
+              fontWeight: latestUserMax != null
+                  ? FontWeight.w600
+                  : FontWeight.w500,
             ),
           ),
           if (exercise.sets.isNotEmpty) ...[
@@ -1883,10 +2187,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       children: [
         Text(
           '${sets.length} set${sets.length != 1 ? 's' : ''}',
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey[600],
-          ),
+          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
         ),
         const SizedBox(height: 6),
         ...sets.asMap().entries.map((entry) {
@@ -1907,20 +2208,26 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
             width: 50,
             child: Text(
               'Set $setNumber',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[700],
-              ),
+              style: TextStyle(fontSize: 12, color: Colors.grey[700]),
             ),
           ),
           Expanded(
             child: Row(
               children: [
-                _buildCompactParameter('Int', set.intensity != null ? '${set.intensity}%' : '-'),
+                _buildCompactParameter(
+                  'Int',
+                  set.intensity != null ? '${set.intensity}%' : '-',
+                ),
                 const SizedBox(width: 12),
-                _buildCompactParameter('Reps', set.volume != null ? '${set.volume}' : '-'),
+                _buildCompactParameter(
+                  'Reps',
+                  set.volume != null ? '${set.volume}' : '-',
+                ),
                 const SizedBox(width: 12),
-                _buildCompactParameter('RPE', set.effort != null ? '${set.effort}' : '-'),
+                _buildCompactParameter(
+                  'RPE',
+                  set.effort != null ? '${set.effort}' : '-',
+                ),
               ],
             ),
           ),
@@ -1935,18 +2242,12 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
         children: [
           Text(
             '$label:',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[600],
-            ),
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
           ),
           const SizedBox(width: 4),
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
           ),
         ],
       ),
@@ -1967,12 +2268,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
             ),
           ),
           const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontSize: 12),
-            ),
-          ),
+          Expanded(child: Text(value, style: const TextStyle(fontSize: 12))),
         ],
       ),
     );
@@ -1996,10 +2292,20 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
           children: [
             Row(
               children: [
-                Icon(Icons.calendar_today, size: 18, color: Theme.of(context).primaryColor),
+                Icon(
+                  Icons.calendar_today,
+                  size: 18,
+                  color: Theme.of(context).primaryColor,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(_currentPlan.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  child: Text(
+                    _currentPlan.name,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -2011,30 +2317,83 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
               _adoptersLoading
                   ? 'Loading...'
                   : (_adoptersError != null
-                      ? '—'
-                      : ((_adoptersCount ?? 0).toString())),
+                        ? '—'
+                        : ((_adoptersCount ?? 0).toString())),
             ),
             if (_adoptersError != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
                   _adoptersError!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontSize: 12,
+                  ),
                 ),
               ),
             if (_currentPlan.startDate != null)
-              _buildInfoRow('Start Date', _currentPlan.startDate!.toLocal().toString().split(' ')[0]),
+              _buildInfoRow(
+                'Start Date',
+                _currentPlan.startDate!.toLocal().toString().split(' ')[0],
+              ),
             if (_currentPlan.endDate != null)
-              _buildInfoRow('End Date', _currentPlan.endDate!.toLocal().toString().split(' ')[0]),
-            if (_currentPlan.primaryGoal != null && _currentPlan.primaryGoal!.isNotEmpty)
+              _buildInfoRow(
+                'End Date',
+                _currentPlan.endDate!.toLocal().toString().split(' ')[0],
+              ),
+            if (_currentPlan.primaryGoal != null &&
+                _currentPlan.primaryGoal!.isNotEmpty)
               _buildInfoRow('Goal', _currentPlan.primaryGoal!),
             if (_currentPlan.intendedExperienceLevel != null &&
                 _currentPlan.intendedExperienceLevel!.isNotEmpty)
-              _buildInfoRow('Experience', _currentPlan.intendedExperienceLevel!),
+              _buildInfoRow(
+                'Experience',
+                _currentPlan.intendedExperienceLevel!,
+              ),
             if (_currentPlan.intendedFrequencyPerWeek != null)
-              _buildInfoRow('Frequency', '${_currentPlan.intendedFrequencyPerWeek} sessions/week'),
+              _buildInfoRow(
+                'Frequency',
+                '${_currentPlan.intendedFrequencyPerWeek} sessions/week',
+              ),
             if (_currentPlan.sessionDurationTargetMin != null)
-              _buildInfoRow('Session length', '${_currentPlan.sessionDurationTargetMin} min'),
+              _buildInfoRow(
+                'Session length',
+                '${_currentPlan.sessionDurationTargetMin} min',
+              ),
+            if (_currentPlan.nutritionPlan != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green[100],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.green[300]!),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.restaurant,
+                        size: 14,
+                        color: Colors.green[700],
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Linked to nutrition',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.green[700],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             const SizedBox(height: 4),
             Row(
               children: [
@@ -2049,25 +2408,25 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                             _updatingPublic = true;
                           });
                           try {
-                            final updated = await PlanApi.updateCalendarPlanPublic(
-                              planId: _currentPlan.id,
-                              isPublic: value,
-                            );
+                            final updated =
+                                await PlanApi.updateCalendarPlanPublic(
+                                  planId: _currentPlan.id,
+                                  isPublic: value,
+                                );
                             if (!mounted) return;
                             _setPlan(updated);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  value
-                                      ? 'План сделан публичным'
-                                      : 'План скрыт (только для вас)',
-                                ),
-                              ),
+                            showAppSnackBar(
+                              context,
+                              value
+                                  ? 'План сделан публичным'
+                                  : 'План скрыт (только для вас)',
                             );
                           } catch (e) {
                             if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Не удалось обновить видимость плана: $e')),
+                            showAppSnackBar(
+                              context,
+                              'Не удалось обновить видимость плана: $e',
+                              isError: true,
                             );
                           } finally {
                             if (mounted) {
@@ -2106,7 +2465,8 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                     .toList(),
               ),
             ],
-            if (_currentPlan.notes != null && _currentPlan.notes!.isNotEmpty) ...[
+            if (_currentPlan.notes != null &&
+                _currentPlan.notes!.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
                 _currentPlan.notes!,
@@ -2125,8 +2485,15 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       margin: const EdgeInsets.only(bottom: 8.0),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
       child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
-        childrenPadding: const EdgeInsets.only(left: 12.0, right: 12.0, bottom: 8.0),
+        tilePadding: const EdgeInsets.symmetric(
+          horizontal: 12.0,
+          vertical: 4.0,
+        ),
+        childrenPadding: const EdgeInsets.only(
+          left: 12.0,
+          right: 12.0,
+          bottom: 8.0,
+        ),
         title: Row(
           children: [
             Text(
@@ -2134,7 +2501,15 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
             ),
             const SizedBox(width: 8),
-            Expanded(child: Text(mesocycle.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
+            Expanded(
+              child: Text(
+                mesocycle.name,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+            ),
             Text(
               '(${mesocycle.microcycles.length} micro)',
               style: TextStyle(color: Colors.grey[600], fontSize: 12),
@@ -2147,20 +2522,32 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
             children: [
               if (mesocycle.weeksCount != null ||
                   mesocycle.microcycleLengthDays != null ||
-                  (mesocycle.normalizationValue != null && mesocycle.normalizationUnit != null))
+                  (mesocycle.normalizationValue != null &&
+                      mesocycle.normalizationUnit != null))
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8.0),
                   child: Wrap(
                     spacing: 12,
                     children: [
-                      if (mesocycle.weeksCount != null) _buildCompactInfo('Weeks', '${mesocycle.weeksCount}'),
-                      if (mesocycle.microcycleLengthDays != null) _buildCompactInfo('Length', '${mesocycle.microcycleLengthDays}d'),
-                      if (mesocycle.normalizationValue != null && mesocycle.normalizationUnit != null)
-                        _buildCompactInfo('Norm', '${mesocycle.normalizationValue}${mesocycle.normalizationUnit}'),
+                      if (mesocycle.weeksCount != null)
+                        _buildCompactInfo('Weeks', '${mesocycle.weeksCount}'),
+                      if (mesocycle.microcycleLengthDays != null)
+                        _buildCompactInfo(
+                          'Length',
+                          '${mesocycle.microcycleLengthDays}d',
+                        ),
+                      if (mesocycle.normalizationValue != null &&
+                          mesocycle.normalizationUnit != null)
+                        _buildCompactInfo(
+                          'Norm',
+                          '${mesocycle.normalizationValue}${mesocycle.normalizationUnit}',
+                        ),
                     ],
                   ),
                 ),
-              ...mesocycle.microcycles.map((microcycle) => _buildMicrocycleCard(microcycle)),
+              ...mesocycle.microcycles.map(
+                (microcycle) => _buildMicrocycleCard(microcycle),
+              ),
             ],
           ),
         ],
@@ -2177,7 +2564,8 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     final hasSecondaryLabel = name.isNotEmpty;
 
     final plannedDays = microcycle.planWorkouts.length;
-    final dayCount = microcycle.daysCount ?? (plannedDays > 0 ? plannedDays : null);
+    final dayCount =
+        microcycle.daysCount ?? (plannedDays > 0 ? plannedDays : null);
     final subtitleText = dayCount != null ? '(${dayCount}d)' : null;
 
     return Card(
@@ -2186,8 +2574,15 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
       color: Colors.grey[50],
       child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 2.0),
-        childrenPadding: const EdgeInsets.only(left: 12.0, right: 12.0, bottom: 8.0),
+        tilePadding: const EdgeInsets.symmetric(
+          horizontal: 12.0,
+          vertical: 2.0,
+        ),
+        childrenPadding: const EdgeInsets.only(
+          left: 12.0,
+          right: 12.0,
+          bottom: 8.0,
+        ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2212,11 +2607,94 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (dayCount != null ||
+                  (microcycle.normalizationValue != null &&
+                      microcycle.normalizationUnit != null))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6.0),
+                  child: Wrap(
+                    spacing: 12,
+                    children: [
+                      if (dayCount != null)
+                        _buildCompactInfo('Length', '${dayCount}d'),
+                      if (microcycle.normalizationValue != null &&
+                          microcycle.normalizationUnit != null)
+                        _buildCompactInfo(
+                          'Norm',
+                          '${microcycle.normalizationValue}${microcycle.normalizationUnit}',
+                        ),
+                    ],
+                  ),
+                ),
+              if (microcycle.normalizationRules.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Normalization rules',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      ...microcycle.normalizationRules.map(
+                        (rule) => _buildNormalizationRuleChip(rule),
+                      ),
+                    ],
+                  ),
+                ),
               _buildPlanWorkoutsTable(microcycle.planWorkouts),
             ],
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildNormalizationRuleChip(NormalizationRule rule) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Δ ${rule.value}${rule.unit}',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _formatNormalizationScope(rule),
+              style: const TextStyle(fontSize: 12, color: Colors.black87),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatNormalizationScope(NormalizationRule rule) {
+    final scopes = <String>[];
+    if (rule.exerciseIds.isNotEmpty) {
+      scopes.add('ex: ${rule.exerciseIds.join(', ')}');
+    }
+    if (rule.muscleGroups.isNotEmpty) {
+      scopes.add('groups: ${rule.muscleGroups.join(', ')}');
+    }
+    if (rule.targetMuscles.isNotEmpty) {
+      scopes.add('targets: ${rule.targetMuscles.join(', ')}');
+    }
+    if (scopes.isEmpty) {
+      return 'All exercises';
+    }
+    return scopes.join(' • ');
   }
 }

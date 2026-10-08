@@ -1,0 +1,156 @@
+syntax = "proto3";
+
+package workoutapp.workouts;
+
+import "common.proto";
+import "exercises.proto";
+
+// Workouts Service
+
+message Workout {
+  int32 id = 1;
+  string name = 2;
+  string status = 3;
+  string workout_type = 4;
+  optional string started_at = 5;
+  optional string finished_at = 6;
+  optional int32 applied_plan_id = 7;
+  optional int32 plan_order_index = 8;
+  repeated workoutapp.exercises.ExerciseInstance exercise_instances = 9;
+}
+
+message CreateWorkoutRequest {
+  Workout workout = 1;
+  workoutapp.common.UserContext user_context = 2;
+}
+
+message CreateWorkoutResponse {
+  Workout workout = 1;
+}
+
+message GetWorkoutRequest {
+  int32 workout_id = 1;
+  workoutapp.common.UserContext user_context = 2;
+}
+
+message GetWorkoutResponse {
+  Workout workout = 1;
+}
+
+message UpdateWorkoutRequest {
+  int32 workout_id = 1;
+  Workout workout = 2;
+  workoutapp.common.UserContext user_context = 3;
+}
+
+message UpdateWorkoutResponse {
+  Workout workout = 1;
+}
+
+message ListWorkoutsRequest {
+  workoutapp.common.PaginationRequest pagination = 1;
+  workoutapp.common.UserContext user_context = 2;
+}
+
+message ListWorkoutsResponse {
+  repeated Workout workouts = 1;
+  workoutapp.common.PaginationResponse pagination = 2;
+}
+
+message GetNextWorkoutRequest {
+  int32 workout_id = 1;
+  workoutapp.common.UserContext user_context = 2;
+}
+
+message GetNextWorkoutResponse {
+  Workout workout = 1;
+}
+
+message StartWorkoutRequest {
+  int32 workout_id = 1;
+  workoutapp.common.UserContext user_context = 2;
+}
+
+message StartWorkoutResponse {
+  Workout workout = 1;
+}
+
+message FinishWorkoutRequest {
+  int32 workout_id = 1;
+  workoutapp.common.UserContext user_context = 2;
+}
+
+message FinishWorkoutResponse {
+  Workout workout = 1;
+}
+
+message ReplaceExerciseRequest {
+  int32 workout_id = 1;
+  int32 old_exercise_id = 2;
+  int32 new_exercise_id = 3;
+  workoutapp.common.UserContext user_context = 4;
+}
+
+message ReplaceExerciseResponse {
+  int32 updated_count = 1;
+}
+
+message WorkoutSession {
+  int32 id = 1;
+  int32 workout_id = 2;
+  optional string started_at = 3;
+  optional string finished_at = 4;
+  string status = 5;
+  repeated workoutapp.exercises.ExerciseInstance exercise_instances = 6;
+}
+
+message GetWorkoutWithDetailsRequest {
+  int32 workout_id = 1;
+  bool include_exercise_instances = 2;
+  workoutapp.common.UserContext user_context = 3;
+}
+
+message GetWorkoutWithDetailsResponse {
+  Workout workout = 1;
+}
+
+message GetActiveSessionRequest {
+  int32 workout_id = 1;
+  workoutapp.common.UserContext user_context = 2;
+}
+
+message GetActiveSessionResponse {
+  WorkoutSession session = 1;
+}
+
+message GetSessionHistoryRequest {
+  int32 workout_id = 1;
+  workoutapp.common.UserContext user_context = 2;
+}
+
+message GetSessionHistoryResponse {
+  repeated WorkoutSession sessions = 1;
+}
+
+message ListAllSessionsRequest {
+  workoutapp.common.UserContext user_context = 1;
+}
+
+message ListAllSessionsResponse {
+  repeated WorkoutSession sessions = 1;
+}
+
+service WorkoutService {
+  rpc CreateWorkout(CreateWorkoutRequest) returns (CreateWorkoutResponse);
+  rpc GetWorkout(GetWorkoutRequest) returns (GetWorkoutResponse);
+  rpc GetWorkoutWithDetails(GetWorkoutWithDetailsRequest) returns (GetWorkoutWithDetailsResponse);
+  rpc UpdateWorkout(UpdateWorkoutRequest) returns (UpdateWorkoutResponse);
+  rpc ListWorkouts(ListWorkoutsRequest) returns (ListWorkoutsResponse);
+  rpc GetNextWorkout(GetNextWorkoutRequest) returns (GetNextWorkoutResponse);
+  rpc StartWorkout(StartWorkoutRequest) returns (StartWorkoutResponse);
+  rpc FinishWorkout(FinishWorkoutRequest) returns (FinishWorkoutResponse);
+  rpc ReplaceExercise(ReplaceExerciseRequest) returns (ReplaceExerciseResponse);
+  rpc GetActiveSession(GetActiveSessionRequest) returns (GetActiveSessionResponse);
+  rpc GetSessionHistory(GetSessionHistoryRequest) returns (GetSessionHistoryResponse);
+  rpc ListAllSessions(ListAllSessionsRequest) returns (ListAllSessionsResponse);
+}

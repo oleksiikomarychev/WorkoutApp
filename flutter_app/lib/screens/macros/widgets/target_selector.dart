@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/providers/target_data_providers.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
 
 class TargetSelector extends ConsumerStatefulWidget {
   final Map<String, dynamic>? initial;
@@ -93,6 +94,7 @@ class _TargetSelectorState extends ConsumerState<TargetSelector> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final defsAsync = ref.watch(exerciseDefinitionsProvider);
     final tags = ref.watch(tagCatalogProvider);
     return Column(
@@ -100,12 +102,12 @@ class _TargetSelectorState extends ConsumerState<TargetSelector> {
       children: [
         Row(
           children: [
-            const Text('Target by:'),
+            Text(l10n.macroTargetBy),
             const SizedBox(width: 8),
             SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'tags', label: Text('Tags')),
-                ButtonSegment(value: 'ids', label: Text('IDs')),
+              segments: [
+                ButtonSegment(value: 'tags', label: Text(l10n.macroTargetTags)),
+                ButtonSegment(value: 'ids', label: Text(l10n.macroTargetIds)),
               ],
               selected: {_mode},
               onSelectionChanged: (s) {
@@ -117,11 +119,11 @@ class _TargetSelectorState extends ConsumerState<TargetSelector> {
         ),
         const SizedBox(height: 8),
         if (_mode == 'ids')
-          TextField(
+          TextFormField(
             controller: _exerciseIdsCtrl,
-            decoration: const InputDecoration(
-              border: OutlineInputBorder(),
-              labelText: 'exercise_ids (CSV)',
+            decoration: InputDecoration(
+              border: const OutlineInputBorder(),
+              labelText: l10n.macroTargetIdsLabel,
               hintText: '101,205,309',
             ),
             onChanged: (_) => _emit(),

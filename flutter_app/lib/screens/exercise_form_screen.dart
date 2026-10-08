@@ -186,7 +186,7 @@ class _ExerciseFormScreenState extends ConsumerState<ExerciseFormScreen> {
             id: existing?.id,
             reps: reps,
             weight: weight,
-            rpe: existing?.rpe,
+            effort: existing?.rpe?.toDouble() ?? 0.0,
             order: existing?.order ?? i,
             exerciseInstanceId: existing?.exerciseInstanceId,
           ));

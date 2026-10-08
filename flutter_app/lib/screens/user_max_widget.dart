@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
 
 import '../config/api_config.dart';
 import '../models/exercise_definition.dart';
@@ -48,9 +49,10 @@ class _UserMaxWidgetState extends ConsumerState<UserMaxWidget> {
   }
 
   Future<void> _submit() async {
+    final l10n = AppLocalizations.of(context);
     if (!_formKey.currentState!.validate() || _selectedExercise == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Заполните все поля и выберите упражнение')),
+        SnackBar(content: Text(l10n.userMaxFillAllFieldsSnack)),
       );
       return;
     }
@@ -74,7 +76,7 @@ class _UserMaxWidgetState extends ConsumerState<UserMaxWidget> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Не удалось сохранить максимум: $e')),
+          SnackBar(content: Text(l10n.userMaxFailedToSave(e.toString()))),
         );
       }
     } finally {
@@ -84,6 +86,7 @@ class _UserMaxWidgetState extends ConsumerState<UserMaxWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
@@ -105,14 +108,14 @@ class _UserMaxWidgetState extends ConsumerState<UserMaxWidget> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Добавить максимум',
+                l10n.userMaxTitle,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 16),
               TextFormField(
                 readOnly: true,
                 decoration: InputDecoration(
-                  labelText: 'Упражнение',
+                  labelText: l10n.userMaxExerciseLabel,
                   suffixIcon: IconButton(
                     icon: const Icon(Icons.search),
                     onPressed: _pickExercise,
@@ -122,7 +125,7 @@ class _UserMaxWidgetState extends ConsumerState<UserMaxWidget> {
                 onTap: _pickExercise,
                 validator: (_) {
                   if (_selectedExercise == null) {
-                    return 'Выберите упражнение';
+                    return l10n.userMaxSelectExerciseValidator;
                   }
                   return null;
                 },
@@ -131,13 +134,13 @@ class _UserMaxWidgetState extends ConsumerState<UserMaxWidget> {
               TextFormField(
                 controller: _weightController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Вес (кг)',
+                decoration: InputDecoration(
+                  labelText: l10n.userMaxWeightKgLabel,
                 ),
                 validator: (value) {
                   final weight = int.tryParse(value ?? '');
                   if (weight == null || weight <= 0) {
-                    return 'Введите вес > 0';
+                    return l10n.userMaxWeightGtZeroValidator;
                   }
                   return null;
                 },
@@ -146,16 +149,16 @@ class _UserMaxWidgetState extends ConsumerState<UserMaxWidget> {
               TextFormField(
                 controller: _repsController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Повторения',
+                decoration: InputDecoration(
+                  labelText: l10n.userMaxRepsLabel,
                 ),
                 validator: (value) {
                   final reps = int.tryParse(value ?? '');
                   if (reps == null || reps <= 0) {
-                    return 'Введите количество повторений > 0';
+                    return l10n.userMaxRepsGtZeroValidator;
                   }
                   if (reps > 12) {
-                    return 'Максимум 12 повторений';
+                    return l10n.userMaxRepsMax12Validator;
                   }
                   return null;
                 },
@@ -172,7 +175,7 @@ class _UserMaxWidgetState extends ConsumerState<UserMaxWidget> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.save),
-                  label: Text(_isSubmitting ? 'Сохраняем...' : 'Сохранить максимум'),
+                  label: Text(_isSubmitting ? l10n.userMaxSaving : l10n.userMaxSave),
                 ),
               ),
             ],

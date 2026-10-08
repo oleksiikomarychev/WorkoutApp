@@ -2,6 +2,7 @@ import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/services/api_client.dart';
 import 'package:workout_app/services/base_api_service.dart';
 import 'package:workout_app/services/logger_service.dart';
+import 'package:workout_app/models/plan_analytics.dart';
 
 class AnalyticsService extends BaseApiService {
   final ApiClient apiClient;
@@ -73,6 +74,40 @@ class AnalyticsService extends BaseApiService {
     } catch (e, st) {
       handleError('Failed to fetch analytics metrics', e, st);
       rethrow;
+    }
+  }
+
+  Future<PlanAnalyticsResponse?> getWorkoutHistoryAnalytics({
+    int days = 365,
+    List<String>? layers,
+    bool includeMeta = true,
+    int topLayersLimit = 50,
+  }) async {
+    try {
+      final endpoint = ApiConfig.workoutsAnalyticsHistoryEndpoint;
+      final query = <String, dynamic>{
+        'days': days.toString(),
+      };
+      if (layers != null && layers.isNotEmpty) {
+        query['layers'] = layers;
+      }
+      if (includeMeta) {
+        query['include_meta'] = 'true';
+        query['top_layers_limit'] = topLayersLimit.toString();
+      }
+      final response = await apiClient.get(
+        endpoint,
+        queryParams: query,
+        context: 'AnalyticsService.getWorkoutHistoryAnalytics',
+      );
+      if (response is Map<String, dynamic>) {
+        return PlanAnalyticsResponse.fromJson(response);
+      }
+      _logger.w('Unexpected workout history analytics response: $response');
+      return null;
+    } catch (e, st) {
+      handleError('Failed to fetch workout history analytics', e, st);
+      return null;
     }
   }
 }

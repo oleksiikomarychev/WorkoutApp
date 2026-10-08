@@ -1,10 +1,10 @@
-
+// GENERATED CODE - DO NOT MODIFY BY HAND
 
 part of 'workout.dart';
 
-
-
-
+// **************************************************************************
+// JsonSerializableGenerator
+// **************************************************************************
 
 _$WorkoutImpl _$$WorkoutImplFromJson(Map<String, dynamic> json) =>
     _$WorkoutImpl(
@@ -16,7 +16,7 @@ _$WorkoutImpl _$$WorkoutImplFromJson(Map<String, dynamic> json) =>
           ? null
           : DateTime.parse(json['started_at'] as String),
       durationSeconds: (json['duration_seconds'] as num?)?.toInt(),
-      rpeSession: (json['rpe_session'] as num?)?.toDouble(),
+      effortSession: (json['rpe_session'] as num?)?.toDouble(),
       location: json['location'] as String?,
       readinessScore: (json['readiness_score'] as num?)?.toInt(),
       appliedPlanId: (json['applied_plan_id'] as num?)?.toInt(),
@@ -27,14 +27,15 @@ _$WorkoutImpl _$$WorkoutImplFromJson(Map<String, dynamic> json) =>
       completedAt: json['completed_at'] == null
           ? null
           : DateTime.parse(json['completed_at'] as String),
-      exerciseInstances: (json['exercise_instances'] as List<dynamic>?)
+      exerciseInstances:
+          (json['exercise_instances'] as List<dynamic>?)
               ?.map((e) => ExerciseInstance.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
       nextWorkoutId: (json['next_workout_id'] as num?)?.toInt(),
       workoutType:
           $enumDecodeNullable(_$WorkoutTypeEnumMap, json['workout_type']) ??
-              WorkoutType.manual,
+          WorkoutType.manual,
     );
 
 Map<String, dynamic> _$$WorkoutImplToJson(_$WorkoutImpl instance) =>
@@ -45,15 +46,16 @@ Map<String, dynamic> _$$WorkoutImplToJson(_$WorkoutImpl instance) =>
       'status': instance.status,
       'started_at': instance.startedAt?.toIso8601String(),
       'duration_seconds': instance.durationSeconds,
-      'rpe_session': instance.rpeSession,
+      'rpe_session': instance.effortSession,
       'location': instance.location,
       'readiness_score': instance.readinessScore,
       'applied_plan_id': instance.appliedPlanId,
       'plan_order_index': instance.planOrderIndex,
       'scheduled_for': instance.scheduledFor?.toIso8601String(),
       'completed_at': instance.completedAt?.toIso8601String(),
-      'exercise_instances':
-          instance.exerciseInstances.map((e) => e.toJson()).toList(),
+      'exercise_instances': instance.exerciseInstances
+          .map((e) => e.toJson())
+          .toList(),
       'next_workout_id': instance.nextWorkoutId,
       'workout_type': _$WorkoutTypeEnumMap[instance.workoutType]!,
     };

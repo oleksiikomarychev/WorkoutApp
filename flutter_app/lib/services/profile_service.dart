@@ -41,25 +41,19 @@ class ProfileService extends BaseApiService {
   }
 
   Future<UserProfile> updateCoachingProfile({
-    bool? enabled,
-    bool? acceptingClients,
+    required bool enabled,
     String? tagline,
     String? description,
     List<String>? specializations,
     List<String>? languages,
-    int? experienceYears,
-    String? timezone,
     CoachingRatePlan? ratePlan,
   }) async {
     final payload = <String, dynamic>{};
     if (enabled != null) payload['enabled'] = enabled;
-    if (acceptingClients != null) payload['accepting_clients'] = acceptingClients;
     if (tagline != null) payload['tagline'] = tagline;
     if (description != null) payload['description'] = description;
     if (specializations != null) payload['specializations'] = specializations;
     if (languages != null) payload['languages'] = languages;
-    if (experienceYears != null) payload['experience_years'] = experienceYears;
-    if (timezone != null) payload['timezone'] = timezone;
     if (ratePlan != null) payload['rate_plan'] = ratePlan.toJson();
 
     try {

@@ -614,6 +614,34 @@ class WorkoutService extends BaseApiService {
     }
   }
 
+  Future<int> replaceExerciseId({
+    required int workoutId,
+    required int oldExerciseId,
+    required int newExerciseId,
+  }) async {
+    try {
+      final endpoint = ApiConfig.replaceExerciseIdEndpoint(workoutId);
+      final body = {
+        'old_exercise_id': oldExerciseId,
+        'new_exercise_id': newExerciseId,
+      };
+      
+      final response = await apiClient.put(
+        endpoint,
+        body,
+        context: 'WorkoutService.replaceExerciseId',
+      );
+      
+      if (response is Map<String, dynamic>) {
+        return response['updated_count'] as int;
+      }
+      return 0;
+    } catch (e, stackTrace) {
+      handleError('Failed to replace exercise ID', e, stackTrace);
+      rethrow;
+    }
+  }
+
   Map<String, dynamic> _buildWorkoutPayload(Workout workout) {
     final payload = <String, dynamic>{
       'name': workout.name,
@@ -621,7 +649,7 @@ class WorkoutService extends BaseApiService {
       if (workout.status != null) 'status': workout.status,
       if (workout.startedAt != null) 'started_at': workout.startedAt!.toIso8601String(),
       if (workout.durationSeconds != null) 'duration_seconds': workout.durationSeconds,
-      if (workout.rpeSession != null) 'rpe_session': workout.rpeSession,
+      if (workout.effortSession != null) 'rpe_session': workout.effortSession,
       if (workout.location != null) 'location': workout.location,
       if (workout.readinessScore != null) 'readiness_score': workout.readinessScore,
       if (workout.appliedPlanId != null) 'applied_plan_id': workout.appliedPlanId,

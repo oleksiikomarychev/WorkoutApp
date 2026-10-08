@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/features/auth/auth_provider.dart';
@@ -8,9 +9,6 @@ import 'package:workout_app/features/auth/sign_in_screen.dart';
 import 'package:workout_app/screens/home_screen_new.dart';
 import 'package:workout_app/features/auth/auth_me_loader.dart';
 import 'dart:async';
-
-
-
 
 class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({super.key});
@@ -51,7 +49,8 @@ class _AuthGateState extends ConsumerState<AuthGate> {
       return;
     }
 
-    if (defaultTargetPlatform != TargetPlatform.android) {
+    if (defaultTargetPlatform != TargetPlatform.android &&
+        defaultTargetPlatform != TargetPlatform.iOS) {
       return;
     }
 
@@ -60,7 +59,10 @@ class _AuthGateState extends ConsumerState<AuthGate> {
     }
 
     try {
-      final googleUser = await GoogleSignIn().signInSilently();
+      final googleUser = await GoogleSignIn(
+        clientId:
+            '282810209663-u4upa0psrlsd24ls422na68n1gcmlllb.apps.googleusercontent.com',
+      ).signInSilently();
       if (googleUser == null) {
         return;
       }
@@ -90,18 +92,13 @@ class _AuthGateState extends ConsumerState<AuthGate> {
         _startLoginDelayIfNeeded();
         if (!_allowLoginScreen) {
           return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
+            body: Center(child: CircularProgressIndicator()),
           );
         }
         return const SignInScreen();
       },
-      loading: () => const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      ),
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (error, stackTrace) => Scaffold(
         body: Center(
           child: Column(

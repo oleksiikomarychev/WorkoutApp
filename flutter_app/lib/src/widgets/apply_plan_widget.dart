@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:workout_app/src/widgets/snack_utils.dart';
 import 'package:workout_app/models/calendar_plan.dart';
 import 'package:workout_app/models/microcycle.dart';
 import 'package:workout_app/models/user_max.dart';
@@ -42,6 +43,32 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
   String _roundingMode = 'nearest';
   bool _isApplying = false;
 
+  String? _progressStage;
+  int? _workoutsTotal;
+  int? _workoutsDone;
+
+  void setProgress({String? stage, int? workoutsTotal, int? workoutsDone}) {
+    if (!mounted) return;
+    setState(() {
+      _progressStage = stage;
+      _workoutsTotal = workoutsTotal;
+      _workoutsDone = workoutsDone;
+    });
+  }
+
+  String _buildProgressText() {
+    final done = _workoutsDone;
+    final total = _workoutsTotal;
+    if (done != null && total != null && total > 0) {
+      final remaining = (total - done).clamp(0, total);
+      return 'Генерация плана: $done из $total (осталось $remaining)';
+    }
+    if ((_progressStage ?? '').trim().isNotEmpty) {
+      return 'Генерация плана: ${_progressStage!}';
+    }
+    return 'Генерация плана…';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -53,7 +80,10 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
     super.didUpdateWidget(oldWidget);
     if (!listEquals(oldWidget.userMaxList, widget.userMaxList) ||
         !setEquals(oldWidget.allowedExerciseIds, widget.allowedExerciseIds) ||
-        !setEquals(oldWidget.allowedExerciseNames, widget.allowedExerciseNames)) {
+        !setEquals(
+          oldWidget.allowedExerciseNames,
+          widget.allowedExerciseNames,
+        )) {
       _filterCurrentSelection();
       _loadLastSelection();
     }
@@ -67,7 +97,8 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
       for (final microcycle in mesocycle.microcycles) {
         for (final workout in microcycle.planWorkouts) {
           for (final exercise in workout.exercises) {
-            final key = '${exercise.exerciseDefinitionId}_${exercise.exerciseName}';
+            final key =
+                '${exercise.exerciseDefinitionId}_${exercise.exerciseName}';
             if (!seen.contains(key)) {
               seen.add(key);
               exercises.add(exercise);
@@ -92,7 +123,8 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
     final byName = <UserMax>[];
 
     for (final userMax in widget.userMaxList) {
-      if (userMax.exerciseId == exercise.exerciseDefinitionId && userMax.exerciseId > 0) {
+      if (userMax.exerciseId == exercise.exerciseDefinitionId &&
+          userMax.exerciseId > 0) {
         byId.add(userMax);
       }
     }
@@ -160,23 +192,22 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
                   TextField(
                     controller: weightController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Вес (кг)',
-                    ),
+                    decoration: const InputDecoration(labelText: 'Вес (кг)'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: repsController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Повторения',
-                    ),
+                    decoration: const InputDecoration(labelText: 'Повторения'),
                   ),
                   if (errorMessage != null) ...[
                     const SizedBox(height: 12),
                     Text(
                       errorMessage!,
-                      style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                   const SizedBox(height: 16),
@@ -186,7 +217,9 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
                       onPressed: isSubmitting
                           ? null
                           : () async {
-                              final weight = int.tryParse(weightController.text);
+                              final weight = int.tryParse(
+                                weightController.text,
+                              );
                               final reps = int.tryParse(repsController.text);
                               if (weight == null || weight <= 0) {
                                 setModalState(() {
@@ -211,14 +244,18 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
                                   exerciseId: exercise.exerciseDefinitionId,
                                   maxWeight: weight,
                                   repMax: reps,
-                                  date: DateTime.now().toIso8601String().split('T').first,
+                                  date: DateTime.now()
+                                      .toIso8601String()
+                                      .split('T')
+                                      .first,
                                 );
                                 if (Navigator.of(sheetContext).canPop()) {
                                   Navigator.of(sheetContext).pop(true);
                                 }
                               } catch (e) {
                                 setModalState(() {
-                                  errorMessage = 'Не удалось сохранить максимум: $e';
+                                  errorMessage =
+                                      'Не удалось сохранить максимум: $e';
                                   isSubmitting = false;
                                 });
                               }
@@ -246,8 +283,9 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
     if (result == true) {
       widget.onUserMaxAdded?.call();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Максимум для ${exercise.exerciseName} сохранён')),
+      showAppSnackBar(
+        context,
+        'Максимум для ${exercise.exerciseName} сохранён',
       );
     }
   }
@@ -257,10 +295,8 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
   Future<void> _loadLastSelection() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getStringList(_storageKey);
-    final parsed = saved
-            ?.map((value) => int.tryParse(value))
-            .whereType<int>()
-            .toList() ??
+    final parsed =
+        saved?.map((value) => int.tryParse(value)).whereType<int>().toList() ??
         [];
 
     if (!mounted) return;
@@ -287,8 +323,9 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
         .map((userMax) => userMax.id)
         .toSet();
 
-    _selectedUserMaxIds =
-        _selectedUserMaxIds.where(allowedUserMaxIds.contains).toList();
+    _selectedUserMaxIds = _selectedUserMaxIds
+        .where(allowedUserMaxIds.contains)
+        .toList();
   }
 
   bool _isExerciseAllowed(UserMax userMax) {
@@ -312,7 +349,9 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
     return 'name_${userMax.exerciseName.trim().toLowerCase()}';
   }
 
-  Set<int> _computeLatestSelection(Map<String, List<UserMax>> groupedUserMaxes) {
+  Set<int> _computeLatestSelection(
+    Map<String, List<UserMax>> groupedUserMaxes,
+  ) {
     final latestIds = <int>{};
     for (final entry in groupedUserMaxes.values) {
       if (entry.isEmpty) continue;
@@ -334,22 +373,21 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
     Map<String, List<UserMax>> groupedUserMaxes,
     Set<int> availableUserMaxIds,
   ) {
-    final savedMatches =
-        _savedUserMaxIds.where(availableUserMaxIds.contains).toList();
+    final savedMatches = _savedUserMaxIds
+        .where(availableUserMaxIds.contains)
+        .toList();
 
     if (savedMatches.isNotEmpty) {
       _applySelection(savedMatches);
       return;
     }
 
-    final latestIds = _computeLatestSelection(groupedUserMaxes)
-        .where(availableUserMaxIds.contains)
-        .toList();
+    final latestIds = _computeLatestSelection(
+      groupedUserMaxes,
+    ).where(availableUserMaxIds.contains).toList();
 
     if (latestIds.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Нет сохранённых максимумов для этого плана')),
-      );
+      showAppSnackBar(context, 'Нет сохранённых максимумов для этого плана');
       return;
     }
 
@@ -362,12 +400,15 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
         .where(_isExerciseAllowed)
         .toList();
 
-    final useFallback = filteredUserMaxes.isEmpty && widget.userMaxList.isNotEmpty;
-    final effectiveUserMaxes =
-        useFallback ? widget.userMaxList : filteredUserMaxes;
+    final useFallback =
+        filteredUserMaxes.isEmpty && widget.userMaxList.isNotEmpty;
+    final effectiveUserMaxes = useFallback
+        ? widget.userMaxList
+        : filteredUserMaxes;
 
-    final availableUserMaxIds =
-        effectiveUserMaxes.map((userMax) => userMax.id).toSet();
+    final availableUserMaxIds = effectiveUserMaxes
+        .map((userMax) => userMax.id)
+        .toSet();
 
     final groupedUserMaxes = <String, List<UserMax>>{};
     for (final userMax in effectiveUserMaxes) {
@@ -377,9 +418,11 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
     }
 
     final groupedEntries = groupedUserMaxes.entries.toList()
-      ..sort((a, b) => a.value.first.exerciseName
-          .toLowerCase()
-          .compareTo(b.value.first.exerciseName.toLowerCase()));
+      ..sort(
+        (a, b) => a.value.first.exerciseName.toLowerCase().compareTo(
+          b.value.first.exerciseName.toLowerCase(),
+        ),
+      );
 
     return FractionallySizedBox(
       heightFactor: 0.7,
@@ -415,6 +458,24 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
                 ],
               ),
               const Divider(height: 24),
+              if (_isApplying) ...[
+                const SizedBox(height: 8),
+                LinearProgressIndicator(
+                  minHeight: 3,
+                  value:
+                      (_workoutsTotal != null &&
+                          _workoutsDone != null &&
+                          _workoutsTotal! > 0)
+                      ? (_workoutsDone! / _workoutsTotal!).clamp(0.0, 1.0)
+                      : null,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _buildProgressText(),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
+              ],
               Form(
                 key: _formKey,
                 child: Column(
@@ -451,7 +512,11 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.info_outline, size: 18, color: Colors.blue.shade700),
+                              Icon(
+                                Icons.info_outline,
+                                size: 18,
+                                color: Colors.blue.shade700,
+                              ),
                               const SizedBox(width: 8),
                               Text(
                                 'Упражнения в плане',
@@ -473,7 +538,8 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
                                 children: [
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           exercise.exerciseName,
@@ -502,13 +568,18 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
                                     ),
                                   ),
                                   TextButton.icon(
-                                    onPressed: () => _showAddUserMaxSheet(exercise),
+                                    onPressed: () =>
+                                        _showAddUserMaxSheet(exercise),
                                     icon: const Icon(Icons.add, size: 16),
                                     label: const Text('Добавить'),
                                     style: TextButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
                                       minimumSize: Size.zero,
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
                                     ),
                                   ),
                                 ],
@@ -532,10 +603,10 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Text(
                           'В плане не найдено совпадающих упражнений, показаны все ваши User Max.',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(color: Theme.of(context).colorScheme.primary),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
                         ),
                       )
                     else
@@ -547,21 +618,22 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
                             title: Text(userMaxes.first.exerciseName),
                             children: userMaxes.map((userMax) {
                               return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 4,
+                                ),
                                 child: FilterChip.elevated(
                                   label: Text(
                                     '${userMax.maxWeight} kg x ${userMax.repMax}',
                                   ),
-                                  selected:
-                                      _selectedUserMaxIds.contains(userMax.id),
+                                  selected: _selectedUserMaxIds.contains(
+                                    userMax.id,
+                                  ),
                                   onSelected: (selected) {
                                     setState(() {
                                       if (selected) {
                                         _selectedUserMaxIds.add(userMax.id);
                                       } else {
-                                        _selectedUserMaxIds
-                                            .remove(userMax.id);
+                                        _selectedUserMaxIds.remove(userMax.id);
                                       }
                                     });
                                   },
@@ -640,18 +712,19 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
                                   .toList();
 
                               if (validSelection.isEmpty) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Пожалуйста, выберите хотя бы один User Max',
-                                    ),
-                                  ),
+                                showAppSnackBar(
+                                  context,
+                                  'Пожалуйста, выберите хотя бы один User Max',
+                                  isError: true,
                                 );
                                 return;
                               }
 
                               setState(() {
                                 _isApplying = true;
+                                _progressStage = null;
+                                _workoutsTotal = null;
+                                _workoutsDone = null;
                               });
 
                               try {
@@ -663,11 +736,22 @@ class _ApplyPlanWidgetState extends State<ApplyPlanWidget> {
                                   'rounding_step': _roundingStep,
                                   'rounding_mode': _roundingMode,
                                   'generate_workouts': true,
+                                  'on_progress':
+                                      (String? stage, int? total, int? done) {
+                                        setProgress(
+                                          stage: stage,
+                                          workoutsTotal: total,
+                                          workoutsDone: done,
+                                        );
+                                      },
                                 });
                               } finally {
                                 if (!mounted) return;
                                 setState(() {
                                   _isApplying = false;
+                                  _progressStage = null;
+                                  _workoutsTotal = null;
+                                  _workoutsDone = null;
                                 });
                               }
                             },

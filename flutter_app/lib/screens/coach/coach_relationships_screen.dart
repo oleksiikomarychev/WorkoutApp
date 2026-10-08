@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:workout_app/models/crm_analytics.dart';
 import 'package:workout_app/models/crm_coach_athlete_link.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
 import 'package:workout_app/services/service_locator.dart' as sl;
 import 'package:workout_app/providers/providers.dart';
 import 'package:workout_app/screens/coach/coach_chat_screen.dart';
@@ -34,9 +35,10 @@ class CoachRelationshipsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
     final asyncLinks = ref.watch(coachRelationshipsProvider);
     final analyticsAsync = ref.watch(coachRelationshipsAnalyticsProvider);
-    final allUsersAsync = ref.watch(allUsersProvider);
+    final allUsersAsync = ref.watch(allUsersProvider(false));
     final analyticsMap = analyticsAsync.maybeWhen(
       data: (value) => value,
       orElse: () => null,
@@ -55,7 +57,7 @@ class CoachRelationshipsScreen extends ConsumerWidget {
       builder: (context, openChat) {
         return Scaffold(
           appBar: PrimaryAppBar(
-            title: 'Coach ↔ Athletes',
+            title: l10n.coachRelationshipsTitle,
             onTitleTap: openChat,
             actions: [
               IconButton(
@@ -67,25 +69,25 @@ class CoachRelationshipsScreen extends ConsumerWidget {
                   ref.read(coachRelationshipsStatusFilterProvider.notifier).state = value;
                 },
                 itemBuilder: (context) => [
-                  const PopupMenuItem<String?>(
+                  PopupMenuItem<String?>(
                     value: null,
-                    child: Text('All'),
+                    child: Text(l10n.coachRelationshipsMenuAll),
                   ),
-                  const PopupMenuItem<String?>(
+                  PopupMenuItem<String?>(
                     value: 'pending',
-                    child: Text('Pending'),
+                    child: Text(l10n.coachRelationshipsMenuPending),
                   ),
-                  const PopupMenuItem<String?>(
+                  PopupMenuItem<String?>(
                     value: 'active',
-                    child: Text('Active'),
+                    child: Text(l10n.coachRelationshipsMenuActive),
                   ),
-                  const PopupMenuItem<String?>(
+                  PopupMenuItem<String?>(
                     value: 'paused',
-                    child: Text('Paused'),
+                    child: Text(l10n.coachRelationshipsMenuPaused),
                   ),
-                  const PopupMenuItem<String?>(
+                  PopupMenuItem<String?>(
                     value: 'ended',
-                    child: Text('Ended'),
+                    child: Text(l10n.coachRelationshipsMenuEnded),
                   ),
                 ],
               ),
@@ -93,7 +95,7 @@ class CoachRelationshipsScreen extends ConsumerWidget {
           ),
           body: asyncLinks.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('Error: $error')),
+        error: (error, _) => Center(child: Text(l10n.coachRelationshipsError(error.toString()))),
         data: (links) {
           final filter = ref.watch(coachRelationshipsStatusFilterProvider);
           final filteredLinks = filter == null
@@ -101,7 +103,7 @@ class CoachRelationshipsScreen extends ConsumerWidget {
               : links.where((l) => l.status.toLowerCase() == filter).toList();
 
           if (filteredLinks.isEmpty) {
-            return const Center(child: Text('No relationships yet'));
+            return Center(child: Text(l10n.coachRelationshipsEmpty));
           }
 
           return RefreshIndicator(
@@ -119,28 +121,40 @@ class CoachRelationshipsScreen extends ConsumerWidget {
                 final statusLower = link.status.toLowerCase();
                 final summary = analyticsMap?[link.athleteId];
                 final athleteName = usersMap?[link.athleteId]?.displayName ?? link.athleteId;
+                final channelLabel = link.channelId ?? l10n.coachRelationshipsChannelNotCreated;
                 return ListTile(
-                  title: Text('Athlete: $athleteName'),
+                  title: Text(l10n.coachRelationshipsAthletePrefix(athleteName)),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Status: $status'),
+                      Text(l10n.coachRelationshipsStatusPrefix(status)),
                       if ((link.note ?? '').isNotEmpty)
-                        Text('Note: ${link.note}'),
-                      Text('Channel: ${link.channelId ?? 'not created'}'),
+                        Text(l10n.coachRelationshipsNotePrefix(link.note ?? '')),
+                      Text(l10n.coachRelationshipsChannelPrefix(channelLabel)),
                       if (summary != null) ...[
                         const SizedBox(height: 4),
-                        Text('Sessions (12w): ${summary.sessionsCount}'),
+                        Text(l10n.coachRelationshipsSessions12w(summary.sessionsCount.toString())),
                         Text(
-                          'Last workout: ${summary.lastWorkoutAt != null ? DateFormat('MMM d').format(summary.lastWorkoutAt!.toLocal()) : 'n/a'}'
-                          '${summary.daysSinceLastWorkout != null ? ' · ${summary.daysSinceLastWorkout}d ago' : ''}',
+                          l10n.coachRelationshipsLastWorkout(
+                            summary.lastWorkoutAt != null
+                                ? DateFormat('MMM d').format(summary.lastWorkoutAt!.toLocal())
+                                : l10n.coachRelationshipsLastWorkoutNA,
+                            summary.daysSinceLastWorkout != null
+                                ? l10n.coachRelationshipsDaysAgoSuffix(summary.daysSinceLastWorkout.toString())
+                                : '',
+                          ),
                         ),
                         Text(
-                          'Volume: ${summary.totalVolume != null ? summary.totalVolume!.toStringAsFixed(1) : '-'} | Active plan: ${summary.activePlanName ?? 'n/a'}',
+                          l10n.coachRelationshipsVolumeAndPlan(
+                            summary.totalVolume != null
+                                ? summary.totalVolume!.toStringAsFixed(1)
+                                : l10n.coachRelationshipsVolumeDash,
+                            summary.activePlanName ?? l10n.coachRelationshipsLastWorkoutNA,
+                          ),
                         ),
                       ] else if (analyticsAsync.isLoading) ...[
                         const SizedBox(height: 4),
-                        const Text('Loading training summary...'),
+                        Text(l10n.coachRelationshipsLoadingTrainingSummary),
                       ],
                     ],
                   ),
@@ -158,19 +172,19 @@ class CoachRelationshipsScreen extends ConsumerWidget {
                                   );
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Request accepted')),
+                                      SnackBar(content: Text(l10n.coachRelationshipsRequestAccepted)),
                                     );
                                   }
                                   ref.refresh(coachRelationshipsProvider);
                                 } catch (e) {
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Failed to accept: $e')),
+                                      SnackBar(content: Text(l10n.coachRelationshipsFailedToAccept(e.toString()))),
                                     );
                                   }
                                 }
                               },
-                              child: const Text('Accept'),
+                              child: Text(l10n.coachRelationshipsAccept),
                             ),
                             TextButton(
                               onPressed: () async {
@@ -179,22 +193,20 @@ class CoachRelationshipsScreen extends ConsumerWidget {
                                   context: context,
                                   builder: (ctx) {
                                     return AlertDialog(
-                                      title: const Text('Decline request'),
+                                      title: Text(l10n.coachRelationshipsDeclineRequestTitle),
                                       content: TextField(
                                         controller: controller,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Reason (optional)',
-                                        ),
+                                        decoration: InputDecoration(labelText: l10n.coachRelationshipsDeclineReasonHint),
                                         maxLines: 3,
                                       ),
                                       actions: [
                                         TextButton(
                                           onPressed: () => Navigator.of(ctx).pop(false),
-                                          child: const Text('Cancel'),
+                                          child: Text(l10n.cancel),
                                         ),
                                         ElevatedButton(
                                           onPressed: () => Navigator.of(ctx).pop(true),
-                                          child: const Text('Decline'),
+                                          child: Text(l10n.coachRelationshipsDecline),
                                         ),
                                       ],
                                     );
@@ -211,19 +223,19 @@ class CoachRelationshipsScreen extends ConsumerWidget {
                                   );
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Request declined')),
+                                      SnackBar(content: Text(l10n.coachRelationshipsRequestDeclined)),
                                     );
                                   }
                                   ref.refresh(coachRelationshipsProvider);
                                 } catch (e) {
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Failed to decline: $e')),
+                                      SnackBar(content: Text(l10n.coachRelationshipsFailedToDecline(e.toString()))),
                                     );
                                   }
                                 }
                               },
-                              child: const Text('Decline'),
+                              child: Text(l10n.coachRelationshipsDecline),
                             ),
                           ],
                         )
@@ -232,7 +244,7 @@ class CoachRelationshipsScreen extends ConsumerWidget {
                           children: [
                             IconButton(
                               icon: const Icon(Icons.chat_bubble_outline),
-                              tooltip: 'Chat',
+                              tooltip: l10n.coachRelationshipsChatTooltip,
                               onPressed: hasChannel
                                   ? () {
                                       Navigator.of(context).pushNamed(
@@ -247,7 +259,7 @@ class CoachRelationshipsScreen extends ConsumerWidget {
                             ),
                             IconButton(
                               icon: const Icon(Icons.insights_outlined),
-                              tooltip: 'Analytics',
+                              tooltip: l10n.coachRelationshipsAnalyticsTooltip,
                               onPressed: () {
                                 Navigator.of(context).pushNamed(
                                   RouteNames.coachAthleteDetail,
@@ -257,7 +269,7 @@ class CoachRelationshipsScreen extends ConsumerWidget {
                             ),
                             IconButton(
                               icon: const Icon(Icons.notifications_active_outlined),
-                              tooltip: 'Nudge',
+                              tooltip: l10n.coachRelationshipsNudgeTooltip,
                               onPressed: (statusLower == 'active' && hasChannel)
                                   ? () => _sendNudge(context, ref, link, summary)
                                   : null,
@@ -270,14 +282,14 @@ class CoachRelationshipsScreen extends ConsumerWidget {
                                     await svc.updateStatus(id: link.id, status: 'paused');
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Coaching paused')),
+                                        SnackBar(content: Text(l10n.coachRelationshipsCoachingPaused)),
                                       );
                                     }
                                     ref.refresh(coachRelationshipsProvider);
                                   } catch (e) {
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Failed to pause: $e')),
+                                        SnackBar(content: Text(l10n.coachRelationshipsFailedToPause(e.toString()))),
                                       );
                                     }
                                   }
@@ -287,14 +299,14 @@ class CoachRelationshipsScreen extends ConsumerWidget {
                                     await svc.updateStatus(id: link.id, status: 'active');
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Coaching resumed')),
+                                        SnackBar(content: Text(l10n.coachRelationshipsCoachingResumed)),
                                       );
                                     }
                                     ref.refresh(coachRelationshipsProvider);
                                   } catch (e) {
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Failed to resume: $e')),
+                                        SnackBar(content: Text(l10n.coachRelationshipsFailedToResume(e.toString()))),
                                       );
                                     }
                                   }
@@ -304,22 +316,20 @@ class CoachRelationshipsScreen extends ConsumerWidget {
                                     context: context,
                                     builder: (ctx) {
                                       return AlertDialog(
-                                        title: const Text('End coaching'),
+                                        title: Text(l10n.coachRelationshipsEndCoaching),
                                         content: TextField(
                                           controller: controller,
-                                          decoration: const InputDecoration(
-                                            labelText: 'Reason (optional)',
-                                          ),
+                                          decoration: InputDecoration(labelText: l10n.coachRelationshipsDeclineReasonHint),
                                           maxLines: 3,
                                         ),
                                         actions: [
                                           TextButton(
                                             onPressed: () => Navigator.of(ctx).pop(false),
-                                            child: const Text('Cancel'),
+                                            child: Text(l10n.cancel),
                                           ),
                                           ElevatedButton(
                                             onPressed: () => Navigator.of(ctx).pop(true),
-                                            child: const Text('End'),
+                                            child: Text(l10n.coachRelationshipsEndCoaching),
                                           ),
                                         ],
                                       );
@@ -336,14 +346,14 @@ class CoachRelationshipsScreen extends ConsumerWidget {
                                     );
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Coaching ended')),
+                                        SnackBar(content: Text(l10n.coachRelationshipsCoachingEnded)),
                                       );
                                     }
                                     ref.refresh(coachRelationshipsProvider);
                                   } catch (e) {
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Failed to end: $e')),
+                                        SnackBar(content: Text(l10n.coachRelationshipsFailedToEnd(e.toString()))),
                                       );
                                     }
                                   }
@@ -351,19 +361,19 @@ class CoachRelationshipsScreen extends ConsumerWidget {
                               },
                               itemBuilder: (context) => [
                                 if (statusLower == 'active')
-                                  const PopupMenuItem<String>(
+                                  PopupMenuItem<String>(
                                     value: 'pause',
-                                    child: Text('Pause coaching'),
+                                    child: Text(l10n.coachRelationshipsMenuPauseCoaching),
                                   ),
                                 if (statusLower == 'paused')
-                                  const PopupMenuItem<String>(
+                                  PopupMenuItem<String>(
                                     value: 'resume',
-                                    child: Text('Resume coaching'),
+                                    child: Text(l10n.coachRelationshipsMenuResumeCoaching),
                                   ),
                                 if (statusLower != 'ended')
-                                  const PopupMenuItem<String>(
+                                  PopupMenuItem<String>(
                                     value: 'end',
-                                    child: Text('End coaching'),
+                                    child: Text(l10n.coachRelationshipsMenuEndCoaching),
                                   ),
                               ],
                             ),
@@ -387,11 +397,12 @@ Future<void> _sendNudge(
   CoachAthleteLink link,
   AthleteTrainingSummaryModel? summary,
 ) async {
+  final l10n = AppLocalizations.of(context);
   final channelId = link.channelId;
   if (channelId == null || channelId.isEmpty) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Chat channel is not available')),
+        SnackBar(content: Text(l10n.coachRelationshipsChatChannelNotAvailable)),
       );
     }
     return;
@@ -399,21 +410,21 @@ Future<void> _sendNudge(
 
   final days = summary?.daysSinceLastWorkout;
   final message = days != null && days > 0
-      ? 'Hey ${link.athleteId}, it\'s been $days day${days == 1 ? '' : 's'} since your last workout. Let\'s plan the next session!'
-      : 'Hey ${link.athleteId}, let\'s schedule our next workout soon!';
+      ? l10n.coachRelationshipsNudgeMessageWithDays(link.athleteId, days.toString())
+      : l10n.coachRelationshipsNudgeMessageNoDays(link.athleteId);
 
   try {
     final messaging = ref.read(sl.messagingServiceProvider);
     await messaging.sendTextMessage(channelId: channelId, content: message);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nudge sent')),
+        SnackBar(content: Text(l10n.coachRelationshipsNudgeSent)),
       );
     }
   } catch (e) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to send nudge: $e')),
+        SnackBar(content: Text(l10n.coachRelationshipsFailedToSendNudge(e.toString()))),
       );
     }
   }

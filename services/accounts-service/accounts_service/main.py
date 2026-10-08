@@ -3,6 +3,7 @@ from backend_common.fastapi_app import create_service_app
 
 from .logging_config import configure_logging
 from .routers.avatars import router as avatars_router
+from .routers.internal_purge import router as internal_purge_router
 from .routers.profile import router as profile_router
 from .routers.users import router as users_router
 
@@ -28,3 +29,4 @@ async def health() -> dict[str, str]:
 app.include_router(profile_router)
 app.include_router(avatars_router)
 app.include_router(users_router)
+app.include_router(internal_purge_router)

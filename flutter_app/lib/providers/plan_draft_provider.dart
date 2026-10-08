@@ -34,7 +34,7 @@ class WeekDraft {
       : days = days ?? {};
 
   factory WeekDraft.fromJson(Map<String, dynamic> json) => WeekDraft(
-        name: json['name'] as String? ?? 'Микроцикл',
+        name: json['name'] as String? ?? 'Microcycle',
         expanded: json['expanded'] as bool? ?? true,
         daysCount: json['daysCount'] as int? ?? 7,
         days: ((json['days'] as Map?)?.map((k, v) => MapEntry(int.tryParse(k.toString()) ?? 0, DayDraft.fromJson(v as Map<String, dynamic>))) ?? {})
@@ -103,7 +103,7 @@ class MesocycleDraft {
   MesocycleDraft({required this.name, this.notes, required this.weeksCount, required this.microcycleLength});
 
   factory MesocycleDraft.fromJson(Map<String, dynamic> json) => MesocycleDraft(
-        name: json['name'] as String? ?? 'Мезоцикл',
+        name: json['name'] as String? ?? 'Mesocycle',
         notes: json['notes'] as String?,
         weeksCount: json['weeksCount'] as int? ?? 1,
         microcycleLength: json['microcycleLength'] as int? ?? 7,
@@ -158,7 +158,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
   void addWeek() {
     final idx = state.weeks.length + 1;
     final copied = List<WeekDraft>.from(state.weeks);
-    copied.add(WeekDraft(name: 'Микроцикл $idx', expanded: true, daysCount: state.microcycleLength));
+    copied.add(WeekDraft(name: 'Microcycle $idx', expanded: true, daysCount: state.microcycleLength));
     state = state.copyWith(weeks: copied);
     _normalizeMesocyclesAfterWeeksChanged();
     _save();
@@ -184,7 +184,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
     weeks.insert(
       insertIndex,
       WeekDraft(
-        name: 'Микроцикл ${weeks.length + 1}',
+        name: 'Microcycle ${weeks.length + 1}',
         expanded: true,
         daysCount: ms[mesoIndex].microcycleLength,
       ),
@@ -247,7 +247,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
 
   void _renumberWeeks(List<WeekDraft> weeks) {
     for (int i = 0; i < weeks.length; i++) {
-      weeks[i].name = 'Микроцикл ${i + 1}';
+      weeks[i].name = 'Microcycle ${i + 1}';
     }
   }
 
@@ -332,7 +332,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
 
   void _renumberMesocycles(List<MesocycleDraft> meso) {
     for (int i = 0; i < meso.length; i++) {
-      meso[i].name = 'Мезоцикл ${i + 1}';
+      meso[i].name = 'Mesocycle ${i + 1}';
     }
   }
 
@@ -352,7 +352,7 @@ class PlanDraftNotifier extends StateNotifier<PlanDraft> {
       return;
     }
     final newWeeks = totalWeeks > 0 ? 1 : 0;
-    ms.add(MesocycleDraft(name: 'Мезоцикл ${ms.length + 1}', weeksCount: newWeeks, microcycleLength: state.microcycleLength));
+    ms.add(MesocycleDraft(name: 'Mesocycle ${ms.length + 1}', weeksCount: newWeeks, microcycleLength: state.microcycleLength));
     _rebalanceMesocyclesInternal(ms, totalWeeks, exceptIndex: ms.length - 1);
     state = state.copyWith(mesocycles: ms);
     _save();

@@ -4,18 +4,30 @@ import asyncio
 import re
 from datetime import datetime, timedelta
 
+import common_pb2 as common_pb2
 import httpx
-from fastapi import APIRouter, Query, Request, Response, status
+import workouts_pb2 as workouts_pb2
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import JSONResponse
 
 from gateway_app import main as gateway_main  # type: ignore
 from gateway_app import schemas
+from gateway_app.grpc_clients import (
+    create_user_context,
+    grpc_client_manager,
+)
 from gateway_app.http_client import ServiceClient
 
 workouts_router = APIRouter(prefix="/api/v1/workouts")
 workout_metrics_router = APIRouter(prefix="/api/v1")
 
 _DAY_LABEL_RE = re.compile(r":\s*(Day\s*\d+)", re.IGNORECASE)
+
+
+def get_current_user_id(x_user_id: str | None = Header(default=None, alias="X-User-Id")) -> str:
+    if not x_user_id:
+        raise HTTPException(status_code=401, detail="X-User-Id header required")
+    return x_user_id
 
 
 def _parse_include_expand(request: Request) -> set[str]:
@@ -97,20 +109,21 @@ async def _derive_exercise_instances_from_plan(
                 if plan_order_index is None and day_label_target and pw.get("day_label") != day_label_target:
                     continue
 
-                instances = []
-                for ex in pw.get("exercises") or []:
-                    sets = []
-                    for s in ex.get("sets") or []:
+                instances: list[dict] = []
+                for ex_idx, ex in enumerate(pw.get("exercises") or []):
+                    sets: list[dict] = []
+                    for set_idx, s in enumerate(ex.get("sets") or []):
+                        # For preview workouts, we don't have actual sets data, so use what's available
                         sets.append(
                             {
                                 "id": None,
                                 "reps": s.get("volume"),
-                                "weight": s.get("working_weight"),
+                                "working_weight": s.get("working_weight"),
                                 "rpe": s.get("effort"),
                                 "effort": s.get("effort"),
                                 "effort_type": "RPE",
                                 "intensity": s.get("intensity"),
-                                "order": None,
+                                "order": set_idx,
                             }
                         )
                     instances.append(
@@ -119,7 +132,7 @@ async def _derive_exercise_instances_from_plan(
                             "exercise_list_id": ex.get("exercise_definition_id"),
                             "sets": sets,
                             "notes": None,
-                            "order": None,
+                            "order": ex_idx,
                             "workout_id": workout_id,
                             "user_max_id": None,
                         }
@@ -135,6 +148,43 @@ async def _derive_exercise_instances_from_plan(
     return []
 
 
+async def _get_actual_workout_sets(workout_id: int, headers: dict) -> dict[str, list[dict]]:
+    """Get actual workout sets data from workouts-service organized by exercise_id"""
+    try:
+        # Make request to workouts-service to get raw workout data with actual sets
+        workout_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/{workout_id}"
+        async with httpx.AsyncClient() as client:
+            response = await client.get(workout_url, headers=headers)
+            if response.status_code != 200:
+                gateway_main.logger.error(
+                    "failed_to_fetch_workout_for_sets",
+                    workout_id=workout_id,
+                    status_code=response.status_code,
+                )
+                return {}
+            
+            workout_data = response.json()
+            exercises = workout_data.get("exercises", [])
+            
+            # Organize sets by exercise_list_id (exercise definition ID from exercises-service)
+            # The sets are already nested under exercises, so we can use exercise_list_id as key
+            sets_by_exercise = {}
+            for ex in exercises:
+                ex_list_id = ex.get("exercise_list_id")
+                if ex_list_id:
+                    sets_by_exercise[str(ex_list_id)] = ex.get("sets", [])
+            
+            return sets_by_exercise
+            
+    except Exception as e:
+        gateway_main.logger.error(
+            "error_getting_actual_sets",
+            workout_id=workout_id,
+            error=str(e),
+        )
+        return {}
+
+
 async def _assemble_workout_for_client(
     *,
     workout_data: dict,
@@ -142,106 +192,76 @@ async def _assemble_workout_for_client(
     headers: dict,
     include: set[str],
 ) -> dict:
-    instances_url = f"{gateway_main.EXERCISES_SERVICE_URL}/exercises/instances/workouts/{workout_id}/instances"
-    gateway_main.logger.debug("instances_fetch_start", url=instances_url)
-    async with ServiceClient() as client:
-        instances_data = await client.get_json(
-            instances_url,
-            headers=headers,
-            default=[],
-            workout_id=workout_id,
-        )
-    gateway_main.logger.debug("instances_fetch_response", count=len(instances_data) if instances_data else 0)
+    # Use exercise instances from workouts-service response instead of fetching from exercises-service
+    instances_data = workout_data.get("exercise_instances", [])
+    gateway_main.logger.debug("instances_from_workout_response", count=len(instances_data))
 
     if not instances_data:
         workout_type = str(workout_data.get("workout_type") or "").lower()
         if workout_type == "generated":
             exercises = workout_data.get("exercises") or []
             if exercises:
-                created_instances: list[dict] = []
-                async with ServiceClient() as client:
-                    for ex in exercises:
-                        ex_id = ex.get("exercise_id")
-                        if ex_id is None:
-                            continue
-
-                        sets_payload: list[dict] = []
-                        for s in ex.get("sets", []):
-                            reps = s.get("volume")
-                            if reps is None:
-                                reps = s.get("reps")
-                            sets_payload.append(
-                                {
-                                    "reps": reps,
-                                    "weight": s.get("working_weight")
-                                    if s.get("working_weight") is not None
-                                    else s.get("weight"),
-                                    "rpe": s.get("effort"),
-                                    "effort": s.get("effort"),
-                                    "effort_type": "RPE",
-                                    "intensity": s.get("intensity"),
-                                }
-                            )
-
-                        payload = {
-                            "exercise_list_id": ex_id,
-                            "sets": sets_payload,
-                            "notes": ex.get("notes"),
-                            "order": None,
-                            "user_max_id": None,
-                        }
-
-                        resp = await client.post(
-                            instances_url,
-                            headers=headers,
-                            json=payload,
-                            expected_status=(201,),
-                            workout_id=workout_id,
-                        )
-                        if resp.success and isinstance(resp.data, dict):
-                            created_instances.append(resp.data)
-                        else:
-                            gateway_main.logger.error(
-                                "generated_instances_create_failed",
+                # Get actual workout sets data from workouts-service
+                actual_sets_data = await _get_actual_workout_sets(workout_id, headers)
+                gateway_main.logger.info(
+                    "actual_sets_data_loaded",
+                    workout_id=workout_id,
+                    exercise_count=len(actual_sets_data),
+                    exercise_ids=list(actual_sets_data.keys())
+                )
+                
+                # Create exercise instances from workouts data with actual sets
+                created_instances = []
+                for ex_idx, ex in enumerate(exercises):
+                    ex_list_id = ex.get("exercise_id")
+                    if ex_list_id is None:
+                        continue
+                    
+                    plan_sets = ex.get("sets", [])
+                    actual_sets = actual_sets_data.get(str(ex_list_id), [])
+                    
+                    sets_payload = []
+                    for set_idx, s in enumerate(plan_sets):
+                        # Get actual working_weight from database
+                        actual_weight = None
+                        if set_idx < len(actual_sets):
+                            actual_weight = actual_sets[set_idx].get("working_weight")
+                            gateway_main.logger.debug(
+                                "set_weight_check",
                                 workout_id=workout_id,
-                                exercise_list_id=ex_id,
-                                status_code=resp.status_code,
-                                error=resp.error,
+                                exercise_list_id=ex_list_id,
+                                set_idx=set_idx,
+                                actual_weight=actual_weight,
+                                set_data=actual_sets[set_idx] if set_idx < len(actual_sets) else None
                             )
-
-                if created_instances:
-                    workout_data["exercise_instances"] = created_instances
-                else:
-                    mapped_instances: list[dict] = []
-                    for ex in exercises:
-                        sets = []
-                        for s in ex.get("sets", []):
-                            sets.append(
-                                {
-                                    "id": None,
-                                    "reps": s.get("volume"),
-                                    "weight": s.get("working_weight")
-                                    if s.get("working_weight") is not None
-                                    else s.get("weight"),
-                                    "rpe": s.get("effort"),
-                                    "effort": s.get("effort"),
-                                    "effort_type": "RPE",
-                                    "intensity": s.get("intensity"),
-                                    "order": None,
-                                }
-                            )
-                        mapped_instances.append(
+                        
+                        reps = s.get("volume")
+                        if reps is None:
+                            reps = s.get("reps")
+                        sets_payload.append(
                             {
-                                "id": None,
-                                "exercise_list_id": ex.get("exercise_id"),
-                                "sets": sets,
-                                "notes": ex.get("notes"),
-                                "order": None,
-                                "workout_id": workout_id,
-                                "user_max_id": None,
+                                "reps": reps,
+                                "working_weight": actual_weight if actual_weight is not None else None,
+                                "rpe": s.get("effort"),
+                                "effort": s.get("effort"),
+                                "effort_type": "RPE",
+                                "intensity": s.get("intensity"),
+                                "order": set_idx,
                             }
                         )
-                    workout_data["exercise_instances"] = mapped_instances
+                    
+                    created_instances.append({
+                        "id": None,  # Will be set by exercises-service when created
+                        "exercise_list_id": ex_list_id,
+                        "sets": sets_payload,
+                        "notes": ex.get("notes"),
+                        "order": ex_idx,
+                        "workout_id": workout_id,
+                        "user_max_id": None,
+                    })
+                
+                if created_instances:
+                    workout_data["exercise_instances"] = created_instances
             else:
                 plan_instances = await _derive_exercise_instances_from_plan(
                     applied_plan_id=workout_data.get("applied_plan_id"),
@@ -254,10 +274,27 @@ async def _assemble_workout_for_client(
                     workout_data["exercise_instances"] = plan_instances
                 else:
                     workout_data["exercise_instances"] = workout_data.get("exercise_instances", [])
-        else:
-            workout_data["exercise_instances"] = workout_data.get("exercise_instances", [])
     else:
-        workout_data["exercise_instances"] = instances_data
+        workout_data["exercise_instances"] = workout_data.get("exercise_instances", [])
+
+    instances = workout_data.get("exercise_instances")
+    if isinstance(instances, list) and instances:
+        def _instance_sort_key(item: dict) -> tuple[int, int]:
+            if not isinstance(item, dict):
+                return (2**31 - 1, 2**31 - 1)
+            order_val = item.get("order")
+            try:
+                order_key = int(order_val) if order_val is not None else (2**31 - 1)
+            except (TypeError, ValueError):
+                order_key = 2**31 - 1
+            inst_id = item.get("id")
+            try:
+                id_key = int(inst_id) if inst_id is not None else (2**31 - 1)
+            except (TypeError, ValueError):
+                id_key = 2**31 - 1
+            return (order_key, id_key)
+
+        workout_data["exercise_instances"] = sorted(instances, key=_instance_sort_key)
 
     if any("exercise_instances.exercise_definition" in inc or inc == "exercise_definition" for inc in include):
         ids = [i.get("exercise_list_id") for i in workout_data.get("exercise_instances", [])]
@@ -282,99 +319,417 @@ async def _assemble_workout_for_client(
     return workout_data
 
 
+@workouts_router.post("/import/hevy", status_code=status.HTTP_202_ACCEPTED)
+async def import_hevy_csv(file: UploadFile, request: Request):
+    """Enqueue async Hevy CSV import (Celery worker in workouts-service)."""
+    headers = gateway_main._forward_headers(request)
+    target_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/import/hevy"
+
+    raw = await file.read()
+    files = {
+        "file": (
+            file.filename or "hevy.csv",
+            raw,
+            file.content_type or "text/csv",
+        )
+    }
+    # Do not forward multipart content-type to downstream JSON APIs.
+    headers.pop("content-type", None)
+
+    timeout = httpx.Timeout(connect=10.0, read=60.0, write=60.0, pool=60.0)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        resp = await client.post(target_url, headers=headers, files=files)
+        try:
+            payload = resp.json()
+        except ValueError:
+            payload = {"detail": resp.text or "Upstream error"}
+        return JSONResponse(content=payload, status_code=resp.status_code)
+
+
+@workouts_router.get("/import/hevy/tasks/{task_id}")
+async def import_hevy_task_status(task_id: str, request: Request) -> Response:
+    headers = gateway_main._forward_headers(request)
+    target_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/import/hevy/tasks/{task_id}"
+    return await gateway_main._proxy_request(request, target_url, headers)
+
+
 @workouts_router.post("/", response_model=schemas.WorkoutResponseWithExercises, status_code=status.HTTP_201_CREATED)
 async def create_workout(workout_data: schemas.WorkoutCreateWithExercises, request: Request):
-    headers = gateway_main._forward_headers(request)
+    """Create workout using gRPC."""
+    user = getattr(request.state, "user", None)
+    uid = user.get("uid") if user else None
+    if not uid:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
 
-    try:
-        workout_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/"
-        async with httpx.AsyncClient() as client:
-            workout_payload = workout_data.model_dump_json(exclude={"exercise_instances"})
-            workout_resp = await client.post(workout_url, content=workout_payload, headers=headers)
-            workout_resp.raise_for_status()
+    stub = await grpc_client_manager.get_workouts_stub()
+    user_context = create_user_context(str(uid))
 
-            workout = workout_resp.json()
-            workout_id = workout["id"]
+    request_pb = workouts_pb2.CreateWorkoutRequest(
+        name=workout_data.name or "",
+        workout_type=workout_data.workout_type or "",
+        applied_plan_id=workout_data.applied_plan_id or 0,
+        plan_order_index=workout_data.plan_order_index or 0,
+        user_context=user_context,
+    )
 
-            if workout_data.exercise_instances:
-                instances_url = (
-                    f"{gateway_main.EXERCISES_SERVICE_URL}/exercises/instances/workouts/{workout_id}/instances"
-                )
-                created_instances = []
+    response = await stub.CreateWorkout(request_pb, timeout=10.0)
 
-                for instance in workout_data.exercise_instances:
-                    instance_data = instance.model_dump_json()
-                    instance_resp = await client.post(
-                        instances_url, content=instance_data, headers=headers, follow_redirects=True
-                    )
+    if not response.workout:
+        return JSONResponse(status_code=500, content={"detail": "Failed to create workout"})
 
-                    if instance_resp.status_code != 201:
-                        await client.delete(f"{workout_url}{workout_id}", headers=headers, follow_redirects=True)
-                        return JSONResponse(
-                            content={
-                                "detail": "Failed to create exercise instance",
-                                "error": instance_resp.json(),
-                            },
-                            status_code=instance_resp.status_code,
-                        )
-                    created_instances.append(instance_resp.json())
+    workout_dict = {
+        "id": response.workout.id,
+        "name": response.workout.name,
+        "status": response.workout.status,
+        "workout_type": response.workout.workout_type,
+        "started_at": response.workout.started_at if response.workout.started_at else None,
+        "completed_at": response.workout.finished_at if response.workout.finished_at else None,
+        "applied_plan_id": response.workout.applied_plan_id,
+        "plan_order_index": response.workout.plan_order_index,
+        "exercise_instances": [],
+    }
 
-                workout["exercise_instances"] = created_instances
-
-        return JSONResponse(content=workout, status_code=201)
-    except httpx.HTTPStatusError as e:
-        if "workout_id" in locals():
-            async with httpx.AsyncClient() as cleanup_client:
-                await cleanup_client.delete(f"{workout_url}{workout_id}/", headers=headers)
-        return JSONResponse(content={"detail": str(e)}, status_code=e.response.status_code)
+    return JSONResponse(content=workout_dict, status_code=201)
 
 
 @workouts_router.get("/", response_model=list[schemas.WorkoutResponse])
-async def list_workouts(request: Request, skip: int = 0, limit: int = 100) -> Response:
-    target_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/"
+async def list_workouts(
+    request: Request,
+    skip: int = 0,
+    limit: int = 100,
+    applied_plan_id: int | None = None,
+    type: str | None = None,
+) -> Response:
+    """List workouts.
+
+    Prefer the workouts-service HTTP endpoint because it includes scheduling fields
+    (e.g. scheduled_for) which are required by the calendar UI.
+    """
+    user = getattr(request.state, "user", None)
+    uid = user.get("uid") if user else None
+    if not uid:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
     headers = gateway_main._forward_headers(request)
+    params: dict[str, str | int] = {"skip": skip, "limit": limit}
+    if isinstance(applied_plan_id, int):
+        params["applied_plan_id"] = applied_plan_id
+    if type:
+        params["type"] = type
+
+    try:
+        async with ServiceClient(timeout=20.0) as client:
+            workouts_list = await client.get_json(
+                f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/",
+                headers=headers,
+                params=params,
+                default=[],
+            )
+
+        if not isinstance(workouts_list, list):
+            workouts_list = []
+
+        normalized: list[dict] = []
+        for w in workouts_list:
+            if not isinstance(w, dict):
+                continue
+
+            started_at = w.get("started_at")
+            completed_at = w.get("completed_at")
+            if completed_at is None:
+                completed_at = w.get("finished_at")
+
+            normalized.append(
+                {
+                    **w,
+                    "started_at": started_at or None,
+                    "completed_at": completed_at or None,
+                    "exercise_instances": w.get("exercise_instances")
+                    if isinstance(w.get("exercise_instances"), list)
+                    else [],
+                }
+            )
+
+        return JSONResponse(content=normalized)
+    except Exception:
+        stub = await grpc_client_manager.get_workouts_stub()
+        user_context = create_user_context(str(uid))
+
+        pagination = common_pb2.PaginationRequest(skip=skip, limit=limit)
+        request_pb = workouts_pb2.ListWorkoutsRequest(
+            pagination=pagination,
+            user_context=user_context,
+        )
+
+        response = await stub.ListWorkouts(request_pb, timeout=10.0)
+
+        workouts_list = []
+        for workout in response.workouts:
+            workouts_list.append(
+                {
+                    "id": workout.id,
+                    "name": workout.name,
+                    "status": workout.status,
+                    "workout_type": workout.workout_type,
+                    "started_at": workout.started_at if workout.started_at else None,
+                    "completed_at": workout.finished_at if workout.finished_at else None,
+                    "applied_plan_id": workout.applied_plan_id,
+                    "plan_order_index": workout.plan_order_index,
+                    "exercise_instances": [],
+                }
+            )
+
+        return JSONResponse(content=workouts_list)
+
+
+@workouts_router.get("/analytics/history")
+async def proxy_workout_history_analytics(request: Request) -> Response:
+    headers = gateway_main._forward_headers(request)
+    target_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/analytics/history"
     return await gateway_main._proxy_request(request, target_url, headers)
+
+
+@workouts_router.get("/{workout_id}/grpc")
+async def get_workout_grpc(
+    workout_id: int,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Get workout by ID using gRPC."""
+    try:
+        stub = await grpc_client_manager.get_workouts_stub()
+        
+        request = workouts_pb2.GetWorkoutRequest(
+            workout_id=workout_id,
+            user_context=create_user_context(user_id),
+        )
+        
+        response = await stub.GetWorkout(request)
+        
+        if not response.workout:
+            raise HTTPException(status_code=404, detail="Workout not found")
+        
+        # Convert proto workout to dict format
+        workout_dict = {
+            "id": response.workout.id,
+            "name": response.workout.name,
+            "status": response.workout.status,
+            "workout_type": response.workout.workout_type,
+            "started_at": response.workout.started_at if response.workout.started_at else None,
+            "completed_at": response.workout.finished_at if response.workout.finished_at else None,
+            "applied_plan_id": response.workout.applied_plan_id,
+            "plan_order_index": response.workout.plan_order_index,
+            "exercise_instances": [],
+        }
+        
+        # Convert exercise instances
+        for instance in response.workout.exercise_instances:
+            sets = []
+            for s in instance.sets:
+                sets.append({
+                    "id": s.id,
+                    "reps": s.reps,
+                    "working_weight": s.working_weight,
+                    "rpe": s.rpe,
+                    "effort": s.effort,
+                    "effort_type": s.effort_type,
+                    "intensity": s.intensity,
+                    "order": s.order,
+                })
+            
+            workout_dict["exercise_instances"].append({
+                "id": instance.id,
+                "exercise_list_id": instance.exercise_list_id,
+                "workout_id": instance.workout_id,
+                "sets": sets,
+                "notes": instance.notes,
+                "order": instance.order,
+                "user_max_id": instance.user_max_id,
+            })
+        
+        return workout_dict
+    except HTTPException:
+        raise
+    except Exception as e:
+        gateway_main.logger.error(f"Workout gRPC call failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch workout via gRPC")
 
 
 @workouts_router.get("/{workout_id}", response_model=schemas.WorkoutResponseWithExercises)
 async def get_workout(workout_id: int, request: Request):
-    headers = gateway_main._forward_headers(request)
+    """Get workout with exercise instances using gRPC."""
+    user = getattr(request.state, "user", None)
+    uid = user.get("uid") if user else None
+    if not uid:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
 
-    workout_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/{workout_id}"
-    async with httpx.AsyncClient() as client:
-        workout_res = await client.get(workout_url, headers=headers)
-        gateway_main.logger.debug(
-            "workout_fetch_response",
-            url=workout_url,
-            status_code=workout_res.status_code,
-        )
-        if workout_res.status_code != 200:
-            return JSONResponse(content=workout_res.json(), status_code=workout_res.status_code)
-        workout_data = workout_res.json()
+    stub = await grpc_client_manager.get_workouts_stub()
+    user_context = create_user_context(str(uid))
 
     include = _parse_include_expand(request)
-    workout_data = await _assemble_workout_for_client(
-        workout_data=workout_data,
+    request_pb = workouts_pb2.GetWorkoutWithDetailsRequest(
         workout_id=workout_id,
-        headers=headers,
-        include=include,
+        include_exercise_instances=True,
+        user_context=user_context,
     )
-    gateway_main.logger.debug("workout_fetch_completed", workout_id=workout_id)
-    return JSONResponse(content=workout_data)
+
+    response = await stub.GetWorkoutWithDetails(request_pb, timeout=10.0)
+
+    if not response.workout:
+        return JSONResponse(status_code=404, content={"detail": "Workout not found"})
+
+    workout_dict = {
+        "id": response.workout.id,
+        "name": response.workout.name,
+        "status": response.workout.status,
+        "workout_type": response.workout.workout_type,
+        "started_at": response.workout.started_at if response.workout.started_at else None,
+        "completed_at": response.workout.finished_at if response.workout.finished_at else None,
+        "applied_plan_id": response.workout.applied_plan_id,
+        "plan_order_index": response.workout.plan_order_index,
+        "exercise_instances": [],
+    }
+
+    for instance in response.workout.exercise_instances:
+        instance_dict = {
+            "id": instance.id,
+            "exercise_list_id": instance.exercise_list_id,
+            "workout_id": instance.workout_id,
+            "sets": [],
+            "notes": instance.notes,
+            "order": instance.order,
+            "user_max_id": instance.user_max_id,
+        }
+        for s in instance.sets:
+            instance_dict["sets"].append({
+                "id": s.id,
+                "reps": s.reps,
+                "working_weight": s.working_weight,
+                "rpe": s.rpe,
+                "effort": s.effort,
+                "effort_type": s.effort_type,
+                "intensity": s.intensity,
+                "order": s.order,
+            })
+        workout_dict["exercise_instances"].append(instance_dict)
+
+    return JSONResponse(content=workout_dict)
 
 
 @workouts_router.get("/sessions/{workout_id}/history")
 async def get_workout_session_history(workout_id: int, request: Request) -> Response:
-    headers = gateway_main._forward_headers(request)
-    target_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/sessions/{workout_id}/history"
-    return await gateway_main._proxy_request(request, target_url, headers)
+    """Get workout session history using gRPC."""
+    user = getattr(request.state, "user", None)
+    uid = user.get("uid") if user else None
+    if not uid:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
+    stub = await grpc_client_manager.get_workouts_stub()
+    user_context = create_user_context(str(uid))
+
+    request_pb = workouts_pb2.GetSessionHistoryRequest(
+        workout_id=workout_id,
+        user_context=user_context,
+    )
+
+    response = await stub.GetSessionHistory(request_pb, timeout=10.0)
+
+    sessions_list = []
+    for session in response.sessions:
+        session_dict = {
+            "id": session.id,
+            "workout_id": session.workout_id,
+            "started_at": session.started_at,
+            "finished_at": session.finished_at,
+            "status": session.status,
+            "exercise_instances": [],
+        }
+        for instance in session.exercise_instances:
+            instance_dict = {
+                "id": instance.id,
+                "exercise_list_id": instance.exercise_list_id,
+                "workout_id": instance.workout_id,
+                "sets": [],
+                "notes": instance.notes,
+                "order": instance.order,
+                "user_max_id": instance.user_max_id,
+            }
+            for s in instance.sets:
+                instance_dict["sets"].append({
+                    "id": s.id,
+                    "reps": s.reps,
+                    "working_weight": s.working_weight,
+                    "rpe": s.rpe,
+                    "effort": s.effort,
+                    "effort_type": s.effort_type,
+                    "intensity": s.intensity,
+                    "order": s.order,
+                })
+            session_dict["exercise_instances"].append(instance_dict)
+        sessions_list.append(session_dict)
+
+    return JSONResponse(content=sessions_list)
 
 
 @workouts_router.get("/sessions/history/all")
 async def get_all_workouts_sessions_history(request: Request) -> Response:
-    headers = gateway_main._forward_headers(request)
-    target_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/sessions/history/all"
-    return await gateway_main._proxy_request(request, target_url, headers)
+    """Get all workout sessions history using gRPC."""
+    user = getattr(request.state, "user", None)
+    uid = user.get("uid") if user else None
+    if not uid:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
+    stub = await grpc_client_manager.get_workouts_stub()
+    user_context = create_user_context(str(uid))
+
+    request_pb = workouts_pb2.ListAllSessionsRequest(
+        user_context=user_context,
+    )
+
+    response = await stub.ListAllSessions(request_pb, timeout=10.0)
+
+    sessions_list = []
+    for session in response.sessions:
+        # Filter out empty/None date strings
+        started_at = session.started_at if session.started_at and session.started_at.strip() else None
+        finished_at = session.finished_at if session.finished_at and session.finished_at.strip() else None
+        
+        session_dict = {
+            "id": session.id,
+            "workout_id": session.workout_id,
+            "status": session.status,
+            "exercise_instances": [],
+        }
+        # Only add date fields if they have valid values
+        if started_at:
+            session_dict["started_at"] = started_at
+        if finished_at:
+            session_dict["finished_at"] = finished_at
+            
+        for instance in session.exercise_instances:
+            instance_dict = {
+                "id": instance.id,
+                "exercise_list_id": instance.exercise_list_id,
+                "workout_id": instance.workout_id,
+                "sets": [],
+                "notes": instance.notes,
+                "order": instance.order,
+                "user_max_id": instance.user_max_id,
+            }
+            for s in instance.sets:
+                instance_dict["sets"].append({
+                    "id": s.id,
+                    "reps": s.reps,
+                    "working_weight": s.working_weight,
+                    "rpe": s.rpe,
+                    "effort": s.effort,
+                    "effort_type": s.effort_type,
+                    "intensity": s.intensity,
+                    "order": s.order,
+                })
+            session_dict["exercise_instances"].append(instance_dict)
+        sessions_list.append(session_dict)
+
+    return JSONResponse(content=sessions_list)
 
 
 @workouts_router.post("/schedule/shift-in-plan")
@@ -382,6 +737,31 @@ async def shift_plan_schedule(request: Request) -> Response:
     headers = gateway_main._forward_headers(request)
     target_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/schedule/shift-in-plan"
     return await gateway_main._proxy_request(request, target_url, headers)
+
+
+@workouts_router.put("/{workout_id}/exercises/replace")
+async def replace_workout_exercise(workout_id: int, request: Request) -> Response:
+    """Replace exercise in workout using gRPC."""
+    user = getattr(request.state, "user", None)
+    uid = user.get("uid") if user else None
+    if not uid:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
+    body = await request.json()
+
+    stub = await grpc_client_manager.get_workouts_stub()
+    user_context = create_user_context(str(uid))
+
+    request_pb = workouts_pb2.ReplaceExerciseRequest(
+        workout_id=workout_id,
+        old_exercise_id=body.get("old_exercise_id", 0),
+        new_exercise_id=body.get("new_exercise_id", 0),
+        user_context=user_context,
+    )
+
+    response = await stub.ReplaceExercise(request_pb, timeout=10.0)
+
+    return JSONResponse(content={"updated_count": response.updated_count})
 
 
 @workouts_router.post("/schedule/shift-in-plan-async")
@@ -414,86 +794,61 @@ async def mass_edit_sets_async(applied_plan_id: int, request: Request) -> Respon
 
 @workouts_router.get("/{workout_id}/next", response_model=schemas.WorkoutResponseWithExercises)
 async def get_next_workout_in_plan(workout_id: int, request: Request):
-    headers = gateway_main._forward_headers(request)
+    """Get next workout using gRPC."""
+    user = getattr(request.state, "user", None)
+    uid = user.get("uid") if user else None
+    if not uid:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
 
-    next_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/{workout_id}/next"
-    async with httpx.AsyncClient() as client:
-        next_res = await client.get(next_url, headers=headers)
-        gateway_main.logger.debug(
-            "next_workout_fetch_response",
-            url=next_url,
-            status_code=next_res.status_code,
-        )
-        if next_res.status_code != 200:
-            return JSONResponse(content=next_res.json(), status_code=next_res.status_code)
-        next_data = next_res.json()
+    stub = await grpc_client_manager.get_workouts_stub()
+    user_context = create_user_context(str(uid))
 
-    next_id = next_data.get("id", workout_id)
+    request_pb = workouts_pb2.GetNextWorkoutRequest(
+        workout_id=workout_id,
+        user_context=user_context,
+    )
 
-    instances_data = []
-    instances_url = f"{gateway_main.EXERCISES_SERVICE_URL}/exercises/instances/workouts/{next_id}/instances"
-    async with httpx.AsyncClient() as client:
-        instances_res = await client.get(instances_url, headers=headers, follow_redirects=True)
-        gateway_main.logger.debug(
-            "next_instances_fetch_response",
-            url=instances_url,
-            status_code=instances_res.status_code,
-        )
-        instances_data = instances_res.json() if instances_res.status_code == 200 else []
+    response = await stub.GetNextWorkout(request_pb, timeout=10.0)
 
-    if instances_data:
-        next_data["exercise_instances"] = instances_data
-    else:
-        exercises = next_data.get("exercises") or []
-        if exercises:
-            gateway_main.logger.debug("next_workout_mapping_exercises", workout_id=next_id)
-            mapped_instances = []
-            for ex in exercises:
-                sets = []
-                for s in ex.get("sets", []):
-                    sets.append(
-                        {
-                            "id": None,
-                            "reps": s.get("volume"),
-                            "weight": s.get("working_weight")
-                            if s.get("working_weight") is not None
-                            else s.get("weight"),
-                            "rpe": s.get("effort"),
-                            "effort": s.get("effort"),
-                            "effort_type": "RPE",
-                            "intensity": s.get("intensity"),
-                            "order": None,
-                        }
-                    )
-                mapped_instances.append(
-                    {
-                        "id": None,
-                        "exercise_list_id": ex.get("exercise_id"),
-                        "sets": sets,
-                        "notes": ex.get("notes"),
-                        "order": None,
-                        "workout_id": next_id,
-                        "user_max_id": None,
-                    }
-                )
-            next_data["exercise_instances"] = mapped_instances
-        else:
-            plan_instances = await _derive_exercise_instances_from_plan(
-                applied_plan_id=next_data.get("applied_plan_id"),
-                plan_order_index=next_data.get("plan_order_index"),
-                workout_name=next_data.get("name"),
-                workout_id=next_id,
-                headers=headers,
-            )
-            if plan_instances:
-                gateway_main.logger.debug("next_workout_plan_based_fallback", workout_id=next_id)
-                next_data["exercise_instances"] = plan_instances
-            else:
-                next_data["exercise_instances"] = next_data.get("exercise_instances", [])
+    if not response.workout:
+        return JSONResponse(status_code=404, content={"detail": "Next workout not found"})
 
-    next_data.pop("exercises", None)
-    gateway_main.logger.debug("next_workout_response_ready", workout_id=next_id)
-    return JSONResponse(content=next_data)
+    workout_dict = {
+        "id": response.workout.id,
+        "name": response.workout.name,
+        "status": response.workout.status,
+        "workout_type": response.workout.workout_type,
+        "started_at": response.workout.started_at if response.workout.started_at else None,
+        "completed_at": response.workout.finished_at if response.workout.finished_at else None,
+        "applied_plan_id": response.workout.applied_plan_id,
+        "plan_order_index": response.workout.plan_order_index,
+        "exercise_instances": [],
+    }
+
+    for instance in response.workout.exercise_instances:
+        instance_dict = {
+            "id": instance.id,
+            "exercise_list_id": instance.exercise_list_id,
+            "workout_id": instance.workout_id,
+            "sets": [],
+            "notes": instance.notes,
+            "order": instance.order,
+            "user_max_id": instance.user_max_id,
+        }
+        for s in instance.sets:
+            instance_dict["sets"].append({
+                "id": s.id,
+                "reps": s.reps,
+                "working_weight": s.working_weight,
+                "rpe": s.rpe,
+                "effort": s.effort,
+                "effort_type": s.effort_type,
+                "intensity": s.intensity,
+                "order": s.order,
+            })
+        workout_dict["exercise_instances"].append(instance_dict)
+
+    return JSONResponse(content=workout_dict)
 
 
 @workouts_router.get("/generated/next", response_model=schemas.WorkoutResponse)
@@ -512,291 +867,341 @@ async def get_first_generated_workout(request: Request):
 
 @workouts_router.put("/{workout_id}", response_model=schemas.WorkoutResponseWithExercises)
 async def update_workout(workout_id: int, request: Request):
-    headers = gateway_main._forward_headers(request)
-    include = _parse_include_expand(request)
+    """Update workout using gRPC."""
+    user = getattr(request.state, "user", None)
+    uid = user.get("uid") if user else None
+    if not uid:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
 
-    target_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/{workout_id}"
-    body = await request.body()
+    body = await request.json()
 
-    async with httpx.AsyncClient() as client:
-        workout_res = await client.put(target_url, headers=headers, content=body)
-        gateway_main.logger.debug(
-            "workout_update_response",
-            workout_id=workout_id,
-            status_code=workout_res.status_code,
-        )
-        if workout_res.status_code != 200:
-            return JSONResponse(content=workout_res.json(), status_code=workout_res.status_code)
-        workout_data = workout_res.json()
+    stub = await grpc_client_manager.get_workouts_stub()
+    user_context = create_user_context(str(uid))
 
-    workout_data = await _assemble_workout_for_client(
-        workout_data=workout_data,
+    request_pb = workouts_pb2.UpdateWorkoutRequest(
         workout_id=workout_id,
-        headers=headers,
-        include=include,
+        name=body.get("name", ""),
+        status=body.get("status", ""),
+        workout_type=body.get("workout_type", ""),
+        user_context=user_context,
     )
-    gateway_main.logger.debug(
-        "workout_update_completed",
-        workout_id=workout_id,
-        exercise_instances=len(workout_data.get("exercise_instances", [])),
-    )
-    return JSONResponse(content=workout_data)
+
+    response = await stub.UpdateWorkout(request_pb, timeout=10.0)
+
+    if not response.workout:
+        return JSONResponse(status_code=404, content={"detail": "Workout not found"})
+
+    workout_dict = {
+        "id": response.workout.id,
+        "name": response.workout.name,
+        "status": response.workout.status,
+        "workout_type": response.workout.workout_type,
+        "started_at": response.workout.started_at if response.workout.started_at else None,
+        "completed_at": response.workout.finished_at if response.workout.finished_at else None,
+        "applied_plan_id": response.workout.applied_plan_id,
+        "plan_order_index": response.workout.plan_order_index,
+        "exercise_instances": [],
+    }
+
+    return JSONResponse(content=workout_dict)
 
 
 @workouts_router.post("/{workout_id}/start", response_model=schemas.WorkoutResponseWithExercises)
 async def start_workout(workout_id: int, request: Request):
+    """Start workout using gRPC and create session."""
+    user = getattr(request.state, "user", None)
+    uid = user.get("uid") if user else None
+    if not uid:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
+    stub = await grpc_client_manager.get_workouts_stub()
+    user_context = create_user_context(str(uid))
+
+    request_pb = workouts_pb2.StartWorkoutRequest(
+        workout_id=workout_id,
+        user_context=user_context,
+    )
+
+    response = await stub.StartWorkout(request_pb, timeout=10.0)
+
+    if not response.workout:
+        return JSONResponse(status_code=404, content={"detail": "Workout not found"})
+
+    # Create workout session via REST API
     headers = gateway_main._forward_headers(request)
-    include = _parse_include_expand(request)
-
-    body = await request.body()
     session_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/sessions/{workout_id}/start"
-    async with httpx.AsyncClient() as client:
-        session_res = await client.post(session_url, headers=headers, content=body)
-        gateway_main.logger.debug("session_start_response", workout_id=workout_id, status_code=session_res.status_code)
-        if session_res.status_code not in (200, 201):
-            return JSONResponse(content=session_res.json(), status_code=session_res.status_code)
-        session_data = session_res.json()
-
     try:
-        put_payload = {"status": "in_progress"}
-        if isinstance(session_data, dict) and session_data.get("started_at"):
-            put_payload["started_at"] = session_data["started_at"]
-        workout_put_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/{workout_id}"
         async with httpx.AsyncClient() as client:
-            put_res = await client.put(workout_put_url, headers=headers, json=put_payload)
-            gateway_main.logger.debug(
-                "workout_update_after_start",
-                workout_id=workout_id,
-                status_code=put_res.status_code,
-            )
-
-    except httpx.HTTPError:
-        gateway_main.logger.error("Failed to update workout status after start", exc_info=True, workout_id=workout_id)
-
-    async with httpx.AsyncClient() as client:
-        workout_res = await client.get(f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/{workout_id}", headers=headers)
-        if workout_res.status_code != 200:
-            try:
-                return JSONResponse(content=workout_res.json(), status_code=workout_res.status_code)
-            except ValueError:
-                return JSONResponse(
-                    content={"detail": workout_res.text or "Upstream error"},
-                    status_code=workout_res.status_code,
+            session_response = await client.post(session_url, headers=headers, timeout=10.0)
+            if session_response.status_code != 201:
+                gateway_main.logger.warning(
+                    "failed_to_create_session",
+                    workout_id=workout_id,
+                    status_code=session_response.status_code,
+                    body=session_response.text,
                 )
-        workout_data = workout_res.json()
-
-    try:
-        workout_data = await _assemble_workout_for_client(
-            workout_data=workout_data,
-            workout_id=workout_id,
-            headers=headers,
-            include=include,
-        )
-    except Exception:
+    except Exception as e:
         gateway_main.logger.error(
-            "finish_workout_assemble_failed",
+            "error_creating_session",
             workout_id=workout_id,
-            exc_info=True,
+            error=str(e),
         )
-    return JSONResponse(content=workout_data)
+
+    workout_dict = {
+        "id": response.workout.id,
+        "name": response.workout.name,
+        "status": response.workout.status,
+        "workout_type": response.workout.workout_type,
+        "started_at": response.workout.started_at if response.workout.started_at else None,
+        "completed_at": response.workout.finished_at if response.workout.finished_at else None,
+        "applied_plan_id": response.workout.applied_plan_id,
+        "plan_order_index": response.workout.plan_order_index,
+        "exercise_instances": [],
+    }
+
+    for instance in response.workout.exercise_instances:
+        instance_dict = {
+            "id": instance.id,
+            "exercise_list_id": instance.exercise_list_id,
+            "workout_id": instance.workout_id,
+            "sets": [],
+            "notes": instance.notes,
+            "order": instance.order,
+            "user_max_id": instance.user_max_id,
+        }
+        for s in instance.sets:
+            instance_dict["sets"].append({
+                "id": s.id,
+                "reps": s.reps,
+                "working_weight": s.working_weight,
+                "rpe": s.rpe,
+                "effort": s.effort,
+                "effort_type": s.effort_type,
+                "intensity": s.intensity,
+                "order": s.order,
+            })
+        workout_dict["exercise_instances"].append(instance_dict)
+
+    return JSONResponse(content=workout_dict)
 
 
 @workouts_router.get("/sessions/{workout_id}/active")
 async def get_active_workout_session(workout_id: int, request: Request) -> Response:
-    headers = gateway_main._forward_headers(request)
-    target_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/sessions/{workout_id}/active"
-    return await gateway_main._proxy_request(request, target_url, headers)
+    """Get active workout session using gRPC."""
+    user = getattr(request.state, "user", None)
+    uid = user.get("uid") if user else None
+    if not uid:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
+    stub = await grpc_client_manager.get_workouts_stub()
+    user_context = create_user_context(str(uid))
+
+    request_pb = workouts_pb2.GetActiveSessionRequest(
+        workout_id=workout_id,
+        user_context=user_context,
+    )
+
+    try:
+        response = await stub.GetActiveSession(request_pb, timeout=10.0)
+    except Exception as e:
+        # Handle NOT_FOUND and other gRPC errors gracefully
+        if "NOT_FOUND" in str(e):
+            return JSONResponse(status_code=404, content={"detail": "Active session not found"})
+        raise
+
+    if not response.session:
+        return JSONResponse(status_code=404, content={"detail": "Active session not found"})
+
+    started_at = response.session.started_at if response.session.started_at and response.session.started_at.strip() else None
+    finished_at = response.session.finished_at if response.session.finished_at and response.session.finished_at.strip() else None
+
+    session_dict = {
+        "id": response.session.id,
+        "workout_id": response.session.workout_id,
+        "status": response.session.status,
+        "exercise_instances": [],
+    }
+
+    if started_at:
+        session_dict["started_at"] = started_at
+    if finished_at:
+        session_dict["finished_at"] = finished_at
+
+    for instance in response.session.exercise_instances:
+        instance_dict = {
+            "id": instance.id,
+            "exercise_list_id": instance.exercise_list_id,
+            "workout_id": instance.workout_id,
+            "sets": [],
+            "notes": instance.notes,
+            "order": instance.order,
+            "user_max_id": instance.user_max_id,
+        }
+        for s in instance.sets:
+            set_dict = {
+                "id": s.id,
+                "reps": s.reps,
+                "working_weight": s.working_weight,
+                "rpe": s.rpe,
+                "effort": s.effort,
+                "effort_type": s.effort_type,
+                "intensity": s.intensity,
+                "order": s.order,
+            }
+            instance_dict["sets"].append(set_dict)
+        session_dict["exercise_instances"].append(instance_dict)
+
+    return JSONResponse(content=session_dict)
 
 
 @workouts_router.post("/{workout_id}/finish", response_model=schemas.WorkoutResponseWithExercises)
 async def finish_workout(workout_id: int, request: Request):
+    """Finish workout using gRPC and finish active session."""
+    user = getattr(request.state, "user", None)
+    uid = user.get("uid") if user else None
+    if not uid:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
+    stub = await grpc_client_manager.get_workouts_stub()
+    user_context = create_user_context(str(uid))
+
+    request_pb = workouts_pb2.FinishWorkoutRequest(
+        workout_id=workout_id,
+        user_context=user_context,
+    )
+
+    response = await stub.FinishWorkout(request_pb, timeout=10.0)
+
+    if not response.workout:
+        return JSONResponse(status_code=404, content={"detail": "Workout not found"})
+
+    # Finish active workout session via REST API
     headers = gateway_main._forward_headers(request)
-    include = _parse_include_expand(request)
-
-    proxy_timeout = float(getattr(gateway_main, "_DEFAULT_PROXY_TIMEOUT", 45.0))
-    connect_timeout = float(getattr(gateway_main, "_DEFAULT_CONNECT_TIMEOUT", 10.0))
-    timeout = httpx.Timeout(connect=connect_timeout, read=proxy_timeout, write=proxy_timeout, pool=connect_timeout)
-
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        active_res = await client.get(
-            f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/sessions/{workout_id}/active",
-            headers=headers,
-        )
-        gateway_main.logger.debug("session_active_fetch", workout_id=workout_id, status_code=active_res.status_code)
-        if active_res.status_code != 200:
-            workout_res = await client.get(
-                f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/{workout_id}",
-                headers=headers,
-            )
-            if workout_res.status_code != 200:
-                try:
-                    return JSONResponse(content=workout_res.json(), status_code=workout_res.status_code)
-                except ValueError:
-                    return JSONResponse(
-                        content={"detail": workout_res.text or "Upstream error"},
-                        status_code=workout_res.status_code,
-                    )
-            try:
-                workout_data = workout_res.json()
-            except ValueError:
-                return JSONResponse(
-                    content={"detail": workout_res.text or "Invalid response from workouts service"},
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                )
-            try:
-                workout_data = await _assemble_workout_for_client(
-                    workout_data=workout_data,
-                    workout_id=workout_id,
-                    headers=headers,
-                    include=include,
-                )
-            except Exception:
-                gateway_main.logger.error(
-                    "finish_workout_assemble_failed",
-                    workout_id=workout_id,
-                    exc_info=True,
-                )
-            return JSONResponse(content=workout_data)
-
-        try:
-            active = active_res.json()
-        except ValueError:
-            active = None
-            gateway_main.logger.error(
-                "session_active_parse_failed",
-                workout_id=workout_id,
-                status_code=active_res.status_code,
-                body_preview=(active_res.text or "")[:500],
-            )
-        session_id = active.get("id") if isinstance(active, dict) else None
-
-        if not session_id:
-            workout_res = await client.get(
-                f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/{workout_id}",
-                headers=headers,
-            )
-            if workout_res.status_code != 200:
-                try:
-                    return JSONResponse(content=workout_res.json(), status_code=workout_res.status_code)
-                except ValueError:
-                    return JSONResponse(
-                        content={"detail": workout_res.text or "Upstream error"},
-                        status_code=workout_res.status_code,
-                    )
-            try:
-                workout_data = workout_res.json()
-            except ValueError:
-                return JSONResponse(
-                    content={"detail": workout_res.text or "Invalid response from workouts service"},
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                )
-            try:
-                workout_data = await _assemble_workout_for_client(
-                    workout_data=workout_data,
-                    workout_id=workout_id,
-                    headers=headers,
-                    include=include,
-                )
-            except Exception:
-                gateway_main.logger.error(
-                    "finish_workout_assemble_failed",
-                    workout_id=workout_id,
-                    exc_info=True,
-                )
-            return JSONResponse(content=workout_data)
-
-    body = await request.body()
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        try:
-            finish_res = await client.post(
-                f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/sessions/{session_id}/finish",
-                headers=headers,
-                content=body,
-            )
-        except (httpx.ReadTimeout, httpx.TimeoutException):
-            gateway_main.logger.error(
-                "workout_finish_timeout",
-                workout_id=workout_id,
-                session_id=session_id,
-                exc_info=True,
-            )
-            return JSONResponse(
-                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-                content={"detail": "Upstream timeout finishing workout session"},
-            )
-        gateway_main.logger.debug("session_finish_response", workout_id=workout_id, status_code=finish_res.status_code)
-        if finish_res.status_code not in (200, 201, 204):
-            try:
-                return JSONResponse(content=finish_res.json(), status_code=finish_res.status_code)
-            except ValueError:
-                return JSONResponse(
-                    content={"detail": finish_res.text or "Upstream error"},
-                    status_code=finish_res.status_code,
-                )
-
-        finish_data = None
-        if finish_res.status_code != 204:
-            try:
-                finish_data = finish_res.json()
-            except ValueError:
-                finish_data = None
-
+    active_session_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/sessions/{workout_id}/active"
     try:
-        put_payload = {"status": "completed"}
-        if isinstance(finish_data, dict):
-            completed_ts = finish_data.get("finished_at") or finish_data.get("ended_at")
-            if completed_ts:
-                put_payload["completed_at"] = completed_ts
-            if finish_data.get("duration_seconds") is not None:
-                put_payload["duration_seconds"] = finish_data["duration_seconds"]
-        workout_put_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/{workout_id}"
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            put_res = await client.put(workout_put_url, headers=headers, json=put_payload)
-            gateway_main.logger.debug(
-                "workout_update_after_finish",
-                workout_id=workout_id,
-                status_code=put_res.status_code,
-            )
-    except httpx.HTTPError:
-        gateway_main.logger.error("Failed to update workout status after finish", exc_info=True, workout_id=workout_id)
-
-    try:
-        user = getattr(request.state, "user", None)
-        uid = (user or {}).get("uid") if isinstance(user, dict) else None
-        gateway_main._invalidate_profile_cache_for_user(uid)
-    except Exception:
-        gateway_main.logger.error("Failed to invalidate profile cache for user", exc_info=True)
-
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        workout_res = await client.get(f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/{workout_id}", headers=headers)
-        if workout_res.status_code != 200:
-            try:
-                payload = workout_res.json()
-            except ValueError:
-                payload = {"detail": workout_res.text or "Upstream error"}
-            return JSONResponse(content=payload, status_code=workout_res.status_code)
-        try:
-            workout_data = workout_res.json()
-        except ValueError:
-            return JSONResponse(
-                content={"detail": workout_res.text or "Invalid response from workouts service"},
-                status_code=status.HTTP_502_BAD_GATEWAY,
-            )
-
-    try:
-        workout_data = await _assemble_workout_for_client(
-            workout_data=workout_data,
-            workout_id=workout_id,
-            headers=headers,
-            include=include,
-        )
-    except Exception:
+        async with httpx.AsyncClient() as client:
+            # Get active session
+            active_session_response = await client.get(active_session_url, headers=headers, timeout=10.0)
+            if active_session_response.status_code == 200:
+                session_data = active_session_response.json()
+                session_id = session_data.get("id")
+                if session_id:
+                    # Finish the session
+                    finish_url = f"{gateway_main.WORKOUTS_SERVICE_URL}/workouts/sessions/{session_id}/finish"
+                    finish_response = await client.post(finish_url, headers=headers, timeout=10.0)
+                    if finish_response.status_code != 200:
+                        gateway_main.logger.warning(
+                            "failed_to_finish_session",
+                            workout_id=workout_id,
+                            session_id=session_id,
+                            status_code=finish_response.status_code,
+                            body=finish_response.text,
+                        )
+    except Exception as e:
         gateway_main.logger.error(
-            "finish_workout_assemble_failed",
+            "error_finishing_session",
             workout_id=workout_id,
-            exc_info=True,
+            error=str(e),
         )
-    return JSONResponse(content=workout_data)
+
+    workout_dict = {
+        "id": response.workout.id,
+        "name": response.workout.name,
+        "status": response.workout.status,
+        "workout_type": response.workout.workout_type,
+        "started_at": response.workout.started_at if response.workout.started_at else None,
+        "completed_at": response.workout.finished_at if response.workout.finished_at else None,
+        "applied_plan_id": response.workout.applied_plan_id,
+        "plan_order_index": response.workout.plan_order_index,
+        "exercise_instances": [],
+    }
+
+    for instance in response.workout.exercise_instances:
+        instance_dict = {
+            "id": instance.id,
+            "exercise_list_id": instance.exercise_list_id,
+            "workout_id": instance.workout_id,
+            "sets": [],
+            "notes": instance.notes,
+            "order": instance.order,
+            "user_max_id": instance.user_max_id,
+        }
+        for s in instance.sets:
+            instance_dict["sets"].append({
+                "id": s.id,
+                "reps": s.reps,
+                "working_weight": s.working_weight,
+                "rpe": s.rpe,
+                "effort": s.effort,
+                "effort_type": s.effort_type,
+                "intensity": s.intensity,
+                "order": s.order,
+            })
+        workout_dict["exercise_instances"].append(instance_dict)
+
+    return JSONResponse(content=workout_dict)
+
+
+@workouts_router.get("/sessions/{workout_id}/active")
+async def get_active_workout_session(workout_id: int, request: Request) -> Response:
+    """Get active workout session using gRPC."""
+    user = getattr(request.state, "user", None)
+    uid = user.get("uid") if user else None
+    if not uid:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
+    stub = await grpc_client_manager.get_workouts_stub()
+    user_context = create_user_context(str(uid))
+
+    request_pb = workouts_pb2.GetActiveSessionRequest(
+        workout_id=workout_id,
+        user_context=user_context,
+    )
+
+    try:
+        response = await stub.GetActiveSession(request_pb, timeout=10.0)
+    except Exception as e:
+        # Handle NOT_FOUND and other gRPC errors gracefully
+        if "NOT_FOUND" in str(e):
+            return JSONResponse(status_code=404, content={"detail": "Active session not found"})
+        raise
+
+    if not response.session:
+        return JSONResponse(status_code=404, content={"detail": "Active session not found"})
+
+    session_dict = {
+        "id": response.session.id,
+        "workout_id": response.session.workout_id,
+        "started_at": response.session.started_at,
+        "finished_at": response.session.finished_at,
+        "status": response.session.status,
+        "exercise_instances": [],
+    }
+
+    for instance in response.session.exercise_instances:
+        instance_dict = {
+            "id": instance.id,
+            "exercise_list_id": instance.exercise_list_id,
+            "workout_id": instance.workout_id,
+            "sets": [],
+            "notes": instance.notes,
+            "order": instance.order,
+            "user_max_id": instance.user_max_id,
+        }
+        for s in instance.sets:
+            instance_dict["sets"].append({
+                "id": s.id,
+                "reps": s.reps,
+                "working_weight": s.working_weight,
+                "rpe": s.rpe,
+                "effort": s.effort,
+                "effort_type": s.effort_type,
+                "intensity": s.intensity,
+                "order": s.order,
+            })
+        session_dict["exercise_instances"].append(instance_dict)
+
+    return JSONResponse(content=session_dict)
 
 
 @workouts_router.api_route("{path:path}", methods=["POST", "PUT", "DELETE"])
@@ -1077,3 +1482,218 @@ async def get_workout_metrics(
             "requested": {"x": mx, "y": my},
         }
     )
+
+
+@workouts_router.post("/supplements/food")
+async def create_food_gateway(request: Request):
+    async with ServiceClient() as client:
+        return await client.post_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/food",
+            headers=request.headers,
+            body=await request.json(),
+        )
+
+
+@workouts_router.get("/supplements/food/{food_id}")
+async def get_food_gateway(food_id: int, request: Request):
+    async with ServiceClient() as client:
+        return await client.get_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/food/{food_id}",
+            headers=request.headers,
+        )
+
+
+@workouts_router.get("/supplements/food")
+async def get_all_food_gateway(request: Request):
+    async with ServiceClient() as client:
+        return await client.get_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/food",
+            headers=request.headers,
+        )
+
+
+@workouts_router.put("/supplements/food/{food_id}")
+async def update_food_gateway(food_id: int, request: Request):
+    async with ServiceClient() as client:
+        return await client.put_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/food/{food_id}",
+            headers=request.headers,
+            body=await request.json(),
+        )
+
+
+@workouts_router.delete("/supplements/food/{food_id}")
+async def delete_food_gateway(food_id: int, request: Request):
+    async with ServiceClient() as client:
+        return await client.delete(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/food/{food_id}",
+            headers=request.headers,
+        )
+
+
+@workouts_router.post("/supplements/supplement")
+async def create_supplement_gateway(request: Request):
+    async with ServiceClient() as client:
+        return await client.post_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/supplement",
+            headers=request.headers,
+            body=await request.json(),
+        )
+
+
+@workouts_router.get("/supplements/supplement/{supplement_id}")
+async def get_supplement_gateway(supplement_id: int, request: Request):
+    async with ServiceClient() as client:
+        return await client.get_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/supplement/{supplement_id}",
+            headers=request.headers,
+        )
+
+
+@workouts_router.get("/supplements/supplement")
+async def get_all_supplements_gateway(request: Request):
+    async with ServiceClient() as client:
+        return await client.get_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/supplement",
+            headers=request.headers,
+        )
+
+
+@workouts_router.put("/supplements/supplement/{supplement_id}")
+async def update_supplement_gateway(supplement_id: int, request: Request):
+    async with ServiceClient() as client:
+        return await client.put_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/supplement/{supplement_id}",
+            headers=request.headers,
+            body=await request.json(),
+        )
+
+
+@workouts_router.delete("/supplements/supplement/{supplement_id}")
+async def delete_supplement_gateway(supplement_id: int, request: Request):
+    async with ServiceClient() as client:
+        return await client.delete(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/supplement/{supplement_id}",
+            headers=request.headers,
+        )
+
+
+@workouts_router.post("/supplements/medication")
+async def create_medication_gateway(request: Request):
+    async with ServiceClient() as client:
+        return await client.post_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/medication",
+            headers=request.headers,
+            body=await request.json(),
+        )
+
+
+@workouts_router.get("/supplements/medication/{medication_id}")
+async def get_medication_gateway(medication_id: int, request: Request):
+    async with ServiceClient() as client:
+        return await client.get_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/medication/{medication_id}",
+            headers=request.headers,
+        )
+
+
+@workouts_router.get("/supplements/medication")
+async def get_all_medications_gateway(request: Request):
+    async with ServiceClient() as client:
+        return await client.get_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/medication",
+            headers=request.headers,
+        )
+
+
+@workouts_router.put("/supplements/medication/{medication_id}")
+async def update_medication_gateway(medication_id: int, request: Request):
+    async with ServiceClient() as client:
+        return await client.put_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/medication/{medication_id}",
+            headers=request.headers,
+            body=await request.json(),
+        )
+
+
+@workouts_router.delete("/supplements/medication/{medication_id}")
+async def delete_medication_gateway(medication_id: int, request: Request):
+    async with ServiceClient() as client:
+        return await client.delete(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/medication/{medication_id}",
+            headers=request.headers,
+        )
+
+
+@workouts_router.post("/supplements/session")
+async def create_session_gateway(request: Request):
+    async with ServiceClient() as client:
+        return await client.post_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/session",
+            headers=request.headers,
+            body=await request.json(),
+        )
+
+
+@workouts_router.get("/supplements/session/{session_id}")
+async def get_session_gateway(session_id: str, request: Request):
+    async with ServiceClient() as client:
+        return await client.get_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/session/{session_id}",
+            headers=request.headers,
+        )
+
+
+@workouts_router.get("/supplements/session/user/{user_id}")
+async def get_sessions_by_user_id_gateway(user_id: int, request: Request):
+    async with ServiceClient() as client:
+        return await client.get_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/session/user/{user_id}",
+            headers=request.headers,
+        )
+
+
+@workouts_router.get("/supplements/session/workout/{workout_id}")
+async def get_session_by_workout_id_gateway(workout_id: int, request: Request):
+    async with ServiceClient() as client:
+        return await client.get_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/session/workout/{workout_id}",
+            headers=request.headers,
+        )
+
+
+@workouts_router.get("/supplements/session/applied-plan-workout/{applied_plan_workout_id}")
+async def get_session_by_applied_plan_workout_id_gateway(applied_plan_workout_id: int, request: Request):
+    async with ServiceClient() as client:
+        return await client.get_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/session/applied-plan-workout/{applied_plan_workout_id}",
+            headers=request.headers,
+        )
+
+
+@workouts_router.get("/supplements/session")
+async def get_all_sessions_gateway(request: Request):
+    async with ServiceClient() as client:
+        return await client.get_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/session",
+            headers=request.headers,
+        )
+
+
+@workouts_router.put("/supplements/session/{session_id}")
+async def update_session_gateway(session_id: str, request: Request):
+    async with ServiceClient() as client:
+        return await client.put_json(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/session/{session_id}",
+            headers=request.headers,
+            body=await request.json(),
+        )
+
+
+@workouts_router.delete("/supplements/session/{session_id}")
+async def delete_session_gateway(session_id: str, request: Request):
+    async with ServiceClient() as client:
+        return await client.delete(
+            f"{gateway_main.WORKOUTS_SERVICE_URL}/supplements/session/{session_id}",
+            headers=request.headers,
+        )

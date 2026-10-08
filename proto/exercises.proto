@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package workoutapp.exercises;
+
+import "common.proto";
+
+// Exercises Service
+
+message ExerciseDefinition {
+  int32 id = 1;
+  string name = 2;
+  string muscle_group = 3;
+  string equipment = 4;
+  string description = 5;
+  string media_image = 6;
+  string media_gif = 7;
+}
+
+message ExerciseInstance {
+  int32 id = 1;
+  int32 exercise_list_id = 2;
+  int32 workout_id = 3;
+  repeated Set sets = 4;
+  string notes = 5;
+  int32 order = 6;
+  optional int32 user_max_id = 7;
+}
+
+message Set {
+  int32 id = 1;
+  optional int32 reps = 2;
+  optional float working_weight = 3;
+  optional float rpe = 4;
+  optional float effort = 5;
+  string effort_type = 6;
+  optional float intensity = 7;
+  int32 order = 8;
+}
+
+message GetExerciseRequest {
+  int32 exercise_id = 1;
+  workoutapp.common.UserContext user_context = 2;
+}
+
+message GetExerciseResponse {
+  ExerciseDefinition exercise = 1;
+}
+
+message GetExerciseDefinitionsRequest {
+  repeated int32 ids = 1;
+  workoutapp.common.UserContext user_context = 2;
+}
+
+message GetExerciseDefinitionsResponse {
+  repeated ExerciseDefinition definitions = 1;
+}
+
+message CreateExerciseInstancesRequest {
+  repeated ExerciseInstance instances = 1;
+  workoutapp.common.UserContext user_context = 2;
+}
+
+message CreateExerciseInstancesResponse {
+  repeated ExerciseInstance instances = 1;
+}
+
+message GetExerciseInstancesRequest {
+  int32 workout_id = 1;
+  workoutapp.common.UserContext user_context = 2;
+}
+
+message GetExerciseInstancesResponse {
+  repeated ExerciseInstance instances = 1;
+}
+
+service ExercisesService {
+  rpc GetExercise(GetExerciseRequest) returns (GetExerciseResponse);
+  rpc GetExerciseDefinitions(GetExerciseDefinitionsRequest) returns (GetExerciseDefinitionsResponse);
+  rpc CreateExerciseInstances(CreateExerciseInstancesRequest) returns (CreateExerciseInstancesResponse);
+  rpc GetExerciseInstances(GetExerciseInstancesRequest) returns (GetExerciseInstancesResponse);
+}

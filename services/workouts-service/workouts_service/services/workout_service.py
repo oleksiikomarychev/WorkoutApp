@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import httpx
 import pytz
 import structlog
 from backend_common.cache import CacheHelper, CacheMetrics
-from backend_common.http_client import ServiceClient
 from fastapi import HTTPException
-from sqlalchemy import or_, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import or_, select, update
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -32,10 +29,12 @@ from ..redis_client import (
     workout_detail_key,
     workout_list_key,
 )
+from ..schemas import workout as workout_schemas
 from ..schemas.workout import WorkoutCreate, WorkoutListResponse, WorkoutResponse, WorkoutUpdate
 from ..schemas.workout_generation import WorkoutGenerationItem, WorkoutGenerationRequest
+from ..services.exercise_instance_service import ExerciseInstanceService
+from ..services.rpc_client import PlansServiceRPC, RpeServiceRPC
 from ..workout_calculation import WorkoutCalculator
-from .rpc_client import PlansServiceRPC, RpeServiceRPC
 
 logger = structlog.get_logger(__name__)
 
@@ -164,43 +163,48 @@ class WorkoutService:
         if not workout:
             raise WorkoutNotFoundException(workout_id)
 
-        workout_dict = {
-            "id": workout.id,
-            "name": workout.name,
-            "applied_plan_id": workout.applied_plan_id,
-            "plan_order_index": workout.plan_order_index,
-            "scheduled_for": workout.scheduled_for,
-            "completed_at": workout.completed_at,
-            "notes": workout.notes,
-            "status": workout.status,
-            "started_at": workout.started_at,
-            "duration_seconds": workout.duration_seconds,
-            "rpe_session": workout.rpe_session,
-            "location": workout.location,
-            "readiness_score": workout.readiness_score,
-            "workout_type": workout.workout_type,
-            "exercises": [
-                {
-                    "id": ex.id,
-                    "exercise_id": ex.exercise_id,
-                    "sets": [
-                        {
-                            "id": s.id,
-                            "intensity": s.intensity,
-                            "effort": s.effort,
-                            "volume": s.volume,
-                            "working_weight": s.working_weight,
-                            "set_type": s.set_type,
-                        }
+        workout_response = schemas.workout.WorkoutResponse(
+            id=workout.id,
+            name=workout.name,
+            applied_plan_id=workout.applied_plan_id,
+            plan_order_index=workout.plan_order_index,
+            scheduled_for=workout.scheduled_for,
+            completed_at=workout.completed_at,
+            notes=workout.notes,
+            status=workout.status,
+            started_at=workout.started_at,
+            duration_seconds=workout.duration_seconds,
+            rpe_session=workout.rpe_session,
+            location=workout.location,
+            readiness_score=workout.readiness_score,
+            workout_type=workout.workout_type,
+            exercises=[
+                schemas.workout.WorkoutExerciseResponse(
+                    id=ex.id,
+                    exercise_id=ex.exercise_id,
+                    order=ex.order,
+                    notes=ex.notes,
+                    rest_seconds=ex.rest_seconds,
+                    sets=[
+                        schemas.workout.WorkoutSetResponse(
+                            id=s.id,
+                            order_index=s.order_index,
+                            intensity=s.intensity,
+                            effort=s.effort,
+                            volume=s.volume,
+                            working_weight=s.working_weight,
+                            set_type=s.set_type,
+                            subsets=s.subsets,
+                        )
                         for s in ex.sets
                     ],
-                }
+                )
                 for ex in workout.exercises
             ],
-        }
-
-        await self._set_cached_workout(workout_id, workout_dict)
-        return schemas.workout.WorkoutResponse.model_validate(workout_dict)
+        )
+        
+        await self._set_cached_workout(workout_id, workout_response.model_dump())
+        return workout_response
 
     async def list_workouts(
         self,
@@ -444,12 +448,6 @@ class WorkoutService:
     async def generate_workouts(self, request: WorkoutGenerationRequest) -> tuple[list[int], int, int]:
         workout_ids: list[int] = []
 
-        logger.info(
-            "[WORKOUT_SERVICE] Generating %s workouts for applied_plan_id=%s, user_id=%s",
-            len(request.workouts),
-            request.applied_plan_id,
-            self.user_id,
-        )
 
         try:
             calculator = WorkoutCalculator()
@@ -470,12 +468,6 @@ class WorkoutService:
                 if isinstance(scheduled_for, str):
                     scheduled_for = datetime.fromisoformat(scheduled_for)
 
-                logger.debug(
-                    "[WORKOUT_SERVICE] Creating workout %s/%s: %s",
-                    idx + 1,
-                    len(request.workouts),
-                    workout_item.name,
-                )
 
                 workout = models.Workout(
                     name=workout_item.name,
@@ -487,7 +479,6 @@ class WorkoutService:
                 )
                 self.db.add(workout)
                 await self.db.flush()
-                logger.debug(f"[WORKOUT_SERVICE] Created workout id={workout.id}")
 
                 for ex_idx, exercise in enumerate(workout_item.exercises):
                     workout_exercise = models.WorkoutExercise(
@@ -497,11 +488,6 @@ class WorkoutService:
                     )
                     self.db.add(workout_exercise)
                     await self.db.flush()
-                    logger.debug(
-                        "[WORKOUT_SERVICE] Created workout_exercise id=%s for exercise_id=%s",
-                        workout_exercise.id,
-                        exercise.exercise_id,
-                    )
 
                     for set_idx, set_data in enumerate(exercise.sets):
                         intensity = set_data.intensity
@@ -513,16 +499,19 @@ class WorkoutService:
                             intensity is None or effort is None or volume is None
                         )
                         need_weight = bool(getattr(request, "compute_weights", False)) and (working_weight is None)
+                        
 
                         if self.rpe_rpc and (need_core_fill or need_weight):
                             try:
                                 um = user_max_by_ex.get(int(exercise.exercise_id))
                                 user_max_id = int(um.get("id")) if um and um.get("id") is not None else None
+                                max_weight_for_rpe = working_weight if working_weight is not None else None
                                 compute_res = await self.rpe_rpc.compute(
                                     intensity=intensity,
                                     effort=effort,
                                     volume=volume,
                                     user_max_id=user_max_id,
+                                    max_weight=max_weight_for_rpe,
                                     rounding_step=getattr(request, "rounding_step", 2.5),
                                     rounding_mode=getattr(request, "rounding_mode", "nearest"),
                                     headers=self.request_headers,
@@ -534,6 +523,7 @@ class WorkoutService:
                                 if need_weight:
                                     ww = compute_res.get("weight")
                                     if ww is not None:
+                                        old_weight = working_weight
                                         working_weight = ww
                             except Exception:
                                 logger.warning(
@@ -553,19 +543,10 @@ class WorkoutService:
 
                 workout_ids.append(workout.id)
 
-            logger.info(
-                "[WORKOUT_SERVICE] Committing transaction with %s workouts",
-                len(workout_ids),
-            )
             await self.db.commit()
-            logger.info(
-                "[WORKOUT_SERVICE] Successfully committed %s workouts",
-                len(workout_ids),
-            )
-            logger.debug(
-                "[WORKOUT_SERVICE] Committed workout_ids: %s",
-                workout_ids,
-            )
+            await invalidate_workout_cache(self.user_id, workout_ids=workout_ids)
+            
+            
 
             try:
                 GENERATED_WORKOUTS_CREATED_TOTAL.inc(len(workout_ids))
@@ -997,23 +978,14 @@ class WorkoutService:
         flt = cmd.filter
         actions = cmd.actions
 
+        instance_service = ExerciseInstanceService(self.db, self.user_id)
+
         async def create_exercise_instance_for_workout(
             workout_id: int,
             spec: schemas.AppliedAddExerciseInstance,
         ) -> dict | None:
-            base_url = os.getenv("EXERCISES_SERVICE_URL")
-            if not base_url:
-                logger.warning("EXERCISES_SERVICE_URL is not set; cannot create exercise instance")
-                return None
-            base_url = base_url.rstrip("/")
-            url = f"{base_url}/exercises/instances/workouts/{workout_id}/instances"
-            headers = {"X-User-Id": self.user_id}
-
-            sets_payload: list[dict] = []
-
-            for s in spec.sets or []:
-                payload_set: dict[str, Any] = {}
-
+            sets_payload: list[workout_schemas.WorkoutSetCreate] = []
+            for idx, s in enumerate(spec.sets or []):
                 reps_val: int | None = None
                 if s.volume is not None:
                     try:
@@ -1022,186 +994,76 @@ class WorkoutService:
                         reps_val = None
                 if reps_val is None:
                     reps_val = 1
-                payload_set["reps"] = reps_val
-                payload_set["volume"] = reps_val
 
-                if s.intensity is not None:
-                    payload_set["intensity"] = s.intensity
-                if s.weight is not None:
-                    payload_set["weight"] = s.weight
-                if s.effort is not None:
-                    payload_set["effort"] = s.effort
-                if payload_set:
-                    sets_payload.append(payload_set)
-
-            if not sets_payload:
-                try:
-                    ex_def_id = int(spec.exercise_definition_id)
-                except (TypeError, ValueError):
-                    ex_def_id = None
-                if ex_def_id is not None:
-                    history_list = history_instances_by_ex_def.get(ex_def_id) or []
-
-                    for inst in reversed(history_list):
-                        src_sets = inst.get("sets") or []
-                        for s in src_sets:
-                            if not isinstance(s, dict):
-                                continue
-                            payload_set: dict[str, Any] = {}
-                            volume_src = s.get("volume")
-                            if volume_src is None:
-                                volume_src = s.get("reps")
-                            if volume_src is not None:
-                                try:
-                                    v_int = int(volume_src)
-                                    payload_set["volume"] = v_int
-                                    payload_set["reps"] = v_int
-                                except (TypeError, ValueError):
-                                    # keep payload_set without volume/reps if conversion fails
-                                    pass
-                            intensity_src = s.get("intensity")
-                            if intensity_src is not None:
-                                payload_set["intensity"] = intensity_src
-                            weight_src = s.get("weight")
-                            if weight_src is None:
-                                weight_src = s.get("working_weight")
-                            if weight_src is not None:
-                                payload_set["weight"] = weight_src
-                            effort_src = s.get("effort")
-                            if effort_src is None:
-                                effort_src = s.get("rpe")
-                            if effort_src is not None:
-                                payload_set["effort"] = effort_src
-                            if payload_set:
-                                sets_payload.append(payload_set)
-                        if sets_payload:
-                            break
-
-            if not sets_payload:
-                sets_payload.append({"volume": 1, "reps": 1})
-
-            body: dict[str, Any] = {
-                "exercise_list_id": spec.exercise_definition_id,
-                "sets": sets_payload,
-            }
-            if spec.notes is not None:
-                body["notes"] = spec.notes
-            if spec.order is not None:
-                body["order"] = spec.order
-
-            async with ServiceClient(timeout=5.0) as client:
-                resp = await client.post(
-                    url,
-                    headers=headers,
-                    json=body,
-                    expected_status=(200, 201),
-                    workout_id=workout_id,
+                sets_payload.append(
+                    workout_schemas.WorkoutSetCreate(
+                        order_index=idx,
+                        intensity=s.intensity,
+                        effort=s.effort,
+                        volume=reps_val,
+                        working_weight=s.weight,
+                    )
                 )
-            if resp.success and isinstance(resp.data, dict):
-                return resp.data
-            return None
+
+            if not sets_payload:
+                sets_payload.append(workout_schemas.WorkoutSetCreate(order_index=0, volume=1))
+
+            create_payload = workout_schemas.WorkoutExerciseInstanceCreate(
+                exercise_id=spec.exercise_definition_id,
+                order=spec.order,
+                notes=spec.notes,
+                sets=sets_payload,
+            )
+            try:
+                return await instance_service.create_instance(workout_id, create_payload)
+            except Exception:
+                logger.exception(
+                    "applied_mass_edit_create_instance_failed",
+                    workout_id=workout_id,
+                    exercise_definition_id=spec.exercise_definition_id,
+                )
+                return None
 
         async def fetch_instances_for_workout(workout_id: int) -> list[dict]:
-            base_url = os.getenv("EXERCISES_SERVICE_URL")
-            if not base_url:
-                logger.warning("EXERCISES_SERVICE_URL is not set; cannot fetch instances")
+            try:
+                data = await instance_service.get_instances_by_workout(workout_id)
+                return data if isinstance(data, list) else []
+            except Exception:
+                logger.exception("applied_mass_edit_fetch_instances_failed", workout_id=workout_id)
                 return []
-            base_url = base_url.rstrip("/")
-            url = f"{base_url}/exercises/instances/workouts/{workout_id}/instances"
-            headers = {"X-User-Id": self.user_id}
-            async with ServiceClient(timeout=5.0) as client:
-                data = await client.get_json(url, headers=headers, default=[], workout_id=workout_id)
-            return data if isinstance(data, list) else []
 
         async def replace_exercise_instance(inst: dict, new_ex_def_id: int, new_ex_name: str | None = None) -> bool:
             instance_id = inst.get("id")
             if not isinstance(instance_id, int):
                 return False
-            base_url = os.getenv("EXERCISES_SERVICE_URL")
-            if not base_url:
-                logger.warning("EXERCISES_SERVICE_URL is not set; cannot replace exercise instance")
-                return False
-            base_url = base_url.rstrip("/")
-            url = f"{base_url}/exercises/instances/{instance_id}"
-            headers = {"X-User-Id": self.user_id}
-
-            sets_payload: list[dict[str, Any]] = []
-            for s in inst.get("sets") or []:
-                if not isinstance(s, dict):
-                    continue
-                payload_set = dict(s)
-                reps_val = payload_set.get("reps")
-                if reps_val is None:
-                    volume_val = payload_set.get("volume")
-                    try:
-                        reps_val = int(volume_val) if volume_val is not None else 1
-                    except (TypeError, ValueError):
-                        reps_val = 1
-                    payload_set["reps"] = reps_val
-                payload_set["volume"] = payload_set.get("volume", reps_val)
-                sets_payload.append(payload_set)
-            if not sets_payload:
-                sets_payload.append({"reps": 1, "volume": 1})
-
-            body: dict[str, Any] = {
-                "exercise_list_id": new_ex_def_id,
-                "sets": sets_payload,
-            }
-            if inst.get("notes") is not None:
-                body["notes"] = inst.get("notes")
-            if inst.get("order") is not None:
-                body["order"] = inst.get("order")
-            if new_ex_name:
-                body["exercise_name"] = new_ex_name
-
             try:
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    res = await client.put(url, headers=headers, json=body)
-                    if res.status_code in (200, 201):
-                        inst["exercise_list_id"] = new_ex_def_id
-                        return True
-                    logger.warning(
-                        "applied_mass_edit_replace_instance_non_2xx",
-                        status_code=res.status_code,
-                        body=res.text,
-                        instance_id=instance_id,
-                    )
-            except httpx.HTTPError:
-                logger.exception(
-                    "applied_mass_edit_replace_instance_failed",
-                    instance_id=instance_id,
+                update_payload = workout_schemas.WorkoutExerciseInstanceUpdate(
+                    exercise_id=new_ex_def_id,
+                    order=inst.get("order"),
+                    notes=inst.get("notes"),
+                    rest_seconds=inst.get("rest_seconds"),
                 )
-            return False
+                updated = await instance_service.update_instance(instance_id, update_payload)
+                if isinstance(updated, dict):
+                    inst["exercise_list_id"] = new_ex_def_id
+                return True
+            except Exception:
+                logger.exception("applied_mass_edit_replace_instance_failed", instance_id=instance_id)
+                return False
 
         async def update_set(instance_id: int, set_id: int, payload: dict) -> bool:
             if not payload:
                 return False
-            base_url = os.getenv("EXERCISES_SERVICE_URL")
-            if not base_url:
-                logger.warning("EXERCISES_SERVICE_URL is not set; cannot update set")
-                return False
-            base_url = base_url.rstrip("/")
-            url = f"{base_url}/exercises/instances/{instance_id}/sets/{set_id}"
-            headers = {"X-User-Id": self.user_id}
             try:
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    res = await client.put(url, headers=headers, json=payload)
-                    if res.status_code in (200, 201):
-                        return True
-                    logger.warning(
-                        "applied_mass_edit_update_set_non_2xx",
-                        status_code=res.status_code,
-                        body=res.text,
-                        instance_id=instance_id,
-                        set_id=set_id,
-                    )
-            except httpx.HTTPError:
+                await instance_service.update_set(instance_id, set_id, payload)
+                return True
+            except Exception:
                 logger.exception(
                     "applied_mass_edit_update_set_failed",
                     instance_id=instance_id,
                     set_id=set_id,
                 )
-            return False
+                return False
 
         def _as_float(value: Any) -> float | None:
             try:
@@ -1221,8 +1083,8 @@ class WorkoutService:
 
         def set_matches_filters(s: dict) -> bool:
             intensity_val = _as_float(s.get("intensity"))
-            volume_val = _as_int(s.get("volume") if s.get("volume") is not None else s.get("reps"))
-            weight_val = _as_float(s.get("weight"))
+            volume_val = _as_int(s.get("volume"))
+            weight_val = _as_float(s.get("working_weight"))
             effort_src = s.get("effort")
             if effort_src is None:
                 effort_src = s.get("rpe")
@@ -1265,7 +1127,7 @@ class WorkoutService:
                 if intensity_val is None or abs(new_intensity - intensity_val) > 1e-9:
                     payload["intensity"] = new_intensity
 
-            volume_val = _as_int(s.get("volume") if s.get("volume") is not None else s.get("reps"))
+            volume_val = _as_int(s.get("volume"))
             if (
                 actions.set_volume is not None
                 or actions.increase_volume_by is not None
@@ -1282,9 +1144,8 @@ class WorkoutService:
                     new_volume = max(1, int(new_volume))
                 if volume_val is None or int(new_volume) != int(volume_val):
                     payload["volume"] = int(new_volume)
-                    payload["reps"] = int(new_volume)
 
-            weight_val = _as_float(s.get("weight"))
+            weight_val = _as_float(s.get("working_weight"))
             if (
                 actions.set_weight is not None
                 or actions.increase_weight_by is not None
@@ -1300,7 +1161,7 @@ class WorkoutService:
                 if actions.clamp_non_negative:
                     new_weight = max(0.0, new_weight)
                 if weight_val is None or abs(new_weight - (weight_val or 0.0)) > 1e-9:
-                    payload["weight"] = new_weight
+                    payload["working_weight"] = new_weight
 
             effort_src = s.get("effort")
             if effort_src is None:
@@ -1322,7 +1183,6 @@ class WorkoutService:
                 new_effort = max(4.0, min(10.0, new_effort))
                 if effort_val is None or abs(new_effort - (effort_val or 0.0)) > 1e-9:
                     payload["effort"] = new_effort
-                    payload["rpe"] = new_effort
 
             return payload
 
@@ -1529,3 +1389,57 @@ class WorkoutService:
                 )
             )
         return items
+
+    async def replace_exercise_only_id(self, workout_id: int, old_exercise_id: int, new_exercise_id: int) -> int:
+        logger.info(
+            "replace_exercise_only_id_start",
+            workout_id=workout_id,
+            old_exercise_id=old_exercise_id,
+            new_exercise_id=new_exercise_id,
+            user_id=self.user_id
+        )
+
+        workout_exists = await self.db.execute(
+            select(models.Workout.id).where(models.Workout.id == workout_id, models.Workout.user_id == self.user_id)
+        )
+        if not workout_exists.scalar():
+             logger.warning("replace_exercise_only_id_workout_not_found_or_access_denied", workout_id=workout_id, user_id=self.user_id)
+             return 0
+
+        local_updated = 0
+        try:
+            stmt = (
+                update(models.WorkoutExercise)
+                .where(
+                    models.WorkoutExercise.workout_id == workout_id,
+                    models.WorkoutExercise.exercise_id == old_exercise_id,
+                )
+                .values(exercise_id=new_exercise_id)
+            )
+            result = await self.db.execute(stmt)
+            await self.db.commit()
+
+            local_updated = result.rowcount
+            logger.info("replace_exercise_only_id_local_result", rowcount=local_updated)
+
+            if local_updated > 0:
+                await invalidate_workout_cache(self.user_id, workout_ids=[workout_id])
+            else:
+                logger.warning(
+                    "replace_exercise_only_id_local_no_rows_updated",
+                    workout_id=workout_id,
+                    old_exercise_id=old_exercise_id,
+                    new_exercise_id=new_exercise_id,
+                    user_id=self.user_id
+                )
+
+        except SQLAlchemyError as e:
+            logger.error(
+                "replace_exercise_only_id_local_failed",
+                workout_id=workout_id,
+                error=str(e),
+            )
+            await self.db.rollback()
+
+        logger.info("replace_exercise_only_id_completed", local_updated=local_updated)
+        return local_updated

@@ -17,8 +17,10 @@ class WorkoutStatusView {
 }
 
 WorkoutStatusView workoutStatusView(Workout workout) {
-  final completed = (workout.status?.toLowerCase() == 'completed') || (workout.completedAt != null);
-  final inProgress = (workout.startedAt != null) && (workout.completedAt == null);
+  final status = (workout.status ?? '').toLowerCase();
+  final isCancelled = status == 'cancelled' || status == 'canceled' || status == 'dropped';
+  final completed = (status == 'completed') || (workout.completedAt != null && !isCancelled);
+  final inProgress = (workout.startedAt != null) && (workout.completedAt == null) && !isCancelled;
   if (completed) {
     return const WorkoutStatusView(
       label: 'Completed',
@@ -32,6 +34,13 @@ WorkoutStatusView workoutStatusView(Workout workout) {
       background: const Color(0xFFEAEFFF),
       textColor: AppColors.primary,
       dotColor: AppColors.primary,
+    );
+  } else if (isCancelled) {
+    return const WorkoutStatusView(
+      label: 'Cancelled',
+      background: Color(0xFFFFEBEE),
+      textColor: Colors.redAccent,
+      dotColor: Colors.redAccent,
     );
   } else {
     return const WorkoutStatusView(

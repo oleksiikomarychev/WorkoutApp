@@ -1,18 +1,33 @@
 FROM python:3.12-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
 WORKDIR /app
 
-#Копируем проект в Docker-контейнер для оптимизации кэширования слоев
-COPY pyproject.toml /app/
-COPY rpe_service /app/rpe_service
-COPY rpe_table.json /app/
+# Install deps
+RUN pip install --no-cache-dir -U pip && \
+    pip install --no-cache-dir uv
 
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir .
+ENV UV_NO_DEV=1 \
+    PATH="/app/.venv/bin:$PATH"
 
-EXPOSE 8001
+COPY services/rpe-service /app
+COPY services/rpe-service/pyproject.toml /app/pyproject.toml
 
-CMD ["sh", "-c", "LOWER_LOG_LEVEL=$(printf '%s' \"${LOG_LEVEL:-info}\" | tr '[:upper:]' '[:lower:]'); uvicorn rpe_service.main:app --host 0.0.0.0 --port ${PORT:-8001} --log-level ${LOWER_LOG_LEVEL}"]
+RUN uv sync --all-packages
+
+# Install supervisord
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    supervisor \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy supervisord configuration
+COPY services/rpe-service/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Create log directories for supervisord
+RUN mkdir -p /var/log/supervisor
+
+ENV PYTHONUNBUFFERED=1 \
+    RPE_TABLE_PATH=/app/rpe_table.json
+
+EXPOSE 8001 50051
+
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

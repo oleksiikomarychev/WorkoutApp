@@ -2,7 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/services/api_client.dart';
 import 'package:workout_app/models/user_profile.dart';
 import 'package:workout_app/models/user_summary.dart';
+import 'package:workout_app/models/coach_review.dart';
 import 'package:workout_app/services/service_locator.dart' as sl;
+import 'package:workout_app/providers/app_locale_provider.dart';
 import 'package:workout_app/services/workout_session_service.dart';
 import 'package:workout_app/models/workout_session.dart';
 import 'package:workout_app/models/user_stats.dart';
@@ -47,12 +49,102 @@ final completedSessionsProvider = FutureProvider<List<WorkoutSession>>((ref) asy
 
 final userProfileProvider = FutureProvider<UserProfile>((ref) async {
   final svc = ref.watch(sl.profileServiceProvider);
-  return svc.fetchProfile();
+  final profile = await svc.fetchProfile();
+  await ref.read(appLocaleProvider.notifier).setFromProfileIfUnset(profile.settings.locale);
+  return profile;
 });
 
-final allUsersProvider = FutureProvider<List<UserSummary>>((ref) async {
+final allUsersProvider = FutureProvider.family<List<UserSummary>, bool>((ref, coach) async {
   final svc = ref.watch(sl.usersServiceProvider);
-  return svc.fetchAll(limit: 500);
+  return svc.fetchAll(limit: 500, coach: coach);
+});
+
+class UserFilters {
+  final bool? coach;
+  final List<String>? specializations;
+  final List<String>? languages;
+  final int? minRate;
+  final int? maxRate;
+  final String? sortBy;
+
+  const UserFilters({
+    this.coach,
+    this.specializations,
+    this.languages,
+    this.minRate,
+    this.maxRate,
+    this.sortBy,
+  });
+
+  UserFilters copyWith({
+    bool? coach,
+    List<String>? specializations,
+    List<String>? languages,
+    int? minRate,
+    int? maxRate,
+    String? sortBy,
+  }) {
+    return UserFilters(
+      coach: coach ?? this.coach,
+      specializations: specializations ?? this.specializations,
+      languages: languages ?? this.languages,
+      minRate: minRate ?? this.minRate,
+      maxRate: maxRate ?? this.maxRate,
+      sortBy: sortBy ?? this.sortBy,
+    );
+  }
+
+  bool get isNotEmpty =>
+      coach != null ||
+      specializations != null ||
+      languages != null ||
+      minRate != null ||
+      maxRate != null ||
+      sortBy != null;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UserFilters &&
+          runtimeType == other.runtimeType &&
+          coach == other.coach &&
+          _listEquals(specializations, other.specializations) &&
+          _listEquals(languages, other.languages) &&
+          minRate == other.minRate &&
+          maxRate == other.maxRate &&
+          sortBy == other.sortBy;
+
+  @override
+  int get hashCode =>
+      coach.hashCode ^
+      specializations.hashCode ^
+      languages.hashCode ^
+      minRate.hashCode ^
+      maxRate.hashCode ^
+      sortBy.hashCode;
+
+  bool _listEquals(List<dynamic>? a, List<dynamic>? b) {
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+}
+
+final filteredUsersProvider = FutureProvider.family<List<UserSummary>, UserFilters>((ref, filters) async {
+  final svc = ref.watch(sl.usersServiceProvider);
+  return svc.fetchAll(
+    limit: 500,
+    coach: filters.coach ?? false,
+    specializations: filters.specializations,
+    languages: filters.languages,
+    minRate: filters.minRate,
+    maxRate: filters.maxRate,
+    sortBy: filters.sortBy,
+  );
 });
 
 final publicUserProfileProvider = FutureProvider.family<UserProfile, String>((ref, userId) async {
@@ -72,4 +164,9 @@ final publicProfileAggregatesProvider = FutureProvider.family<UserStats, String>
     weeks: kProfileActivityWeeks,
     sessionLimit: kProfileCompletedSessionsLimit,
   );
+});
+
+final coachReviewsProvider = FutureProvider.family<CoachReviewListResponse, String>((ref, coachId) async {
+  final svc = ref.watch(sl.crmReviewsServiceProvider);
+  return svc.getCoachReviews(coachId: coachId, limit: 100, offset: 0);
 });

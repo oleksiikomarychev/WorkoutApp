@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
 import 'package:workout_app/providers/chat_provider.dart';
 
 import 'mass_edit_tool_widget.dart';
@@ -21,6 +22,7 @@ class ScheduleShiftToolWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
     final mode = payload['mode']?.toString();
     final isPreview = mode == 'preview';
 
@@ -47,7 +49,7 @@ class ScheduleShiftToolWidget extends ConsumerWidget {
     if (workoutsShifted != null) {
       headerChips.add(
         Chip(
-          label: Text('Тренировок сдвинуто: $workoutsShifted'),
+          label: Text(l10n.workoutsShifted(workoutsShifted.toString())),
           visualDensity: VisualDensity.compact,
         ),
       );
@@ -57,7 +59,7 @@ class ScheduleShiftToolWidget extends ConsumerWidget {
       final sign = (numDays ?? 0) > 0 ? '+' : '';
       headerChips.add(
         Chip(
-          label: Text('Сдвиг: $sign${numDays ?? days} дн.'),
+          label: Text(l10n.shiftDays(sign, (numDays ?? days).toString())),
           visualDensity: VisualDensity.compact,
         ),
       );
@@ -66,23 +68,23 @@ class ScheduleShiftToolWidget extends ConsumerWidget {
 
     final filterLines = <String>[];
     if (fromDate != null && fromDate.isNotEmpty) {
-      filterLines.add('Начиная с: $fromDate');
+      filterLines.add(l10n.startingFrom(fromDate));
     }
     if (toDate != null && toDate.isNotEmpty) {
-      filterLines.add('До даты (включительно): $toDate');
+      filterLines.add(l10n.upToDate(toDate));
     }
 
     if (actionType == 'set_rest') {
-      filterLines.add('Режим: изменить интервалы между тренировками');
+      filterLines.add(l10n.modeChangeIntervals);
     } else {
-      filterLines.add('Режим: сдвиг расписания');
+      filterLines.add(l10n.modeScheduleShift);
     }
 
     if (onlyFuture) {
-      filterLines.add('Только будущие тренировки');
+      filterLines.add(l10n.onlyFutureWorkouts);
     }
     if (statusIn is List && statusIn.isNotEmpty) {
-      filterLines.add('Статусы: ${statusIn.join(', ')}');
+      filterLines.add(l10n.statuses(statusIn.join(', ')));
     }
 
     final content = Column(
@@ -97,7 +99,7 @@ class ScheduleShiftToolWidget extends ConsumerWidget {
         if (filterLines.isNotEmpty) ...[
           const SizedBox(height: 8),
           Text(
-            'Параметры сдвига',
+            l10n.shiftParameters,
             style: theme.textTheme.labelLarge?.copyWith(
               color: colorScheme.primary,
               fontWeight: FontWeight.w600,
@@ -133,7 +135,7 @@ class ScheduleShiftToolWidget extends ConsumerWidget {
                 .applyScheduleShiftFromPreview(payload);
           },
           icon: const Icon(Icons.check_rounded),
-          label: const Text('Применить'),
+          label: Text(l10n.apply),
           style: ElevatedButton.styleFrom(
             backgroundColor: colorScheme.primary,
             foregroundColor: colorScheme.onPrimary,
@@ -142,7 +144,9 @@ class ScheduleShiftToolWidget extends ConsumerWidget {
       );
     }
 
-    const titleText = 'Сдвиг расписания активного плана выполнен';
+    final titleText = isPreview
+        ? l10n.scheduleShiftPreviewTitle
+        : l10n.scheduleShiftTitle;
 
     return ToolResultCard(
       title: titleText,

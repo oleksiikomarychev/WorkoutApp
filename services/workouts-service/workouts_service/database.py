@@ -5,14 +5,14 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from backend_common.database import create_async_engine_and_session, ensure_asyncpg_url
 from sqlalchemy.orm import declarative_base
 
-from . import models  # noqa: F401
-
 DATABASE_URL = os.getenv("WORKOUTS_DATABASE_URL")
 logger = logging.getLogger(__name__)
 
 if not DATABASE_URL:
     raise ValueError("WORKOUTS_DATABASE_URL environment variable is not set")
 
+# Replace localhost with host.docker.internal for Docker environment
+DATABASE_URL = DATABASE_URL.replace("localhost", "host.docker.internal")
 
 if DATABASE_URL:
     DATABASE_URL = ensure_asyncpg_url(DATABASE_URL)

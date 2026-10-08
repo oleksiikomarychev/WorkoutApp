@@ -100,11 +100,10 @@ async def create_checkout_session_for_link(
     coaching = profile.get("coaching") or {}
     rate_plan = coaching.get("rate_plan") or {}
 
-    currency = rate_plan.get("currency")
     amount_minor = rate_plan.get("amount_minor")
     connect_account_id = coaching.get("stripe_connect_account_id")
 
-    if not currency or amount_minor is None or amount_minor <= 0:
+    if amount_minor is None or amount_minor <= 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Coach rate plan is not configured",
@@ -114,6 +113,8 @@ async def create_checkout_session_for_link(
             status_code=status.HTTP_409_CONFLICT,
             detail="Coach Stripe Connect account is not configured",
         )
+
+    currency = "usd"
 
     platform_fee = int(round(float(amount_minor) * _STRIPE_PLATFORM_FEE_PERCENT / 100.0))
     if platform_fee < 0:

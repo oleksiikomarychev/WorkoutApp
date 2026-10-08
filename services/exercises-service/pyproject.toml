@@ -1,39 +1,50 @@
-[tool.poetry]
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
 name = "exercises-service"
 version = "0.1.0"
 description = "Exercises CRUD Service"
-authors = ["WorkoutApp Team"]
-packages = [
-    { include = "exercises_service" }
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi==0.112.0",
+    "uvicorn==0.30.0",
+    "uvloop>=0.21.0",
+    "sqlalchemy==2.0.29",
+    "aiosqlite==0.20.0",
+    "alembic==1.15.0",
+    "pydantic==2.10.0",
+    "requests==2.32.4",
+    "python-dotenv==1.0.1",
+    "python-multipart==0.0.18",
+    "psycopg2-binary==2.9.9",
+    "pydantic-settings==2.10.0",
+    "httpx==0.28.1",
+    "tenacity==8.3.0",
+    "asyncpg==0.30.0",
+    "structlog>=24.0.0,<25.0.0",
+    "asgi-correlation-id==4.3.1",
+    "prometheus-fastapi-instrumentator==6.1.0",
+    "prometheus-client==0.16.0",
+    "sentry-sdk[fastapi]==2.0.0",
+    "redis==5.0.0",
+    "aiofiles>=24.0.0",
+    "grpcio>=1.60.0",
+    "grpcio-tools>=1.60.0",
+    "protobuf>=4.25.0",
+    "backend-common",
+    "msgpack"
 ]
 
-[tool.poetry.dependencies]
-python = ">=3.12,<4.0"
-fastapi = "0.112.0"
-uvicorn = "0.30.0"
-sqlalchemy = "2.0.29"
-aiosqlite = "0.20.0"
-alembic = "1.15.0"
-pydantic = "2.10.0"
-requests = "2.32.4"
-python-dotenv = "1.0.1"
-python-multipart = "0.0.9"
-psycopg2-binary = "2.9.9"
-pydantic-settings = "2.2.0"
-httpx = "0.28.1"  # Added for making HTTP requests
-tenacity = "8.3.0"  # Added for retry functionality
-asyncpg = "0.30.0"  # Added for async PostgreSQL support
-structlog = ">=24.0.0,<25.0.0"
-asgi-correlation-id = "4.3.1"
-prometheus-fastapi-instrumentator = "6.1.0"
-prometheus-client = "0.16.0"
-sentry-sdk = { version = "2.0.0", extras = ["fastapi"] }
-redis = "5.0.0"
-backend-common = { path = "../../libs/backend-common", develop = true }
+[tool.uv.sources]
+backend-common = { workspace = true }
 
-[tool.poetry.group.test.dependencies]
-pytest = "8.2.0"
+[project.optional-dependencies]
+test = [
+    "pytest==8.2.0",
+]
 
-[build-system]
-requires = ["poetry-core>=1.7.0"]
-build-backend = "poetry.core.masonry.api"
+[tool.setuptools]
+packages = ["exercises_service"]
+package-dir = { "" = "." }

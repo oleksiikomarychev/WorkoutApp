@@ -32,14 +32,17 @@ async def generate_structured_output(
     *,
     prompt: str,
     response_schema: dict[str, Any],
+    provider: str | None = None,
+    model: str | None = None,
     temperature: float = 0.3,
     max_output_tokens: int = 2048,
 ) -> dict[str, Any]:
-    provider = settings.staged_llm_provider
-    if provider != "gemini":
-        raise RuntimeError(f"Unsupported structured LLM provider: {provider}")
-
-    llm = get_chat_llm(temperature=temperature)
+    provider = (provider or settings.staged_llm_provider).lower()
+    llm = get_chat_llm(
+        temperature=temperature,
+        provider=provider,
+        model=model or settings.staged_llm_model,
+    )
 
     try:
         schema_text = json.dumps(response_schema, ensure_ascii=False, indent=2)
@@ -61,9 +64,13 @@ async def generate_structured_output(
     ]
 
     try:
-        response = await llm.ainvoke(messages, max_output_tokens=max_output_tokens)
+        if provider == "gemini":
+            response = await llm.ainvoke(messages, max_output_tokens=max_output_tokens)
+        else:
+            response = await llm.ainvoke(messages, max_tokens=max_output_tokens)
     except TypeError as exc:
-        if "max_output_tokens" not in str(exc):
+        msg = str(exc)
+        if (provider == "gemini" and "max_output_tokens" not in msg) or (provider != "gemini" and "max_tokens" not in msg):
             raise
         response = await llm.ainvoke(messages)
     text = response.content if isinstance(response.content, str) else str(response.content)

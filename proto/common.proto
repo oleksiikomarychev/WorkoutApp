@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package workoutapp.common;
+
+// Common types used across all services
+
+message UserContext {
+  string user_id = 1;
+  string email = 2;
+  string name = 3;
+}
+
+message Error {
+  string code = 1;
+  string message = 2;
+  map<string, string> details = 3;
+}
+
+message PaginationRequest {
+  int32 skip = 1;
+  int32 limit = 2;
+}
+
+message PaginationResponse {
+  int32 total = 1;
+  int32 skip = 2;
+  int32 limit = 3;
+}
+
+message Empty {}

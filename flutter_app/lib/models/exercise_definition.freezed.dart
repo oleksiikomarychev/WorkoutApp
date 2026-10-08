@@ -1,24 +1,25 @@
 // coverage:ignore-file
-
-
-
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint
+// ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'exercise_definition.dart';
 
-
-
-
+// **************************************************************************
+// FreezedGenerator
+// **************************************************************************
 
 T _$identity<T>(T value) => value;
 
 final _privateConstructorUsedError = UnsupportedError(
-    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
+  'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models',
+);
 
 ExerciseDefinition _$ExerciseDefinitionFromJson(Map<String, dynamic> json) {
   return _ExerciseDefinition.fromJson(json);
 }
 
-
+/// @nodoc
 mixin _$ExerciseDefinition {
   int? get id => throw _privateConstructorUsedError;
   String get name => throw _privateConstructorUsedError;
@@ -41,38 +42,40 @@ mixin _$ExerciseDefinition {
   String? get gifUrl => throw _privateConstructorUsedError;
   double? get oneRepMax => throw _privateConstructorUsedError;
 
-
+  /// Serializes this ExerciseDefinition to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
-
-
+  /// Create a copy of ExerciseDefinition
+  /// with the given fields replaced by the non-null parameter values.
   @JsonKey(includeFromJson: false, includeToJson: false)
   $ExerciseDefinitionCopyWith<ExerciseDefinition> get copyWith =>
       throw _privateConstructorUsedError;
 }
 
-
+/// @nodoc
 abstract class $ExerciseDefinitionCopyWith<$Res> {
   factory $ExerciseDefinitionCopyWith(
-          ExerciseDefinition value, $Res Function(ExerciseDefinition) then) =
-      _$ExerciseDefinitionCopyWithImpl<$Res, ExerciseDefinition>;
+    ExerciseDefinition value,
+    $Res Function(ExerciseDefinition) then,
+  ) = _$ExerciseDefinitionCopyWithImpl<$Res, ExerciseDefinition>;
   @useResult
-  $Res call(
-      {int? id,
-      String name,
-      String? muscleGroup,
-      String? equipment,
-      List<String>? targetMuscles,
-      List<String>? synergistMuscles,
-      String? movementType,
-      String? region,
-      int? rootExerciseId,
-      String? imageUrl,
-      String? gifUrl,
-      double? oneRepMax});
+  $Res call({
+    int? id,
+    String name,
+    @JsonKey(name: 'muscle_group') String? muscleGroup,
+    String? equipment,
+    @JsonKey(name: 'target_muscles') List<String>? targetMuscles,
+    @JsonKey(name: 'synergist_muscles') List<String>? synergistMuscles,
+    @JsonKey(name: 'movement_type') String? movementType,
+    @JsonKey(name: 'region') String? region,
+    @JsonKey(name: 'root_exercise_id') int? rootExerciseId,
+    @JsonKey(name: 'image_url') String? imageUrl,
+    @JsonKey(name: 'gif_url') String? gifUrl,
+    double? oneRepMax,
+  });
 }
 
-
+/// @nodoc
 class _$ExerciseDefinitionCopyWithImpl<$Res, $Val extends ExerciseDefinition>
     implements $ExerciseDefinitionCopyWith<$Res> {
   _$ExerciseDefinitionCopyWithImpl(this._value, this._then);
@@ -82,8 +85,8 @@ class _$ExerciseDefinitionCopyWithImpl<$Res, $Val extends ExerciseDefinition>
   // ignore: unused_field
   final $Res Function($Val) _then;
 
-
-
+  /// Create a copy of ExerciseDefinition
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -100,92 +103,98 @@ class _$ExerciseDefinitionCopyWithImpl<$Res, $Val extends ExerciseDefinition>
     Object? gifUrl = freezed,
     Object? oneRepMax = freezed,
   }) {
-    return _then(_value.copyWith(
-      id: freezed == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as int?,
-      name: null == name
-          ? _value.name
-          : name // ignore: cast_nullable_to_non_nullable
-              as String,
-      muscleGroup: freezed == muscleGroup
-          ? _value.muscleGroup
-          : muscleGroup // ignore: cast_nullable_to_non_nullable
-              as String?,
-      equipment: freezed == equipment
-          ? _value.equipment
-          : equipment // ignore: cast_nullable_to_non_nullable
-              as String?,
-      targetMuscles: freezed == targetMuscles
-          ? _value.targetMuscles
-          : targetMuscles // ignore: cast_nullable_to_non_nullable
-              as List<String>?,
-      synergistMuscles: freezed == synergistMuscles
-          ? _value.synergistMuscles
-          : synergistMuscles // ignore: cast_nullable_to_non_nullable
-              as List<String>?,
-      movementType: freezed == movementType
-          ? _value.movementType
-          : movementType // ignore: cast_nullable_to_non_nullable
-              as String?,
-      region: freezed == region
-          ? _value.region
-          : region // ignore: cast_nullable_to_non_nullable
-              as String?,
-      rootExerciseId: freezed == rootExerciseId
-          ? _value.rootExerciseId
-          : rootExerciseId // ignore: cast_nullable_to_non_nullable
-              as int?,
-      imageUrl: freezed == imageUrl
-          ? _value.imageUrl
-          : imageUrl // ignore: cast_nullable_to_non_nullable
-              as String?,
-      gifUrl: freezed == gifUrl
-          ? _value.gifUrl
-          : gifUrl // ignore: cast_nullable_to_non_nullable
-              as String?,
-      oneRepMax: freezed == oneRepMax
-          ? _value.oneRepMax
-          : oneRepMax // ignore: cast_nullable_to_non_nullable
-              as double?,
-    ) as $Val);
+    return _then(
+      _value.copyWith(
+            id: freezed == id
+                ? _value.id
+                : id // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            name: null == name
+                ? _value.name
+                : name // ignore: cast_nullable_to_non_nullable
+                      as String,
+            muscleGroup: freezed == muscleGroup
+                ? _value.muscleGroup
+                : muscleGroup // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            equipment: freezed == equipment
+                ? _value.equipment
+                : equipment // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            targetMuscles: freezed == targetMuscles
+                ? _value.targetMuscles
+                : targetMuscles // ignore: cast_nullable_to_non_nullable
+                      as List<String>?,
+            synergistMuscles: freezed == synergistMuscles
+                ? _value.synergistMuscles
+                : synergistMuscles // ignore: cast_nullable_to_non_nullable
+                      as List<String>?,
+            movementType: freezed == movementType
+                ? _value.movementType
+                : movementType // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            region: freezed == region
+                ? _value.region
+                : region // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            rootExerciseId: freezed == rootExerciseId
+                ? _value.rootExerciseId
+                : rootExerciseId // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            imageUrl: freezed == imageUrl
+                ? _value.imageUrl
+                : imageUrl // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            gifUrl: freezed == gifUrl
+                ? _value.gifUrl
+                : gifUrl // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            oneRepMax: freezed == oneRepMax
+                ? _value.oneRepMax
+                : oneRepMax // ignore: cast_nullable_to_non_nullable
+                      as double?,
+          )
+          as $Val,
+    );
   }
 }
 
-
+/// @nodoc
 abstract class _$$ExerciseDefinitionImplCopyWith<$Res>
     implements $ExerciseDefinitionCopyWith<$Res> {
-  factory _$$ExerciseDefinitionImplCopyWith(_$ExerciseDefinitionImpl value,
-          $Res Function(_$ExerciseDefinitionImpl) then) =
-      __$$ExerciseDefinitionImplCopyWithImpl<$Res>;
+  factory _$$ExerciseDefinitionImplCopyWith(
+    _$ExerciseDefinitionImpl value,
+    $Res Function(_$ExerciseDefinitionImpl) then,
+  ) = __$$ExerciseDefinitionImplCopyWithImpl<$Res>;
   @override
   @useResult
-  $Res call(
-      {int? id,
-      String name,
-      String? muscleGroup,
-      String? equipment,
-      List<String>? targetMuscles,
-      List<String>? synergistMuscles,
-      String? movementType,
-      String? region,
-      int? rootExerciseId,
-      String? imageUrl,
-      String? gifUrl,
-      double? oneRepMax});
+  $Res call({
+    int? id,
+    String name,
+    @JsonKey(name: 'muscle_group') String? muscleGroup,
+    String? equipment,
+    @JsonKey(name: 'target_muscles') List<String>? targetMuscles,
+    @JsonKey(name: 'synergist_muscles') List<String>? synergistMuscles,
+    @JsonKey(name: 'movement_type') String? movementType,
+    @JsonKey(name: 'region') String? region,
+    @JsonKey(name: 'root_exercise_id') int? rootExerciseId,
+    @JsonKey(name: 'image_url') String? imageUrl,
+    @JsonKey(name: 'gif_url') String? gifUrl,
+    double? oneRepMax,
+  });
 }
 
-
+/// @nodoc
 class __$$ExerciseDefinitionImplCopyWithImpl<$Res>
     extends _$ExerciseDefinitionCopyWithImpl<$Res, _$ExerciseDefinitionImpl>
     implements _$$ExerciseDefinitionImplCopyWith<$Res> {
-  __$$ExerciseDefinitionImplCopyWithImpl(_$ExerciseDefinitionImpl _value,
-      $Res Function(_$ExerciseDefinitionImpl) _then)
-      : super(_value, _then);
+  __$$ExerciseDefinitionImplCopyWithImpl(
+    _$ExerciseDefinitionImpl _value,
+    $Res Function(_$ExerciseDefinitionImpl) _then,
+  ) : super(_value, _then);
 
-
-
+  /// Create a copy of ExerciseDefinition
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -202,77 +211,79 @@ class __$$ExerciseDefinitionImplCopyWithImpl<$Res>
     Object? gifUrl = freezed,
     Object? oneRepMax = freezed,
   }) {
-    return _then(_$ExerciseDefinitionImpl(
-      id: freezed == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as int?,
-      name: null == name
-          ? _value.name
-          : name // ignore: cast_nullable_to_non_nullable
-              as String,
-      muscleGroup: freezed == muscleGroup
-          ? _value.muscleGroup
-          : muscleGroup // ignore: cast_nullable_to_non_nullable
-              as String?,
-      equipment: freezed == equipment
-          ? _value.equipment
-          : equipment // ignore: cast_nullable_to_non_nullable
-              as String?,
-      targetMuscles: freezed == targetMuscles
-          ? _value._targetMuscles
-          : targetMuscles // ignore: cast_nullable_to_non_nullable
-              as List<String>?,
-      synergistMuscles: freezed == synergistMuscles
-          ? _value._synergistMuscles
-          : synergistMuscles // ignore: cast_nullable_to_non_nullable
-              as List<String>?,
-      movementType: freezed == movementType
-          ? _value.movementType
-          : movementType // ignore: cast_nullable_to_non_nullable
-              as String?,
-      region: freezed == region
-          ? _value.region
-          : region // ignore: cast_nullable_to_non_nullable
-              as String?,
-      rootExerciseId: freezed == rootExerciseId
-          ? _value.rootExerciseId
-          : rootExerciseId // ignore: cast_nullable_to_non_nullable
-              as int?,
-      imageUrl: freezed == imageUrl
-          ? _value.imageUrl
-          : imageUrl // ignore: cast_nullable_to_non_nullable
-              as String?,
-      gifUrl: freezed == gifUrl
-          ? _value.gifUrl
-          : gifUrl // ignore: cast_nullable_to_non_nullable
-              as String?,
-      oneRepMax: freezed == oneRepMax
-          ? _value.oneRepMax
-          : oneRepMax // ignore: cast_nullable_to_non_nullable
-              as double?,
-    ));
+    return _then(
+      _$ExerciseDefinitionImpl(
+        id: freezed == id
+            ? _value.id
+            : id // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        name: null == name
+            ? _value.name
+            : name // ignore: cast_nullable_to_non_nullable
+                  as String,
+        muscleGroup: freezed == muscleGroup
+            ? _value.muscleGroup
+            : muscleGroup // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        equipment: freezed == equipment
+            ? _value.equipment
+            : equipment // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        targetMuscles: freezed == targetMuscles
+            ? _value._targetMuscles
+            : targetMuscles // ignore: cast_nullable_to_non_nullable
+                  as List<String>?,
+        synergistMuscles: freezed == synergistMuscles
+            ? _value._synergistMuscles
+            : synergistMuscles // ignore: cast_nullable_to_non_nullable
+                  as List<String>?,
+        movementType: freezed == movementType
+            ? _value.movementType
+            : movementType // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        region: freezed == region
+            ? _value.region
+            : region // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        rootExerciseId: freezed == rootExerciseId
+            ? _value.rootExerciseId
+            : rootExerciseId // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        imageUrl: freezed == imageUrl
+            ? _value.imageUrl
+            : imageUrl // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        gifUrl: freezed == gifUrl
+            ? _value.gifUrl
+            : gifUrl // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        oneRepMax: freezed == oneRepMax
+            ? _value.oneRepMax
+            : oneRepMax // ignore: cast_nullable_to_non_nullable
+                  as double?,
+      ),
+    );
   }
 }
 
-
+/// @nodoc
 @JsonSerializable()
 class _$ExerciseDefinitionImpl implements _ExerciseDefinition {
-  const _$ExerciseDefinitionImpl(
-      {this.id,
-      required this.name,
-      @JsonKey(name: 'muscle_group') this.muscleGroup,
-      this.equipment,
-      @JsonKey(name: 'target_muscles') final List<String>? targetMuscles,
-      @JsonKey(name: 'synergist_muscles') final List<String>? synergistMuscles,
-      @JsonKey(name: 'movement_type') this.movementType,
-      @JsonKey(name: 'region') this.region,
-      @JsonKey(name: 'root_exercise_id') this.rootExerciseId,
-      @JsonKey(name: 'image_url') this.imageUrl,
-      @JsonKey(name: 'gif_url') this.gifUrl,
-      this.oneRepMax})
-      : _targetMuscles = targetMuscles,
-        _synergistMuscles = synergistMuscles;
+  const _$ExerciseDefinitionImpl({
+    this.id,
+    required this.name,
+    @JsonKey(name: 'muscle_group') this.muscleGroup,
+    this.equipment,
+    @JsonKey(name: 'target_muscles') final List<String>? targetMuscles,
+    @JsonKey(name: 'synergist_muscles') final List<String>? synergistMuscles,
+    @JsonKey(name: 'movement_type') this.movementType,
+    @JsonKey(name: 'region') this.region,
+    @JsonKey(name: 'root_exercise_id') this.rootExerciseId,
+    @JsonKey(name: 'image_url') this.imageUrl,
+    @JsonKey(name: 'gif_url') this.gifUrl,
+    this.oneRepMax,
+  }) : _targetMuscles = targetMuscles,
+       _synergistMuscles = synergistMuscles;
 
   factory _$ExerciseDefinitionImpl.fromJson(Map<String, dynamic> json) =>
       _$$ExerciseDefinitionImplFromJson(json);
@@ -343,16 +354,21 @@ class _$ExerciseDefinitionImpl implements _ExerciseDefinition {
                 other.muscleGroup == muscleGroup) &&
             (identical(other.equipment, equipment) ||
                 other.equipment == equipment) &&
-            const DeepCollectionEquality()
-                .equals(other._targetMuscles, _targetMuscles) &&
-            const DeepCollectionEquality()
-                .equals(other._synergistMuscles, _synergistMuscles) &&
+            const DeepCollectionEquality().equals(
+              other._targetMuscles,
+              _targetMuscles,
+            ) &&
+            const DeepCollectionEquality().equals(
+              other._synergistMuscles,
+              _synergistMuscles,
+            ) &&
             (identical(other.movementType, movementType) ||
                 other.movementType == movementType) &&
             (identical(other.region, region) || other.region == region) &&
             (identical(other.rootExerciseId, rootExerciseId) ||
                 other.rootExerciseId == rootExerciseId) &&
-            (identical(other.imageUrl, imageUrl) || other.imageUrl == imageUrl) &&
+            (identical(other.imageUrl, imageUrl) ||
+                other.imageUrl == imageUrl) &&
             (identical(other.gifUrl, gifUrl) || other.gifUrl == gifUrl) &&
             (identical(other.oneRepMax, oneRepMax) ||
                 other.oneRepMax == oneRepMax));
@@ -361,51 +377,53 @@ class _$ExerciseDefinitionImpl implements _ExerciseDefinition {
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(
-      runtimeType,
-      id,
-      name,
-      muscleGroup,
-      equipment,
-      const DeepCollectionEquality().hash(_targetMuscles),
-      const DeepCollectionEquality().hash(_synergistMuscles),
-      movementType,
-      region,
-      rootExerciseId,
-      imageUrl,
-      gifUrl,
-      oneRepMax);
+    runtimeType,
+    id,
+    name,
+    muscleGroup,
+    equipment,
+    const DeepCollectionEquality().hash(_targetMuscles),
+    const DeepCollectionEquality().hash(_synergistMuscles),
+    movementType,
+    region,
+    rootExerciseId,
+    imageUrl,
+    gifUrl,
+    oneRepMax,
+  );
 
-
-
+  /// Create a copy of ExerciseDefinition
+  /// with the given fields replaced by the non-null parameter values.
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   @pragma('vm:prefer-inline')
   _$$ExerciseDefinitionImplCopyWith<_$ExerciseDefinitionImpl> get copyWith =>
       __$$ExerciseDefinitionImplCopyWithImpl<_$ExerciseDefinitionImpl>(
-          this, _$identity);
+        this,
+        _$identity,
+      );
 
   @override
   Map<String, dynamic> toJson() {
-    return _$$ExerciseDefinitionImplToJson(
-      this,
-    );
+    return _$$ExerciseDefinitionImplToJson(this);
   }
 }
 
 abstract class _ExerciseDefinition implements ExerciseDefinition {
-  const factory _ExerciseDefinition(
-      {final int? id,
-      required final String name,
-      @JsonKey(name: 'muscle_group') final String? muscleGroup,
-      final String? equipment,
-      @JsonKey(name: 'target_muscles') final List<String>? targetMuscles,
-      @JsonKey(name: 'synergist_muscles') final List<String>? synergistMuscles,
-      @JsonKey(name: 'movement_type') final String? movementType,
-      @JsonKey(name: 'region') final String? region,
-      @JsonKey(name: 'root_exercise_id') final int? rootExerciseId,
-      @JsonKey(name: 'image_url') final String? imageUrl,
-      @JsonKey(name: 'gif_url') final String? gifUrl,
-      final double? oneRepMax}) = _$ExerciseDefinitionImpl;
+  const factory _ExerciseDefinition({
+    final int? id,
+    required final String name,
+    @JsonKey(name: 'muscle_group') final String? muscleGroup,
+    final String? equipment,
+    @JsonKey(name: 'target_muscles') final List<String>? targetMuscles,
+    @JsonKey(name: 'synergist_muscles') final List<String>? synergistMuscles,
+    @JsonKey(name: 'movement_type') final String? movementType,
+    @JsonKey(name: 'region') final String? region,
+    @JsonKey(name: 'root_exercise_id') final int? rootExerciseId,
+    @JsonKey(name: 'image_url') final String? imageUrl,
+    @JsonKey(name: 'gif_url') final String? gifUrl,
+    final double? oneRepMax,
+  }) = _$ExerciseDefinitionImpl;
 
   factory _ExerciseDefinition.fromJson(Map<String, dynamic> json) =
       _$ExerciseDefinitionImpl.fromJson;
@@ -443,8 +461,8 @@ abstract class _ExerciseDefinition implements ExerciseDefinition {
   @override
   double? get oneRepMax;
 
-
-
+  /// Create a copy of ExerciseDefinition
+  /// with the given fields replaced by the non-null parameter values.
   @override
   @JsonKey(includeFromJson: false, includeToJson: false)
   _$$ExerciseDefinitionImplCopyWith<_$ExerciseDefinitionImpl> get copyWith =>

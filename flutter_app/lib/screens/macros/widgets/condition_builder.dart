@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
 
 class ConditionBuilder extends StatefulWidget {
   final Map<String, dynamic> initial;
@@ -42,36 +43,36 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
     }
   }
 
-  String _opLabel(String op) {
+  String _opLabel(String op, AppLocalizations l10n) {
     switch (op) {
       case '>':
-        return 'больше >';
+        return l10n.macroConditionGreater;
       case '<':
-        return 'меньше <';
+        return l10n.macroConditionLess;
       case '=':
-        return 'равно =';
+        return l10n.macroConditionEqual;
       case '!=':
-        return 'не равно ≠';
+        return l10n.macroConditionNotEqual;
       case 'in_range':
-        return 'в диапазоне';
+        return l10n.macroConditionInRange;
       case 'not_in_range':
-        return 'вне диапазона';
+        return l10n.macroConditionNotInRange;
       case 'stagnates_for':
-        return 'стагнация за N окон';
+        return l10n.macroConditionStagnates;
       case 'deviates_from_avg':
-        return 'отклонение от среднего';
+        return l10n.macroConditionDeviates;
       case 'holds_for':
-        return 'выполняется N тренировок подряд';
+        return l10n.macroConditionHoldsForWorkouts;
       case 'holds_for_sets':
-        return 'выполняется N подходов подряд (внутри тренировки)';
+        return l10n.macroConditionHoldsForSets;
       default:
         return op;
     }
   }
 
-  List<DropdownMenuItem<String>> _opItems(List<String> keys) {
+  List<DropdownMenuItem<String>> _opItems(List<String> keys, AppLocalizations l10n) {
     return keys
-        .map((k) => DropdownMenuItem<String>(value: k, child: Text(_opLabel(k))))
+        .map((k) => DropdownMenuItem<String>(value: k, child: Text(_opLabel(k, l10n))))
         .toList(growable: false);
   }
 
@@ -204,6 +205,7 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final allowedOps = _allowedOpKeysForMetric(widget.metric);
     final effectiveOp = allowedOps.contains(_op) ? _op : '';
     return Column(
@@ -211,13 +213,13 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
       children: [
         DropdownButtonFormField<String>(
           value: effectiveOp.isEmpty ? null : effectiveOp,
-          items: _opItems(allowedOps),
-          decoration: const InputDecoration(labelText: 'Оператор', border: OutlineInputBorder()),
+          items: _opItems(allowedOps, l10n),
+          decoration: InputDecoration(labelText: l10n.macroConditionOperatorLabel, border: const OutlineInputBorder()),
           onChanged: (v) {
             setState(() => _op = v ?? '');
             _emit();
           },
-          validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+          validator: (v) => (v == null || v.isEmpty) ? l10n.fieldRequired : null,
         ),
         if (effectiveOp.isNotEmpty) ...[
           const SizedBox(height: 6),
@@ -233,7 +235,7 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
             Expanded(
               child: TextFormField(
                 initialValue: _rangeFrom,
-                decoration: const InputDecoration(labelText: 'от', hintText: 'число', border: OutlineInputBorder()),
+                decoration: InputDecoration(labelText: l10n.macroConditionRangeFrom, hintText: l10n.macroConditionNumberHint, border: const OutlineInputBorder()),
                 keyboardType: TextInputType.number,
                 onChanged: (v) { _rangeFrom = v; _emit(); },
               ),
@@ -242,7 +244,7 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
             Expanded(
               child: TextFormField(
                 initialValue: _rangeTo,
-                decoration: const InputDecoration(labelText: 'до', hintText: 'число', border: OutlineInputBorder()),
+                decoration: InputDecoration(labelText: l10n.macroConditionRangeTo, hintText: l10n.macroConditionNumberHint, border: const OutlineInputBorder()),
                 keyboardType: TextInputType.number,
                 onChanged: (v) { _rangeTo = v; _emit(); },
               ),
@@ -251,55 +253,55 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
         else if (effectiveOp == 'stagnates_for') ...[
           TextFormField(
             initialValue: _n,
-            decoration: const InputDecoration(labelText: 'n (окон)', hintText: 'целое число, например 5', border: OutlineInputBorder()),
+            decoration: InputDecoration(labelText: l10n.macroConditionWindowCount, hintText: l10n.macroConditionWindowCountHint, border: const OutlineInputBorder()),
             keyboardType: TextInputType.number,
             onChanged: (v) { _n = v; _emit(); },
           ),
           const SizedBox(height: 8),
           TextFormField(
             initialValue: _epsilonPercent,
-            decoration: const InputDecoration(labelText: 'epsilon_percent (порог, %)', hintText: 'например 1.0', border: OutlineInputBorder()),
+            decoration: InputDecoration(labelText: l10n.macroConditionEpsilonPercent, hintText: '1.0', border: const OutlineInputBorder()),
             keyboardType: TextInputType.number,
             onChanged: (v) { _epsilonPercent = v; _emit(); },
           ),
         ] else if (_op == 'deviates_from_avg') ...[
           TextFormField(
             initialValue: _n,
-            decoration: const InputDecoration(labelText: 'n (окон)', hintText: 'целое число', border: OutlineInputBorder()),
+            decoration: InputDecoration(labelText: l10n.macroConditionWindowCount, hintText: l10n.macroConditionNumberHint, border: const OutlineInputBorder()),
             keyboardType: TextInputType.number,
             onChanged: (v) { _n = v; _emit(); },
           ),
           const SizedBox(height: 8),
           TextFormField(
             initialValue: _valuePercent,
-            decoration: const InputDecoration(labelText: 'value_percent (откл., %)', hintText: 'например 3.0', border: OutlineInputBorder()),
+            decoration: InputDecoration(labelText: l10n.macroConditionValuePercent, hintText: '3.0', border: const OutlineInputBorder()),
             keyboardType: TextInputType.number,
             onChanged: (v) { _valuePercent = v; _emit(); },
           ),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             value: _direction.isEmpty ? null : _direction,
-            items: const [
-              DropdownMenuItem(value: 'positive', child: Text('положительное')),
-              DropdownMenuItem(value: 'negative', child: Text('отрицательное')),
+            items: [
+              DropdownMenuItem(value: 'positive', child: Text(l10n.macroConditionPositive)),
+              DropdownMenuItem(value: 'negative', child: Text(l10n.macroConditionNegative)),
             ],
-            decoration: const InputDecoration(labelText: 'направление (необязательно)', border: OutlineInputBorder()),
+            decoration: InputDecoration(labelText: l10n.macroConditionDirection, border: const OutlineInputBorder()),
             onChanged: (v) { setState(() => _direction = v ?? ''); _emit(); },
           )
         ] else if (_op == 'holds_for') ...[
           DropdownButtonFormField<String>(
             value: _relation.isEmpty ? null : _relation,
-            items: const [
-              DropdownMenuItem(value: '>=', child: Text('больше или равно ≥')),
-              DropdownMenuItem(value: '<=', child: Text('меньше или равно ≤')),
-              DropdownMenuItem(value: '==', child: Text('равно =')),
-              DropdownMenuItem(value: '!=', child: Text('не равно ≠')),
-              DropdownMenuItem(value: '>', child: Text('больше >')),
-              DropdownMenuItem(value: '<', child: Text('меньше <')),
-              DropdownMenuItem(value: 'in_range', child: Text('в диапазоне')),
-              DropdownMenuItem(value: 'not_in_range', child: Text('вне диапазона')),
+            items: [
+              DropdownMenuItem(value: '>=', child: Text(l10n.macroConditionGreaterEqual)),
+              DropdownMenuItem(value: '<=', child: Text(l10n.macroConditionLessEqual)),
+              DropdownMenuItem(value: '==', child: Text(l10n.macroConditionEqual)),
+              DropdownMenuItem(value: '!=', child: Text(l10n.macroConditionNotEqual)),
+              DropdownMenuItem(value: '>', child: Text(l10n.macroConditionGreater)),
+              DropdownMenuItem(value: '<', child: Text(l10n.macroConditionLess)),
+              DropdownMenuItem(value: 'in_range', child: Text(l10n.macroConditionInRange)),
+              DropdownMenuItem(value: 'not_in_range', child: Text(l10n.macroConditionNotInRange)),
             ],
-            decoration: const InputDecoration(labelText: 'сравнение', border: OutlineInputBorder()),
+            decoration: InputDecoration(labelText: l10n.macroConditionRelationLabel, border: const OutlineInputBorder()),
             onChanged: (v) {
               setState(() {
                 _relation = v ?? '';
@@ -316,7 +318,7 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
               Expanded(
                 child: TextFormField(
                   initialValue: _rangeFrom,
-                  decoration: const InputDecoration(labelText: 'от', hintText: 'число', border: OutlineInputBorder()),
+                  decoration: InputDecoration(labelText: l10n.macroConditionRangeFrom, hintText: l10n.macroConditionNumberHint, border: const OutlineInputBorder()),
                   keyboardType: TextInputType.number,
                   onChanged: (v) { _rangeFrom = v; _emit(); },
                 ),
@@ -325,7 +327,7 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
               Expanded(
                 child: TextFormField(
                   initialValue: _rangeTo,
-                  decoration: const InputDecoration(labelText: 'до', hintText: 'число', border: OutlineInputBorder()),
+                  decoration: InputDecoration(labelText: l10n.macroConditionRangeTo, hintText: l10n.macroConditionNumberHint, border: const OutlineInputBorder()),
                   keyboardType: TextInputType.number,
                   onChanged: (v) { _rangeTo = v; _emit(); },
                 ),
@@ -334,49 +336,49 @@ class _ConditionBuilderState extends State<ConditionBuilder> {
           else
             TextFormField(
               initialValue: _value,
-              decoration: const InputDecoration(labelText: 'значение', hintText: 'порог, например -2', border: OutlineInputBorder()),
+              decoration: InputDecoration(labelText: l10n.macroConditionValueLabel, hintText: '-2', border: const OutlineInputBorder()),
               keyboardType: TextInputType.number,
               onChanged: (v) { _value = v; _emit(); },
             ),
           const SizedBox(height: 8),
           TextFormField(
             initialValue: _n,
-            decoration: const InputDecoration(labelText: 'n (тренировок)', hintText: 'целое, например 3', border: OutlineInputBorder()),
+            decoration: InputDecoration(labelText: l10n.macroConditionWorkoutCount, hintText: l10n.macroConditionWorkoutCountHint, border: const OutlineInputBorder()),
             keyboardType: TextInputType.number,
             onChanged: (v) { _n = v; _emit(); },
           ),
         ] else if (_op == 'holds_for_sets') ...[
           DropdownButtonFormField<String>(
             value: _relation.isEmpty ? null : _relation,
-            items: const [
-              DropdownMenuItem(value: '>=', child: Text('больше или равно ≥')),
-              DropdownMenuItem(value: '<=', child: Text('меньше или равно ≤')),
-              DropdownMenuItem(value: '==', child: Text('равно =')),
-              DropdownMenuItem(value: '!=', child: Text('не равно ≠')),
-              DropdownMenuItem(value: '>', child: Text('больше >')),
-              DropdownMenuItem(value: '<', child: Text('меньше <')),
+            items: [
+              DropdownMenuItem(value: '>=', child: Text(l10n.macroConditionGreaterEqual)),
+              DropdownMenuItem(value: '<=', child: Text(l10n.macroConditionLessEqual)),
+              DropdownMenuItem(value: '==', child: Text(l10n.macroConditionEqual)),
+              DropdownMenuItem(value: '!=', child: Text(l10n.macroConditionNotEqual)),
+              DropdownMenuItem(value: '>', child: Text(l10n.macroConditionGreater)),
+              DropdownMenuItem(value: '<', child: Text(l10n.macroConditionLess)),
             ],
-            decoration: const InputDecoration(labelText: 'сравнение', border: OutlineInputBorder()),
+            decoration: InputDecoration(labelText: l10n.macroConditionRelationLabel, border: const OutlineInputBorder()),
             onChanged: (v) { setState(() => _relation = v ?? ''); _emit(); },
           ),
           const SizedBox(height: 8),
           TextFormField(
             initialValue: _value,
-            decoration: const InputDecoration(labelText: 'значение', hintText: 'дельта, например -2 для повторов', border: OutlineInputBorder()),
+            decoration: InputDecoration(labelText: l10n.macroConditionValueLabel, hintText: l10n.macroConditionDeltaHint, border: const OutlineInputBorder()),
             keyboardType: TextInputType.number,
             onChanged: (v) { _value = v; _emit(); },
           ),
           const SizedBox(height: 8),
           TextFormField(
             initialValue: _nSets,
-            decoration: const InputDecoration(labelText: 'n (подряд подходов)', hintText: 'целое, например 12', border: OutlineInputBorder()),
+            decoration: InputDecoration(labelText: l10n.macroConditionSetCount, hintText: l10n.macroConditionSetCountHint, border: const OutlineInputBorder()),
             keyboardType: TextInputType.number,
             onChanged: (v) { _nSets = v; _emit(); },
           ),
         ] else ...[
           TextFormField(
             initialValue: _value,
-            decoration: const InputDecoration(labelText: 'значение', hintText: 'число', border: OutlineInputBorder()),
+            decoration: InputDecoration(labelText: l10n.macroConditionValueLabel, hintText: l10n.macroConditionNumberHint, border: const OutlineInputBorder()),
             keyboardType: TextInputType.number,
             onChanged: (v) { _value = v; _emit(); },
           ),

@@ -53,7 +53,7 @@ final workoutOriginalSetsProvider = FutureProvider.family<OriginalSetsMap, List<
         for (final s in sets) {
           final sid = s.id;
           mapSet[sid] = {
-            'rpe': s.rpe,
+            'rpe': s.effort,
             'volume': s.reps,
             'weight': s.weight,
           };

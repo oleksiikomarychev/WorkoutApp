@@ -31,6 +31,7 @@ if DB_URL:
             DB_URL = DB_URL.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
         elif DB_URL.startswith("postgresql://") and "+psycopg2" not in DB_URL:
             DB_URL = DB_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+        DB_URL = DB_URL.replace("localhost", "host.docker.internal")
     except Exception:
         pass
 

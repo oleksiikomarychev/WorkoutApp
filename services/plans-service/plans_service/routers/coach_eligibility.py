@@ -10,7 +10,7 @@ from ..schemas.calendar_plan import CoachingEligibilityResponse, PlanAdoptersLis
 
 router = APIRouter(prefix="/adoption")
 
-COACHING_ELIGIBILITY_THRESHOLD = 100
+COACHING_ELIGIBILITY_THRESHOLD = 0
 
 
 @router.get("/root-plans/{root_plan_id}/adopters", response_model=PlanAdoptersListResponse)
@@ -66,7 +66,7 @@ async def get_my_coaching_eligibility(
 
     if not root_ids:
         return CoachingEligibilityResponse(
-            eligible=False,
+            eligible=True,
             threshold=COACHING_ELIGIBILITY_THRESHOLD,
             max_unique_adopters=0,
             best_root_plan_id=None,
@@ -83,7 +83,7 @@ async def get_my_coaching_eligibility(
 
     if not row:
         return CoachingEligibilityResponse(
-            eligible=False,
+            eligible=True,
             threshold=COACHING_ELIGIBILITY_THRESHOLD,
             max_unique_adopters=0,
             best_root_plan_id=None,
@@ -91,7 +91,7 @@ async def get_my_coaching_eligibility(
 
     best_root_plan_id, max_unique_adopters = int(row[0]), int(row[1])
     return CoachingEligibilityResponse(
-        eligible=max_unique_adopters > COACHING_ELIGIBILITY_THRESHOLD,
+        eligible=max_unique_adopters >= COACHING_ELIGIBILITY_THRESHOLD,
         threshold=COACHING_ELIGIBILITY_THRESHOLD,
         max_unique_adopters=max_unique_adopters,
         best_root_plan_id=best_root_plan_id,

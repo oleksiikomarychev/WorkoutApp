@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package workoutapp.rpe;
+
+import "common.proto";
+
+// RPE Calculation Service
+
+message RPEComputeRequest {
+  workoutapp.common.UserContext user_context = 1;
+  optional float intensity = 2;
+  optional float effort = 3;
+  optional int32 volume = 4;
+  optional float max_weight = 5;
+  optional int32 user_max_id = 6;
+  float rounding_step = 7;
+  string rounding_mode = 8;
+}
+
+message RPEComputeResponse {
+  optional float computed_weight = 1;
+  optional float suggested_weight = 2;
+  string message = 3;
+}
+
+service RPEService {
+  rpc Compute(RPEComputeRequest) returns (RPEComputeResponse);
+}

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
 import 'package:workout_app/providers/target_data_providers.dart';
 
 class TriggerBuilder extends ConsumerStatefulWidget {
@@ -12,7 +13,6 @@ class TriggerBuilder extends ConsumerStatefulWidget {
 }
 
 class _TriggerBuilderState extends ConsumerState<TriggerBuilder> {
-  final _formKey = GlobalKey<FormState>();
   late String _metric;
 
   final Set<int> _selectedExerciseIds = {};
@@ -84,52 +84,62 @@ class _TriggerBuilderState extends ConsumerState<TriggerBuilder> {
   bool get _metricNeedsExercises => _metric == 'Total_Reps' || _metric == 'e1RM' || _metric == 'Performance_Trend' || _metric == 'RPE_Delta_From_Plan' || _metric == 'Reps_Delta_From_Plan';
 
   Future<void> _openExercisePicker() async {
+    final l10n = AppLocalizations.of(context);
     final defs = await ref.read(exerciseDefinitionsProvider.future);
 
     final temp = <int>{..._selectedExerciseIds};
     if (!mounted) return;
+    String searchQuery = '';
     await showDialog(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setLocal) {
+            final filtered = defs.where((d) => d.name.toLowerCase().contains(searchQuery.toLowerCase())).toList();
             return AlertDialog(
               title: const Text('Выбор упражнений'),
               content: SizedBox(
                 width: 420,
                 height: 480,
-                child: defs.isEmpty
-                    ? const Center(child: CircularProgressIndicator())
-                    : ListView.builder(
-                        itemCount: defs.length,
-                        itemBuilder: (_, i) {
-                          final d = defs[i];
-                          final int? id = d.id;
-                          if (id == null) return const SizedBox.shrink();
-                          final selected = temp.contains(id);
-                          final subtitle = [
-                            if ((d.movementType ?? '').isNotEmpty) d.movementType,
-                            if ((d.region ?? '').isNotEmpty) d.region,
-                            if ((d.muscleGroup ?? '').isNotEmpty) d.muscleGroup,
-                            if ((d.equipment ?? '').isNotEmpty) d.equipment,
-                          ].whereType<String>().join(' • ');
+                child: Column(
+                  children: [
+                    TextField(
+                      decoration: InputDecoration(
+                        hintText: l10n.search,
+                        prefixIcon: const Icon(Icons.search),
+                      ),
+                      onChanged: (v) => setLocal(() => searchQuery = v),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: filtered.length,
+                        itemBuilder: (ctx, idx) {
+                          final def = filtered[idx];
+                          if (def.id == null) return const SizedBox.shrink();
+                          final sel = temp.contains(def.id!);
                           return CheckboxListTile(
-                            value: selected,
-                            onChanged: (v) => setLocal(() {
-                              if (v == true) {
-                                temp.add(id);
-                              } else {
-                                temp.remove(id);
-                              }
-                            }),
-                            title: Text(d.name ?? 'Exercise #$id'),
-                            subtitle: subtitle.isEmpty ? null : Text(subtitle),
+                            value: sel,
+                            title: Text(def.name),
+                            subtitle: Text(l10n.idPrefix(def.id.toString())),
+                            onChanged: (v) {
+                              setLocal(() {
+                                if (v == true) {
+                                  temp.add(def.id!);
+                                } else {
+                                  temp.remove(def.id!);
+                                }
+                              });
+                            },
                           );
                         },
                       ),
+                    ),
+                  ],
+                ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Отмена')),
+                TextButton(onPressed: () => Navigator.of(ctx).pop(), child: Text(l10n.cancel)),
                 FilledButton(
                   onPressed: () {
                     setState(() {
@@ -140,7 +150,7 @@ class _TriggerBuilderState extends ConsumerState<TriggerBuilder> {
                     _emit();
                     Navigator.of(ctx).pop();
                   },
-                  child: const Text('Готово'),
+                  child: Text(l10n.done),
                 ),
               ],
             );
@@ -152,27 +162,29 @@ class _TriggerBuilderState extends ConsumerState<TriggerBuilder> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final defsAsync = ref.watch(exerciseDefinitionsProvider);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         DropdownButtonFormField<String>(
           value: _metric.isEmpty ? null : _metric,
-          items: const [
-            DropdownMenuItem(value: 'Readiness_Score', child: Text('Готовность (тренировка)')),
-            DropdownMenuItem(value: 'RPE_Session', child: Text('RPE сессии')),
-            DropdownMenuItem(value: 'Total_Reps', child: Text('Количество повторений')),
-            DropdownMenuItem(value: 'e1RM', child: Text('Оценка 1ПМ (e1RM)')),
-            DropdownMenuItem(value: 'Performance_Trend', child: Text('Тренд прогресса')),
-            DropdownMenuItem(value: 'RPE_Delta_From_Plan', child: Text('RPE — отклонение от плана')),
-            DropdownMenuItem(value: 'Reps_Delta_From_Plan', child: Text('Повторы — отклонение от плана')),
+          items: [
+            DropdownMenuItem(value: 'Readiness_Score', child: Text(l10n.macroTriggerMetricReadiness)),
+            DropdownMenuItem(value: 'RPE_Session', child: Text(l10n.macroTriggerMetricRpeSession)),
+            DropdownMenuItem(value: 'Total_Reps', child: Text(l10n.macroTriggerMetricTotalReps)),
+            DropdownMenuItem(value: 'e1RM', child: Text(l10n.macroTriggerMetricE1rm)),
+            DropdownMenuItem(value: 'Performance_Trend', child: Text(l10n.macroTriggerMetricPerformanceTrend)),
+            DropdownMenuItem(value: 'RPE_Delta_From_Plan', child: Text(l10n.macroTriggerMetricRpeDelta)),
+            DropdownMenuItem(value: 'Reps_Delta_From_Plan', child: Text(l10n.macroTriggerMetricRepsDelta)),
           ],
-          decoration: const InputDecoration(labelText: 'Метрика', border: OutlineInputBorder()),
+          decoration: InputDecoration(labelText: l10n.macroTriggerMetricLabel, border: const OutlineInputBorder()),
           onChanged: (v) {
             setState(() => _metric = v ?? '');
             _emit();
           },
-          validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+          validator: (v) => (v == null || v.isEmpty) ? l10n.fieldRequired : null,
         ),
         if (_metric.isNotEmpty) ...[
           const SizedBox(height: 6),
@@ -214,7 +226,7 @@ class _TriggerBuilderState extends ConsumerState<TriggerBuilder> {
               runSpacing: 6,
               children: _selectedExerciseIds
                   .map((id) => Chip(
-                        label: Text('ID $id'),
+                        label: Text(l10n.idPrefix(id.toString())),
                         onDeleted: () {
                           setState(() => _selectedExerciseIds.remove(id));
                           _emit();

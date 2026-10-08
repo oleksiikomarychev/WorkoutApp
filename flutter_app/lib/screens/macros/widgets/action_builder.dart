@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
 import 'package:workout_app/providers/target_data_providers.dart';
 import 'package:workout_app/providers/plan_providers.dart';
 import 'package:workout_app/screens/macros/widgets/target_selector.dart';
@@ -134,39 +135,39 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
     widget.onChanged(map);
   }
 
-  List<DropdownMenuItem<String>> _modeItemsFor(String type) {
+  List<DropdownMenuItem<String>> _modeItemsFor(String type, AppLocalizations l10n) {
     switch (type) {
       case 'Adjust_Load':
-        return const [
-          DropdownMenuItem(value: 'by_Percent', child: Text('По проценту')),
-          DropdownMenuItem(value: 'to_Target', child: Text('К целевой (RPE)')),
+        return [
+          DropdownMenuItem(value: 'by_Percent', child: Text(l10n.macroActionByPercent)),
+          DropdownMenuItem(value: 'to_Target', child: Text(l10n.macroActionToTarget)),
         ];
       case 'Adjust_Reps':
-        return const [
-          DropdownMenuItem(value: 'by_Value', child: Text('На значение')),
-          DropdownMenuItem(value: 'to_Target', child: Text('К целевой (RPE)')),
+        return [
+          DropdownMenuItem(value: 'by_Value', child: Text(l10n.macroActionByValue)),
+          DropdownMenuItem(value: 'to_Target', child: Text(l10n.macroActionToTarget)),
         ];
       case 'Adjust_Sets':
-        return const [
-          DropdownMenuItem(value: 'by_Value', child: Text('На значение (±N)')),
+        return [
+          DropdownMenuItem(value: 'by_Value', child: Text(l10n.macroActionByValue)),
         ];
       case 'Inject_Mesocycle':
-        return const [
-          DropdownMenuItem(value: 'by_Template', child: Text('По ID шаблона')),
-          DropdownMenuItem(value: 'by_Existing', child: Text('Из существующего (ID)')),
-          DropdownMenuItem(value: 'Create_Inline', child: Text('Создать вручную')),
+        return [
+          DropdownMenuItem(value: 'by_Template', child: Text(l10n.macroActionByTemplate)),
+          DropdownMenuItem(value: 'by_Existing', child: Text(l10n.macroActionByExisting)),
+          DropdownMenuItem(value: 'Create_Inline', child: Text(l10n.macroActionCreateManual)),
         ];
       default:
         return const [];
     }
   }
 
-  String _valueHint() {
-    if (_type == 'Adjust_Load' && _mode == 'by_Percent') return 'процент, напр. -5 или 2.5';
-    if (_type == 'Adjust_Reps' && _mode == 'by_Value') return 'дельта повторений, напр. +1 или -1';
-    if ((_type == 'Adjust_Load' || _type == 'Adjust_Reps') && _mode == 'to_Target') return 'целевой RPE, напр. 8';
-    if (_type == 'Adjust_Sets' && _mode == 'by_Value') return '±N подходов, напр. 1 или -2';
-    return 'значение';
+  String _valueHint(AppLocalizations l10n) {
+    if (_type == 'Adjust_Load' && _mode == 'by_Percent') return l10n.macroActionHintPercent;
+    if (_type == 'Adjust_Reps' && _mode == 'by_Value') return l10n.macroActionHintReps;
+    if ((_type == 'Adjust_Load' || _type == 'Adjust_Reps') && _mode == 'to_Target') return l10n.macroActionHintTargetRpe;
+    if (_type == 'Adjust_Sets' && _mode == 'by_Value') return l10n.macroActionHintSets;
+    return l10n.macroActionHintGeneric;
   }
 
   String _modeHelp() {
@@ -199,18 +200,19 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         DropdownButtonFormField<String>(
           value: _type.isEmpty ? null : _type,
-          items: const [
-            DropdownMenuItem(value: 'Adjust_Load', child: Text('Корректировать вес')),
-            DropdownMenuItem(value: 'Adjust_Reps', child: Text('Корректировать повторения')),
-            DropdownMenuItem(value: 'Adjust_Sets', child: Text('Корректировать подходы')),
-            DropdownMenuItem(value: 'Inject_Mesocycle', child: Text('Внедрить мезоцикл')),
+          items: [
+            DropdownMenuItem(value: 'Adjust_Load', child: Text(l10n.macroActionAdjustLoad)),
+            DropdownMenuItem(value: 'Adjust_Reps', child: Text(l10n.macroActionAdjustReps)),
+            DropdownMenuItem(value: 'Adjust_Sets', child: Text(l10n.macroActionAdjustSets)),
+            DropdownMenuItem(value: 'Inject_Mesocycle', child: Text(l10n.macroActionInjectMesocycle)),
           ],
-          decoration: const InputDecoration(labelText: 'Тип действия', border: OutlineInputBorder()),
+          decoration: InputDecoration(labelText: l10n.macroActionTypeLabel, border: const OutlineInputBorder()),
           onChanged: (v) {
             setState(() {
               _type = v ?? '';
@@ -220,14 +222,14 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
             });
             _emit();
           },
-          validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+          validator: (v) => (v == null || v.isEmpty) ? l10n.fieldRequired : null,
         ),
         const SizedBox(height: 8),
         if (_type.isNotEmpty) ...[
           DropdownButtonFormField<String>(
             value: (_type == 'Inject_Mesocycle' ? (_mesoMode.isEmpty ? null : _mesoMode) : (_mode.isEmpty ? null : _mode)),
-            items: _modeItemsFor(_type),
-            decoration: const InputDecoration(labelText: 'Режим', border: OutlineInputBorder()),
+            items: _modeItemsFor(_type, l10n),
+            decoration: InputDecoration(labelText: l10n.macroActionModeLabel, border: const OutlineInputBorder()),
             onChanged: (v) {
               setState(() {
                 if (_type == 'Inject_Mesocycle') {
@@ -239,7 +241,7 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
               });
               _emit();
             },
-            validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+            validator: (v) => (v == null || v.isEmpty) ? l10n.fieldRequired : null,
           ),
           if (_mode.isNotEmpty || _mesoMode.isNotEmpty) ...[
             const SizedBox(height: 6),
@@ -249,13 +251,13 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
           if (_type != 'Inject_Mesocycle' && _mode.isNotEmpty)
             TextFormField(
               initialValue: _value,
-              decoration: InputDecoration(labelText: 'Значение', hintText: _valueHint(), border: const OutlineInputBorder()),
+              decoration: InputDecoration(labelText: l10n.macroActionValueLabel, hintText: _valueHint(l10n), border: const OutlineInputBorder()),
               keyboardType: TextInputType.number,
               onChanged: (v) {
                 _value = v;
                 _emit();
               },
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+              validator: (v) => (v == null || v.trim().isEmpty) ? l10n.fieldRequired : null,
             ),
           if (_type == 'Inject_Mesocycle' && _mesoMode == 'by_Template') ...[
             Builder(builder: (context) {
@@ -263,22 +265,22 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
               return asyncTpls.when(
                 data: (items) {
                   if (items.isEmpty) {
-                    return const Text('Нет шаблонов мезоциклов');
+                    return Text(l10n.macroActionNoTemplates);
                   }
                   final selected = int.tryParse(_templateId);
                   return DropdownButtonFormField<int>(
                     value: selected,
                     items: items.map((e) => DropdownMenuItem(value: e.id, child: Text(e.name))).toList(),
-                    decoration: const InputDecoration(labelText: 'Шаблон мезоцикла', border: OutlineInputBorder()),
+                    decoration: InputDecoration(labelText: l10n.macroActionTemplateLabel, border: const OutlineInputBorder()),
                     onChanged: (v) {
                       setState(() => _templateId = (v?.toString() ?? ''));
                       _emit();
                     },
-                    validator: (v) => (v == null) ? 'Required' : null,
+                    validator: (v) => (v == null) ? l10n.fieldRequired : null,
                   );
                 },
                 loading: () => const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator(strokeWidth: 2))),
-                error: (e, st) => Text('Ошибка загрузки шаблонов: $e'),
+                error: (e, st) => Text(l10n.macroActionLoadTemplatesError(e.toString())),
               );
             }),
           ] else if (_type == 'Inject_Mesocycle' && _mesoMode == 'by_Existing') ...[
@@ -290,11 +292,11 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
                   final items = <DropdownMenuItem<String>>[];
                   for (int i = 0; i < meso.length; i++) {
                     final m = meso[i];
-                    final label = m.name.isNotEmpty ? m.name : 'Мезоцикл ${(i + 1)}';
+                    final label = m.name.isNotEmpty ? m.name : l10n.macroActionMesoLabel((i + 1).toString());
                     items.add(DropdownMenuItem(value: m.id.toString(), child: Text('$label (ID ${m.id})')));
                   }
 
-                  items.add(const DropdownMenuItem(value: 'manual', child: Text('Другой (ввести ID)')));
+                  items.add(DropdownMenuItem(value: 'manual', child: Text(l10n.macroActionOtherId)));
                   final current = _sourceMesocycleId.isEmpty ? null : _sourceMesocycleId;
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -302,7 +304,7 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
                       DropdownButtonFormField<String>(
                         value: current == null ? null : (items.any((e) => e.value == current) ? current : 'manual'),
                         items: items,
-                        decoration: const InputDecoration(labelText: 'Выбрать мезоцикл', border: OutlineInputBorder()),
+                        decoration: InputDecoration(labelText: l10n.macroActionChooseMeso, border: const OutlineInputBorder()),
                         onChanged: (v) {
                           setState(() {
                             if (v == 'manual') {
@@ -313,29 +315,29 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
                           });
                           _emit();
                         },
-                        validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                        validator: (v) => (v == null || v.isEmpty) ? l10n.fieldRequired : null,
                       ),
                       const SizedBox(height: 8),
                       if (_sourceMesocycleId.isEmpty || _sourceMesocycleId == 'manual')
                         TextFormField(
                           initialValue: _sourceMesocycleId == 'manual' ? '' : _sourceMesocycleId,
-                          decoration: const InputDecoration(labelText: 'ID существующего мезоцикла', border: OutlineInputBorder()),
+                          decoration: InputDecoration(labelText: l10n.macroActionExistingIdLabel, border: const OutlineInputBorder()),
                           keyboardType: TextInputType.number,
                           onChanged: (v) {
                             setState(() => _sourceMesocycleId = v);
                             _emit();
                           },
-                          validator: (v) => (v == null || v.trim().isEmpty || int.tryParse(v) == null) ? 'Введите число' : null,
+                          validator: (v) => (v == null || v.trim().isEmpty || int.tryParse(v) == null) ? l10n.macroActionEnterNumber : null,
                         ),
                     ],
                   );
                 },
                 orElse: () => TextFormField(
                   initialValue: _sourceMesocycleId,
-                  decoration: const InputDecoration(labelText: 'ID существующего мезоцикла', border: OutlineInputBorder()),
+                  decoration: InputDecoration(labelText: l10n.macroActionExistingIdLabel, border: const OutlineInputBorder()),
                   keyboardType: TextInputType.number,
                   onChanged: (v) { setState(() => _sourceMesocycleId = v); _emit(); },
-                  validator: (v) => (v == null || v.trim().isEmpty || int.tryParse(v) == null) ? 'Введите число' : null,
+                  validator: (v) => (v == null || v.trim().isEmpty || int.tryParse(v) == null) ? l10n.macroActionEnterNumber : null,
                 ),
               );
             }),
@@ -344,7 +346,7 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
               Expanded(
                 child: TextFormField(
                   initialValue: _weeks,
-                  decoration: const InputDecoration(labelText: 'Длительность (недель)', border: OutlineInputBorder()),
+                  decoration: InputDecoration(labelText: l10n.macroActionDurationWeeks, border: const OutlineInputBorder()),
                   keyboardType: TextInputType.number,
                   onChanged: (v) { setState(() => _weeks = v); _emit(); },
                   validator: (v) => (v == null || (int.tryParse(v) ?? 0) < 1) ? '>=1' : null,
@@ -354,7 +356,7 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
               Expanded(
                 child: TextFormField(
                   initialValue: _daysInMicro,
-                  decoration: const InputDecoration(labelText: 'Дней в микроцикле', border: OutlineInputBorder()),
+                  decoration: InputDecoration(labelText: l10n.macroActionDaysInMicro, border: const OutlineInputBorder()),
                   keyboardType: TextInputType.number,
                   onChanged: (v) { setState(() => _daysInMicro = v); _emit(); },
                   validator: (v) => (v == null || (int.tryParse(v) ?? 0) < 1) ? '>=1' : null,
@@ -373,7 +375,7 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
                   final isRest = _restDays.contains(idx);
                   return FilterChip(
                     selected: isRest,
-                    label: Text('День $idx: ${isRest ? 'выходной' : 'тренировка'}'),
+                    label: Text(l10n.macroActionDayLabel(idx.toString(), isRest ? l10n.macroActionRest : l10n.macroActionWork)),
                     onSelected: (sel) {
                       setState(() {
                         if (sel) _restDays.add(idx); else _restDays.remove(idx);
@@ -385,7 +387,7 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
               );
             }),
             const SizedBox(height: 8),
-            Text('Теги фокуса', style: Theme.of(context).textTheme.labelLarge),
+            Text(l10n.macroActionFocusTags, style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 6),
             Builder(builder: (context) {
               final tags = ref.watch(tagCatalogProvider);
@@ -429,14 +431,14 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
           ],
           if (_type == 'Inject_Mesocycle' && (_mesoMode == 'by_Template' || _mesoMode == 'Create_Inline' || _mesoMode == 'by_Existing')) ...[
             const SizedBox(height: 12),
-            Text('Размещение', style: Theme.of(context).textTheme.labelLarge),
+            Text(l10n.macroActionPlacement, style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 6),
             DropdownButtonFormField<String>(
               value: _placement,
-              items: const [
-                DropdownMenuItem(value: 'Append_To_End', child: Text('В конец плана')),
-                DropdownMenuItem(value: 'Insert_After_Workout', child: Text('После тренировки')),
-                DropdownMenuItem(value: 'Insert_After_Mesocycle', child: Text('После мезоцикла')),
+              items: [
+                DropdownMenuItem(value: 'Append_To_End', child: Text(l10n.macroActionAppendEnd)),
+                DropdownMenuItem(value: 'Insert_After_Workout', child: Text(l10n.macroActionInsertAfterWorkout)),
+                DropdownMenuItem(value: 'Insert_After_Mesocycle', child: Text(l10n.macroActionInsertAfterMeso)),
               ],
               decoration: const InputDecoration(border: OutlineInputBorder()),
               onChanged: (v) {
@@ -453,7 +455,7 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
               validator: (v) {
                 final mode = v ?? _placement;
                 if (mode == 'Insert_After_Workout' && _anchorPlanOrderIndex == null) {
-                  return 'Нужно выбрать тренировку-якорь';
+                  return l10n.macroActionSelectAnchorWorkout;
                 }
                 return null;
               },
@@ -474,10 +476,10 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
                     }
                   },
                   icon: const Icon(Icons.event),
-                  label: const Text('Выбрать тренировку'),
+                  label: Text(l10n.macroActionPickWorkout),
                 ),
                 const SizedBox(width: 8),
-                Expanded(child: Text(_anchorWorkoutId == null ? 'Не выбрано' : 'После: ${_anchorWorkoutName ?? '#'+_anchorWorkoutId.toString()}')),
+                Expanded(child: Text(_anchorWorkoutId == null ? l10n.macroActionNotSelected : l10n.macroActionAfterAnchor(_anchorWorkoutName ?? '#'+_anchorWorkoutId.toString()))),
               ],
             ),
             if (_placement == 'Insert_After_Mesocycle') Builder(
@@ -487,12 +489,12 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
                   data: (plan) {
                     final meso = plan?.calendarPlan.mesocycles ?? const [];
                     if (meso.isEmpty) {
-                      return const Text('В плане нет мезоциклов');
+                      return Text(l10n.macroActionNoMesoInPlan);
                     }
                     final items = <DropdownMenuItem<String>>[];
                     for (int i = 0; i < meso.length; i++) {
                       final idx = (i + 1).toString();
-                      final label = meso[i].name.isNotEmpty ? '$idx. ${meso[i].name}' : 'Мезоцикл $idx';
+                      final label = meso[i].name.isNotEmpty ? '$idx. ${meso[i].name}' : l10n.macroActionMesoLabel(idx);
                       items.add(DropdownMenuItem(value: idx, child: Text(label)));
                     }
 
@@ -504,7 +506,7 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
                     }
                     return Row(
                       children: [
-                        const Text('Мезоцикл: '),
+                        Text(l10n.macroActionMesoIndexLabel),
                         const SizedBox(width: 8),
                         Expanded(
                           child: DropdownButtonFormField<String>(
@@ -526,14 +528,14 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
             ),
             const SizedBox(height: 12),
             if (_placement != 'Append_To_End') ...[
-              Text('Конфликты', style: Theme.of(context).textTheme.labelLarge),
+              Text(l10n.macroActionConflicts, style: Theme.of(context).textTheme.labelLarge),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
                 value: _conflict,
-                items: const [
-                  DropdownMenuItem(value: 'Replace_Planned', child: Text('Заменять запланированное')),
-                  DropdownMenuItem(value: 'Shift_Forward', child: Text('Сдвигать вперёд')),
-                  DropdownMenuItem(value: 'Skip_On_Conflict', child: Text('Пропускать конфликтующие')),
+                items: [
+                  DropdownMenuItem(value: 'Replace_Planned', child: Text(l10n.macroActionReplacePlanned)),
+                  DropdownMenuItem(value: 'Shift_Forward', child: Text(l10n.macroActionShiftForward)),
+                  DropdownMenuItem(value: 'Skip_On_Conflict', child: Text(l10n.macroActionSkipConflict)),
                 ],
                 decoration: const InputDecoration(border: OutlineInputBorder()),
                 onChanged: (v) { setState(() => _conflict = v ?? 'Shift_Forward'); _emit(); },
@@ -542,9 +544,9 @@ class _ActionBuilderState extends ConsumerState<ActionBuilder> {
           ],
           const SizedBox(height: 16),
           if (_type != 'Inject_Mesocycle') ...[
-            Text('Цель', style: Theme.of(context).textTheme.labelLarge),
+            Text(l10n.macroActionTarget, style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 6),
-            Text('Если цель не указана — действие применяется ко всем упражнениям выбранных воркаутов. Можно указать список exercise_ids или выбрать по тегам.', style: Theme.of(context).textTheme.bodySmall),
+            Text(l10n.macroActionTargetHelp, style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: 8),
             TargetSelector(
               initial: _target,

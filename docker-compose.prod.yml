@@ -60,6 +60,12 @@ services:
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
       - PLANS_SERVICE_URL=http://plans-service:8005
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER}
+      - LLM_MODEL=${LLM_MODEL}
+      - STAGED_LLM_PROVIDER=${STAGED_LLM_PROVIDER}
+      - GENAI_STAGED_MODEL=${GENAI_STAGED_MODEL}
+      - FIREWORKS_API_KEY=${FIREWORKS_API_KEY}
+      - FIREWORKS_BASE_URL=${FIREWORKS_BASE_URL}
       - HF_TOKEN=${HF_TOKEN}
       - APP_ENV=${APP_ENV}
       - SENTRY_DSN=${SENTRY_DSN}
@@ -275,6 +281,8 @@ services:
       - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/3
       - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/4
       - CELERY_WORKOUTS_QUEUE=workouts.tasks
+    volumes:
+      - workouts_data:/app/data
     depends_on:
       redis:
         condition: service_healthy
@@ -297,6 +305,12 @@ services:
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
       - PLANS_SERVICE_URL=http://plans-service:8005
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER}
+      - LLM_MODEL=${LLM_MODEL}
+      - STAGED_LLM_PROVIDER=${STAGED_LLM_PROVIDER}
+      - GENAI_STAGED_MODEL=${GENAI_STAGED_MODEL}
+      - FIREWORKS_API_KEY=${FIREWORKS_API_KEY}
+      - FIREWORKS_BASE_URL=${FIREWORKS_BASE_URL}
       - HF_TOKEN=${HF_TOKEN}
       - APP_ENV=${APP_ENV}
       - SENTRY_DSN=${SENTRY_DSN}

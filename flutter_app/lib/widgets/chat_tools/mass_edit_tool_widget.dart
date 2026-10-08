@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
 import 'package:workout_app/providers/chat_provider.dart';
 import 'package:workout_app/providers/target_data_providers.dart';
 
@@ -23,6 +24,8 @@ class ToolResultCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+
+    final l10n = AppLocalizations.of(context);
 
     return Card(
       elevation: 2,
@@ -64,7 +67,7 @@ class ToolResultCard extends ConsumerWidget {
                     ref.read(chatControllerProvider.notifier).clearMassEditResult();
                   },
                   icon: const Icon(Icons.close_rounded),
-                  label: const Text('Скрыть'),
+                  label: Text(l10n.hide),
                 ),
                 if (actions != null) ...[
                   const SizedBox(width: 8),
@@ -89,6 +92,7 @@ class MassEditToolWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
     final mode = payload['mode']?.toString();
     final isPreview = mode == 'preview';
     final exerciseNameMap = ref.watch(exerciseDefinitionNameMapProvider);
@@ -119,10 +123,10 @@ class MassEditToolWidget extends ConsumerWidget {
     final statusIn = filter['status_in'];
     final exerciseIds = filter['exercise_definition_ids'];
 
-    if (onlyFuture) filterLines.add('Только будущие тренировки');
-    if (scheduledFrom != null && scheduledFrom.isNotEmpty) filterLines.add('Дата не раньше $scheduledFrom');
-    if (scheduledTo != null && scheduledTo.isNotEmpty) filterLines.add('Дата не позже $scheduledTo');
-    if (statusIn is List && statusIn.isNotEmpty) filterLines.add('Статусы: ${statusIn.join(', ')}');
+    if (onlyFuture) filterLines.add(l10n.onlyFutureWorkouts);
+    if (scheduledFrom != null && scheduledFrom.isNotEmpty) filterLines.add(l10n.dateNotEarlierThan(scheduledFrom));
+    if (scheduledTo != null && scheduledTo.isNotEmpty) filterLines.add(l10n.dateNotLaterThan(scheduledTo));
+    if (statusIn is List && statusIn.isNotEmpty) filterLines.add(l10n.statuses(statusIn.join(', ')));
 
     if (exerciseIds is List && exerciseIds.isNotEmpty) {
       final names = <String>[];
@@ -137,7 +141,7 @@ class MassEditToolWidget extends ConsumerWidget {
         }
       }
       if (names.isNotEmpty) {
-        filterLines.add('Упражнения: ${names.join(', ')}');
+        filterLines.add(l10n.exercises(names.join(', ')));
       }
     }
 
@@ -150,21 +154,21 @@ class MassEditToolWidget extends ConsumerWidget {
       }
     }
 
-    addActionLine('set_intensity', (v) => 'Установить интенсивность = ${v.toString()}');
-    addActionLine('increase_intensity_by', (v) => 'Увеличить интенсивность на ${v.toString()}');
-    addActionLine('decrease_intensity_by', (v) => 'Уменьшить интенсивность на ${v.toString()}');
-    addActionLine('set_volume', (v) => 'Установить повторения = ${v.toStringAsFixed(0)}');
-    addActionLine('increase_volume_by', (v) => 'Увеличить повторения на ${v.toStringAsFixed(0)}');
-    addActionLine('decrease_volume_by', (v) => 'Уменьшить повторения на ${v.toStringAsFixed(0)}');
-    addActionLine('set_weight', (v) => 'Установить вес = ${v.toString()} кг');
-    addActionLine('increase_weight_by', (v) => 'Увеличить вес на ${v.toString()} кг');
-    addActionLine('decrease_weight_by', (v) => 'Уменьшить вес на ${v.toString()} кг');
-    addActionLine('set_effort', (v) => 'Установить RPE = ${v.toString()}');
-    addActionLine('increase_effort_by', (v) => 'Увеличить RPE на ${v.toString()}');
-    addActionLine('decrease_effort_by', (v) => 'Уменьшить RPE на ${v.toString()}');
+    addActionLine('set_intensity', (v) => l10n.setIntensity(v.toString()));
+    addActionLine('increase_intensity_by', (v) => l10n.increaseIntensityBy(v.toString()));
+    addActionLine('decrease_intensity_by', (v) => l10n.decreaseIntensityBy(v.toString()));
+    addActionLine('set_volume', (v) => l10n.setVolume(v.toStringAsFixed(0)));
+    addActionLine('increase_volume_by', (v) => l10n.increaseVolumeBy(v.toStringAsFixed(0)));
+    addActionLine('decrease_volume_by', (v) => l10n.decreaseVolumeBy(v.toStringAsFixed(0)));
+    addActionLine('set_weight', (v) => l10n.setWeight(v.toString()));
+    addActionLine('increase_weight_by', (v) => l10n.increaseWeightBy(v.toString()));
+    addActionLine('decrease_weight_by', (v) => l10n.decreaseWeightBy(v.toString()));
+    addActionLine('set_effort', (v) => l10n.setEffort(v.toString()));
+    addActionLine('increase_effort_by', (v) => l10n.increaseEffortBy(v.toString()));
+    addActionLine('decrease_effort_by', (v) => l10n.decreaseEffortBy(v.toString()));
 
     if (actions['clamp_non_negative'] == true) {
-      actionLines.add('Не допускать отрицательных значений');
+      actionLines.add(l10n.clampNonNegative);
     }
 
     final replaceId = actions['replace_exercise_definition_id_to'];
@@ -172,19 +176,19 @@ class MassEditToolWidget extends ConsumerWidget {
       final id = replaceId.toInt();
       final name = exerciseNameMap[id];
       if (name != null && name.isNotEmpty) {
-        actionLines.add('Заменить упражнение на $name (ID $id)');
+        actionLines.add(l10n.replaceExerciseTo(name, id.toString()));
       } else {
-        actionLines.add('Заменить упражнение на ID $id');
+        actionLines.add(l10n.replaceExerciseTo('', id.toString()));
       }
     }
     final replaceName = actions['replace_exercise_name_to']?.toString();
     if (replaceName != null && replaceName.isNotEmpty) {
-      actionLines.add('Переименовать упражнение в "$replaceName"');
+      actionLines.add(l10n.renameExerciseTo(replaceName));
     }
 
     final addInstances = actions['add_exercise_instances'];
     if (addInstances is List && addInstances.isNotEmpty) {
-      actionLines.add('Добавить новых упражнений: ${addInstances.length}');
+      actionLines.add(l10n.addNewExercises(addInstances.length.toString()));
     }
 
 
@@ -192,8 +196,8 @@ class MassEditToolWidget extends ConsumerWidget {
     final colorScheme = theme.colorScheme;
 
     final titleText = isPreview
-        ? 'Предварительный просмотр изменений активного плана'
-        : 'Изменения активного плана применены';
+        ? l10n.massEditPreviewTitle
+        : l10n.massEditAppliedTitle;
 
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -205,15 +209,15 @@ class MassEditToolWidget extends ConsumerWidget {
             children: [
               if (workoutsMatched != null)
                 Chip(
-                  label: Text('Тренировок затронуто: $workoutsMatched'),
+                  label: Text(l10n.massEditToolWorkoutsMatched(workoutsMatched.toString())),
                   visualDensity: VisualDensity.compact,
                 ),
               if (setsCount != null)
                 Chip(
                   label: Text(
                     isPreview
-                        ? 'Сетов будет изменено: $setsCount'
-                        : 'Сетов изменено: $setsCount',
+                        ? l10n.massEditToolSetsToBeModified(setsCount.toString())
+                        : l10n.massEditToolSetsModified(setsCount.toString()),
                   ),
                   visualDensity: VisualDensity.compact,
                 ),
@@ -222,7 +226,7 @@ class MassEditToolWidget extends ConsumerWidget {
         if (filterLines.isNotEmpty) ...[
           const SizedBox(height: 8),
           Text(
-            'Фильтр',
+            l10n.filter,
             style: theme.textTheme.labelLarge?.copyWith(
               color: colorScheme.primary,
               fontWeight: FontWeight.w600,
@@ -242,7 +246,7 @@ class MassEditToolWidget extends ConsumerWidget {
         if (actionLines.isNotEmpty) ...[
           const SizedBox(height: 8),
           Text(
-            'Изменения',
+            l10n.changes,
             style: theme.textTheme.labelLarge?.copyWith(
               color: colorScheme.primary,
               fontWeight: FontWeight.w600,
@@ -273,7 +277,7 @@ class MassEditToolWidget extends ConsumerWidget {
                 .applyMassEditFromPreview(payload);
           },
           icon: const Icon(Icons.check_rounded),
-          label: const Text('Применить'),
+          label: Text(l10n.apply),
           style: ElevatedButton.styleFrom(
             backgroundColor: colorScheme.primary,
             foregroundColor: colorScheme.onPrimary,

@@ -5,13 +5,15 @@ WORKDIR /app
 # Install system dependencies if needed (none for now)
 
 # Copy project metadata and sources
-COPY services/user-max-service/pyproject.toml /app/pyproject.toml
-COPY services/user-max-service/user_max_service /app/user_max_service
-COPY libs/backend-common /libs/backend-common
-
-# Install dependencies (editable install)
 RUN pip install --no-cache-dir -U pip && \
-    pip install --no-cache-dir -e .
+    pip install --no-cache-dir uv
+
+ENV UV_NO_DEV=1 \
+    PATH="/app/.venv/bin:$PATH"
+
+COPY . /app
+
+RUN uv sync --frozen --all-packages
 
 # Copy alembic config and migrations
 COPY services/user-max-service/alembic /app/alembic

@@ -73,38 +73,26 @@ class CoachingEligibility {
 }
 
 class CoachingRatePlan {
-  final String? type;
-  final String? currency;
   final int? amountMinor;
 
   const CoachingRatePlan({
-    this.type,
-    this.currency,
     this.amountMinor,
   });
 
   factory CoachingRatePlan.fromJson(Map<String, dynamic> json) {
     return CoachingRatePlan(
-      type: json['type'] as String?,
-      currency: json['currency'] as String?,
       amountMinor: json['amount_minor'] as int?,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'currency': currency,
         'amount_minor': amountMinor,
       };
 
   CoachingRatePlan copyWith({
-    String? type,
-    String? currency,
     int? amountMinor,
   }) {
     return CoachingRatePlan(
-      type: type ?? this.type,
-      currency: currency ?? this.currency,
       amountMinor: amountMinor ?? this.amountMinor,
     );
   }
@@ -112,101 +100,87 @@ class CoachingRatePlan {
 
 class CoachingProfile {
   final bool enabled;
-  final bool acceptingClients;
   final String? tagline;
   final String? description;
   final List<String> specializations;
   final List<String> languages;
-  final int? experienceYears;
-  final String? timezone;
   final CoachingRatePlan? ratePlan;
   final DateTime createdAt;
   final DateTime updatedAt;
   final String? stripeConnectAccountId;
+  final double? averageRating;
+  final int? reviewCount;
 
   const CoachingProfile({
     required this.enabled,
-    required this.acceptingClients,
     required this.tagline,
     required this.description,
     required this.specializations,
     required this.languages,
-    required this.experienceYears,
-    required this.timezone,
     required this.ratePlan,
     required this.createdAt,
     required this.updatedAt,
     this.stripeConnectAccountId,
+    this.averageRating,
+    this.reviewCount,
   });
 
   factory CoachingProfile.fromJson(Map<String, dynamic> json) {
     return CoachingProfile(
       enabled: json['enabled'] as bool? ?? false,
-      acceptingClients: json['accepting_clients'] as bool? ?? false,
       tagline: json['tagline'] as String?,
       description: json['description'] as String?,
-      specializations: (json['specializations'] as List<dynamic>? ?? const [])
-          .map((e) => e.toString())
-          .toList(),
-      languages: (json['languages'] as List<dynamic>? ?? const [])
-          .map((e) => e.toString())
-          .toList(),
-      experienceYears: json['experience_years'] as int?,
-      timezone: json['timezone'] as String?,
-      ratePlan: json['rate_plan'] is Map<String, dynamic>
-          ? CoachingRatePlan.fromJson(json['rate_plan'] as Map<String, dynamic>)
-          : null,
-      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
-          DateTime.fromMillisecondsSinceEpoch(0),
-      updatedAt: DateTime.tryParse(json['updated_at']?.toString() ?? '') ??
-          DateTime.fromMillisecondsSinceEpoch(0),
+      specializations: (json['specializations'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      languages: (json['languages'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      ratePlan: json['rate_plan'] != null ? CoachingRatePlan.fromJson(json['rate_plan'] as Map<String, dynamic>) : null,
+      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
+      updatedAt: DateTime.tryParse(json['updated_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
       stripeConnectAccountId: json['stripe_connect_account_id'] as String?,
+      averageRating: (json['average_rating'] as num?)?.toDouble(),
+      reviewCount: json['review_count'] as int?,
     );
   }
 
   Map<String, dynamic> toJson() => {
         'enabled': enabled,
-        'accepting_clients': acceptingClients,
         'tagline': tagline,
         'description': description,
         'specializations': specializations,
         'languages': languages,
-        'experience_years': experienceYears,
-        'timezone': timezone,
         'rate_plan': ratePlan?.toJson(),
         'created_at': createdAt.toIso8601String(),
         'updated_at': updatedAt.toIso8601String(),
         'stripe_connect_account_id': stripeConnectAccountId,
+        'average_rating': averageRating,
+        'review_count': reviewCount,
       };
 
   CoachingProfile copyWith({
     bool? enabled,
-    bool? acceptingClients,
     String? tagline,
     String? description,
     List<String>? specializations,
     List<String>? languages,
-    int? experienceYears,
-    String? timezone,
     CoachingRatePlan? ratePlan,
     DateTime? createdAt,
     DateTime? updatedAt,
     String? stripeConnectAccountId,
+    double? averageRating,
+    int? reviewCount,
   }) {
     return CoachingProfile(
       enabled: enabled ?? this.enabled,
-      acceptingClients: acceptingClients ?? this.acceptingClients,
       tagline: tagline ?? this.tagline,
       description: description ?? this.description,
       specializations: specializations ?? List<String>.from(this.specializations),
       languages: languages ?? List<String>.from(this.languages),
-      experienceYears: experienceYears ?? this.experienceYears,
-      timezone: timezone ?? this.timezone,
       ratePlan: ratePlan ?? this.ratePlan,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       stripeConnectAccountId:
           stripeConnectAccountId ?? this.stripeConnectAccountId,
+      averageRating: averageRating ?? this.averageRating,
+      reviewCount: reviewCount ?? this.reviewCount,
     );
   }
 }

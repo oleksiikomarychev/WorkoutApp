@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
 import 'package:workout_app/models/workout.dart';
 import 'package:workout_app/providers/plan_providers.dart';
 import 'package:workout_app/services/api_client.dart';
@@ -85,6 +87,7 @@ class _WorkoutPickerSheetState extends ConsumerState<_WorkoutPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return SafeArea(
       child: Padding(
@@ -99,18 +102,18 @@ class _WorkoutPickerSheetState extends ConsumerState<_WorkoutPickerSheet> {
                     children: [
                       Row(
                         children: [
-                          Text('Выбор тренировки', style: theme.textTheme.titleMedium),
+                          Text(l10n.macroWorkoutPickerTitle, style: theme.textTheme.titleMedium),
                           const Spacer(),
                           IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close)),
                         ],
                       ),
                       const SizedBox(height: 8),
                       if (_workouts.isEmpty) ...[
-                        const Text('Нет тренировок в активном плане'),
+                        Text(l10n.macroWorkoutPickerNoWorkouts),
                         const SizedBox(height: 8),
                         Align(
                           alignment: Alignment.centerRight,
-                          child: FilledButton(onPressed: _load, child: const Text('Обновить')),
+                          child: FilledButton(onPressed: _load, child: Text(l10n.refresh)),
                         ),
                       ] else ...[
                         Container(
@@ -132,13 +135,13 @@ class _WorkoutPickerSheetState extends ConsumerState<_WorkoutPickerSheet> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Text('Тренировки в выбранный день', style: theme.textTheme.titleSmall),
+                        Text(l10n.macroWorkoutPickerWorkoutsOnDate, style: theme.textTheme.titleSmall),
                         const SizedBox(height: 4),
                         Builder(builder: (context) {
                           final day = _selectedDay ?? DateTime.now();
                           final list = _workoutsForDay(day).toList();
                           if (list.isEmpty) {
-                            return const Text('На эту дату нет тренировок');
+                            return Text(l10n.macroWorkoutPickerNoWorkoutsOnDate);
                           }
                           return ConstrainedBox(
                             constraints: const BoxConstraints(maxHeight: 320),
@@ -146,7 +149,7 @@ class _WorkoutPickerSheetState extends ConsumerState<_WorkoutPickerSheet> {
                               shrinkWrap: true,
                               itemBuilder: (_, i) {
                                 final w = list[i];
-                                final when = w.scheduledFor != null ? DateFormat('d MMM, HH:mm').format(w.scheduledFor!) : 'без даты';
+                                final when = w.scheduledFor != null ? DateFormat('d MMM, HH:mm').format(w.scheduledFor!) : l10n.noDate;
                                 return ListTile(
                                   title: Text(w.name),
                                   subtitle: Text(when),
@@ -171,7 +174,7 @@ class _WorkoutPickerSheetState extends ConsumerState<_WorkoutPickerSheet> {
                         const SizedBox(height: 8),
                         Row(
                           children: [
-                            const Text('Или выбрать из списка'),
+                            Text(l10n.macroWorkoutPickerOrSelectFromList),
                             const Spacer(),
                             OutlinedButton.icon(
                               onPressed: () async {
@@ -191,7 +194,7 @@ class _WorkoutPickerSheetState extends ConsumerState<_WorkoutPickerSheet> {
                                 }
                               },
                               icon: const Icon(Icons.list),
-                              label: const Text('Список'),
+                              label: Text(l10n.macroWorkoutPickerList),
                             ),
                           ],
                         ),
@@ -205,7 +208,7 @@ class _WorkoutPickerSheetState extends ConsumerState<_WorkoutPickerSheet> {
                                     : () {
                                         Navigator.of(context).pop(PickedWorkout(id: _selectedWorkoutId!, name: _selectedWorkoutName ?? '', planOrderIndex: _selectedPlanOrderIndex));
                                       },
-                                child: const Text('Готово'),
+                                child: Text(l10n.done),
                               ),
                             ),
                           ],
@@ -224,8 +227,9 @@ class _WorkoutListDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return AlertDialog(
-      title: const Text('Выберите тренировку'),
+      title: Text(l10n.macroWorkoutPickerTitle),
       content: SizedBox(
         width: 420,
         height: 420,
@@ -234,7 +238,7 @@ class _WorkoutListDialog extends StatelessWidget {
           separatorBuilder: (_, __) => const Divider(height: 1),
           itemBuilder: (_, i) {
             final w = workouts[i];
-            final when = w.scheduledFor != null ? DateFormat('d MMM, HH:mm').format(w.scheduledFor!) : 'без даты';
+            final when = w.scheduledFor != null ? DateFormat('d MMM, HH:mm').format(w.scheduledFor!) : l10n.noDate;
             return ListTile(
               title: Text(w.name),
               subtitle: Text(when),
@@ -246,7 +250,7 @@ class _WorkoutListDialog extends StatelessWidget {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.cancel)),
       ],
     );
   }

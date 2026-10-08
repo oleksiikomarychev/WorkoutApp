@@ -7,7 +7,7 @@ import structlog
 
 try:
     import httpx
-except ImportError:  # pragma: no cover
+except ImportError:
     httpx = None
 
 

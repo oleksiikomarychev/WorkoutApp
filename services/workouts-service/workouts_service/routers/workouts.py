@@ -1,9 +1,10 @@
 import os
+import uuid
 from datetime import datetime
 
 import structlog
 from backend_common.celery_utils import build_task_status_response, enqueue_task
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,7 @@ from ..database import get_db
 from ..dependencies import get_current_user_id
 from ..services.rpc_client import PlansServiceRPC, get_exercise_by_id
 from ..services.workout_service import WorkoutService
+from ..tasks.hevy_import_tasks import import_hevy_csv_task
 from ..tasks.workout_tasks import (
     applied_plan_mass_edit_sets_task,
     applied_plan_schedule_shift_task,
@@ -74,6 +76,62 @@ async def create_workout(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create workout: {str(e)}",
         )
+
+
+@router.post("/import/hevy", response_model=schemas.TaskSubmissionResponse)
+async def import_hevy_csv_async(
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user_id),
+):
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are accepted")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    data_dir = (os.getenv("WORKOUTS_DATA_DIR") or "/app/data").rstrip("/")
+    imports_dir = os.path.join(data_dir, "imports", "hevy")
+    os.makedirs(imports_dir, exist_ok=True)
+
+    csv_path = os.path.join(imports_dir, f"{uuid.uuid4().hex}.csv")
+    try:
+        with open(csv_path, "wb") as f:
+            f.write(raw)
+    except Exception as exc:
+        logger.exception("hevy_import_file_write_failed", user_id=user_id, exc_info=exc)
+        raise HTTPException(status_code=500, detail="Failed to save upload")
+
+    try:
+        payload = enqueue_task(
+            import_hevy_csv_task,
+            logger=logger,
+            log_event="hevy_import_async_enqueued",
+            task_kwargs={
+                "user_id": user_id,
+                "csv_path": csv_path,
+            },
+            log_extra={
+                "user_id": user_id,
+            },
+        )
+        return schemas.TaskSubmissionResponse(**payload)
+    except Exception as exc:
+        logger.exception("hevy_import_async_enqueue_failed", user_id=user_id, exc_info=exc)
+        try:
+            os.unlink(csv_path)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail="Failed to enqueue import")
+
+
+@router.get("/import/hevy/tasks/{task_id}", response_model=schemas.TaskStatusResponse)
+async def get_hevy_import_task_status(task_id: str):
+    return build_task_status_response(
+        task_id=task_id,
+        celery_app=celery_app,
+        response_model=schemas.TaskStatusResponse,
+    )
 
 
 @router.get("/", response_model=list[schemas.workout.WorkoutListResponse])
@@ -533,3 +591,18 @@ async def shift_applied_plan_schedule_async(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to enqueue applied plan schedule shift task: {str(e)}",
         )
+
+
+@router.put("/{workout_id}/exercises/replace", response_model=schemas.workout.ExerciseReplacementResult)
+async def replace_workout_exercise_id(
+    workout_id: int,
+    payload: schemas.workout.ExerciseReplacementRequest,
+    service: WorkoutService = Depends(get_workout_service),
+):
+    updated_count = await service.replace_exercise_only_id(
+        workout_id=workout_id,
+        old_exercise_id=payload.old_exercise_id,
+        new_exercise_id=payload.new_exercise_id
+    )
+    return {"updated_count": updated_count}
+

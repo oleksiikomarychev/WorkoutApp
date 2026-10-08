@@ -43,6 +43,10 @@ import 'workout_detail_screen.dart';
 import 'workout_list_screen.dart';
 import 'workout_session_history_screen.dart';
 import 'workouts_screen.dart';
+import 'nutrition_plan_active.dart';
+import 'nutrition_plans_list.dart';
+import 'nutrition_plan_detail.dart';
+import 'nutrition_plan_create.dart';
 import 'package:workout_app/screens/coach/athlete_detail_screen.dart';
 import 'package:workout_app/screens/coach/coach_chat_screen.dart';
 import 'package:workout_app/screens/coach/coach_dashboard_screen.dart';
@@ -58,32 +62,46 @@ class DebugScreen extends StatelessWidget {
       'Active Plan': (context) => const ActivePlanScreen(),
       'Analytics': (context) => const AnalyticsScreen(),
       'Calendar Plan Create': (context) => const CalendarPlanCreate(),
-      'Calendar Plan Detail (stub)': (context) => CalendarPlanDetail(plan: _stubCalendarPlan()),
+      'Calendar Plan Detail (stub)': (context) =>
+          CalendarPlanDetail(plan: _stubCalendarPlan()),
       'Calendar Plans': (context) => const CalendarPlansScreen(),
       'Chat Screen (embedded)': (context) => const ChatScreen(embedded: true),
       'Exercise Selection': (context) => ExerciseSelectionScreen(),
-      'Exercise Form (stub)': (context) => ExerciseFormScreen(exercise: _stubExerciseDefinition(), workoutId: 0),
+      'Exercise Form (stub)': (context) =>
+          ExerciseFormScreen(exercise: _stubExerciseDefinition(), workoutId: 0),
       'Workout Detail': (context) => WorkoutDetailScreen(workoutId: 2000),
       'Workouts': (context) => WorkoutsScreen(),
       'Workout List': (context) => WorkoutListScreen(progressionId: 1),
       'Exercise List': (context) => ExerciseListScreen(),
       'Exercises Screen': (context) => const ExercisesScreen(),
       'Home Screen': (context) => const HomeScreenNew(),
-      'Macro Editor': (context) => MacroEditorScreen(initial: _stubPlanMacro(), calendarPlanId: 1),
+      'Macro Editor': (context) =>
+          MacroEditorScreen(initial: _stubPlanMacro(), calendarPlanId: 1),
       'Macros List': (context) => const MacrosListScreen(calendarPlanId: 1),
-      'Macros Preview': (context) => const MacrosPreviewScreen(appliedPlanId: 1),
-      'Plan Editor (stub)': (context) => PlanEditorScreen(plan: _stubCalendarPlan()),
-      'Plan Microcycle Editor (stub)': (context) => PlanMicrocycleEditor(microcycle: _stubMicrocycle()),
-      'Progression Detail (stub)': (context) => const ProgressionDetailScreen(templateId: 1),
+      'Macros Preview': (context) =>
+          const MacrosPreviewScreen(appliedPlanId: 1),
+      'Plan Editor (stub)': (context) =>
+          PlanEditorScreen(plan: _stubCalendarPlan()),
+      'Plan Microcycle Editor (stub)': (context) =>
+          PlanMicrocycleEditor(microcycle: _stubMicrocycle()),
+      'Progression Detail (stub)': (context) =>
+          const ProgressionDetailScreen(templateId: 1),
       'User Maxes': (context) => const UserMaxScreen(),
       'Session History': (context) => const SessionHistoryScreen(),
-      'Session Log': (context) => SessionLogScreen(session: _stubWorkoutSession()),
+      'Session Log': (context) =>
+          SessionLogScreen(session: _stubWorkoutSession()),
       'Splash Screen': (context) => const SplashScreenNew(),
       'User Profile': (context) => const UserProfileScreen(),
       'All Users (list)': (context) => const AllUsersScreen(),
-      'Workout Session History': (context) => const WorkoutSessionHistoryScreen(workoutId: 1),
+      'Workout Session History': (context) =>
+          const WorkoutSessionHistoryScreen(workoutId: 1),
       'Coach Dashboard (CRM)': (context) => const CoachDashboardScreen(),
       'Coach Athletes (CRM)': (context) => const CoachAthletesScreen(),
+      'Nutrition Plan Active': (context) => const NutritionPlanActive(),
+      'Nutrition Plans List': (context) => const NutritionPlansList(),
+      'Nutrition Plan Detail': (context) =>
+          const NutritionPlanDetail(sessionData: {}),
+      'Nutrition Plan Create': (context) => const NutritionPlanCreate(),
       ..._coachAndSocialScreens(),
     };
 
@@ -100,15 +118,15 @@ class DebugScreen extends StatelessWidget {
                       title: const Text('Reset app state'),
                       onTap: () {},
                     ),
-                    ListTile(
-                      title: const Text('Clear cache'),
-                      onTap: () {},
-                    ),
+                    ListTile(title: const Text('Clear cache'), onTap: () {}),
                     const Divider(),
                     ...screens.entries.map((entry) {
                       return ListTile(
                         title: Text(entry.key),
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: entry.value)),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: entry.value),
+                        ),
                       );
                     }),
                   ],
@@ -118,9 +136,7 @@ class DebugScreen extends StatelessWidget {
                   child: FloatingHeaderBar(
                     title: 'Debug Screen',
                     onTitleTap: openChat,
-                    actions: [
-                      _buildOverflowMenu(context),
-                    ],
+                    actions: [_buildOverflowMenu(context)],
                   ),
                 ),
               ],
@@ -140,10 +156,7 @@ class DebugScreen extends StatelessWidget {
         }
       },
       itemBuilder: (context) => const [
-        PopupMenuItem(
-          value: 'logout',
-          child: Text('Log out'),
-        ),
+        PopupMenuItem(value: 'logout', child: Text('Log out')),
       ],
     );
   }
@@ -176,7 +189,10 @@ class DebugScreen extends StatelessWidget {
       } catch (_) {}
       await FirebaseAuth.instance.signOut();
       try {
-        await GoogleSignIn().signOut();
+        await GoogleSignIn(
+          clientId:
+              '282810209663-u4upa0psrlsd24ls422na68n1gcmlllb.apps.googleusercontent.com',
+        ).signOut();
       } catch (_) {}
     } catch (e) {
       if (!context.mounted) return;
@@ -192,78 +208,77 @@ class DebugScreen extends StatelessWidget {
   Map<String, WidgetBuilder> _coachAndSocialScreens() {
     return {
       'Coach Chat (stub)': (context) => CoachChatScreen(
-            args: CoachChatScreenArgs(
-              channelId: 'debug-channel',
-              title: 'Debug Coach Chat',
-            ),
-          ),
+        args: CoachChatScreenArgs(
+          channelId: 'debug-channel',
+          title: 'Debug Coach Chat',
+        ),
+      ),
       'Coach Relationships': (context) => const CoachRelationshipsScreen(),
-      'Coach Athlete Detail (stub)': (context) => const AthleteDetailScreen(
-            athleteId: 'debug-athlete',
-          ),
+      'Coach Athlete Detail (stub)': (context) =>
+          const AthleteDetailScreen(athleteId: 'debug-athlete'),
       'Coach Athlete Plan (stub)': (context) => const CoachAthletePlanScreen(
-            athleteId: 'debug-athlete',
-            athleteName: 'Debug Athlete',
-          ),
+        athleteId: 'debug-athlete',
+        athleteName: 'Debug Athlete',
+      ),
       'My Coaches': (context) => const MyCoachesScreen(),
       'Social Feed': (context) => const SocialFeedScreen(),
       'Public User Profile (stub)': (context) => const PublicUserProfileScreen(
-            userId: 'debug-user',
-            initialName: 'Debug User',
-          ),
+        userId: 'debug-user',
+        initialName: 'Debug User',
+      ),
     };
   }
 
-CalendarPlan _stubCalendarPlan() {
-  return CalendarPlan(
-    id: 0,
-    name: 'Sample Plan',
-    schedule: const {},
-    durationWeeks: 0,
-    mesocycles: const [],
-  );
-}
+  CalendarPlan _stubCalendarPlan() {
+    return CalendarPlan(
+      id: 0,
+      name: 'Sample Plan',
+      schedule: const {},
+      durationWeeks: 0,
+      mesocycles: const [],
+    );
+  }
 
-ExerciseDefinition _stubExerciseDefinition() {
-  return const ExerciseDefinition(
-    id: 0,
-    name: 'Sample Exercise',
-    muscleGroup: 'Chest',
-    equipment: 'Barbell',
-  );
-}
+  ExerciseDefinition _stubExerciseDefinition() {
+    return const ExerciseDefinition(
+      id: 0,
+      name: 'Sample Exercise',
+      muscleGroup: 'Chest',
+      equipment: 'Barbell',
+    );
+  }
 
-PlanMacro _stubPlanMacro() {
-  return PlanMacro(
-    calendarPlanId: 1,
-    name: 'Sample Macro',
-    isActive: true,
-    priority: 100,
-    rule: MacroRule.empty(),
-  );
-}
+  PlanMacro _stubPlanMacro() {
+    return PlanMacro(
+      calendarPlanId: 1,
+      name: 'Sample Macro',
+      isActive: true,
+      priority: 100,
+      rule: MacroRule.empty(),
+    );
+  }
 
-Microcycle _stubMicrocycle() {
-  return const Microcycle(
-    id: 0,
-    mesocycleId: 0,
-    name: 'Sample Microcycle',
-    orderIndex: 0,
-    schedule: <String, List<ExerciseScheduleItemDto>>{},
-    daysCount: 7,
-  );
-}
+  Microcycle _stubMicrocycle() {
+    return const Microcycle(
+      id: 0,
+      mesocycleId: 0,
+      name: 'Sample Microcycle',
+      orderIndex: 0,
+      schedule: <String, List<ExerciseScheduleItemDto>>{},
+      daysCount: 7,
+    );
+  }
 
-WorkoutSession _stubWorkoutSession() {
-  final now = DateTime.now();
-  return WorkoutSession(
-    id: 0,
-    workoutId: 0,
-    startedAt: now,
-    finishedAt: now,
-    status: 'completed',
-    durationSeconds: 0,
-    progress: const {},
-  );
-}
+  WorkoutSession _stubWorkoutSession() {
+    final now = DateTime.now();
+    return WorkoutSession(
+      id: 0,
+      workoutId: 0,
+      startedAt: now,
+      finishedAt: now,
+      status: 'completed',
+      durationSeconds: 0,
+      progress: const {},
+    );
+  }
 }

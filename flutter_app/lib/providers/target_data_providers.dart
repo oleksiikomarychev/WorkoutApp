@@ -2,12 +2,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/models/exercise_definition.dart';
 import 'package:workout_app/services/api_client.dart';
 import 'package:workout_app/services/exercise_service.dart';
+import 'exercise_pagination_provider.dart';
 
 final exerciseServiceProvider = Provider<ExerciseService>((ref) => ExerciseService(ApiClient()));
 
+// Legacy provider for backward compatibility
 final exerciseDefinitionsProvider = FutureProvider<List<ExerciseDefinition>>((ref) async {
   final svc = ref.watch(exerciseServiceProvider);
-  return svc.getExerciseDefinitions();
+  return svc.getExerciseDefinitionsLegacy();
+});
+
+// New paginated exercise provider
+final paginatedExercisesProvider = StateNotifierProvider<PaginatedExercisesNotifier, PaginatedExercisesState>((ref) {
+  final service = ref.watch(exerciseServiceProvider);
+  return PaginatedExercisesNotifier(service);
+});
+
+// Exercise search provider
+final exerciseSearchProvider = StateNotifierProvider<ExerciseSearchNotifier, ExerciseSearchState>((ref) {
+  final service = ref.watch(exerciseServiceProvider);
+  return ExerciseSearchNotifier(service);
 });
 
 final exerciseDefinitionNameMapProvider = Provider<Map<int, String>>((ref) {

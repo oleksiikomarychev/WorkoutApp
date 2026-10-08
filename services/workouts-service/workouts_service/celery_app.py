@@ -28,4 +28,4 @@ celery_app.conf.update(
     result_expires=int(os.getenv("CELERY_RESULT_EXPIRES", "3600")),
 )
 
-celery_app.autodiscover_tasks(["workouts_service.tasks"])
+celery_app.autodiscover_tasks(["workouts_service"])

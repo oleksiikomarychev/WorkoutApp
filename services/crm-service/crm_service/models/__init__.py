@@ -6,6 +6,7 @@ from .relationships import (
     CoachAthleteNote,
     CoachAthleteTag,
 )
+from .reviews import CoachReview
 
 __all__ = [
     "CoachAthleteLink",
@@ -14,4 +15,5 @@ __all__ = [
     "CoachAthleteTag",
     "CoachAthleteLinkTag",
     "CoachAthletePayment",
+    "CoachReview",
 ]

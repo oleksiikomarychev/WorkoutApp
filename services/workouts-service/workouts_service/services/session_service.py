@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import UTC, datetime
 
 import httpx
@@ -78,7 +79,11 @@ class SessionService:
         )
         active = result.scalars().first()
         if active:
-            return active
+            # Finish the old active session before starting a new one
+            active.status = "completed"
+            active.finished_at = datetime.now(UTC).replace(tzinfo=None)
+            await self.db.commit()
+            await invalidate_session_cache(self.user_id, session_ids=[active.id])
 
         if started_at is None:
             started_at = datetime.now(UTC)
@@ -105,15 +110,42 @@ class SessionService:
             logger.exception("Failed to increment WORKOUT_SESSIONS_STARTED_TOTAL")
 
         await invalidate_session_cache(self.user_id, session_ids=[session.id])
+        logger.info(
+            "session_created",
+            user_id=self.user_id,
+            workout_id=workout_id,
+            session_id=session.id,
+            session_status=session.status,
+        )
         return session
 
     def _serialize_session(self, session: WorkoutSession) -> dict:
         started_at = session.started_at
         finished_at = session.finished_at
+        
+        # Handle datetime objects
         if isinstance(started_at, datetime):
             started_at = started_at.isoformat()
+            if started_at and not started_at.endswith('Z') and not re.search(r'[+-]\d{2}:\d{2}$', started_at):
+                started_at = f"{started_at}Z"
+        elif isinstance(started_at, str):
+            # Handle string dates (from cache or old data)
+            if not started_at.strip() or started_at.strip() == 'Z':
+                started_at = None
+            elif not started_at.endswith('Z') and not re.search(r'[+-]\d{2}:\d{2}$', started_at):
+                started_at = f"{started_at}Z"
+        
         if isinstance(finished_at, datetime):
             finished_at = finished_at.isoformat()
+            if finished_at and not finished_at.endswith('Z') and not re.search(r'[+-]\d{2}:\d{2}$', finished_at):
+                finished_at = f"{finished_at}Z"
+        elif isinstance(finished_at, str):
+            # Handle string dates (from cache or old data)
+            if not finished_at.strip() or finished_at.strip() == 'Z':
+                finished_at = None
+            elif not finished_at.endswith('Z') and not re.search(r'[+-]\d{2}:\d{2}$', finished_at):
+                finished_at = f"{finished_at}Z"
+        
         return {
             "id": session.id,
             "workout_id": session.workout_id,
@@ -189,14 +221,18 @@ class SessionService:
             await self._set_cached_session(session_id, self._serialize_session(session))
         return session
 
-    async def finish_session(self, session_id: int) -> WorkoutSession:
+    async def finish_session(self, session_id: int, finished_at: datetime | None = None) -> WorkoutSession:
         session = await self.get_session_by_id(session_id)
         if not session:
             raise SessionNotFoundException(session_id)
         if session.status == "finished":
             return session
 
-        finished_at = datetime.now(UTC).replace(tzinfo=None)
+        if finished_at is not None:
+            if finished_at.tzinfo is not None:
+                finished_at = finished_at.replace(tzinfo=None)
+        else:
+            finished_at = datetime.now(UTC).replace(tzinfo=None)
         session.status = "finished"
         session.finished_at = finished_at
         result = await self.db.execute(
@@ -302,6 +338,47 @@ class SessionService:
         await invalidate_session_cache(self.user_id, session_ids=[session_id])
         return session
 
+    async def complete_all_sets(self, session_id: int, completed: bool) -> WorkoutSession:
+        session = await self.get_session_by_id(session_id)
+        if not session:
+            raise SessionNotFoundException(session_id)
+
+        workout_id = session.workout_id
+        instances = await self._fetch_instances_from_exercises_service(workout_id)
+
+        new_completed: dict[str, list[int]] = {}
+        if completed:
+            for inst in instances or []:
+                if not isinstance(inst, dict):
+                    continue
+                try:
+                    instance_id = int(inst.get("id"))
+                except (TypeError, ValueError):
+                    continue
+                set_ids: list[int] = []
+                for s in inst.get("sets") or []:
+                    if not isinstance(s, dict):
+                        continue
+                    try:
+                        sid = int(s.get("id"))
+                    except (TypeError, ValueError):
+                        continue
+                    set_ids.append(sid)
+                if set_ids:
+                    new_completed[str(instance_id)] = set_ids
+
+        progress = dict(session.progress or {})
+        if new_completed:
+            progress["completed"] = new_completed
+        else:
+            progress["completed"] = {}
+        session.progress = progress
+
+        await self.db.commit()
+        await self.db.refresh(session)
+        await invalidate_session_cache(self.user_id, session_ids=[session_id])
+        return session
+
     async def _prepare_user_max_payload(
         self, workout: Workout, session: WorkoutSession, finished_at: datetime
     ) -> list[dict] | None:
@@ -331,15 +408,32 @@ class SessionService:
                 continue
 
             exercise_id = int(inst["exercise_list_id"])
-            for s in inst.get("sets") or []:
-                sid = int(s["id"])
+            for top in inst.get("sets") or []:
+                if not isinstance(top, dict) or "id" not in top:
+                    continue
+                try:
+                    sid = int(top["id"])
+                except (TypeError, ValueError):
+                    continue
                 if sid not in completed_set_ids:
                     continue
-                entry = self._build_entry_from_dict(exercise_id, s)
-                if not entry:
-                    continue
-                key = (entry["exercise_id"], entry["rep_max"])
-                entries[key] = max(entries.get(key, 0.0), entry["max_weight"])
+
+                subsets = top.get("subsets")
+                if isinstance(subsets, list) and subsets:
+                    for sub in subsets:
+                        if not isinstance(sub, dict):
+                            continue
+                        entry = self._build_entry_from_dict(exercise_id, sub)
+                        if not entry:
+                            continue
+                        key = (entry["exercise_id"], entry["rep_max"])
+                        entries[key] = max(entries.get(key, 0.0), entry["max_weight"])
+                else:
+                    entry = self._build_entry_from_dict(exercise_id, top)
+                    if not entry:
+                        continue
+                    key = (entry["exercise_id"], entry["rep_max"])
+                    entries[key] = max(entries.get(key, 0.0), entry["max_weight"])
 
         if not entries and workout.exercises:
             for exercise in workout.exercises:

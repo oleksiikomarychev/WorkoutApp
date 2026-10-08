@@ -11,8 +11,10 @@ if DATABASE_URL:
     DATABASE_URL = ensure_asyncpg_url(DATABASE_URL)
 
 
-engine, AsyncSessionLocal = create_async_engine_and_session(DATABASE_URL)
-
+engine, AsyncSessionLocal = create_async_engine_and_session(DATABASE_URL, pool_size=20,
+    max_overflow=30,
+    pool_pre_ping=True,
+    pool_recycle=3600,)
 
 get_db: AsyncSession = make_get_db_async(AsyncSessionLocal)  # type: ignore[assignment]
 get_current_user_id = make_get_current_user_id("plans-service")

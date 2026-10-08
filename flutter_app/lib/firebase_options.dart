@@ -1,28 +1,6 @@
-
-
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
@@ -63,8 +41,6 @@ class DefaultFirebaseOptions {
     measurementId: 'G-3WDT9BKRDP',
   );
 
-
-
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyASdTsNqby6t-5JglUyEnErO9RcPCSGlrc',
     appId: '1:282810209663:android:8bac6a4b60ba702535364a',
@@ -74,12 +50,16 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'YOUR_IOS_API_KEY',
-    appId: 'YOUR_IOS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    storageBucket: 'YOUR_PROJECT_ID.appspot.com',
-    iosBundleId: 'com.example.workoutApp',
+    apiKey: 'AIzaSyBJsEsZdjpKaR25lQl_72c6xDBzNgyYgD0',
+    appId: '1:282810209663:ios:5f5175d119b4e06635364a',
+    messagingSenderId: '282810209663',
+    projectId: 'workout-app-auth-d49ae',
+    storageBucket: 'workout-app-auth-d49ae.firebasestorage.app',
+    androidClientId:
+        '282810209663-2c8gaol6ijkhp96tc1c70fuj4bdvpgse.apps.googleusercontent.com',
+    iosClientId:
+        '282810209663-u4upa0psrlsd24ls422na68n1gcmlllb.apps.googleusercontent.com',
+    iosBundleId: 'com.oleksii.workoutApp',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -88,9 +68,10 @@ class DefaultFirebaseOptions {
     messagingSenderId: '282810209663',
     projectId: 'workout-app-auth-d49ae',
     storageBucket: 'workout-app-auth-d49ae.firebasestorage.app',
-    androidClientId: '282810209663-2c8gaol6ijkhp96tc1c70fuj4bdvpgse.apps.googleusercontent.com',
-    iosClientId: '282810209663-psrtkj09pjudfn2ft0ifqfiugdm2oiel.apps.googleusercontent.com',
+    androidClientId:
+        '282810209663-2c8gaol6ijkhp96tc1c70fuj4bdvpgse.apps.googleusercontent.com',
+    iosClientId:
+        '282810209663-psrtkj09pjudfn2ft0ifqfiugdm2oiel.apps.googleusercontent.com',
     iosBundleId: 'com.example.workoutApp',
   );
-
 }

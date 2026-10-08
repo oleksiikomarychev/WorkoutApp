@@ -2,17 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
 import 'package:workout_app/models/workout_session.dart';
 import 'package:workout_app/providers/providers.dart';
 import 'package:workout_app/screens/session_log_screen.dart';
 import 'package:workout_app/widgets/primary_app_bar.dart';
 import 'package:workout_app/widgets/assistant_chat_host.dart';
+import 'package:workout_app/widgets/loading_indicator.dart';
+import 'package:workout_app/widgets/error_message.dart';
+import 'package:workout_app/widgets/empty_state.dart';
 
 class SessionHistoryScreen extends ConsumerStatefulWidget {
   const SessionHistoryScreen({super.key});
 
   @override
-  ConsumerState<SessionHistoryScreen> createState() => _SessionHistoryScreenState();
+  ConsumerState<SessionHistoryScreen> createState() =>
+      _SessionHistoryScreenState();
 }
 
 class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
@@ -23,7 +28,6 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
   @override
   void initState() {
     super.initState();
-
   }
 
   @override
@@ -43,7 +47,6 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
 
     final workoutId = int.tryParse(raw);
     if (workoutId == null) {
-
       setState(() {
         _filterWorkoutId = null;
       });
@@ -75,7 +78,9 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
       child: ListTile(
-        title: Text('Session #${session.id ?? '-'} | ${session.status.toUpperCase()}'),
+        title: Text(
+          'Session #${session.id ?? '-'} | ${session.status.toUpperCase()}',
+        ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -95,96 +100,94 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
               builder: (_) => SessionLogScreen(session: session),
             ),
           );
-        }
+        },
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final sessionsAsync = ref.watch(completedSessionsProviderFamily(_filterWorkoutId));
+    final l10n = AppLocalizations.of(context);
+    final sessionsAsync = ref.watch(
+      completedSessionsProviderFamily(_filterWorkoutId),
+    );
+
     return AssistantChatHost(
+      contextBuilder: () async => {
+        'screen': 'session_history',
+        'entities': {'filter_workout_id': _filterWorkoutId},
+      },
       builder: (context, openChat) {
         return Scaffold(
           appBar: PrimaryAppBar(
-            title: 'Session History Debug',
+            title: 'Session History',
             onTitleTap: openChat,
+            showBack: true,
           ),
-          body: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _workoutIdController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Workout ID (необязательно)',
-                hintText: 'Оставьте пустым, чтобы загрузить все сессии',
-              ),
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              onSubmitted: (_) => _handleLoadTapped(),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                ElevatedButton.icon(
-                  onPressed: _handleLoadTapped,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Загрузить истории'),
+          body: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _workoutIdController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Workout ID',
+                          border: OutlineInputBorder(),
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        onSubmitted: (_) => _handleLoadTapped(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.search),
+                      onPressed: _handleLoadTapped,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _workoutIdController.clear();
+                        setState(() => _filterWorkoutId = null);
+                      },
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                IconButton(
-                  icon: const Icon(Icons.clear),
-                  tooltip: 'Сбросить фильтр',
-                  onPressed: () {
-                    _workoutIdController.clear();
-                    setState(() {
-                      _filterWorkoutId = null;
-                    });
+              ),
+              Expanded(
+                child: sessionsAsync.when(
+                  loading: () => const LoadingIndicator(),
+                  error: (err, _) => ErrorMessage(
+                    message: 'Error loading history: $err',
+                    onRetry: () => ref.invalidate(
+                      completedSessionsProviderFamily(_filterWorkoutId),
+                    ),
+                  ),
+                  data: (sessions) {
+                    if (sessions.isEmpty) {
+                      return const EmptyState(
+                        icon: Icons.history,
+                        title: 'No sessions found',
+                        description: 'Try changing your filter',
+                      );
+                    }
+                    return ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      itemCount: sessions.length,
+                      itemBuilder: (context, index) =>
+                          _buildSessionTile(sessions[index]),
+                    );
                   },
                 ),
-                sessionsAsync.isLoading ? const CircularProgressIndicator() : const SizedBox.shrink(),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const SizedBox(height: 8),
-            sessionsAsync.when(
-              loading: () => const Expanded(
-                child: Center(child: CircularProgressIndicator()),
               ),
-              error: (err, _) => Expanded(
-                child: Center(
-                  child: Text('Ошибка загрузки: $err', style: const TextStyle(color: Colors.red)),
-                ),
-              ),
-              data: (sessions) => Expanded(
-                child: sessions.isEmpty
-                    ? const Center(child: Text('Нет данных для отображения'))
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              'Всего сессий: ${sessions.length}',
-                              style: const TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                          Expanded(
-                            child: ListView.builder(
-                              itemCount: sessions.length,
-                              itemBuilder: (context, index) => _buildSessionTile(sessions[index]),
-                            ),
-                          ),
-                        ],
-                      ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+            ],
+          ),
+        );
       },
     );
   }

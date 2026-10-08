@@ -23,7 +23,7 @@ class Workout with _$Workout {
     @JsonKey(name: 'status') String? status,
     @JsonKey(name: 'started_at') DateTime? startedAt,
     @JsonKey(name: 'duration_seconds') int? durationSeconds,
-    @JsonKey(name: 'rpe_session') double? rpeSession,
+    @JsonKey(name: 'rpe_session') double? effortSession,
     String? location,
     @JsonKey(name: 'readiness_score') int? readinessScore,
 
@@ -98,7 +98,7 @@ class Workout with _$Workout {
       if (status != null) 'status': status,
       if (startedAt != null) 'started_at': startedAt?.toIso8601String(),
       if (durationSeconds != null) 'duration_seconds': durationSeconds,
-      if (rpeSession != null) 'rpe_session': rpeSession,
+      if (effortSession != null) 'rpe_session': effortSession,
       if (location != null) 'location': location,
       if (readinessScore != null) 'readiness_score': readinessScore,
       if (appliedPlanId != null) 'applied_plan_id': appliedPlanId,
@@ -107,9 +107,9 @@ class Workout with _$Workout {
       if (completedAt != null) 'completed_at': completedAt?.toIso8601String(),
       if (nextWorkoutId != null) 'next_workout_id': nextWorkoutId,
       'exercise_instances': exerciseInstances
-          .map((ei) => ei.toFormData())
-          .toList(),
-      'workout_type': workoutType.toString().split('.').last,
     };
   }
+
+  // Add getter for backward compatibility
+  double? get rpeSession => effortSession;
 }

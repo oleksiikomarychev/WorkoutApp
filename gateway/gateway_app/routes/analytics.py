@@ -3,11 +3,16 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
+import accounts_pb2 as accounts_pb2
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 
 from gateway_app import main as gateway_main  # type: ignore
 from gateway_app import schemas
+from gateway_app.grpc_clients import (
+    create_user_context,
+    grpc_client_manager,
+)
 from gateway_app.http_client import ServiceClient
 
 analytics_router = APIRouter(prefix="/api/v1")
@@ -85,16 +90,71 @@ async def get_profile_aggregates(
 
 @analytics_router.get("/profile/me")
 async def proxy_profile_me(request: Request) -> Response:
-    headers = gateway_main._forward_headers(request)
-    target_url = f"{gateway_main.ACCOUNTS_SERVICE_URL}/profile/me"
-    return await _proxy_request_analytics(request, target_url, headers)
+    """Get user profile using gRPC."""
+    user = getattr(request.state, "user", None)
+    uid = user.get("uid") if user else None
+    if not uid:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
+    stub = await grpc_client_manager.get_accounts_stub()
+    user_context = create_user_context(str(uid))
+
+    request_pb = accounts_pb2.GetProfileRequest(user_context=user_context)
+    response = await stub.GetProfile(request_pb, timeout=10.0)
+
+    profile = response.profile
+    if not profile:
+        return JSONResponse(status_code=404, content={"detail": "Profile not found"})
+
+    profile_dict = {
+        "user_id": profile.user_id,
+        "email": profile.email,
+        "name": profile.name,
+        "photo_url": profile.photo_url,
+        "preferences": dict(profile.preferences),
+    }
+
+    return JSONResponse(content=profile_dict)
 
 
 @analytics_router.patch("/profile/me")
 async def proxy_update_profile_me(request: Request) -> Response:
-    headers = gateway_main._forward_headers(request)
-    target_url = f"{gateway_main.ACCOUNTS_SERVICE_URL}/profile/me"
-    return await _proxy_request_analytics(request, target_url, headers)
+    """Update user profile using gRPC."""
+    user = getattr(request.state, "user", None)
+    uid = user.get("uid") if user else None
+    if not uid:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
+    body = await request.json()
+
+    stub = await grpc_client_manager.get_accounts_stub()
+    user_context = create_user_context(str(uid))
+
+    profile_pb = accounts_pb2.Profile(
+        user_id=str(uid),
+        name=body.get("name", ""),
+        photo_url=body.get("photo_url", ""),
+    )
+
+    request_pb = accounts_pb2.UpdateProfileRequest(
+        profile=profile_pb,
+        user_context=user_context,
+    )
+    response = await stub.UpdateProfile(request_pb, timeout=10.0)
+
+    profile = response.profile
+    if not profile:
+        return JSONResponse(status_code=500, content={"detail": "Failed to update profile"})
+
+    profile_dict = {
+        "user_id": profile.user_id,
+        "email": profile.email,
+        "name": profile.name,
+        "photo_url": profile.photo_url,
+        "preferences": dict(profile.preferences),
+    }
+
+    return JSONResponse(content=profile_dict)
 
 
 @analytics_router.post("/profile/me/stripe/connect/onboarding-link")

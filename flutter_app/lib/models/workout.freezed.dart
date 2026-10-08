@@ -1,24 +1,25 @@
 // coverage:ignore-file
-
-
-
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint
+// ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'workout.dart';
 
-
-
-
+// **************************************************************************
+// FreezedGenerator
+// **************************************************************************
 
 T _$identity<T>(T value) => value;
 
 final _privateConstructorUsedError = UnsupportedError(
-    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
+  'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models',
+);
 
 Workout _$WorkoutFromJson(Map<String, dynamic> json) {
   return _Workout.fromJson(json);
 }
 
-
+/// @nodoc
 mixin _$Workout {
   int? get id => throw _privateConstructorUsedError;
   String get name => throw _privateConstructorUsedError;
@@ -30,16 +31,14 @@ mixin _$Workout {
   @JsonKey(name: 'duration_seconds')
   int? get durationSeconds => throw _privateConstructorUsedError;
   @JsonKey(name: 'rpe_session')
-  double? get rpeSession => throw _privateConstructorUsedError;
+  double? get effortSession => throw _privateConstructorUsedError;
   String? get location => throw _privateConstructorUsedError;
   @JsonKey(name: 'readiness_score')
-  int? get readinessScore =>
-      throw _privateConstructorUsedError;
+  int? get readinessScore => throw _privateConstructorUsedError;
   @JsonKey(name: 'applied_plan_id')
   int? get appliedPlanId => throw _privateConstructorUsedError;
   @JsonKey(name: 'plan_order_index')
-  int? get planOrderIndex =>
-      throw _privateConstructorUsedError;
+  int? get planOrderIndex => throw _privateConstructorUsedError;
   @JsonKey(name: 'scheduled_for')
   DateTime? get scheduledFor => throw _privateConstructorUsedError;
   @JsonKey(name: 'completed_at')
@@ -50,47 +49,47 @@ mixin _$Workout {
   @JsonKey(includeFromJson: false, includeToJson: false)
   int? get localId => throw _privateConstructorUsedError;
   @JsonKey(name: 'next_workout_id')
-  int? get nextWorkoutId =>
-      throw _privateConstructorUsedError;
+  int? get nextWorkoutId => throw _privateConstructorUsedError;
   @JsonKey(name: 'workout_type')
   WorkoutType get workoutType => throw _privateConstructorUsedError;
 
-
+  /// Serializes this Workout to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
-
-
+  /// Create a copy of Workout
+  /// with the given fields replaced by the non-null parameter values.
   @JsonKey(includeFromJson: false, includeToJson: false)
   $WorkoutCopyWith<Workout> get copyWith => throw _privateConstructorUsedError;
 }
 
-
+/// @nodoc
 abstract class $WorkoutCopyWith<$Res> {
   factory $WorkoutCopyWith(Workout value, $Res Function(Workout) then) =
       _$WorkoutCopyWithImpl<$Res, Workout>;
   @useResult
-  $Res call(
-      {int? id,
-      String name,
-      String? notes,
-      @JsonKey(name: 'status') String? status,
-      @JsonKey(name: 'started_at') DateTime? startedAt,
-      @JsonKey(name: 'duration_seconds') int? durationSeconds,
-      @JsonKey(name: 'rpe_session') double? rpeSession,
-      String? location,
-      @JsonKey(name: 'readiness_score') int? readinessScore,
-      @JsonKey(name: 'applied_plan_id') int? appliedPlanId,
-      @JsonKey(name: 'plan_order_index') int? planOrderIndex,
-      @JsonKey(name: 'scheduled_for') DateTime? scheduledFor,
-      @JsonKey(name: 'completed_at') DateTime? completedAt,
-      @JsonKey(name: 'exercise_instances')
-      List<ExerciseInstance> exerciseInstances,
-      @JsonKey(includeFromJson: false, includeToJson: false) int? localId,
-      @JsonKey(name: 'next_workout_id') int? nextWorkoutId,
-      @JsonKey(name: 'workout_type') WorkoutType workoutType});
+  $Res call({
+    int? id,
+    String name,
+    String? notes,
+    @JsonKey(name: 'status') String? status,
+    @JsonKey(name: 'started_at') DateTime? startedAt,
+    @JsonKey(name: 'duration_seconds') int? durationSeconds,
+    @JsonKey(name: 'rpe_session') double? effortSession,
+    String? location,
+    @JsonKey(name: 'readiness_score') int? readinessScore,
+    @JsonKey(name: 'applied_plan_id') int? appliedPlanId,
+    @JsonKey(name: 'plan_order_index') int? planOrderIndex,
+    @JsonKey(name: 'scheduled_for') DateTime? scheduledFor,
+    @JsonKey(name: 'completed_at') DateTime? completedAt,
+    @JsonKey(name: 'exercise_instances')
+    List<ExerciseInstance> exerciseInstances,
+    @JsonKey(includeFromJson: false, includeToJson: false) int? localId,
+    @JsonKey(name: 'next_workout_id') int? nextWorkoutId,
+    @JsonKey(name: 'workout_type') WorkoutType workoutType,
+  });
 }
 
-
+/// @nodoc
 class _$WorkoutCopyWithImpl<$Res, $Val extends Workout>
     implements $WorkoutCopyWith<$Res> {
   _$WorkoutCopyWithImpl(this._value, this._then);
@@ -100,8 +99,8 @@ class _$WorkoutCopyWithImpl<$Res, $Val extends Workout>
   // ignore: unused_field
   final $Res Function($Val) _then;
 
-
-
+  /// Create a copy of Workout
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -111,7 +110,7 @@ class _$WorkoutCopyWithImpl<$Res, $Val extends Workout>
     Object? status = freezed,
     Object? startedAt = freezed,
     Object? durationSeconds = freezed,
-    Object? rpeSession = freezed,
+    Object? effortSession = freezed,
     Object? location = freezed,
     Object? readinessScore = freezed,
     Object? appliedPlanId = freezed,
@@ -123,117 +122,123 @@ class _$WorkoutCopyWithImpl<$Res, $Val extends Workout>
     Object? nextWorkoutId = freezed,
     Object? workoutType = null,
   }) {
-    return _then(_value.copyWith(
-      id: freezed == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as int?,
-      name: null == name
-          ? _value.name
-          : name // ignore: cast_nullable_to_non_nullable
-              as String,
-      notes: freezed == notes
-          ? _value.notes
-          : notes // ignore: cast_nullable_to_non_nullable
-              as String?,
-      status: freezed == status
-          ? _value.status
-          : status // ignore: cast_nullable_to_non_nullable
-              as String?,
-      startedAt: freezed == startedAt
-          ? _value.startedAt
-          : startedAt // ignore: cast_nullable_to_non_nullable
-              as DateTime?,
-      durationSeconds: freezed == durationSeconds
-          ? _value.durationSeconds
-          : durationSeconds // ignore: cast_nullable_to_non_nullable
-              as int?,
-      rpeSession: freezed == rpeSession
-          ? _value.rpeSession
-          : rpeSession // ignore: cast_nullable_to_non_nullable
-              as double?,
-      location: freezed == location
-          ? _value.location
-          : location // ignore: cast_nullable_to_non_nullable
-              as String?,
-      readinessScore: freezed == readinessScore
-          ? _value.readinessScore
-          : readinessScore // ignore: cast_nullable_to_non_nullable
-              as int?,
-      appliedPlanId: freezed == appliedPlanId
-          ? _value.appliedPlanId
-          : appliedPlanId // ignore: cast_nullable_to_non_nullable
-              as int?,
-      planOrderIndex: freezed == planOrderIndex
-          ? _value.planOrderIndex
-          : planOrderIndex // ignore: cast_nullable_to_non_nullable
-              as int?,
-      scheduledFor: freezed == scheduledFor
-          ? _value.scheduledFor
-          : scheduledFor // ignore: cast_nullable_to_non_nullable
-              as DateTime?,
-      completedAt: freezed == completedAt
-          ? _value.completedAt
-          : completedAt // ignore: cast_nullable_to_non_nullable
-              as DateTime?,
-      exerciseInstances: null == exerciseInstances
-          ? _value.exerciseInstances
-          : exerciseInstances // ignore: cast_nullable_to_non_nullable
-              as List<ExerciseInstance>,
-      localId: freezed == localId
-          ? _value.localId
-          : localId // ignore: cast_nullable_to_non_nullable
-              as int?,
-      nextWorkoutId: freezed == nextWorkoutId
-          ? _value.nextWorkoutId
-          : nextWorkoutId // ignore: cast_nullable_to_non_nullable
-              as int?,
-      workoutType: null == workoutType
-          ? _value.workoutType
-          : workoutType // ignore: cast_nullable_to_non_nullable
-              as WorkoutType,
-    ) as $Val);
+    return _then(
+      _value.copyWith(
+            id: freezed == id
+                ? _value.id
+                : id // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            name: null == name
+                ? _value.name
+                : name // ignore: cast_nullable_to_non_nullable
+                      as String,
+            notes: freezed == notes
+                ? _value.notes
+                : notes // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            status: freezed == status
+                ? _value.status
+                : status // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            startedAt: freezed == startedAt
+                ? _value.startedAt
+                : startedAt // ignore: cast_nullable_to_non_nullable
+                      as DateTime?,
+            durationSeconds: freezed == durationSeconds
+                ? _value.durationSeconds
+                : durationSeconds // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            effortSession: freezed == effortSession
+                ? _value.effortSession
+                : effortSession // ignore: cast_nullable_to_non_nullable
+                      as double?,
+            location: freezed == location
+                ? _value.location
+                : location // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            readinessScore: freezed == readinessScore
+                ? _value.readinessScore
+                : readinessScore // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            appliedPlanId: freezed == appliedPlanId
+                ? _value.appliedPlanId
+                : appliedPlanId // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            planOrderIndex: freezed == planOrderIndex
+                ? _value.planOrderIndex
+                : planOrderIndex // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            scheduledFor: freezed == scheduledFor
+                ? _value.scheduledFor
+                : scheduledFor // ignore: cast_nullable_to_non_nullable
+                      as DateTime?,
+            completedAt: freezed == completedAt
+                ? _value.completedAt
+                : completedAt // ignore: cast_nullable_to_non_nullable
+                      as DateTime?,
+            exerciseInstances: null == exerciseInstances
+                ? _value.exerciseInstances
+                : exerciseInstances // ignore: cast_nullable_to_non_nullable
+                      as List<ExerciseInstance>,
+            localId: freezed == localId
+                ? _value.localId
+                : localId // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            nextWorkoutId: freezed == nextWorkoutId
+                ? _value.nextWorkoutId
+                : nextWorkoutId // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            workoutType: null == workoutType
+                ? _value.workoutType
+                : workoutType // ignore: cast_nullable_to_non_nullable
+                      as WorkoutType,
+          )
+          as $Val,
+    );
   }
 }
 
-
+/// @nodoc
 abstract class _$$WorkoutImplCopyWith<$Res> implements $WorkoutCopyWith<$Res> {
   factory _$$WorkoutImplCopyWith(
-          _$WorkoutImpl value, $Res Function(_$WorkoutImpl) then) =
-      __$$WorkoutImplCopyWithImpl<$Res>;
+    _$WorkoutImpl value,
+    $Res Function(_$WorkoutImpl) then,
+  ) = __$$WorkoutImplCopyWithImpl<$Res>;
   @override
   @useResult
-  $Res call(
-      {int? id,
-      String name,
-      String? notes,
-      @JsonKey(name: 'status') String? status,
-      @JsonKey(name: 'started_at') DateTime? startedAt,
-      @JsonKey(name: 'duration_seconds') int? durationSeconds,
-      @JsonKey(name: 'rpe_session') double? rpeSession,
-      String? location,
-      @JsonKey(name: 'readiness_score') int? readinessScore,
-      @JsonKey(name: 'applied_plan_id') int? appliedPlanId,
-      @JsonKey(name: 'plan_order_index') int? planOrderIndex,
-      @JsonKey(name: 'scheduled_for') DateTime? scheduledFor,
-      @JsonKey(name: 'completed_at') DateTime? completedAt,
-      @JsonKey(name: 'exercise_instances')
-      List<ExerciseInstance> exerciseInstances,
-      @JsonKey(includeFromJson: false, includeToJson: false) int? localId,
-      @JsonKey(name: 'next_workout_id') int? nextWorkoutId,
-      @JsonKey(name: 'workout_type') WorkoutType workoutType});
+  $Res call({
+    int? id,
+    String name,
+    String? notes,
+    @JsonKey(name: 'status') String? status,
+    @JsonKey(name: 'started_at') DateTime? startedAt,
+    @JsonKey(name: 'duration_seconds') int? durationSeconds,
+    @JsonKey(name: 'rpe_session') double? effortSession,
+    String? location,
+    @JsonKey(name: 'readiness_score') int? readinessScore,
+    @JsonKey(name: 'applied_plan_id') int? appliedPlanId,
+    @JsonKey(name: 'plan_order_index') int? planOrderIndex,
+    @JsonKey(name: 'scheduled_for') DateTime? scheduledFor,
+    @JsonKey(name: 'completed_at') DateTime? completedAt,
+    @JsonKey(name: 'exercise_instances')
+    List<ExerciseInstance> exerciseInstances,
+    @JsonKey(includeFromJson: false, includeToJson: false) int? localId,
+    @JsonKey(name: 'next_workout_id') int? nextWorkoutId,
+    @JsonKey(name: 'workout_type') WorkoutType workoutType,
+  });
 }
 
-
+/// @nodoc
 class __$$WorkoutImplCopyWithImpl<$Res>
     extends _$WorkoutCopyWithImpl<$Res, _$WorkoutImpl>
     implements _$$WorkoutImplCopyWith<$Res> {
   __$$WorkoutImplCopyWithImpl(
-      _$WorkoutImpl _value, $Res Function(_$WorkoutImpl) _then)
-      : super(_value, _then);
+    _$WorkoutImpl _value,
+    $Res Function(_$WorkoutImpl) _then,
+  ) : super(_value, _then);
 
-
-
+  /// Create a copy of Workout
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -243,7 +248,7 @@ class __$$WorkoutImplCopyWithImpl<$Res>
     Object? status = freezed,
     Object? startedAt = freezed,
     Object? durationSeconds = freezed,
-    Object? rpeSession = freezed,
+    Object? effortSession = freezed,
     Object? location = freezed,
     Object? readinessScore = freezed,
     Object? appliedPlanId = freezed,
@@ -255,104 +260,106 @@ class __$$WorkoutImplCopyWithImpl<$Res>
     Object? nextWorkoutId = freezed,
     Object? workoutType = null,
   }) {
-    return _then(_$WorkoutImpl(
-      id: freezed == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as int?,
-      name: null == name
-          ? _value.name
-          : name // ignore: cast_nullable_to_non_nullable
-              as String,
-      notes: freezed == notes
-          ? _value.notes
-          : notes // ignore: cast_nullable_to_non_nullable
-              as String?,
-      status: freezed == status
-          ? _value.status
-          : status // ignore: cast_nullable_to_non_nullable
-              as String?,
-      startedAt: freezed == startedAt
-          ? _value.startedAt
-          : startedAt // ignore: cast_nullable_to_non_nullable
-              as DateTime?,
-      durationSeconds: freezed == durationSeconds
-          ? _value.durationSeconds
-          : durationSeconds // ignore: cast_nullable_to_non_nullable
-              as int?,
-      rpeSession: freezed == rpeSession
-          ? _value.rpeSession
-          : rpeSession // ignore: cast_nullable_to_non_nullable
-              as double?,
-      location: freezed == location
-          ? _value.location
-          : location // ignore: cast_nullable_to_non_nullable
-              as String?,
-      readinessScore: freezed == readinessScore
-          ? _value.readinessScore
-          : readinessScore // ignore: cast_nullable_to_non_nullable
-              as int?,
-      appliedPlanId: freezed == appliedPlanId
-          ? _value.appliedPlanId
-          : appliedPlanId // ignore: cast_nullable_to_non_nullable
-              as int?,
-      planOrderIndex: freezed == planOrderIndex
-          ? _value.planOrderIndex
-          : planOrderIndex // ignore: cast_nullable_to_non_nullable
-              as int?,
-      scheduledFor: freezed == scheduledFor
-          ? _value.scheduledFor
-          : scheduledFor // ignore: cast_nullable_to_non_nullable
-              as DateTime?,
-      completedAt: freezed == completedAt
-          ? _value.completedAt
-          : completedAt // ignore: cast_nullable_to_non_nullable
-              as DateTime?,
-      exerciseInstances: null == exerciseInstances
-          ? _value._exerciseInstances
-          : exerciseInstances // ignore: cast_nullable_to_non_nullable
-              as List<ExerciseInstance>,
-      localId: freezed == localId
-          ? _value.localId
-          : localId // ignore: cast_nullable_to_non_nullable
-              as int?,
-      nextWorkoutId: freezed == nextWorkoutId
-          ? _value.nextWorkoutId
-          : nextWorkoutId // ignore: cast_nullable_to_non_nullable
-              as int?,
-      workoutType: null == workoutType
-          ? _value.workoutType
-          : workoutType // ignore: cast_nullable_to_non_nullable
-              as WorkoutType,
-    ));
+    return _then(
+      _$WorkoutImpl(
+        id: freezed == id
+            ? _value.id
+            : id // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        name: null == name
+            ? _value.name
+            : name // ignore: cast_nullable_to_non_nullable
+                  as String,
+        notes: freezed == notes
+            ? _value.notes
+            : notes // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        status: freezed == status
+            ? _value.status
+            : status // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        startedAt: freezed == startedAt
+            ? _value.startedAt
+            : startedAt // ignore: cast_nullable_to_non_nullable
+                  as DateTime?,
+        durationSeconds: freezed == durationSeconds
+            ? _value.durationSeconds
+            : durationSeconds // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        effortSession: freezed == effortSession
+            ? _value.effortSession
+            : effortSession // ignore: cast_nullable_to_non_nullable
+                  as double?,
+        location: freezed == location
+            ? _value.location
+            : location // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        readinessScore: freezed == readinessScore
+            ? _value.readinessScore
+            : readinessScore // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        appliedPlanId: freezed == appliedPlanId
+            ? _value.appliedPlanId
+            : appliedPlanId // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        planOrderIndex: freezed == planOrderIndex
+            ? _value.planOrderIndex
+            : planOrderIndex // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        scheduledFor: freezed == scheduledFor
+            ? _value.scheduledFor
+            : scheduledFor // ignore: cast_nullable_to_non_nullable
+                  as DateTime?,
+        completedAt: freezed == completedAt
+            ? _value.completedAt
+            : completedAt // ignore: cast_nullable_to_non_nullable
+                  as DateTime?,
+        exerciseInstances: null == exerciseInstances
+            ? _value._exerciseInstances
+            : exerciseInstances // ignore: cast_nullable_to_non_nullable
+                  as List<ExerciseInstance>,
+        localId: freezed == localId
+            ? _value.localId
+            : localId // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        nextWorkoutId: freezed == nextWorkoutId
+            ? _value.nextWorkoutId
+            : nextWorkoutId // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        workoutType: null == workoutType
+            ? _value.workoutType
+            : workoutType // ignore: cast_nullable_to_non_nullable
+                  as WorkoutType,
+      ),
+    );
   }
 }
 
-
+/// @nodoc
 
 @JsonSerializable(explicitToJson: true)
 class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
-  const _$WorkoutImpl(
-      {this.id,
-      required this.name,
-      this.notes,
-      @JsonKey(name: 'status') this.status,
-      @JsonKey(name: 'started_at') this.startedAt,
-      @JsonKey(name: 'duration_seconds') this.durationSeconds,
-      @JsonKey(name: 'rpe_session') this.rpeSession,
-      this.location,
-      @JsonKey(name: 'readiness_score') this.readinessScore,
-      @JsonKey(name: 'applied_plan_id') this.appliedPlanId,
-      @JsonKey(name: 'plan_order_index') this.planOrderIndex,
-      @JsonKey(name: 'scheduled_for') this.scheduledFor,
-      @JsonKey(name: 'completed_at') this.completedAt,
-      @JsonKey(name: 'exercise_instances')
-      final List<ExerciseInstance> exerciseInstances = const [],
-      @JsonKey(includeFromJson: false, includeToJson: false) this.localId,
-      @JsonKey(name: 'next_workout_id') this.nextWorkoutId,
-      @JsonKey(name: 'workout_type') this.workoutType = WorkoutType.manual})
-      : _exerciseInstances = exerciseInstances,
-        super._();
+  const _$WorkoutImpl({
+    this.id,
+    required this.name,
+    this.notes,
+    @JsonKey(name: 'status') this.status,
+    @JsonKey(name: 'started_at') this.startedAt,
+    @JsonKey(name: 'duration_seconds') this.durationSeconds,
+    @JsonKey(name: 'rpe_session') this.effortSession,
+    this.location,
+    @JsonKey(name: 'readiness_score') this.readinessScore,
+    @JsonKey(name: 'applied_plan_id') this.appliedPlanId,
+    @JsonKey(name: 'plan_order_index') this.planOrderIndex,
+    @JsonKey(name: 'scheduled_for') this.scheduledFor,
+    @JsonKey(name: 'completed_at') this.completedAt,
+    @JsonKey(name: 'exercise_instances')
+    final List<ExerciseInstance> exerciseInstances = const [],
+    @JsonKey(includeFromJson: false, includeToJson: false) this.localId,
+    @JsonKey(name: 'next_workout_id') this.nextWorkoutId,
+    @JsonKey(name: 'workout_type') this.workoutType = WorkoutType.manual,
+  }) : _exerciseInstances = exerciseInstances,
+       super._();
 
   factory _$WorkoutImpl.fromJson(Map<String, dynamic> json) =>
       _$$WorkoutImplFromJson(json);
@@ -374,20 +381,18 @@ class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
   final int? durationSeconds;
   @override
   @JsonKey(name: 'rpe_session')
-  final double? rpeSession;
+  final double? effortSession;
   @override
   final String? location;
   @override
   @JsonKey(name: 'readiness_score')
   final int? readinessScore;
-
   @override
   @JsonKey(name: 'applied_plan_id')
   final int? appliedPlanId;
   @override
   @JsonKey(name: 'plan_order_index')
   final int? planOrderIndex;
-
   @override
   @JsonKey(name: 'scheduled_for')
   final DateTime? scheduledFor;
@@ -410,14 +415,13 @@ class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
   @override
   @JsonKey(name: 'next_workout_id')
   final int? nextWorkoutId;
-
   @override
   @JsonKey(name: 'workout_type')
   final WorkoutType workoutType;
 
   @override
   String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'Workout(id: $id, name: $name, notes: $notes, status: $status, startedAt: $startedAt, durationSeconds: $durationSeconds, rpeSession: $rpeSession, location: $location, readinessScore: $readinessScore, appliedPlanId: $appliedPlanId, planOrderIndex: $planOrderIndex, scheduledFor: $scheduledFor, completedAt: $completedAt, exerciseInstances: $exerciseInstances, localId: $localId, nextWorkoutId: $nextWorkoutId, workoutType: $workoutType)';
+    return 'Workout(id: $id, name: $name, notes: $notes, status: $status, startedAt: $startedAt, durationSeconds: $durationSeconds, effortSession: $effortSession, location: $location, readinessScore: $readinessScore, appliedPlanId: $appliedPlanId, planOrderIndex: $planOrderIndex, scheduledFor: $scheduledFor, completedAt: $completedAt, exerciseInstances: $exerciseInstances, localId: $localId, nextWorkoutId: $nextWorkoutId, workoutType: $workoutType)';
   }
 
   @override
@@ -431,7 +435,7 @@ class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
       ..add(DiagnosticsProperty('status', status))
       ..add(DiagnosticsProperty('startedAt', startedAt))
       ..add(DiagnosticsProperty('durationSeconds', durationSeconds))
-      ..add(DiagnosticsProperty('rpeSession', rpeSession))
+      ..add(DiagnosticsProperty('effortSession', effortSession))
       ..add(DiagnosticsProperty('location', location))
       ..add(DiagnosticsProperty('readinessScore', readinessScore))
       ..add(DiagnosticsProperty('appliedPlanId', appliedPlanId))
@@ -457,8 +461,8 @@ class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
                 other.startedAt == startedAt) &&
             (identical(other.durationSeconds, durationSeconds) ||
                 other.durationSeconds == durationSeconds) &&
-            (identical(other.rpeSession, rpeSession) ||
-                other.rpeSession == rpeSession) &&
+            (identical(other.effortSession, effortSession) ||
+                other.effortSession == effortSession) &&
             (identical(other.location, location) ||
                 other.location == location) &&
             (identical(other.readinessScore, readinessScore) ||
@@ -471,8 +475,10 @@ class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
                 other.scheduledFor == scheduledFor) &&
             (identical(other.completedAt, completedAt) ||
                 other.completedAt == completedAt) &&
-            const DeepCollectionEquality()
-                .equals(other._exerciseInstances, _exerciseInstances) &&
+            const DeepCollectionEquality().equals(
+              other._exerciseInstances,
+              _exerciseInstances,
+            ) &&
             (identical(other.localId, localId) || other.localId == localId) &&
             (identical(other.nextWorkoutId, nextWorkoutId) ||
                 other.nextWorkoutId == nextWorkoutId) &&
@@ -483,27 +489,28 @@ class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(
-      runtimeType,
-      id,
-      name,
-      notes,
-      status,
-      startedAt,
-      durationSeconds,
-      rpeSession,
-      location,
-      readinessScore,
-      appliedPlanId,
-      planOrderIndex,
-      scheduledFor,
-      completedAt,
-      const DeepCollectionEquality().hash(_exerciseInstances),
-      localId,
-      nextWorkoutId,
-      workoutType);
+    runtimeType,
+    id,
+    name,
+    notes,
+    status,
+    startedAt,
+    durationSeconds,
+    effortSession,
+    location,
+    readinessScore,
+    appliedPlanId,
+    planOrderIndex,
+    scheduledFor,
+    completedAt,
+    const DeepCollectionEquality().hash(_exerciseInstances),
+    localId,
+    nextWorkoutId,
+    workoutType,
+  );
 
-
-
+  /// Create a copy of Workout
+  /// with the given fields replaced by the non-null parameter values.
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   @pragma('vm:prefer-inline')
@@ -512,33 +519,31 @@ class _$WorkoutImpl extends _Workout with DiagnosticableTreeMixin {
 
   @override
   Map<String, dynamic> toJson() {
-    return _$$WorkoutImplToJson(
-      this,
-    );
+    return _$$WorkoutImplToJson(this);
   }
 }
 
 abstract class _Workout extends Workout {
-  const factory _Workout(
-      {final int? id,
-      required final String name,
-      final String? notes,
-      @JsonKey(name: 'status') final String? status,
-      @JsonKey(name: 'started_at') final DateTime? startedAt,
-      @JsonKey(name: 'duration_seconds') final int? durationSeconds,
-      @JsonKey(name: 'rpe_session') final double? rpeSession,
-      final String? location,
-      @JsonKey(name: 'readiness_score') final int? readinessScore,
-      @JsonKey(name: 'applied_plan_id') final int? appliedPlanId,
-      @JsonKey(name: 'plan_order_index') final int? planOrderIndex,
-      @JsonKey(name: 'scheduled_for') final DateTime? scheduledFor,
-      @JsonKey(name: 'completed_at') final DateTime? completedAt,
-      @JsonKey(name: 'exercise_instances')
-      final List<ExerciseInstance> exerciseInstances,
-      @JsonKey(includeFromJson: false, includeToJson: false) final int? localId,
-      @JsonKey(name: 'next_workout_id') final int? nextWorkoutId,
-      @JsonKey(name: 'workout_type')
-      final WorkoutType workoutType}) = _$WorkoutImpl;
+  const factory _Workout({
+    final int? id,
+    required final String name,
+    final String? notes,
+    @JsonKey(name: 'status') final String? status,
+    @JsonKey(name: 'started_at') final DateTime? startedAt,
+    @JsonKey(name: 'duration_seconds') final int? durationSeconds,
+    @JsonKey(name: 'rpe_session') final double? effortSession,
+    final String? location,
+    @JsonKey(name: 'readiness_score') final int? readinessScore,
+    @JsonKey(name: 'applied_plan_id') final int? appliedPlanId,
+    @JsonKey(name: 'plan_order_index') final int? planOrderIndex,
+    @JsonKey(name: 'scheduled_for') final DateTime? scheduledFor,
+    @JsonKey(name: 'completed_at') final DateTime? completedAt,
+    @JsonKey(name: 'exercise_instances')
+    final List<ExerciseInstance> exerciseInstances,
+    @JsonKey(includeFromJson: false, includeToJson: false) final int? localId,
+    @JsonKey(name: 'next_workout_id') final int? nextWorkoutId,
+    @JsonKey(name: 'workout_type') final WorkoutType workoutType,
+  }) = _$WorkoutImpl;
   const _Workout._() : super._();
 
   factory _Workout.fromJson(Map<String, dynamic> json) = _$WorkoutImpl.fromJson;
@@ -560,13 +565,12 @@ abstract class _Workout extends Workout {
   int? get durationSeconds;
   @override
   @JsonKey(name: 'rpe_session')
-  double? get rpeSession;
+  double? get effortSession;
   @override
   String? get location;
   @override
   @JsonKey(name: 'readiness_score')
-  int?
-      get readinessScore;
+  int? get readinessScore;
   @override
   @JsonKey(name: 'applied_plan_id')
   int? get appliedPlanId;
@@ -592,8 +596,8 @@ abstract class _Workout extends Workout {
   @JsonKey(name: 'workout_type')
   WorkoutType get workoutType;
 
-
-
+  /// Create a copy of Workout
+  /// with the given fields replaced by the non-null parameter values.
   @override
   @JsonKey(includeFromJson: false, includeToJson: false)
   _$$WorkoutImplCopyWith<_$WorkoutImpl> get copyWith =>

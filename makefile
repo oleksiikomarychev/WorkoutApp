@@ -59,7 +59,7 @@ build-gateway:
 	docker build -t $(REGISTRY)/workoutapp-gateway:$(TAG) -f gateway/Dockerfile .
 
 build-rpe:
-	docker build -t $(REGISTRY)/workoutapp-rpe-service:$(TAG) ./services/rpe-service
+	docker build -t $(REGISTRY)/workoutapp-rpe-service:$(TAG) -f services/rpe-service/Dockerfile .
 
 build-exercises:
 	docker build -t $(REGISTRY)/workoutapp-exercises-service:$(TAG) -f services/exercises-service/Dockerfile .
@@ -90,7 +90,7 @@ release-gateway:
 	docker buildx build --platform $(PLATFORMS) --push -t $(REGISTRY)/workoutapp-gateway:$(TAG) -f gateway/Dockerfile .
 
 release-rpe:
-	docker buildx build --platform $(PLATFORMS) --push -t $(REGISTRY)/workoutapp-rpe-service:$(TAG) ./services/rpe-service
+	docker buildx build --platform $(PLATFORMS) --push -t $(REGISTRY)/workoutapp-rpe-service:$(TAG) -f ./services/rpe-service/Dockerfile .
 
 release-exercises:
 	docker buildx build --platform $(PLATFORMS) --push -t $(REGISTRY)/workoutapp-exercises-service:$(TAG) -f services/exercises-service/Dockerfile .

@@ -10,8 +10,8 @@ readme = "README.md"
 requires-python = ">=3.12,<4.0"
 
 dependencies = [
-    "fastapi==0.110.0",
-    "uvicorn==0.27.1",
+    "fastapi==0.112.0",
+    "uvicorn==0.30.0",
     "sqlalchemy==2.0.29",
     "pydantic==2.10.0",
     "psycopg2-binary==2.9.9",
@@ -19,11 +19,13 @@ dependencies = [
     "python-jose[cryptography]==3.3.0",
     "passlib[bcrypt]==1.7.4",
     "python-multipart==0.0.18",
-    "typing-extensions==4.10.0",
+    "typing-extensions==4.12.2",
     "alembic==1.15.0",
     "requests==2.32.4",
     "sentry-sdk[fastapi]==2.0.0",
     "pytest-asyncio>=0.24.0",
+    "grpcio-tools>=1.76.0",
+    "protobuf>=6.33.2",
 ]
 
 [tool.pytest.ini_options]
@@ -33,8 +35,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
 [tool.setuptools]
-packages = ["app"]
-package-dir = { "" = "app" }
+packages = []
 
 [tool.alembic]
 script_location = "alembic"
@@ -64,3 +65,21 @@ ignore = []
 "services/workouts-service/workouts_service/schemas/__init__.py" = ["F401"]
 "services/plans-service/plans_service/models/__init__.py" = ["F401"]
 "services/plans-service/plans_service/schemas/__init__.py" = ["F401"]
+
+[tool.uv.workspace]
+members = [
+    "gateway",
+    "libs/backend-common",
+    "services/accounts-service",
+    "services/agent-service",
+    "services/crm-service",
+    "services/exercises-service",
+    "services/plans-service",
+    "services/rpe-service",
+    "services/user-max-service",
+    "services/workouts-service",
+    "tg_bot",
+]
+
+[tool.uv.sources]
+backend-common = { workspace = true }

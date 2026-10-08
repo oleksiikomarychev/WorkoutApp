@@ -1,4 +1,3 @@
-import 'dart:convert';
 import '../config/api_config.dart';
 import '../models/applied_calendar_plan.dart';
 import '../models/workout.dart';
@@ -44,12 +43,28 @@ class PlanService extends BaseApiService {
       );
       if (response is Map<String, dynamic>) {
         _logger.d('Active plan fetched successfully');
+        await apiClient.setCachedGet(
+          endpoint,
+          response,
+          ttlSeconds: 60,
+          groups: const ['plans:active'],
+        );
         return AppliedCalendarPlan.fromJson(response);
       }
       _logger.d('Active plan not found (null or invalid format)');
       return null;
     } catch (e, stackTrace) {
       handleError('Failed to get active plan', e, stackTrace);
+
+      try {
+        final endpoint = ApiConfig.getActivePlanEndpoint;
+        final cached = await apiClient.getCachedGet(endpoint, allowExpired: true);
+        if (cached is Map<String, dynamic>) {
+          _logger.w('Returning cached active plan due to error');
+          return AppliedCalendarPlan.fromJson(cached);
+        }
+      } catch (_) {}
+
       return null;
     }
   }
@@ -109,13 +124,21 @@ class PlanService extends BaseApiService {
     DateTime? from,
     DateTime? to,
     String? groupBy,
+    List<String>? layers,
+    bool includeMeta = false,
+    int topLayersLimit = 20,
   }) async {
     try {
       final endpoint = ApiConfig.appliedPlanAnalyticsEndpoint(appliedPlanId.toString());
-      final query = <String, String>{};
+      final query = <String, dynamic>{};
       if (from != null) query['from'] = from.toUtc().toIso8601String();
       if (to != null) query['to'] = to.toUtc().toIso8601String();
       if (groupBy != null) query['group_by'] = groupBy;
+      if (layers != null && layers.isNotEmpty) query['layers'] = layers;
+      if (includeMeta) {
+        query['include_meta'] = 'true';
+        query['top_layers_limit'] = topLayersLimit.toString();
+      }
       final response = await apiClient.get(
         endpoint,
         queryParams: query.isEmpty ? null : query,

@@ -9,6 +9,7 @@ from .applied_mass_edit import (
 )
 from .effort import EffortType
 from .session import (
+    SessionCompleteAllRequest,
     SessionFinishRequest,
     SessionProgressUpdate,
     WorkoutSessionBase,

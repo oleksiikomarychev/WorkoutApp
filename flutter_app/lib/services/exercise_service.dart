@@ -17,7 +17,54 @@ class ExerciseService extends BaseApiService {
 
 
 
-  Future<List<ExerciseDefinition>> getExerciseDefinitions() async {
+  Future<List<ExerciseDefinition>> getExerciseDefinitions({
+    int? limit,
+    int? offset,
+    String? search,
+    List<String>? muscleGroups,
+    List<String>? equipment
+  }) async {
+    try {
+      // Build query parameters
+      final queryParams = <String, String>{};
+      if (limit != null) queryParams['limit'] = limit.toString();
+      if (offset != null) queryParams['offset'] = offset.toString();
+      if (search != null && search.isNotEmpty) queryParams['search'] = search;
+      if (muscleGroups != null && muscleGroups.isNotEmpty) {
+        queryParams['muscle_group'] = muscleGroups.join(',');
+      }
+      if (equipment != null && equipment.isNotEmpty) {
+        queryParams['equipment'] = equipment.join(',');
+      }
+
+      final uri = Uri.parse(ApiConfig.exerciseDefinitionsEndpoint)
+          .replace(queryParameters: queryParams);
+      
+      final response = await _apiClient.get(
+        uri.toString(),
+        context: 'ExerciseService.getExerciseDefinitionsPaginated',
+      );
+      
+      if (response is List) {
+        return response
+            .whereType<Map<String, dynamic>>()
+            .map((json) => ExerciseDefinition.fromJson(json))
+            .toList();
+      } else {
+        handleError(
+          'Invalid response format for exercise definitions',
+          Exception('Expected a list of exercise definitions'),
+        );
+        return [];
+      }
+    } catch (e, stackTrace) {
+      handleError('Failed to get exercise definitions', e, stackTrace);
+      rethrow;
+    }
+  }
+
+  // Legacy method for backward compatibility
+  Future<List<ExerciseDefinition>> getExerciseDefinitionsLegacy() async {
     try {
       final response = await _apiClient.get(
         ApiConfig.exerciseDefinitionsEndpoint,

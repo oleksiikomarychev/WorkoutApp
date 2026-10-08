@@ -19,6 +19,7 @@ from sqlalchemy import (
     Enum as SqlEnum,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
 
 from .database import Base
 
@@ -46,6 +47,7 @@ class UserProfile(Base):
     weekly_gain_coef = Column(Float, nullable=True)
     last_active_at = Column(DateTime(timezone=True), nullable=True)
     is_public = Column(Boolean, nullable=False, server_default="true")
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True),
@@ -54,13 +56,14 @@ class UserProfile(Base):
         onupdate=func.now(),
     )
 
+    coaching = relationship("UserCoachingProfile", back_populates="user", uselist=False)
+
 
 class UserCoachingProfile(Base):
     __tablename__ = "user_coaching_profiles"
 
     user_id = Column(String, ForeignKey("user_profiles.user_id", ondelete="CASCADE"), primary_key=True)
     enabled = Column(Boolean, nullable=False, server_default="false")
-    accepting_clients = Column(Boolean, nullable=False, server_default="false")
     tagline = Column(String, nullable=True)
     description = Column(Text, nullable=True)
     specializations = Column(
@@ -73,12 +76,10 @@ class UserCoachingProfile(Base):
         nullable=False,
         server_default=text("'[]'::jsonb"),
     )
-    experience_years = Column(Integer, nullable=True)
-    timezone = Column(String, nullable=True)
-    rate_type = Column(String(32), nullable=True)
-    rate_currency = Column(String(3), nullable=True)
     rate_amount_minor = Column(Integer, nullable=True)
     stripe_connect_account_id = Column(String(255), nullable=True)
+    average_rating = Column(Float, nullable=True)
+    review_count = Column(Integer, nullable=False, server_default="0")
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True),
@@ -86,6 +87,8 @@ class UserCoachingProfile(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+    user = relationship("UserProfile", back_populates="coaching")
 
 
 class UserAvatar(Base):

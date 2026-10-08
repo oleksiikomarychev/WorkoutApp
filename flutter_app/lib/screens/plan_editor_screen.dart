@@ -40,7 +40,7 @@ class _ReplaceConfig {
   const _ReplaceConfig({required this.sourceExerciseIds, required this.target, required this.dayIndex});
 }
 
-enum RecalcTarget { auto, intensity, rpe, reps }
+enum RecalcTarget { auto, intensity, effort, reps }
 enum FixStrategy { none, fixReps, fixIntensity }
 
 class PlanEditorScreen extends StatefulWidget {
@@ -893,7 +893,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
                     items: const [
                       DropdownMenuItem(value: RecalcTarget.auto, child: Text('Пересчитать: Авто')),
                       DropdownMenuItem(value: RecalcTarget.reps, child: Text('Пересчитать: Повторы')),
-                      DropdownMenuItem(value: RecalcTarget.rpe, child: Text('Пересчитать: RPE')),
+                      DropdownMenuItem(value: RecalcTarget.effort, child: Text('Пересчитать: RPE')),
                       DropdownMenuItem(value: RecalcTarget.intensity, child: Text('Пересчитать: Интенсивность')),
                     ],
                     onChanged: (v) => setState(() { recalcTarget = v ?? RecalcTarget.auto; }),
@@ -1002,7 +1002,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
       switch (recalcTarget) {
         case RecalcTarget.auto: return 'auto';
         case RecalcTarget.intensity: return 'intensity';
-        case RecalcTarget.rpe: return 'rpe';
+        case RecalcTarget.effort: return 'rpe';
         case RecalcTarget.reps: return 'reps';
       }
     }();

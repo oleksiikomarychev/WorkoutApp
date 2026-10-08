@@ -28,6 +28,8 @@ DB_URL = (
     or config.get_main_option("sqlalchemy.url")
 )
 if DB_URL:
+    # Replace localhost with host.docker.internal for Docker environment
+    DB_URL = DB_URL.replace("localhost", "host.docker.internal")
     config.set_main_option("sqlalchemy.url", DB_URL)
 
 

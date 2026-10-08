@@ -21,7 +21,7 @@ import 'package:workout_app/providers/workout_provider.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
 import 'package:workout_app/widgets/floating_header_bar.dart';
 import 'package:workout_app/screens/user_profile_screen.dart';
-
+import 'nutrition_plan_create.dart';
 
 class _SetEditor {
   final TextEditingController weightCtrl;
@@ -43,7 +43,10 @@ class _SetEditor {
     rpeCtrl.dispose();
   }
 
-  void scheduleDebounce(VoidCallback action, {Duration delay = const Duration(milliseconds: 500)}) {
+  void scheduleDebounce(
+    VoidCallback action, {
+    Duration delay = const Duration(milliseconds: 500),
+  }) {
     debounce?.cancel();
     debounce = Timer(delay, action);
   }
@@ -53,7 +56,6 @@ class _SetEditor {
     debounce = null;
   }
 }
-
 
 class _BaselineSet {
   final int reps;
@@ -82,7 +84,6 @@ class WorkoutDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-
     final workoutAsync = ref.watch(workoutSWRProvider(workoutId));
 
     return Scaffold(
@@ -119,16 +120,15 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   final ValueNotifier<Duration> _elapsedNotifier = ValueNotifier(Duration.zero);
   final Map<int, Set<int>> _completedByInstance = {};
   final Set<String> _updatingSetKeys = <String>{};
-  final Map<String, _PendingSetUpdate> _pendingSetUpdates = <String, _PendingSetUpdate>{};
+  final Map<String, _PendingSetUpdate> _pendingSetUpdates =
+      <String, _PendingSetUpdate>{};
   bool _isTogglingSet = false;
-
 
   Map<int, Map<int, int>> _rpeTable = {};
   Map<int, int> _exerciseMaxByExerciseId = {};
 
   final Map<String, _SetEditor> _setEditors = <String, _SetEditor>{};
   bool _isSyncingFields = false;
-
 
   final TextEditingController _notesCtrl = TextEditingController();
   final TextEditingController _statusCtrl = TextEditingController();
@@ -139,16 +139,12 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   DateTime? _editedStartedAt;
   bool _isSavingMetadata = false;
 
-
   double _readinessSlider = 10.0;
   bool _isApplyingReadiness = false;
   final bool _scaleRepsWithReadiness = true;
   bool _isProgrammaticReadinessUpdate = false;
 
-
-
   final Map<String, _BaselineSet> _baselineSets = <String, _BaselineSet>{};
-
 
   bool _sessionTickerRunning = false;
   int _sessionTickerGen = 0;
@@ -164,7 +160,6 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
     _rebuildUniqueExercisesFromWorkout();
 
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _ensureExercisesLoaded();
@@ -175,7 +170,6 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         _loadActiveSession();
       }
     });
-
 
     _fetchRpeTable();
   }
@@ -242,8 +236,12 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
     final instances = w.exerciseInstances;
     final hasInstances = instances.isNotEmpty;
-    final missingDefinitions = instances.any((i) => i.exerciseDefinition == null);
-    final hasAnyDefinitions = instances.any((i) => i.exerciseDefinition != null);
+    final missingDefinitions = instances.any(
+      (i) => i.exerciseDefinition == null,
+    );
+    final hasAnyDefinitions = instances.any(
+      (i) => i.exerciseDefinition != null,
+    );
 
     if (!hasInstances) {
       _rebuildUniqueExercisesFromWorkout();
@@ -262,17 +260,26 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     if (!mounted || _workout?.id == null) return;
     try {
       final api = ApiClient.create();
-      final endpoint = ApiConfig.getSessionHistoryEndpoint(_workout!.id!.toString());
+      final endpoint = ApiConfig.getSessionHistoryEndpoint(
+        _workout!.id!.toString(),
+      );
       final resp = await api.get(endpoint, context: 'MacroSuggestion');
       if (resp is List && resp.isNotEmpty) {
-        final Map<String, dynamic>? latest = resp.first is Map<String, dynamic> ? resp.first as Map<String, dynamic> : null;
-        final Map<String, dynamic>? suggestion = latest != null && latest['macro_suggestion'] is Map<String, dynamic>
+        final Map<String, dynamic>? latest = resp.first is Map<String, dynamic>
+            ? resp.first as Map<String, dynamic>
+            : null;
+        final Map<String, dynamic>? suggestion =
+            latest != null && latest['macro_suggestion'] is Map<String, dynamic>
             ? Map<String, dynamic>.from(latest['macro_suggestion'] as Map)
             : null;
         if (suggestion == null) return;
         final summary = suggestion['summary'] as Map?;
-        final injectCount = summary != null ? (summary['inject_mesocycles'] ?? 0) : 0;
-        final hasPatches = summary != null ? (summary['has_patches'] == true) : false;
+        final injectCount = summary != null
+            ? (summary['inject_mesocycles'] ?? 0)
+            : 0;
+        final hasPatches = summary != null
+            ? (summary['has_patches'] == true)
+            : false;
         final appliedPlanId = suggestion['applied_plan_id']?.toString();
         if (!mounted) return;
         await showDialog<void>(
@@ -280,7 +287,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           builder: (ctx) {
             return AlertDialog(
               title: const Text('Найдены изменения по макросам'),
-              content: Text('Вставок мезоциклов: $injectCount\nПатчи на тренировки: ${hasPatches ? 'да' : 'нет'}'),
+              content: Text(
+                'Вставок мезоциклов: $injectCount\nПатчи на тренировки: ${hasPatches ? 'да' : 'нет'}',
+              ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(),
@@ -290,9 +299,15 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                   onPressed: () async {
                     Navigator.of(ctx).pop();
                     if (appliedPlanId != null) {
-                      final applyEndpoint = ApiConfig.applyMacrosEndpoint(appliedPlanId);
+                      final applyEndpoint = ApiConfig.applyMacrosEndpoint(
+                        appliedPlanId,
+                      );
                       try {
-                        await api.post(applyEndpoint, <String, dynamic>{}, context: 'ApplyMacros');
+                        await api.post(
+                          applyEndpoint,
+                          <String, dynamic>{},
+                          context: 'ApplyMacros',
+                        );
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('Макросы применены')),
@@ -301,7 +316,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                       } catch (e) {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Не удалось применить макросы: $e')),
+                            SnackBar(
+                              content: Text('Не удалось применить макросы: $e'),
+                            ),
                           );
                         }
                       }
@@ -318,7 +335,6 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       return;
     }
   }
-
 
   double _roundToStep(double value, double step) {
     if (step <= 0) return value;
@@ -341,7 +357,11 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       } catch (_) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to refresh workout before applying readiness')),
+            const SnackBar(
+              content: Text(
+                'Failed to refresh workout before applying readiness',
+              ),
+            ),
           );
         }
         return;
@@ -355,7 +375,11 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       if (stillMissingIds) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Workout is not ready for set updates (missing ids)')),
+            const SnackBar(
+              content: Text(
+                'Workout is not ready for set updates (missing ids)',
+              ),
+            ),
           );
         }
         return;
@@ -366,16 +390,14 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       _isApplyingReadiness = true;
     });
 
-
     _ensureBaselineSets();
-
 
     double factor = _readinessFactor(_readinessSlider.clamp(0, 10));
     int updates = 0;
     try {
-
       final workoutService = _ref!.read(workoutServiceProvider);
-      final List<Future<ExerciseInstance>> updateFutures = <Future<ExerciseInstance>>[];
+      final List<Future<ExerciseInstance>> updateFutures =
+          <Future<ExerciseInstance>>[];
 
       for (final instance in _workout!.exerciseInstances) {
         bool instanceChanged = false;
@@ -384,7 +406,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         for (int i = 0; i < instance.sets.length; i++) {
           final set = instance.sets[i];
           final String key = _editorKey(instance, i, set);
-          final _BaselineSet base = _baselineSets[key] ?? _BaselineSet(reps: set.reps, weight: set.weight);
+          final _BaselineSet base =
+              _baselineSets[key] ??
+              _BaselineSet(reps: set.reps, weight: set.weight);
           final double? baseWeight = base.weight;
 
           double? newWeight;
@@ -392,9 +416,13 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           if (baseWeight != null) {
             final double rawScaled = baseWeight * factor;
             final double step = rawScaled <= 20.0 ? 1.0 : 2.5;
-            newWeight = (_roundToStep(rawScaled, step).clamp(0.0, double.infinity));
+            newWeight = (_roundToStep(
+              rawScaled,
+              step,
+            ).clamp(0.0, double.infinity));
             final double currentWeight = set.weight ?? baseWeight;
-            weightChanged = newWeight != null && (newWeight - currentWeight).abs() > 0.0001;
+            weightChanged =
+                newWeight != null && (newWeight - currentWeight).abs() > 0.0001;
           }
 
           final int newReps = _scaleRepsWithReadiness
@@ -422,14 +450,18 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         if (instance.id == null) continue;
 
         final updatedInstance = instance.copyWith(sets: newSets);
-        updateFutures.add(workoutService.updateExerciseInstance(updatedInstance));
+        updateFutures.add(
+          workoutService.updateExerciseInstance(updatedInstance),
+        );
       }
 
       if (updateFutures.isNotEmpty) {
         final savedInstances = await Future.wait(updateFutures);
         if (_workout != null && mounted) {
           setState(() {
-            final updatedInstances = List<ExerciseInstance>.from(_workout!.exerciseInstances);
+            final updatedInstances = List<ExerciseInstance>.from(
+              _workout!.exerciseInstances,
+            );
             for (final saved in savedInstances) {
               final idx = updatedInstances.indexWhere((i) => i.id == saved.id);
               if (idx != -1) {
@@ -474,7 +506,6 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     }
   }
 
-
   void _ensureBaselineSets() {
     if (_workout == null) return;
     final Map<String, _BaselineSet> snap = <String, _BaselineSet>{};
@@ -484,7 +515,8 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         final key = _editorKey(instance, i, set);
 
         final existing = _baselineSets[key];
-        snap[key] = existing ?? _BaselineSet(reps: set.reps, weight: set.weight);
+        snap[key] =
+            existing ?? _BaselineSet(reps: set.reps, weight: set.weight);
       }
     }
     _baselineSets
@@ -503,8 +535,6 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     _isProgrammaticReadinessUpdate = false;
   }
 
-
-
   double _readinessFactor(double readiness) {
     final r = readiness.clamp(0.0, 10.0);
     const double base = 0.8;
@@ -514,8 +544,6 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     if (factor > 1.05) return 1.05;
     return factor;
   }
-
-
 
   Future<void> _updateSetField(
     ExerciseInstance instance,
@@ -527,9 +555,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   }) async {
     final resolvedInstance = (_workout != null && instance.id != null)
         ? (_workout!.exerciseInstances
-            .where((i) => i.id == instance.id)
-            .cast<ExerciseInstance?>()
-            .firstWhere((i) => i != null, orElse: () => instance))!
+              .where((i) => i.id == instance.id)
+              .cast<ExerciseInstance?>()
+              .firstWhere((i) => i != null, orElse: () => instance))!
         : instance;
 
     if (setIndex < 0 || setIndex >= resolvedInstance.sets.length) return;
@@ -537,7 +565,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     if (_ref == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to update set: app state not ready')),
+          const SnackBar(
+            content: Text('Failed to update set: app state not ready'),
+          ),
         );
       }
       return;
@@ -558,12 +588,15 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
     try {
       final oldSetId = current.id;
-      final wasCompleted = resolvedInstance.id != null && oldSetId != null && _isSetCompleted(resolvedInstance.id!, oldSetId);
+      final wasCompleted =
+          resolvedInstance.id != null &&
+          oldSetId != null &&
+          _isSetCompleted(resolvedInstance.id!, oldSetId);
 
       final updatedSet = current.copyWith(
         reps: reps ?? current.reps,
         weight: weight ?? current.weight,
-        rpe: rpe ?? current.rpe,
+        rpe: rpe ?? current.effort,
         order: current.order ?? setIndex,
       );
 
@@ -572,27 +605,31 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       final setId = updatedSet.id ?? current.id;
 
       if (resolvedInstance.id != null && setId != null) {
-
         savedInstance = await workoutService.updateExerciseSet(
           instanceId: resolvedInstance.id!,
           setId: setId,
           reps: updatedSet.reps,
           weight: updatedSet.weight,
-          rpe: updatedSet.rpe,
+          rpe: updatedSet.effort,
           order: updatedSet.order,
         );
       } else {
-
         final newSets = List<ExerciseSetDto>.from(resolvedInstance.sets);
         newSets[setIndex] = updatedSet;
         final updatedInstance = resolvedInstance.copyWith(sets: newSets);
-        savedInstance = await workoutService.updateExerciseInstance(updatedInstance);
+        savedInstance = await workoutService.updateExerciseInstance(
+          updatedInstance,
+        );
       }
 
       if (_workout != null && mounted) {
         setState(() {
-          final updatedInstances = List<ExerciseInstance>.from(_workout!.exerciseInstances);
-          final idx = updatedInstances.indexWhere((i) => i.id == savedInstance.id);
+          final updatedInstances = List<ExerciseInstance>.from(
+            _workout!.exerciseInstances,
+          );
+          final idx = updatedInstances.indexWhere(
+            (i) => i.id == savedInstance.id,
+          );
           if (idx != -1) {
             updatedInstances[idx] = savedInstance;
             _workout = _workout!.copyWith(exerciseInstances: updatedInstances);
@@ -601,9 +638,19 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       }
 
       final newSets = savedInstance.sets;
-      final newSetId = (setIndex >= 0 && setIndex < newSets.length) ? newSets[setIndex].id : null;
-      if (wasCompleted && resolvedInstance.id != null && oldSetId != null && newSetId != null && newSetId != oldSetId) {
-        await _handleCompletedSetIdMigration(resolvedInstance.id!, oldSetId, newSetId);
+      final newSetId = (setIndex >= 0 && setIndex < newSets.length)
+          ? newSets[setIndex].id
+          : null;
+      if (wasCompleted &&
+          resolvedInstance.id != null &&
+          oldSetId != null &&
+          newSetId != null &&
+          newSetId != oldSetId) {
+        await _handleCompletedSetIdMigration(
+          resolvedInstance.id!,
+          oldSetId,
+          newSetId,
+        );
       }
 
       if (reloadAfter) {
@@ -612,9 +659,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       _reconcileEditors();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update set: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to update set: $e')));
       }
     } finally {
       _updatingSetKeys.remove(key);
@@ -634,7 +681,6 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       }
     }
   }
-
 
   Future<void> _fetchRawWorkoutData() async {
     if (_workout?.id == null) return;
@@ -656,9 +702,13 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           print('Exercise Definition ID: ${instance['exercise_list_id']}');
           print('Workout ID: ${instance['workout_id']}');
           print('Sets: ${instance['sets']}');
-          print('Exercise Definition: ${instance['exercise_definition'] != null}');
+          print(
+            'Exercise Definition: ${instance['exercise_definition'] != null}',
+          );
           if (instance['exercise_definition'] != null) {
-            print('  Exercise Name: ${instance['exercise_definition']['name']}');
+            print(
+              '  Exercise Name: ${instance['exercise_definition']['name']}',
+            );
           }
           print('---');
         }
@@ -677,12 +727,13 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         _isLoading = true;
       });
 
-
       final shouldDelete = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Delete Exercise'),
-          content: const Text('Are you sure you want to remove this exercise from your workout?'),
+          content: const Text(
+            'Are you sure you want to remove this exercise from your workout?',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -701,12 +752,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         return;
       }
 
-
       final workoutService = _ref!.read(workoutServiceProvider);
       if (instance.id != null) {
         await workoutService.deleteExerciseInstance(instance.id!);
         print('Successfully deleted instance from backend');
-
 
         await _loadExercises();
         print('Successfully refreshed workout data after deletion');
@@ -720,7 +769,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         print('Cannot delete instance with null ID');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Error: Cannot delete unsaved exercise')),
+            const SnackBar(
+              content: Text('Error: Cannot delete unsaved exercise'),
+            ),
           );
         }
       }
@@ -746,7 +797,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     if (instanceId == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cannot add set: exercise is not saved yet')),
+          const SnackBar(
+            content: Text('Cannot add set: exercise is not saved yet'),
+          ),
         );
       }
       return;
@@ -760,12 +813,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         _updatingInstanceIds.add(instanceId);
       });
 
-
       int lastReps = 5;
       double lastWeight = 0.0;
 
       if (instance.sets.isNotEmpty) {
-
         final lastSet = instance.sets.last;
         lastReps = lastSet.reps;
         lastWeight = lastSet.weight;
@@ -783,16 +834,19 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
       print('Created new set: $newSet');
 
-
       final updatedInstance = instance.copyWith(
         sets: [...instance.sets, newSet],
       );
 
-      print('Updated instance with new set: ${updatedInstance.sets.length} total sets');
+      print(
+        'Updated instance with new set: ${updatedInstance.sets.length} total sets',
+      );
 
       if (_workout != null && mounted) {
         setState(() {
-          final updatedInstances = List<ExerciseInstance>.from(_workout!.exerciseInstances);
+          final updatedInstances = List<ExerciseInstance>.from(
+            _workout!.exerciseInstances,
+          );
           final index = updatedInstances.indexWhere((i) => i.id == instance.id);
           if (index != -1) {
             updatedInstances[index] = updatedInstance;
@@ -803,14 +857,20 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       }
 
       final workoutService = _ref!.read(workoutServiceProvider);
-      final savedInstance = await workoutService.updateExerciseInstance(updatedInstance);
+      final savedInstance = await workoutService.updateExerciseInstance(
+        updatedInstance,
+      );
 
       print('Successfully updated instance in backend');
 
       if (_workout != null && mounted) {
         setState(() {
-          final updatedInstances = List<ExerciseInstance>.from(_workout!.exerciseInstances);
-          final index = updatedInstances.indexWhere((i) => i.id == savedInstance.id);
+          final updatedInstances = List<ExerciseInstance>.from(
+            _workout!.exerciseInstances,
+          );
+          final index = updatedInstances.indexWhere(
+            (i) => i.id == savedInstance.id,
+          );
           if (index != -1) {
             updatedInstances[index] = savedInstance;
             _workout = _workout!.copyWith(exerciseInstances: updatedInstances);
@@ -820,11 +880,11 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Set added successfully')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Set added successfully')));
       }
-        } catch (e) {
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to add set: ${e.toString()}')),
@@ -848,10 +908,13 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
     try {
       final workoutService = _ref!.read(workoutServiceProvider);
-      final updatedWorkout = await workoutService.getWorkoutWithDetails(_workout!.id!);
+      final updatedWorkout = await workoutService.getWorkoutWithDetails(
+        _workout!.id!,
+      );
 
-      print('Fetched workout with ${updatedWorkout.exerciseInstances.length} exercise instances');
-
+      print(
+        'Fetched workout with ${updatedWorkout.exerciseInstances.length} exercise instances',
+      );
 
       final exerciseListIds = updatedWorkout.exerciseInstances
           .where((e) => e.exerciseDefinition == null)
@@ -860,17 +923,16 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           .toList();
 
       if (exerciseListIds.isNotEmpty) {
-
         final exerciseService = _ref!.read(exerciseServiceProvider);
-        final exercises = await exerciseService.getExercisesByIds(exerciseListIds);
+        final exercises = await exerciseService.getExercisesByIds(
+          exerciseListIds,
+        );
 
+        final exerciseMap = {for (var e in exercises) e.id: e};
 
-        final exerciseMap = {
-          for (var e in exercises) e.id: e,
-        };
-
-
-        final updatedInstances = updatedWorkout.exerciseInstances.map((instance) {
+        final updatedInstances = updatedWorkout.exerciseInstances.map((
+          instance,
+        ) {
           final existing = instance.exerciseDefinition;
           if (existing != null) return instance;
           final def = exerciseMap[instance.exerciseListId];
@@ -878,7 +940,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         }).toList();
 
         setState(() {
-          _workout = updatedWorkout.copyWith(exerciseInstances: updatedInstances);
+          _workout = updatedWorkout.copyWith(
+            exerciseInstances: updatedInstances,
+          );
         });
       } else {
         setState(() {
@@ -893,9 +957,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       print('Stack trace: $stackTrace');
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load exercises: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to load exercises: $e')));
       }
     } finally {
       if (mounted) {
@@ -906,11 +970,13 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     }
   }
 
-
   Future<void> _fetchRpeTable() async {
     try {
       final api = ApiClient.create();
-      final dynamic json = await api.get(ApiConfig.rpeTableEndpoint, context: 'RPE');
+      final dynamic json = await api.get(
+        ApiConfig.rpeTableEndpoint,
+        context: 'RPE',
+      );
       if (json is Map) {
         final Map<int, Map<int, int>> parsed = {};
         json.forEach((k, v) {
@@ -933,15 +999,11 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           });
         }
       }
-    } catch (_) {
-
-    }
+    } catch (_) {}
   }
-
 
   void _d(String msg) {
     if (kDebugMode) {
-
       print('[WorkoutDetail] ${DateTime.now().toIso8601String()} | $msg');
     }
   }
@@ -955,11 +1017,13 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     _rpeSessionCtrl.text = (w?.rpeSession == null)
         ? ''
         : ((w!.rpeSession! % 1 == 0)
-            ? w.rpeSession!.toStringAsFixed(0)
-            : w.rpeSession!.toStringAsFixed(1));
+              ? w.rpeSession!.toStringAsFixed(0)
+              : w.rpeSession!.toStringAsFixed(1));
 
     final double readinessRaw = (w?.readinessScore?.toDouble() ?? 10.0);
-    final double normalized = readinessRaw > 10.0 ? readinessRaw / 10.0 : readinessRaw;
+    final double normalized = readinessRaw > 10.0
+        ? readinessRaw / 10.0
+        : readinessRaw;
     _readinessSlider = normalized.clamp(0.0, 10.0);
     _writeReadinessText(_readinessSlider);
     _editedStartedAt = w?.startedAt;
@@ -971,19 +1035,19 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     setState(() => _isSavingMetadata = true);
     try {
       int? parseInt(String s) => int.tryParse(s.trim());
-      double? parseDouble(String s) => double.tryParse(s.trim().replaceAll(',', '.'));
+      double? parseDouble(String s) =>
+          double.tryParse(s.trim().replaceAll(',', '.'));
       String? emptyToNull(String s) => s.trim().isEmpty ? null : s.trim();
-
 
       final int? dur = parseInt(_durationCtrl.text);
       final double? rpeRaw = parseDouble(_rpeSessionCtrl.text);
       final double? rpe = (rpeRaw == null)
           ? null
           : (rpeRaw < 1.0)
-              ? 1.0
-              : (rpeRaw > 10.0)
-                  ? 10.0
-                  : rpeRaw;
+          ? 1.0
+          : (rpeRaw > 10.0)
+          ? 10.0
+          : rpeRaw;
       final int readiness = _readinessSlider.round().clamp(0, 10);
 
       final updated = _workout!.copyWith(
@@ -991,7 +1055,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         status: emptyToNull(_statusCtrl.text),
         startedAt: _editedStartedAt,
         durationSeconds: dur,
-        rpeSession: rpe,
+        effortSession: rpe,
         location: emptyToNull(_locationCtrl.text),
         readinessScore: readiness,
       );
@@ -1001,31 +1065,33 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       final saved = await svc.updateWorkout(updated);
       if (!mounted) return;
       setState(() {
-        final currentInstances = _workout?.exerciseInstances ?? const <ExerciseInstance>[];
+        final currentInstances =
+            _workout?.exerciseInstances ?? const <ExerciseInstance>[];
         final savedInstances = saved.exerciseInstances;
-        final savedLooksUsable = savedInstances.isNotEmpty && savedInstances.any((ei) => ei.id != null);
+        final savedLooksUsable =
+            savedInstances.isNotEmpty &&
+            savedInstances.any((ei) => ei.id != null);
         _workout = savedLooksUsable
             ? saved
             : saved.copyWith(exerciseInstances: currentInstances);
       });
       _syncMetadataControllers();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Workout updated')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Workout updated')));
       }
     } catch (e, st) {
       _d('Failed to save workout metadata: $e\n$st');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update workout: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to update workout: $e')));
       }
     } finally {
       if (mounted) setState(() => _isSavingMetadata = false);
     }
   }
-
 
   Future<void> _loadActiveSession() async {
     if (_workout?.id == null) return;
@@ -1036,25 +1102,24 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       setState(() {
         _activeSession = session;
 
-        if (session != null && session.finishedAt != null) {
-
-        }
+        if (session != null && session.finishedAt != null) {}
       });
-      _d('Active session loaded: id=${_activeSession?.id}, isActive=${_activeSession?.isActive}');
+      _d(
+        'Active session loaded: id=${_activeSession?.id}, isActive=${_activeSession?.isActive}',
+      );
       _parseProgressFromSession();
       if (_activeSession?.isActive == true) {
         _startSessionTicker();
       } else {
         _stopSessionTicker();
       }
-    } catch (_) {
-
-    }
+    } catch (_) {}
   }
 
   void _parseProgressFromSession() {
     _completedByInstance.clear();
-    final Map<String, dynamic> progress = _activeSession?.progress ?? const <String, dynamic>{};
+    final Map<String, dynamic> progress =
+        _activeSession?.progress ?? const <String, dynamic>{};
     if (progress.isNotEmpty) {
       final completed = progress['completed'];
       if (completed is Map) {
@@ -1077,7 +1142,6 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   }
 
   void _startSessionTicker() {
-
     _sessionTickerGen++;
     final myGen = _sessionTickerGen;
     _sessionTimer?.cancel();
@@ -1086,7 +1150,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
     void tick() {
       if (!_sessionTickerRunning || myGen != _sessionTickerGen) {
-        _d('Tick ignored (running=$_sessionTickerRunning, myGen=$myGen, currentGen=$_sessionTickerGen)');
+        _d(
+          'Tick ignored (running=$_sessionTickerRunning, myGen=$myGen, currentGen=$_sessionTickerGen)',
+        );
         return;
       }
       if (!mounted || _activeSession == null) {
@@ -1131,7 +1197,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       setState(() => _isLoading = true);
 
       final workoutSvc = _ref!.read(workoutServiceProvider);
-      final updated = await workoutSvc.startWorkoutBff(_workout!.id!, includeDefinitions: false);
+      final updated = await workoutSvc.startWorkoutBff(
+        _workout!.id!,
+        includeDefinitions: false,
+      );
       if (!mounted) return;
       setState(() {
         _workout = updated;
@@ -1149,24 +1218,29 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           'workouts:list',
         ]);
       } catch (_) {}
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Workout started')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Workout started')));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to start session: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to start session: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _finishSession({bool cancelled = false, bool markWorkoutCompleted = false}) async {
+  Future<void> _finishSession({
+    bool cancelled = false,
+    bool markWorkoutCompleted = false,
+  }) async {
     if (_workout?.id == null) return;
     try {
-      _d('Finishing workoutId=${_workout?.id} cancelled=$cancelled markCompleted=$markWorkoutCompleted');
+      _d(
+        'Finishing workoutId=${_workout?.id} cancelled=$cancelled markCompleted=$markWorkoutCompleted',
+      );
       setState(() => _isLoading = true);
 
       final workoutSvc = _ref!.read(workoutServiceProvider);
@@ -1203,7 +1277,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           try {
             final api = _ref!.read(apiClientProvider);
             await api.post(
-              ApiConfig.advanceAppliedPlanIndexEndpoint(appliedPlanId.toString()),
+              ApiConfig.advanceAppliedPlanIndexEndpoint(
+                appliedPlanId.toString(),
+              ),
               <String, dynamic>{},
               queryParams: const <String, dynamic>{'by': '1'},
               context: 'WorkoutDetail.advanceAppliedPlanIndex',
@@ -1219,64 +1295,118 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(cancelled ? 'Session cancelled' : 'Workout finished')),
+        SnackBar(
+          content: Text(cancelled ? 'Session cancelled' : 'Workout finished'),
+        ),
       );
 
       await _maybeShowMacroSuggestion();
-
-
-
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to finish session: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to finish session: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _advanceToNextWorkoutInPlan(BuildContext context) async {
-    try {
-      final workoutSvc = _ref!.read(workoutServiceProvider);
+  Future<void> _completeAllSets() async {
+    if (_activeSession?.id == null ||
+        _activeSession?.isActive != true ||
+        _workout == null)
+      return;
 
-      final nextWorkout = await workoutSvc.getNextWorkoutInPlan(_workout!.id!);
-      if (nextWorkout == null) {
+    setState(() => _isLoading = true);
+    try {
+      final setsToComplete = <Map<String, int>>[];
+      final allSetsByInstance = <int, Set<int>>{};
+
+      for (final instance in _workout!.exerciseInstances) {
+        final instanceId = instance.id;
+        if (instanceId == null) continue;
+
+        final allSetIds = <int>{};
+        for (final set in instance.sets) {
+          final setId = set.id;
+          if (setId == null) continue;
+          allSetIds.add(setId);
+          if (!_isSetCompleted(instanceId, setId)) {
+            setsToComplete.add({'instanceId': instanceId, 'setId': setId});
+          }
+        }
+        if (allSetIds.isNotEmpty) {
+          allSetsByInstance[instanceId] = allSetIds;
+        }
+      }
+
+      if (setsToComplete.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No next workout found in this plan')),
+            const SnackBar(content: Text('All sets are already completed')),
           );
         }
         return;
       }
 
-      if (_workout?.id == nextWorkout.id) return;
+      final svc = _ref!.read(workoutSessionServiceProvider);
+      WorkoutSession? latestSession;
+      int success = 0;
+      int failed = 0;
+
+      for (final item in setsToComplete) {
+        final instanceId = item['instanceId']!;
+        final setId = item['setId']!;
+        try {
+          latestSession = await svc.updateSetCompletion(
+            sessionId: _activeSession!.id!,
+            instanceId: instanceId,
+            setId: setId,
+            completed: true,
+          );
+          success++;
+        } catch (e) {
+          failed++;
+          _d('Mark-all failed for instance=$instanceId set=$setId: $e');
+        }
+      }
 
       if (!mounted) return;
 
-      _stopSessionTicker();
-      setState(() {
-        _workout = nextWorkout;
-        _activeSession = null;
-        _elapsed = Duration.zero;
-        _elapsedNotifier.value = Duration.zero;
-        _completedByInstance.clear();
-      });
-      await _loadExercises();
-      await _loadActiveSession();
+      if (latestSession != null) {
+        setState(() => _activeSession = latestSession);
+        _d('Mark-all latest progress from API: ${latestSession.progress}');
+        _parseProgressFromSession();
+      }
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Loaded next workout: ${nextWorkout.name}')),
+      // Fallback: если backend вернул пустой progress, но запросы по сетам были успешны,
+      // локально выставляем completed, чтобы UI отражал фактическое действие пользователя.
+      final hasCompletedFromSession = _completedByInstance.values.any(
+        (s) => s.isNotEmpty,
+      );
+      if (!hasCompletedFromSession && success > 0) {
+        _completedByInstance
+          ..clear()
+          ..addAll(allSetsByInstance);
+        if (mounted) setState(() {});
+        _d(
+          'Mark-all fallback applied locally. completedByInstance=$_completedByInstance',
         );
       }
+
+      final msg = failed == 0
+          ? 'All sets marked as completed ($success)'
+          : 'Marked $success sets, failed $failed';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load next workout: $e')),
+          SnackBar(content: Text('Failed to complete all sets: $e')),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -1285,7 +1415,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     return s != null && s.contains(setId);
   }
 
-  Future<void> _toggleSetCompletion(ExerciseInstance instance, ExerciseSetDto set) async {
+  Future<void> _toggleSetCompletion(
+    ExerciseInstance instance,
+    ExerciseSetDto set,
+  ) async {
     if (_activeSession?.id == null || _activeSession?.isActive != true) return;
     if (instance.id == null || set.id == null) return;
     if (_isTogglingSet) return;
@@ -1381,47 +1514,49 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     return pct;
   }
 
-  String _editorKey(ExerciseInstance instance, int setIndex, ExerciseSetDto set) {
+  String _editorKey(
+    ExerciseInstance instance,
+    int setIndex,
+    ExerciseSetDto set,
+  ) {
     final instKey = instance.id?.toString() ?? 'inst';
     final setKey = set.id?.toString() ?? 'idx$setIndex';
     return '$instKey-$setKey';
   }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  _SetEditor _getSetEditor(ExerciseInstance instance, int setIndex, ExerciseSetDto set) {
+  _SetEditor _getSetEditor(
+    ExerciseInstance instance,
+    int setIndex,
+    ExerciseSetDto set,
+  ) {
     final key = _editorKey(instance, setIndex, set);
     final existing = _setEditors[key];
     if (existing != null) return existing;
-    String fmtWeight(double w) => (w % 1 == 0) ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
+    String fmtWeight(double w) =>
+        (w % 1 == 0) ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
     final editor = _SetEditor(
       weightCtrl: TextEditingController(text: fmtWeight(set.weight)),
       repsCtrl: TextEditingController(text: set.reps.toString()),
-      rpeCtrl: TextEditingController(text: set.rpe == null ? '' : ((set.rpe! % 1 == 0) ? set.rpe!.toStringAsFixed(0) : set.rpe!.toStringAsFixed(1))),
+      rpeCtrl: TextEditingController(
+        text: set.rpeValue == null
+            ? ''
+            : ((set.rpeValue! % 1 == 0)
+                  ? set.rpeValue!.toStringAsFixed(0)
+                  : set.rpeValue!.toStringAsFixed(1)),
+      ),
     );
     _setEditors[key] = editor;
     return editor;
   }
 
-  Future<void> _handleCompletedSetIdMigration(int instanceId, int oldSetId, int newSetId) async {
+  Future<void> _handleCompletedSetIdMigration(
+    int instanceId,
+    int oldSetId,
+    int newSetId,
+  ) async {
     final localChanged = _updateLocalCompletion(instanceId, oldSetId, newSetId);
-    final sessionActive = _activeSession?.id != null && _activeSession?.isActive == true;
+    final sessionActive =
+        _activeSession?.id != null && _activeSession?.isActive == true;
     if (!sessionActive || _ref == null) {
       if (localChanged && mounted) {
         setState(() {});
@@ -1480,8 +1615,8 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     editor.editedFields.add(field);
     if (editor.editedFields.length > 2) editor.editedFields.removeAt(0);
 
-
-    double? parseDouble(String s) => double.tryParse(s.replaceAll(',', '.').trim());
+    double? parseDouble(String s) =>
+        double.tryParse(s.replaceAll(',', '.').trim());
     int? parseInt(String s) => int.tryParse(s.trim());
 
     final w = parseDouble(editor.weightCtrl.text);
@@ -1497,13 +1632,17 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       third = {'weight', 'reps', 'rpe'}.difference({a, b}).first;
     }
 
-    String fmtWeight(double v) => (v % 1 == 0) ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+    String fmtWeight(double v) =>
+        (v % 1 == 0) ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 
     int exerciseId = instance.exerciseListId;
     _isSyncingFields = true;
     try {
       if (hasTwo && third == 'weight' && r != null && e != null) {
-        final intensity = _intensityFromEffortReps(e.clamp(1, 10), r.clamp(1, 1000));
+        final intensity = _intensityFromEffortReps(
+          e.clamp(1, 10),
+          r.clamp(1, 1000),
+        );
         final max = _exerciseMaxByExerciseId[exerciseId];
         if (intensity != null && max != null) {
           final newWeight = max * (intensity / 100.0);
@@ -1511,11 +1650,15 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         }
       } else if (hasTwo && third == 'reps' && w != null && e != null) {
         final intensity = _intensityFromWeight(exerciseId, w);
-        final reps = (intensity != null) ? _repsFromIntensityEffort(intensity, e.clamp(1, 10)) : null;
+        final reps = (intensity != null)
+            ? _repsFromIntensityEffort(intensity, e.clamp(1, 10))
+            : null;
         if (reps != null) editor.repsCtrl.text = reps.toString();
       } else if (hasTwo && third == 'rpe' && w != null && r != null) {
         final intensity = _intensityFromWeight(exerciseId, w);
-        final eff = (intensity != null) ? _effortFromIntensityReps(intensity, r.clamp(1, 1000)) : null;
+        final eff = (intensity != null)
+            ? _effortFromIntensityReps(intensity, r.clamp(1, 1000))
+            : null;
         if (eff != null) editor.rpeCtrl.text = eff.toString();
       }
     } finally {
@@ -1537,20 +1680,23 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   ) async {
     final editor = _getSetEditor(instance, setIndex, set);
     editor.cancelDebounce();
-    double? parseDouble(String s) => double.tryParse(s.replaceAll(',', '.').trim());
+    double? parseDouble(String s) =>
+        double.tryParse(s.replaceAll(',', '.').trim());
     int? parseInt(String s) => int.tryParse(s.trim());
 
     final double? weight = parseDouble(editor.weightCtrl.text);
     final int? reps = parseInt(editor.repsCtrl.text);
     final double? rpe = parseDouble(editor.rpeCtrl.text)?.clamp(1.0, 10.0);
 
-
     final fields = <String, bool>{
       'weight': weight != null,
       'reps': reps != null,
       'rpe': rpe != null,
     };
-    final known = fields.entries.where((e) => e.value).map((e) => e.key).toList();
+    final known = fields.entries
+        .where((e) => e.value)
+        .map((e) => e.key)
+        .toList();
     if (known.length == 2) {
       _isSyncingFields = true;
       try {
@@ -1559,10 +1705,14 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         final b = known[1];
         final third = {'weight', 'reps', 'rpe'}.difference({a, b}).first;
 
-        String fmtWeight(double v) => (v % 1 == 0) ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+        String fmtWeight(double v) =>
+            (v % 1 == 0) ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 
         if (third == 'weight' && reps != null && rpe != null) {
-          final intensity = _intensityFromEffortReps((rpe.round()).clamp(1, 10), reps.clamp(1, 1000));
+          final intensity = _intensityFromEffortReps(
+            (rpe.round()).clamp(1, 10),
+            reps.clamp(1, 1000),
+          );
           final max = _exerciseMaxByExerciseId[exerciseId];
           if (intensity != null && max != null) {
             final w = max * (intensity / 100.0);
@@ -1570,11 +1720,15 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           }
         } else if (third == 'reps' && weight != null && rpe != null) {
           final intensity = _intensityFromWeight(exerciseId, weight);
-          final repsCalc = (intensity != null) ? _repsFromIntensityEffort(intensity, rpe.round().clamp(1, 10)) : null;
+          final repsCalc = (intensity != null)
+              ? _repsFromIntensityEffort(intensity, rpe.round().clamp(1, 10))
+              : null;
           if (repsCalc != null) editor.repsCtrl.text = repsCalc.toString();
         } else if (third == 'rpe' && weight != null && reps != null) {
           final intensity = _intensityFromWeight(exerciseId, weight);
-          final eff = (intensity != null) ? _effortFromIntensityReps(intensity, reps.clamp(1, 1000)) : null;
+          final eff = (intensity != null)
+              ? _effortFromIntensityReps(intensity, reps.clamp(1, 1000))
+              : null;
           if (eff != null) editor.rpeCtrl.text = eff.toString();
         }
       } finally {
@@ -1582,7 +1736,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       }
     }
 
-    final double? finalWeightRaw = double.tryParse(editor.weightCtrl.text.replaceAll(',', '.'));
+    final double? finalWeightRaw = double.tryParse(
+      editor.weightCtrl.text.replaceAll(',', '.'),
+    );
     final int? finalRepsRaw = int.tryParse(editor.repsCtrl.text.trim());
     final double? finalRpeRaw = double.tryParse(editor.rpeCtrl.text.trim());
     final double? finalWeight = finalWeightRaw?.clamp(0.0, 10000.0);
@@ -1610,12 +1766,13 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
       final setToDelete = instance.sets[setIndex];
 
-
       final confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Delete Set'),
-          content: const Text('Are you sure you want to delete this set? This action cannot be undone.'),
+          content: const Text(
+            'Are you sure you want to delete this set? This action cannot be undone.',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -1623,9 +1780,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.red,
-              ),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('DELETE'),
             ),
           ],
@@ -1639,33 +1794,45 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       });
 
       if (setToDelete.id == null) {
-
         final workoutService = _ref!.read(workoutServiceProvider);
         try {
-
           await _loadExercises();
 
+          final refreshedInstance = _workout?.exerciseInstances.firstWhere(
+            (i) => i.id == instance.id,
+            orElse: () => instance,
+          );
 
-          final refreshedInstance = _workout?.exerciseInstances
-              .firstWhere((i) => i.id == instance.id, orElse: () => instance);
-
-          if (refreshedInstance != null && setIndex >= 0 && setIndex < refreshedInstance.sets.length) {
+          if (refreshedInstance != null &&
+              setIndex >= 0 &&
+              setIndex < refreshedInstance.sets.length) {
             final refreshedSet = refreshedInstance.sets[setIndex];
             if (refreshedSet.id != null && instance.id != null) {
+              await workoutService.deleteExerciseSet(
+                instance.id!,
+                refreshedSet.id!,
+              );
 
-              await workoutService.deleteExerciseSet(instance.id!, refreshedSet.id!);
-
-
-              final updatedSets = List<ExerciseSetDto>.from(refreshedInstance.sets)..removeAt(setIndex);
-              final updatedInstance = refreshedInstance.copyWith(sets: updatedSets);
+              final updatedSets = List<ExerciseSetDto>.from(
+                refreshedInstance.sets,
+              )..removeAt(setIndex);
+              final updatedInstance = refreshedInstance.copyWith(
+                sets: updatedSets,
+              );
 
               if (_workout != null) {
-                final updatedInstances = List<ExerciseInstance>.from(_workout!.exerciseInstances);
-                final idx = updatedInstances.indexWhere((i) => i.id == updatedInstance.id);
+                final updatedInstances = List<ExerciseInstance>.from(
+                  _workout!.exerciseInstances,
+                );
+                final idx = updatedInstances.indexWhere(
+                  (i) => i.id == updatedInstance.id,
+                );
                 if (idx != -1) {
                   updatedInstances[idx] = updatedInstance;
                   setState(() {
-                    _workout = _workout!.copyWith(exerciseInstances: updatedInstances);
+                    _workout = _workout!.copyWith(
+                      exerciseInstances: updatedInstances,
+                    );
                   });
                 }
               }
@@ -1673,74 +1840,92 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
               await _loadExercises();
             } else {
-
-              final updatedSets = List<ExerciseSetDto>.from(instance.sets)..removeAt(setIndex);
+              final updatedSets = List<ExerciseSetDto>.from(instance.sets)
+                ..removeAt(setIndex);
               final updatedInstance = instance.copyWith(sets: updatedSets);
               if (_workout != null) {
-                final updatedInstances = List<ExerciseInstance>.from(_workout!.exerciseInstances);
-                final idx = updatedInstances.indexWhere((i) => i.id == instance.id);
+                final updatedInstances = List<ExerciseInstance>.from(
+                  _workout!.exerciseInstances,
+                );
+                final idx = updatedInstances.indexWhere(
+                  (i) => i.id == instance.id,
+                );
                 if (idx != -1) {
                   updatedInstances[idx] = updatedInstance;
                   setState(() {
-                    _workout = _workout!.copyWith(exerciseInstances: updatedInstances);
+                    _workout = _workout!.copyWith(
+                      exerciseInstances: updatedInstances,
+                    );
                   });
                 }
               }
               _reconcileEditors();
             }
           } else {
-
-            final updatedSets = List<ExerciseSetDto>.from(instance.sets)..removeAt(setIndex);
+            final updatedSets = List<ExerciseSetDto>.from(instance.sets)
+              ..removeAt(setIndex);
             final updatedInstance = instance.copyWith(sets: updatedSets);
             if (_workout != null) {
-              final updatedInstances = List<ExerciseInstance>.from(_workout!.exerciseInstances);
-              final idx = updatedInstances.indexWhere((i) => i.id == instance.id);
+              final updatedInstances = List<ExerciseInstance>.from(
+                _workout!.exerciseInstances,
+              );
+              final idx = updatedInstances.indexWhere(
+                (i) => i.id == instance.id,
+              );
               if (idx != -1) {
                 updatedInstances[idx] = updatedInstance;
                 setState(() {
-                  _workout = _workout!.copyWith(exerciseInstances: updatedInstances);
+                  _workout = _workout!.copyWith(
+                    exerciseInstances: updatedInstances,
+                  );
                 });
               }
             }
             _reconcileEditors();
           }
         } catch (e) {
-
-          final updatedSets = List<ExerciseSetDto>.from(instance.sets)..removeAt(setIndex);
+          final updatedSets = List<ExerciseSetDto>.from(instance.sets)
+            ..removeAt(setIndex);
           final updatedInstance = instance.copyWith(sets: updatedSets);
           if (_workout != null) {
-            final updatedInstances = List<ExerciseInstance>.from(_workout!.exerciseInstances);
+            final updatedInstances = List<ExerciseInstance>.from(
+              _workout!.exerciseInstances,
+            );
             final idx = updatedInstances.indexWhere((i) => i.id == instance.id);
             if (idx != -1) {
               updatedInstances[idx] = updatedInstance;
               setState(() {
-                _workout = _workout!.copyWith(exerciseInstances: updatedInstances);
+                _workout = _workout!.copyWith(
+                  exerciseInstances: updatedInstances,
+                );
               });
             }
           }
           _reconcileEditors();
         }
       } else {
-
         final workoutService = _ref!.read(workoutServiceProvider);
         await workoutService.deleteExerciseSet(instance.id!, setToDelete.id!);
 
-
-        final updatedSets = List<ExerciseSetDto>.from(instance.sets)..removeAt(setIndex);
+        final updatedSets = List<ExerciseSetDto>.from(instance.sets)
+          ..removeAt(setIndex);
         final updatedInstance = instance.copyWith(sets: updatedSets);
 
         if (_workout != null) {
-          final updatedInstances = List<ExerciseInstance>.from(_workout!.exerciseInstances);
+          final updatedInstances = List<ExerciseInstance>.from(
+            _workout!.exerciseInstances,
+          );
           final index = updatedInstances.indexWhere((i) => i.id == instance.id);
           if (index != -1) {
             updatedInstances[index] = updatedInstance;
             setState(() {
-              _workout = _workout!.copyWith(exerciseInstances: updatedInstances);
+              _workout = _workout!.copyWith(
+                exerciseInstances: updatedInstances,
+              );
             });
           }
         }
         _reconcileEditors();
-
 
         await _loadExercises();
       }
@@ -1804,13 +1989,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           exerciseDefinition: selectedExercise,
           workoutId: _workout!.id!,
           order: _workout?.exerciseInstances.length,
-          sets: const [
-            ExerciseSetDto(
-              reps: 0,
-              weight: 0.0,
-              order: 0,
-            ),
-          ],
+          sets: const [ExerciseSetDto(reps: 0, weight: 0.0, order: 0)],
         );
 
         final workoutService = _ref!.read(workoutServiceProvider);
@@ -1842,7 +2021,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     }
   }
 
-  Future<void> _navigateToExerciseForm(ExerciseDefinition exercise, ExerciseInstance? instance) async {
+  Future<void> _navigateToExerciseForm(
+    ExerciseDefinition exercise,
+    ExerciseInstance? instance,
+  ) async {
     if (_workout?.id == null) return;
 
     try {
@@ -1922,7 +2104,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Delete Exercise'),
-          content: const Text('Are you sure you want to remove this exercise and all its sets from the workout?'),
+          content: const Text(
+            'Are you sure you want to remove this exercise and all its sets from the workout?',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -1938,9 +2122,11 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
       );
 
       if (confirmed == true && mounted) {
-        final instancesToDelete = _workout?.exerciseInstances
+        final instancesToDelete =
+            _workout?.exerciseInstances
                 .where((inst) => inst.exerciseListId == exerciseId)
-                .toList() ?? [];
+                .toList() ??
+            [];
 
         if (instancesToDelete.isEmpty) {
           throw Exception('No exercise instances found for this exercise');
@@ -1978,9 +2164,15 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
     }
   }
 
-  Future<void> _promptEditWeight(ExerciseInstance instance, int setIndex, double initialWeight) async {
+  Future<void> _promptEditWeight(
+    ExerciseInstance instance,
+    int setIndex,
+    double initialWeight,
+  ) async {
     final controller = TextEditingController(
-      text: initialWeight % 1 == 0 ? initialWeight.toStringAsFixed(0) : initialWeight.toStringAsFixed(1),
+      text: initialWeight % 1 == 0
+          ? initialWeight.toStringAsFixed(0)
+          : initialWeight.toStringAsFixed(1),
     );
 
     final result = await showDialog<double>(
@@ -1991,7 +2183,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           content: TextField(
             controller: controller,
             autofocus: true,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+              signed: false,
+            ),
             decoration: const InputDecoration(hintText: 'e.g. 82.5'),
             onSubmitted: (_) {
               final raw = controller.text.replaceAll(',', '.').trim();
@@ -2019,11 +2214,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
     if (result != null) {
       final clamped = result.clamp(0.0, 10000.0);
-      await _updateSetField(
-        instance,
-        setIndex,
-        weight: clamped,
-      );
+      await _updateSetField(instance, setIndex, weight: clamped);
     }
   }
 
@@ -2035,9 +2226,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         if (_isLoading) {
           return Scaffold(
             backgroundColor: AppColors.background,
-            body: const Center(
-              child: CircularProgressIndicator(),
-            ),
+            body: const Center(child: CircularProgressIndicator()),
           );
         }
 
@@ -2045,19 +2234,36 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           backgroundColor: AppColors.background,
           body: Stack(
             children: [
-              SafeArea(
-                bottom: false,
-                child: _buildBody(),
-              ),
+              SafeArea(bottom: false, child: _buildBody()),
               Align(
                 alignment: Alignment.topCenter,
                 child: FloatingHeaderBar(
                   title: _workout?.name ?? 'Workout Details',
                   leading: IconButton(
-                    icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+                    icon: const Icon(
+                      Icons.arrow_back,
+                      color: AppColors.textPrimary,
+                    ),
                     onPressed: () => Navigator.of(context).maybePop(),
                   ),
                   actions: [
+                    IconButton(
+                      icon: const Icon(Icons.restaurant),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => NutritionPlanCreate(
+                              initialPlan: {
+                                'workout_id': _workout?.id,
+                                'user_id': 1,
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                      color: AppColors.primary,
+                    ),
                     IconButton(
                       icon: const Icon(Icons.refresh),
                       onPressed: _loadExercises,
@@ -2066,7 +2272,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                   ],
                   onProfileTap: () {
                     Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => const UserProfileScreen(),
+                      ),
                     );
                   },
                 ),
@@ -2110,10 +2318,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                 ),
               ),
               const SizedBox(height: AppSpacing.lg),
-              Text(
-                'No exercises yet',
-                style: AppTextStyles.headlineMedium,
-              ),
+              Text('No exercises yet', style: AppTextStyles.headlineMedium),
               const SizedBox(height: AppSpacing.sm),
               Text(
                 'Tap "Add Exercise" to get started',
@@ -2210,7 +2415,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                   color: AppColors.primary,
                   tooltip: 'Уменьшить',
                   onPressed: () {
-                    final current = int.tryParse(_readinessCtrl.text) ?? _readinessSlider.round();
+                    final current =
+                        int.tryParse(_readinessCtrl.text) ??
+                        _readinessSlider.round();
                     final next = (current - 1).clamp(0, 10);
                     setState(() {
                       _readinessSlider = next.toDouble();
@@ -2221,7 +2428,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
               ),
               Container(
                 width: 48,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFE8ECFF),
                   borderRadius: BorderRadius.circular(8),
@@ -2245,7 +2455,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                   color: AppColors.primary,
                   tooltip: 'Увеличить',
                   onPressed: () {
-                    final current = int.tryParse(_readinessCtrl.text) ?? _readinessSlider.round();
+                    final current =
+                        int.tryParse(_readinessCtrl.text) ??
+                        _readinessSlider.round();
                     final next = (current + 1).clamp(0, 10);
                     setState(() {
                       _readinessSlider = next.toDouble();
@@ -2258,7 +2470,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           );
 
           Widget applyButton = ElevatedButton(
-            onPressed: (_isApplyingReadiness || _workout == null) ? null : _applyReadinessScaling,
+            onPressed: (_isApplyingReadiness || _workout == null)
+                ? null
+                : _applyReadinessScaling,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
@@ -2271,7 +2485,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                 ? const SizedBox(
                     width: 16,
                     height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   )
                 : const Text('Применить'),
           );
@@ -2326,7 +2543,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: AppShadows.sm,
         border: Border.all(
-          color: isActive ? const Color(0xFF4CAF50).withOpacity(0.3) : AppColors.border,
+          color: isActive
+              ? const Color(0xFF4CAF50).withOpacity(0.3)
+              : AppColors.border,
           width: 1.5,
         ),
       ),
@@ -2343,7 +2562,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: isActive ? const Color(0xFF4CAF50) : AppColors.textDisabled,
+                        color: isActive
+                            ? const Color(0xFF4CAF50)
+                            : AppColors.textDisabled,
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -2352,7 +2573,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                       isActive ? 'Active session' : 'No active session',
                       style: AppTextStyles.titleMedium.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: isActive ? const Color(0xFF2E7D32) : AppColors.textSecondary,
+                        color: isActive
+                            ? const Color(0xFF2E7D32)
+                            : AppColors.textSecondary,
                       ),
                     ),
                   ],
@@ -2385,11 +2608,16 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           ),
           if (!isActive)
             ElevatedButton.icon(
-              onPressed: (_workout?.id != null && !_isLoading) ? _startSession : null,
+              onPressed: (_workout?.id != null && !_isLoading)
+                  ? _startSession
+                  : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF4CAF50),
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -2401,10 +2629,15 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
             Row(
               children: [
                 OutlinedButton.icon(
-                  onPressed: _isLoading ? null : () => _finishSession(cancelled: true),
+                  onPressed: _isLoading
+                      ? null
+                      : () => _finishSession(cancelled: true),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.error,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -2414,12 +2647,32 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                   label: const Text('Cancel'),
                 ),
                 const SizedBox(width: 8),
+                IconButton(
+                  onPressed: _isLoading ? null : _completeAllSets,
+                  icon: const Icon(Icons.playlist_add_check, size: 24),
+                  tooltip: 'Mark all as completed',
+                  color: const Color(0xFF2E7D32),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
+                ),
+                const SizedBox(width: 8),
                 ElevatedButton.icon(
-                  onPressed: _isLoading ? null : () => _finishSession(cancelled: false, markWorkoutCompleted: true),
+                  onPressed: _isLoading
+                      ? null
+                      : () => _finishSession(
+                          cancelled: false,
+                          markWorkoutCompleted: true,
+                        ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF4CAF50),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -2435,16 +2688,15 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
   }
 
   Widget _buildExerciseCard(ExerciseDefinition exercise) {
-
-    final instances = _workout?.exerciseInstances
-        .where((instance) => instance.exerciseListId == exercise.id)
-        .toList() ?? [];
-
+    final instances =
+        _workout?.exerciseInstances
+            .where((instance) => instance.exerciseListId == exercise.id)
+            .toList() ??
+        [];
 
     if (instances.isEmpty) {
       return Container();
     }
-
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2500,7 +2752,8 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
   Widget _buildInstanceCard(ExerciseInstance instance) {
     final theme = Theme.of(context);
-    final isUpdating = instance.id != null && _updatingInstanceIds.contains(instance.id!);
+    final isUpdating =
+        instance.id != null && _updatingInstanceIds.contains(instance.id!);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -2551,29 +2804,37 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.add_circle_outline, size: 20),
-                      onPressed: (isUpdating || _isLoading) ? null : () => _addSetToInstance(instance),
+                      onPressed: (isUpdating || _isLoading)
+                          ? null
+                          : () => _addSetToInstance(instance),
                       tooltip: 'Add set',
                       color: AppColors.primary,
                       padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      constraints: const BoxConstraints(
+                        minWidth: 32,
+                        minHeight: 32,
+                      ),
                     ),
                     const SizedBox(width: 4),
                     IconButton(
                       icon: const Icon(Icons.edit_outlined, size: 20),
                       onPressed: () => _navigateToExerciseForm(
                         instance.exerciseDefinition ??
-                          ExerciseDefinition(
-                            id: instance.exerciseListId,
-                            name: 'Unknown',
-                            muscleGroup: '',
-                            equipment: '',
-                          ),
+                            ExerciseDefinition(
+                              id: instance.exerciseListId,
+                              name: 'Unknown',
+                              muscleGroup: '',
+                              equipment: '',
+                            ),
                         instance,
                       ),
                       tooltip: 'Edit exercise',
                       color: AppColors.primary,
                       padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      constraints: const BoxConstraints(
+                        minWidth: 32,
+                        minHeight: 32,
+                      ),
                     ),
                     const SizedBox(width: 4),
                     IconButton(
@@ -2582,7 +2843,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                       tooltip: 'Delete exercise',
                       color: AppColors.error,
                       padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      constraints: const BoxConstraints(
+                        minWidth: 32,
+                        minHeight: 32,
+                      ),
                     ),
                   ],
                 ),
@@ -2592,7 +2856,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           if (instance.sets.isNotEmpty) ...[
             Divider(height: 1, thickness: 1, color: AppColors.border),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16.0,
+                vertical: 12.0,
+              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -2647,18 +2914,29 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           ],
           ...instance.sets.asMap().entries.map((entry) {
             final set = entry.value;
-            final bool isCompleted = _activeSession != null && instance.id != null && set.id != null
+            final bool isCompleted =
+                _activeSession != null && instance.id != null && set.id != null
                 ? _isSetCompleted(instance.id!, set.id!)
                 : false;
-            final bool canToggle = _activeSession?.isActive == true && instance.id != null && set.id != null;
+            final bool canToggle =
+                _activeSession?.isActive == true &&
+                instance.id != null &&
+                set.id != null;
 
             return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+              margin: const EdgeInsets.symmetric(
+                horizontal: 12.0,
+                vertical: 4.0,
+              ),
               decoration: BoxDecoration(
-                color: isCompleted ? const Color(0xFFEFF8F2) : AppColors.background.withOpacity(0.3),
+                color: isCompleted
+                    ? const Color(0xFFEFF8F2)
+                    : AppColors.background.withOpacity(0.3),
                 borderRadius: BorderRadius.circular(12.0),
                 border: Border.all(
-                  color: isCompleted ? const Color(0xFF4CAF50).withOpacity(0.3) : Colors.transparent,
+                  color: isCompleted
+                      ? const Color(0xFF4CAF50).withOpacity(0.3)
+                      : Colors.transparent,
                   width: 1,
                 ),
               ),
@@ -2666,9 +2944,14 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                 color: Colors.transparent,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(12.0),
-                  onTap: canToggle ? () => _toggleSetCompletion(instance, set) : null,
+                  onTap: canToggle
+                      ? () => _toggleSetCompletion(instance, set)
+                      : null,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12.0,
+                      vertical: 12.0,
+                    ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -2676,7 +2959,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                           width: 40,
                           child: Checkbox(
                             value: isCompleted,
-                            onChanged: canToggle ? (v) => _toggleSetCompletion(instance, set) : null,
+                            onChanged: canToggle
+                                ? (v) => _toggleSetCompletion(instance, set)
+                                : null,
                           ),
                         ),
                         SizedBox(
@@ -2685,7 +2970,9 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                             '${entry.key + 1}',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontWeight: FontWeight.w500,
-                              color: isCompleted ? theme.primaryColor : theme.textTheme.bodyMedium?.color,
+                              color: isCompleted
+                                  ? theme.primaryColor
+                                  : theme.textTheme.bodyMedium?.color,
                             ),
                             textAlign: TextAlign.center,
                           ),
@@ -2694,14 +2981,24 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                         SizedBox(
                           width: 100,
                           child: TextField(
-                            controller: _getSetEditor(instance, entry.key, set).weightCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
+                            controller: _getSetEditor(
+                              instance,
+                              entry.key,
+                              set,
+                            ).weightCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                              signed: false,
+                            ),
                             style: AppTextStyles.bodyMedium.copyWith(
                               fontWeight: FontWeight.w500,
                             ),
                             decoration: InputDecoration(
                               isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 10,
+                                horizontal: 12,
+                              ),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
                                 borderSide: BorderSide(color: AppColors.border),
@@ -2712,7 +3009,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+                                borderSide: BorderSide(
+                                  color: AppColors.primary,
+                                  width: 1.5,
+                                ),
                               ),
                               hintText: 'kg',
                               hintStyle: AppTextStyles.bodySmall.copyWith(
@@ -2720,9 +3020,19 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                               ),
                             ),
                             enabled: !isCompleted,
-                            onChanged: (v) => _onInlineFieldChanged(instance, entry.key, set, 'weight', v),
+                            onChanged: (v) => _onInlineFieldChanged(
+                              instance,
+                              entry.key,
+                              set,
+                              'weight',
+                              v,
+                            ),
                             onSubmitted: (_) {
-                              final editor = _getSetEditor(instance, entry.key, set);
+                              final editor = _getSetEditor(
+                                instance,
+                                entry.key,
+                                set,
+                              );
                               editor.cancelDebounce();
                               _onInlineFieldSubmitted(instance, entry.key, set);
                             },
@@ -2732,14 +3042,21 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                         SizedBox(
                           width: 64,
                           child: TextField(
-                            controller: _getSetEditor(instance, entry.key, set).repsCtrl,
+                            controller: _getSetEditor(
+                              instance,
+                              entry.key,
+                              set,
+                            ).repsCtrl,
                             keyboardType: TextInputType.number,
                             style: AppTextStyles.bodyMedium.copyWith(
                               fontWeight: FontWeight.w500,
                             ),
                             decoration: InputDecoration(
                               isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 10,
+                                horizontal: 12,
+                              ),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
                                 borderSide: BorderSide(color: AppColors.border),
@@ -2750,7 +3067,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+                                borderSide: BorderSide(
+                                  color: AppColors.primary,
+                                  width: 1.5,
+                                ),
                               ),
                               hintText: 'reps',
                               hintStyle: AppTextStyles.bodySmall.copyWith(
@@ -2758,9 +3078,19 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                               ),
                             ),
                             enabled: !isCompleted,
-                            onChanged: (v) => _onInlineFieldChanged(instance, entry.key, set, 'reps', v),
+                            onChanged: (v) => _onInlineFieldChanged(
+                              instance,
+                              entry.key,
+                              set,
+                              'reps',
+                              v,
+                            ),
                             onSubmitted: (_) {
-                              final editor = _getSetEditor(instance, entry.key, set);
+                              final editor = _getSetEditor(
+                                instance,
+                                entry.key,
+                                set,
+                              );
                               editor.cancelDebounce();
                               _onInlineFieldSubmitted(instance, entry.key, set);
                             },
@@ -2770,14 +3100,24 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                         SizedBox(
                           width: 64,
                           child: TextField(
-                            controller: _getSetEditor(instance, entry.key, set).rpeCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
+                            controller: _getSetEditor(
+                              instance,
+                              entry.key,
+                              set,
+                            ).rpeCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                              signed: false,
+                            ),
                             style: AppTextStyles.bodyMedium.copyWith(
                               fontWeight: FontWeight.w500,
                             ),
                             decoration: InputDecoration(
                               isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 10,
+                                horizontal: 12,
+                              ),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
                                 borderSide: BorderSide(color: AppColors.border),
@@ -2788,7 +3128,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+                                borderSide: BorderSide(
+                                  color: AppColors.primary,
+                                  width: 1.5,
+                                ),
                               ),
                               hintText: 'RPE',
                               hintStyle: AppTextStyles.bodySmall.copyWith(
@@ -2796,9 +3139,19 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                               ),
                             ),
                             enabled: !isCompleted,
-                            onChanged: (v) => _onInlineFieldChanged(instance, entry.key, set, 'rpe', v),
+                            onChanged: (v) => _onInlineFieldChanged(
+                              instance,
+                              entry.key,
+                              set,
+                              'rpe',
+                              v,
+                            ),
                             onSubmitted: (_) {
-                              final editor = _getSetEditor(instance, entry.key, set);
+                              final editor = _getSetEditor(
+                                instance,
+                                entry.key,
+                                set,
+                              );
                               editor.cancelDebounce();
                               _onInlineFieldSubmitted(instance, entry.key, set);
                             },
@@ -2811,7 +3164,10 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                               ? null
                               : () => _handleDeleteSet(instance, entry.key),
                           padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
                           tooltip: 'Delete set',
                         ),
                       ],
@@ -2838,24 +3194,30 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
           validKeys.add(key);
           final editor = _setEditors[key] ?? _getSetEditor(instance, i, set);
 
-          String fmtWeight(double w) => (w % 1 == 0) ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
+          String fmtWeight(double w) =>
+              (w % 1 == 0) ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
           final desiredWeight = fmtWeight(set.weight);
           final desiredReps = set.reps.toString();
-          final desiredRpe = set.rpe == null
+          final desiredRpe = set.rpeValue == null
               ? ''
-              : ((set.rpe! % 1 == 0)
-                  ? set.rpe!.toStringAsFixed(0)
-                  : set.rpe!.toStringAsFixed(1));
-          if (editor.weightCtrl.text != desiredWeight) editor.weightCtrl.text = desiredWeight;
-          if (editor.repsCtrl.text != desiredReps) editor.repsCtrl.text = desiredReps;
-          if (editor.rpeCtrl.text != desiredRpe) editor.rpeCtrl.text = desiredRpe;
+              : ((set.rpeValue! % 1 == 0)
+                    ? set.rpeValue!.toStringAsFixed(0)
+                    : set.rpeValue!.toStringAsFixed(1));
+          if (editor.weightCtrl.text != desiredWeight)
+            editor.weightCtrl.text = desiredWeight;
+          if (editor.repsCtrl.text != desiredReps)
+            editor.repsCtrl.text = desiredReps;
+          if (editor.rpeCtrl.text != desiredRpe)
+            editor.rpeCtrl.text = desiredRpe;
         }
       }
     } finally {
       _isSyncingFields = false;
     }
 
-    final toRemove = _setEditors.keys.where((k) => !validKeys.contains(k)).toList();
+    final toRemove = _setEditors.keys
+        .where((k) => !validKeys.contains(k))
+        .toList();
     for (final k in toRemove) {
       _setEditors[k]?.dispose();
       _setEditors.remove(k);
@@ -2865,7 +3227,6 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
 
   @override
   void dispose() {
-
     for (final e in _setEditors.values) {
       e.dispose();
     }

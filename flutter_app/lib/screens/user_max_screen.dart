@@ -1,20 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:workout_app/widgets/primary_app_bar.dart';
 import 'package:workout_app/widgets/assistant_chat_host.dart';
+import 'package:workout_app/widgets/loading_indicator.dart';
+import 'package:workout_app/widgets/error_message.dart';
+import 'package:workout_app/widgets/empty_state.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
 
 import '../config/api_config.dart';
 import '../models/user_max.dart';
 import '../services/api_client.dart';
 import 'user_max_widget.dart';
 
-class UserMaxScreen extends StatefulWidget {
+class UserMaxScreen extends ConsumerStatefulWidget {
   const UserMaxScreen({super.key});
 
   @override
-  State<UserMaxScreen> createState() => _UserMaxScreenState();
+  ConsumerState<UserMaxScreen> createState() => _UserMaxScreenState();
 }
 
-class _UserMaxScreenState extends State<UserMaxScreen> {
+class _UserMaxScreenState extends ConsumerState<UserMaxScreen> {
   final ApiClient _apiClient = ApiClient.create();
   late Future<List<UserMax>> _futureMaxes;
 
@@ -32,23 +37,26 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
 
     if (response is List) {
       return response
-          .map((item) => UserMax.fromJson(
-                item is Map<String, dynamic>
-                    ? item
-                    : Map<String, dynamic>.from(item as Map),
-              ))
+          .map(
+            (item) => UserMax.fromJson(
+              item is Map<String, dynamic>
+                  ? item
+                  : Map<String, dynamic>.from(item as Map),
+            ),
+          )
           .toList();
     }
 
     throw const FormatException('Unexpected response when fetching user maxes');
   }
 
-  Future<Map<String, dynamic>> _fetchWeakMuscleAnalysis({bool useLlm = true}) async {
-
+  Future<Map<String, dynamic>> _fetchWeakMuscleAnalysis({
+    bool useLlm = true,
+  }) async {
     final endpoint = ApiConfig.getWeakMuscleAnalysisEndpoint(useLlm: false);
     final response = await _apiClient.get(
       endpoint,
-      queryParams: { 'use_llm': useLlm.toString() },
+      queryParams: {'use_llm': useLlm.toString()},
       context: 'UserMaxScreen.analysis',
     );
     if (response is Map<String, dynamic>) return response;
@@ -79,8 +87,11 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
         showDragHandle: true,
         builder: (ctx) {
           final weak = (data['weak_muscles'] as List?) ?? const [];
-          final muscleStrength = (data['muscle_strength'] as Map?)?.cast<String, dynamic>() ?? const {};
-          final trends = (data['trend'] as Map?)?.cast<String, dynamic>() ?? const {};
+          final muscleStrength =
+              (data['muscle_strength'] as Map?)?.cast<String, dynamic>() ??
+              const {};
+          final trends =
+              (data['trend'] as Map?)?.cast<String, dynamic>() ?? const {};
           final llmEnabled = data['llm_enabled'] == true;
           final anomalies = (data['anomalies'] as List?) ?? const [];
           return DraggableScrollableSheet(
@@ -88,7 +99,10 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
             initialChildSize: 0.75,
             minChildSize: 0.5,
             builder: (_, controller) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16.0,
+                vertical: 8.0,
+              ),
               child: ListView(
                 controller: controller,
                 children: [
@@ -101,11 +115,17 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
                         ),
                       ),
                       if (llmEnabled)
-                        const Tooltip(message: 'LLM обогащение включено', child: Icon(Icons.smart_toy_outlined))
+                        const Tooltip(
+                          message: 'LLM обогащение включено',
+                          child: Icon(Icons.smart_toy_outlined),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Text('Топ слабых мышц', style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    'Топ слабых мышц',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   const SizedBox(height: 8),
                   if (weak.isEmpty)
                     const Text('Нет данных')
@@ -120,19 +140,24 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text(muscle),
-                        subtitle: Text('z=$z, score=$score${pr != null ? ', priority=$pr' : ''}${reason != null && reason.isNotEmpty ? '\n$reason' : ''}'),
+                        subtitle: Text(
+                          'z=$z, score=$score${pr != null ? ', priority=$pr' : ''}${reason != null && reason.isNotEmpty ? '\n$reason' : ''}',
+                        ),
                       );
                     }),
                   const Divider(height: 24),
-                  Text('Сила по мышцам', style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    'Сила по мышцам',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   const SizedBox(height: 8),
                   if (muscleStrength.isEmpty)
                     const Text('Нет данных')
-                  else ...(
-                    muscleStrength.entries
-                      .toList()
-                      ..sort((a, b) => (a.key).compareTo(b.key))
-                  ).map((e) => Padding(
+                  else
+                    ...(muscleStrength.entries.toList()
+                          ..sort((a, b) => (a.key).compareTo(b.key)))
+                        .map(
+                          (e) => Padding(
                             padding: const EdgeInsets.symmetric(vertical: 2.0),
                             child: Row(
                               children: [
@@ -140,9 +165,13 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
                                 Text(e.value.toString()),
                               ],
                             ),
-                          )),
+                          ),
+                        ),
                   const Divider(height: 24),
-                  Text('Тренды', style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    'Тренды',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   const SizedBox(height: 8),
                   if (trends.isEmpty)
                     const Text('Нет данных')
@@ -156,13 +185,20 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
                         contentPadding: EdgeInsets.zero,
                         dense: true,
                         title: Text(e.key),
-                        subtitle: Text('recent=${ra ?? '-'}, prev=${pa ?? '-'}, Δ=${d ?? '-'}'),
+                        subtitle: Text(
+                          'recent=${ra ?? '-'}, prev=${pa ?? '-'}, Δ=${d ?? '-'}',
+                        ),
                       );
                     }),
                   const Divider(height: 24),
-                  Text('Аномалии', style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    'Аномалии',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   const SizedBox(height: 8),
-                  Text(anomalies.isEmpty ? 'Не обнаружены' : anomalies.join(', ')),
+                  Text(
+                    anomalies.isEmpty ? 'Не обнаружены' : anomalies.join(', '),
+                  ),
                 ],
               ),
             ),
@@ -171,9 +207,9 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка анализа: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Ошибка анализа: $e')));
     }
   }
 
@@ -195,7 +231,9 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Удалить максимум?'),
-        content: Text('${_exerciseTitle(max)}\n${max.maxWeight} кг × ${max.repMax} повторений'),
+        content: Text(
+          '${_exerciseTitle(max)}\n${max.maxWeight} кг × ${max.repMax} повторений',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -217,9 +255,9 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
         context: 'UserMaxScreen.delete',
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Максимум удалён')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Максимум удалён')));
         await _refresh();
       }
     } catch (e) {
@@ -233,7 +271,9 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
 
   Widget _buildAttemptRow(UserMax max, {required bool highlight}) {
     final textStyle = highlight
-        ? Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)
+        ? Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)
         : Theme.of(context).textTheme.bodyMedium;
 
     return Padding(
@@ -245,7 +285,10 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('${max.maxWeight} кг', style: textStyle),
-                Text('Повторения: ${max.repMax}', style: Theme.of(context).textTheme.bodySmall),
+                Text(
+                  'Повторения: ${max.repMax}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ],
             ),
           ),
@@ -285,7 +328,9 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
 
         return Card(
           elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
@@ -302,14 +347,22 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text('${top.maxWeight} кг', style: Theme.of(context).textTheme.titleMedium),
-                        Text('Лучший: ${top.repMax} повторений', style: Theme.of(context).textTheme.bodySmall),
+                        Text(
+                          '${top.maxWeight} кг',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        Text(
+                          'Лучший: ${top.repMax} повторений',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                       ],
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                ...items.map((max) => _buildAttemptRow(max, highlight: max.id == top.id)),
+                ...items.map(
+                  (max) => _buildAttemptRow(max, highlight: max.id == top.id),
+                ),
               ],
             ),
           ),
@@ -320,6 +373,7 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return AssistantChatHost(
       contextBuilder: _buildChatContext,
       builder: (context, openChat) {
@@ -336,60 +390,53 @@ class _UserMaxScreenState extends State<UserMaxScreen> {
             ],
           ),
           body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: FutureBuilder<List<UserMax>>(
-          future: _futureMaxes,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+            onRefresh: _refresh,
+            child: FutureBuilder<List<UserMax>>(
+              future: _futureMaxes,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const LoadingIndicator();
+                }
 
-            if (snapshot.hasError) {
-              return ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Text('Failed to load user maxes: ${snapshot.error}'),
-                  ),
-                ],
-              );
-            }
+                if (snapshot.hasError) {
+                  return ErrorMessage(
+                    message: 'Failed to load user maxes: ${snapshot.error}',
+                    onRetry: _refresh,
+                  );
+                }
 
-            final data = snapshot.data ?? [];
-            if (data.isEmpty) {
-              return ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: const [
-                  Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Text('Нет сохранённых максимумов'),
-                  ),
-                ],
-              );
-            }
+                final data = snapshot.data ?? [];
+                if (data.isEmpty) {
+                  return EmptyState(
+                    icon: Icons.fitness_center,
+                    title: 'No maxes saved',
+                    description: 'Add your first max weight',
+                  );
+                }
 
-            return _buildGroupedList(data);
-          },
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final created = await showModalBottomSheet<bool>(
-            context: context,
-            isScrollControlled: true,
-            builder: (context) => Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-              child: const UserMaxWidget(),
+                return _buildGroupedList(data);
+              },
             ),
-          );
-          if (created == true) {
-            await _refresh();
-          }
-        },
-        child: const Icon(Icons.add),
-      ),
-    );
+          ),
+          floatingActionButton: FloatingActionButton(
+            onPressed: () async {
+              final created = await showModalBottomSheet<bool>(
+                context: context,
+                isScrollControlled: true,
+                builder: (context) => Padding(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewInsets.bottom,
+                  ),
+                  child: const UserMaxWidget(),
+                ),
+              );
+              if (created == true) {
+                await _refresh();
+              }
+            },
+            child: const Icon(Icons.add),
+          ),
+        );
       },
     );
   }

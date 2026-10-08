@@ -13,6 +13,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from .config import settings
 from .logging_config import configure_logging
 from .routers import avatars, plan_mass_edit, training_plans
+from .routers.internal_purge import router as internal_purge_router
 from .services.event_dispatcher import EventDispatcher
 from .services.simple_chat import simple_chat_generator
 
@@ -26,6 +27,7 @@ Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_sch
 app.include_router(training_plans.router, prefix="/training-plans")
 app.include_router(avatars.router, prefix="/avatars")
 app.include_router(plan_mass_edit.router)
+app.include_router(internal_purge_router)
 
 
 @app.get("/")

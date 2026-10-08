@@ -24,8 +24,14 @@ dependencies = [
   "sentry-sdk[fastapi]>=2.0.0,<3.0.0",
   "redis>=5",
   "celery[redis]>=5.4.0,<6.0.0",
-  "backend-common @ file:../../libs/backend-common",
+  "grpcio>=1.60.0",
+  "grpcio-tools>=1.60.0",
+  "protobuf>=4.25.0",
+  "backend-common",
 ]
+
+[tool.uv.sources]
+backend-common = { workspace = true }
 
 [project.optional-dependencies]
 test = [

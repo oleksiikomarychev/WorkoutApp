@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
@@ -43,7 +44,7 @@ class ApiClient {
     required String filename,
     MediaType? contentType,
     String? context,
-    Duration timeout = const Duration(seconds: 30),
+    Duration timeout = const Duration(seconds: 5000),
   }) async {
     final uri = _buildUri(endpoint, queryParams: queryParams);
 
@@ -108,14 +109,35 @@ class ApiClient {
       return base;
     }
 
-    final merged = <String, String>{...base.queryParameters};
+    final merged = <String, List<String>>{...base.queryParametersAll};
     for (final entry in queryParams.entries) {
       final key = entry.key;
       final value = entry.value;
       if (key.trim().isEmpty || value == null) continue;
-      merged[key] = value.toString();
+
+      if (value is Iterable) {
+        final values = value
+            .where((v) => v != null)
+            .map((v) => v.toString())
+            .where((v) => v.trim().isNotEmpty)
+            .toList(growable: false);
+        if (values.isEmpty) continue;
+        merged[key] = values;
+      } else {
+        merged[key] = [value.toString()];
+      }
     }
-    return base.replace(queryParameters: merged);
+
+    final parts = <String>[];
+    final keys = merged.keys.toList()..sort();
+    for (final k in keys) {
+      final values = (merged[k] ?? const <String>[]).toList();
+      for (final v in values) {
+        parts.add('${Uri.encodeQueryComponent(k)}=${Uri.encodeQueryComponent(v)}');
+      }
+    }
+    final query = parts.join('&');
+    return base.replace(query: query);
   }
 
   String? _currentUserIdForCache() {
@@ -154,6 +176,50 @@ class ApiClient {
     return 'cache:v1:$ns:$method:$encodedRequestId';
   }
 
+  Future<dynamic> getCachedGet(
+    String endpoint, {
+    Map<String, dynamic>? queryParams,
+    bool allowExpired = true,
+  }) async {
+    final userId = _currentUserIdForCache();
+    if (userId == null || userId.isEmpty) return null;
+    final baseUrl = ApiConfig.getBaseUrl();
+    final uri = _buildUri(endpoint, queryParams: queryParams);
+    try {
+      final store = await _getCache();
+      final cacheKey = _cacheKeyForRequest(method: 'GET', uri: uri, baseUrl: baseUrl, userId: userId);
+      final entry = await store.getEntry(cacheKey);
+      if (entry == null) return null;
+      if (!allowExpired && entry.isExpired) return null;
+      return entry.data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> setCachedGet(
+    String endpoint,
+    dynamic data, {
+    Map<String, dynamic>? queryParams,
+    required int ttlSeconds,
+    List<String> groups = const [],
+  }) async {
+    final userId = _currentUserIdForCache();
+    if (userId == null || userId.isEmpty) return;
+    final baseUrl = ApiConfig.getBaseUrl();
+    final uri = _buildUri(endpoint, queryParams: queryParams);
+    try {
+      final store = await _getCache();
+      final cacheKey = _cacheKeyForRequest(method: 'GET', uri: uri, baseUrl: baseUrl, userId: userId);
+      await store.setEntry(
+        cacheKey,
+        data,
+        ttlSeconds: ttlSeconds,
+        groups: _namespacedGroups(groups, baseUrl: baseUrl, userId: userId),
+      );
+    } catch (_) {}
+  }
+
   List<String> _namespacedGroups(
     Iterable<String> groups, {
     required String baseUrl,
@@ -188,7 +254,13 @@ class ApiClient {
     await store.clearByPrefix('cache:v1:$ns:');
     await store.clearByPrefix('cache_index:v1:cache_group:v1:$ns:');
   }
-  Future<dynamic> patch(String endpoint, Map<String, dynamic> data, {Map<String, dynamic>? queryParams, String? context}) async {
+  Future<dynamic> patch(
+    String endpoint,
+    Map<String, dynamic> data, {
+    Map<String, dynamic>? queryParams,
+    String? context,
+    Duration timeout = const Duration(seconds: ApiConfig.receiveTimeout),
+  }) async {
     final url = ApiConfig.buildFullUrl(endpoint);
     final uri = Uri.parse(url).replace(queryParameters: queryParams);
 
@@ -202,7 +274,7 @@ class ApiClient {
         uri,
         headers: headers,
         body: json.encode(data),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(timeout);
 
       if (response.statusCode == 401) {
         try {
@@ -217,7 +289,7 @@ class ApiClient {
                 headers: retryHeaders,
                 body: json.encode(data),
               )
-              .timeout(const Duration(seconds: 10));
+              .timeout(timeout);
           _logResponse(retryResponse, context: context);
           return _handleResponse(retryResponse);
         } catch (e) {
@@ -241,7 +313,7 @@ class ApiClient {
     List<String> groups = const [],
     bool emitExpired = true,
     bool skipNetworkIfFresh = false,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: ApiConfig.receiveTimeout),
   }) async* {
     final userId = _currentUserIdForCache();
     final baseUrl = ApiConfig.getBaseUrl();
@@ -341,7 +413,7 @@ class ApiClient {
     String endpoint, {
     Map<String, dynamic>? queryParams,
     String? context,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: ApiConfig.receiveTimeout),
   }) async {
     final uri = _buildUri(endpoint, queryParams: queryParams);
 
@@ -351,10 +423,19 @@ class ApiClient {
         ..._defaultHeaders,
         ...await _getHeaders(),
       };
-      final response = await _httpClient.get(
-        uri,
-        headers: headers,
-      ).timeout(timeout);
+      http.Response response;
+      try {
+        response = await _httpClient.get(
+          uri,
+          headers: headers,
+        ).timeout(timeout);
+      } on TimeoutException catch (e) {
+        _logError('GET(timeout/retry)', uri, e, context: context);
+        response = await _httpClient.get(
+          uri,
+          headers: headers,
+        ).timeout(timeout);
+      }
 
       if (kDebugMode) {
         _logger.d('GET ${uri.toString()} -> ${response.statusCode}');
@@ -391,7 +472,7 @@ class ApiClient {
     dynamic data, {
     Map<String, dynamic>? queryParams,
     String? context,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: ApiConfig.receiveTimeout),
   }) async {
     final uri = _buildUri(endpoint, queryParams: queryParams);
 
@@ -448,7 +529,14 @@ class ApiClient {
       rethrow;
     }
   }
-  Future<dynamic> put(String endpoint, Map<String, dynamic> data, {Map<String, dynamic>? queryParams, String? context}) async {
+
+  Future<dynamic> put(
+    String endpoint,
+    Map<String, dynamic> data, {
+    Map<String, dynamic>? queryParams,
+    String? context,
+    Duration timeout = const Duration(seconds: ApiConfig.receiveTimeout),
+  }) async {
     final uri = _buildUri(endpoint, queryParams: queryParams);
 
     _logRequest('PUT', uri, body: data, context: context);
@@ -461,7 +549,7 @@ class ApiClient {
         uri,
         headers: headers,
         body: json.encode(data),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(timeout);
 
       if (response.statusCode == 401) {
         try {
@@ -476,7 +564,7 @@ class ApiClient {
                 headers: retryHeaders,
                 body: json.encode(data),
               )
-              .timeout(const Duration(seconds: 10));
+              .timeout(timeout);
           _logResponse(retryResponse, context: context);
           return _handleResponse(retryResponse);
         } catch (e) {
@@ -491,7 +579,13 @@ class ApiClient {
       rethrow;
     }
   }
-  Future<dynamic> delete(String endpoint, {Map<String, dynamic>? queryParams, String? context}) async {
+
+  Future<dynamic> delete(
+    String endpoint, {
+    Map<String, dynamic>? queryParams,
+    String? context,
+    Duration timeout = const Duration(seconds: ApiConfig.receiveTimeout),
+  }) async {
     final uri = _buildUri(endpoint, queryParams: queryParams);
 
     _logRequest('DELETE', uri, context: context);
@@ -504,7 +598,7 @@ class ApiClient {
       final response = await _httpClient.delete(
         uri,
         headers: headers,
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(timeout);
 
       if (kDebugMode) {
         _logger.d('DELETE ${uri.toString()} -> ${response.statusCode}');
@@ -523,10 +617,10 @@ class ApiClient {
                 uri,
                 headers: retryHeaders,
               )
-              .timeout(const Duration(seconds: 10));
+              .timeout(timeout);
           _logResponse(retryResponse, context: context);
           return _handleResponse(retryResponse);
-        } catch (e, stackTrace) {
+        } catch (e) {
           print('Error in DELETE(retry) request to $uri: $e');
           _logError('DELETE(retry)', uri, e, context: context);
         }
@@ -534,9 +628,8 @@ class ApiClient {
 
       _logResponse(response, context: context);
       return _handleResponse(response);
-    } catch (e, stackTrace) {
+    } catch (e) {
       print('Error in DELETE request to $uri: $e');
-      print('Stack trace: $stackTrace');
       _logError('DELETE', uri, e, context: context);
       rethrow;
     }

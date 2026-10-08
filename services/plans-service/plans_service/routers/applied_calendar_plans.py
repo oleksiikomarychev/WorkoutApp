@@ -33,6 +33,7 @@ def _submit_task(task_fn, *, user_id: str, **kwargs: Any) -> TaskSubmissionRespo
         logger=logger,
         log_event="plans_task_enqueued",
         task_kwargs=task_kwargs,
+        celery_app=celery_app,
         log_extra={
             "user_id": user_id,
         },
@@ -61,6 +62,12 @@ async def get_applied_plan_analytics(
     from_date: str | None = Query(None, alias="from"),
     to_date: str | None = Query(None, alias="to"),
     group_by: str | None = Query(None, regex="^(order|date)$"),
+    layers: list[str] | None = Query(
+        None,
+        description="Optional multilayer series keys. Example: layers=exercise:10&layers=muscle:chest",
+    ),
+    include_meta: bool = Query(False, description="If true, include meta payload for UI"),
+    top_layers_limit: int = Query(20, ge=1, le=200, description="Limit for meta.available_layers lists"),
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -71,6 +78,9 @@ async def get_applied_plan_analytics(
             from_date=from_date,
             to_date=to_date,
             group_by=group_by,
+            layers=layers,
+            include_meta=include_meta,
+            top_layers_limit=top_layers_limit,
         )
         return data
     except ValueError as exc:

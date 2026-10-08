@@ -10,7 +10,7 @@ class AthleteTrainingSummaryModel {
   final double? planAdherence;
   final double? avgIntensity;
   final double? avgEffort;
-  final Map<String, double>? rpeDistribution;
+  final Map<String, double>? effortDistribution;
   final String? segment;
 
   AthleteTrainingSummaryModel({
@@ -25,7 +25,7 @@ class AthleteTrainingSummaryModel {
     required this.planAdherence,
     required this.avgIntensity,
     required this.avgEffort,
-    required this.rpeDistribution,
+    required this.effortDistribution,
     required this.segment,
   });
 
@@ -46,7 +46,7 @@ class AthleteTrainingSummaryModel {
       planAdherence: (json['plan_adherence'] as num?)?.toDouble(),
       avgIntensity: (json['avg_intensity'] as num?)?.toDouble(),
       avgEffort: (json['avg_effort'] as num?)?.toDouble(),
-      rpeDistribution: (json['rpe_distribution'] as Map<String, dynamic>?)
+      effortDistribution: (json['rpe_distribution'] as Map<String, dynamic>?)
           ?.map((key, value) => MapEntry(key, (value as num).toDouble())),
       segment: json['segment'] as String?,
     );
@@ -167,7 +167,7 @@ class AthleteDetailedAnalyticsModel {
   final double? planAdherence;
   final double? avgIntensity;
   final double? avgEffort;
-  final Map<String, double>? rpeDistribution;
+  final Map<String, double>? effortDistribution;
   final Map<String, double>? muscleVolumeByGroup;
   final Map<String, double>? muscleVolumeByMuscle;
 
@@ -186,7 +186,7 @@ class AthleteDetailedAnalyticsModel {
     required this.planAdherence,
     required this.avgIntensity,
     required this.avgEffort,
-    required this.rpeDistribution,
+    required this.effortDistribution,
     required this.muscleVolumeByGroup,
     required this.muscleVolumeByMuscle,
   });
@@ -215,7 +215,7 @@ class AthleteDetailedAnalyticsModel {
       planAdherence: (json['plan_adherence'] as num?)?.toDouble(),
       avgIntensity: (json['avg_intensity'] as num?)?.toDouble(),
       avgEffort: (json['avg_effort'] as num?)?.toDouble(),
-      rpeDistribution: (json['rpe_distribution'] as Map<String, dynamic>?)
+      effortDistribution: (json['rpe_distribution'] as Map<String, dynamic>?)
           ?.map((key, value) => MapEntry(key, (value as num).toDouble())),
       muscleVolumeByGroup:
           (json['muscle_volume_by_group'] as Map<String, dynamic>?)

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
 
 import '../config/constants/theme_constants.dart';
 import '../models/user_profile.dart';
@@ -10,6 +11,7 @@ class UserProfileView extends StatelessWidget {
   final String? avatarUrlOverride;
   final VoidCallback? onEditProfile;
   final VoidCallback? onManageCoaching;
+  final VoidCallback? onAvatarTool;
   final VoidCallback? onRequestCoaching;
   final List<Widget> additionalSections;
   final bool showCoachingCard;
@@ -22,6 +24,7 @@ class UserProfileView extends StatelessWidget {
     this.avatarUrlOverride,
     this.onEditProfile,
     this.onManageCoaching,
+    this.onAvatarTool,
     this.onRequestCoaching,
     this.additionalSections = const [],
     this.showCoachingCard = true,
@@ -50,22 +53,39 @@ class UserProfileView extends StatelessWidget {
   }
 
   Widget _buildHeader(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final avatarUrl = avatarUrlOverride ?? profile.photoUrl;
 
     return Column(
       children: [
-        CircleAvatar(
-          radius: 50,
-          backgroundColor: AppColors.primary.withOpacity(0.15),
-          backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
-          child: avatarUrl == null
-              ? Text(
-                  (profile.displayName?.isNotEmpty ?? false)
-                      ? profile.displayName!.substring(0, 1).toUpperCase()
-                      : profile.userId.substring(0, 1).toUpperCase(),
-                  style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.primary),
-                )
-              : null,
+        Stack(
+          alignment: Alignment.bottomRight,
+          children: [
+            CircleAvatar(
+              radius: 50,
+              backgroundColor: AppColors.primary.withOpacity(0.15),
+              backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+              child: avatarUrl == null
+                  ? Text(
+                      (profile.displayName?.isNotEmpty ?? false)
+                          ? profile.displayName!.substring(0, 1).toUpperCase()
+                          : profile.userId.substring(0, 1).toUpperCase(),
+                      style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.primary),
+                    )
+                  : null,
+            ),
+            if (isOwner && onAvatarTool != null)
+              Material(
+                color: AppColors.surface,
+                shape: const CircleBorder(),
+                elevation: 2,
+                child: IconButton(
+                  icon: const Icon(Icons.auto_awesome, size: 18),
+                  onPressed: onAvatarTool,
+                  tooltip: 'Avatar',
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 16),
         Text(
@@ -90,13 +110,13 @@ class UserProfileView extends StatelessWidget {
                 OutlinedButton.icon(
                   onPressed: onEditProfile,
                   icon: const Icon(Icons.edit_outlined, size: 16),
-                  label: const Text('Edit profile'),
+                  label: Text(l10n.editProfileButton),
                 ),
               if (onManageCoaching != null)
                 OutlinedButton.icon(
                   onPressed: onManageCoaching,
                   icon: const Icon(Icons.workspace_premium_outlined, size: 16),
-                  label: const Text('Coaching settings'),
+                  label: Text(l10n.coachingSettingsButton),
                 ),
             ],
           ),
@@ -106,9 +126,9 @@ class UserProfileView extends StatelessWidget {
   }
 
   Widget _buildCoachingCard(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final coaching = profile.coaching;
     final enabled = coaching?.enabled ?? false;
-    final accepting = coaching?.acceptingClients ?? false;
 
     return Container(
       width: double.infinity,
@@ -127,7 +147,7 @@ class UserProfileView extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Coaching',
+                  l10n.coachingTitle,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                 ),
               ),
@@ -135,26 +155,26 @@ class UserProfileView extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: accepting ? const Color(0xFFE6F4EA) : const Color(0xFFFFF3E0),
+                    color: const Color(0xFFE6F4EA),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    accepting ? 'Accepting new clients' : 'Not accepting',
-                    style: TextStyle(
+                    l10n.coachingAcceptingNewClients,
+                    style: const TextStyle(
                       fontSize: 12,
-                      color: accepting ? AppColors.success : AppColors.textSecondary,
+                      color: AppColors.success,
                     ),
                   ),
                 )
               else
-                const Text('Coaching disabled', style: TextStyle(color: AppColors.textSecondary)),
+                Text(l10n.coachingDisabled, style: const TextStyle(color: AppColors.textSecondary)),
             ],
           ),
           const SizedBox(height: 16),
           if (!enabled)
-            const Text(
-              'This user has not enabled coaching options.',
-              style: TextStyle(color: AppColors.textSecondary),
+            Text(
+              l10n.coachingDisabledDescription,
+              style: const TextStyle(color: AppColors.textSecondary),
             )
           else ...[
             if ((coaching?.tagline?.isNotEmpty ?? false)) ...[
@@ -170,28 +190,24 @@ class UserProfileView extends StatelessWidget {
               runSpacing: 8,
               children: [
                 if ((coaching?.specializations ?? []).isNotEmpty)
-                  _chip('Specializations', coaching!.specializations.join(', ')),
+                  _chip(l10n.coachingSpecializations, coaching!.specializations.join(', ')),
                 if ((coaching?.languages ?? []).isNotEmpty)
-                  _chip('Languages', coaching!.languages.join(', ')),
-                if (coaching?.experienceYears != null)
-                  _chip('Experience', '${coaching!.experienceYears} yrs'),
-                if ((coaching?.timezone?.isNotEmpty ?? false))
-                  _chip('Timezone', coaching!.timezone!),
+                  _chip(l10n.coachingLanguages, coaching!.languages.join(', ')),
                 if (coaching?.ratePlan != null)
                   _chip(
-                    'Rate',
-                    coaching!.ratePlan!.amountMinor != null && coaching.ratePlan!.currency != null
-                        ? '${(coaching.ratePlan!.amountMinor! / 100).toStringAsFixed(0)} ${coaching.ratePlan!.currency!.toUpperCase()} ${coaching.ratePlan!.type ?? ''}'
-                        : (coaching.ratePlan!.type ?? 'Custom rate'),
+                    l10n.coachingRate,
+                    coaching!.ratePlan!.amountMinor != null
+                        ? '${(coaching.ratePlan!.amountMinor! / 100).toStringAsFixed(0)} USD / month'
+                        : l10n.coachingCustomRate,
                   ),
               ],
             ),
             const SizedBox(height: 16),
             if (!isOwner && onRequestCoaching != null)
               ElevatedButton.icon(
-                onPressed: accepting ? onRequestCoaching : null,
+                onPressed: enabled ? onRequestCoaching : null,
                 icon: const Icon(Icons.handshake_outlined),
-                label: const Text('Request coaching'),
+                label: Text(l10n.requestCoaching),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.textPrimary,
                   foregroundColor: Colors.white,

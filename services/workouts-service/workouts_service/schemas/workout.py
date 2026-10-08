@@ -39,11 +39,13 @@ class WorkoutUpdate(WorkoutBase):
 
 class WorkoutSetResponse(BaseModel):
     id: int
+    order_index: int | None = None
     intensity: float | None = None
     effort: float | None = None
     volume: int | None = None
     working_weight: float | None = None
     set_type: str | None = None
+    subsets: list[dict] | None = None
 
     class Config:
         from_attributes = True
@@ -51,7 +53,10 @@ class WorkoutSetResponse(BaseModel):
 
 class WorkoutExerciseResponse(BaseModel):
     id: int
-    exercise_id: int
+    exercise_id: int = Field(serialization_alias="exercise_list_id")
+    order: int | None = Field(default=None, serialization_alias="order")
+    notes: str | None = None
+    rest_seconds: int | None = Field(default=None, ge=0)
     sets: list[WorkoutSetResponse] = Field(default_factory=list)
 
     class Config:
@@ -74,7 +79,7 @@ class WorkoutResponse(WorkoutBase):
     completed_at: datetime | None
 
     workout_type: WorkoutTypeEnum
-    exercises: list[WorkoutExerciseResponse]
+    exercises: list[WorkoutExerciseResponse] = Field(serialization_alias="exercise_instances")
 
     class Config:
         from_attributes = True
@@ -123,3 +128,52 @@ class WorkoutPlanDetailItem(BaseModel):
     class Config:
         from_attributes = True
         json_encoders = {"datetime": lambda v: v.isoformat() if v else None}
+
+
+class ExerciseReplacementResult(BaseModel):
+    updated_count: int
+
+
+class ExerciseReplacementRequest(BaseModel):
+    old_exercise_id: int
+    new_exercise_id: int
+
+
+class WorkoutSetCreate(BaseModel):
+    order_index: int | None = None
+    intensity: float | None = None
+    effort: float | None = None
+    volume: int | None = None
+    working_weight: float | None = None
+    set_type: str | None = None
+    subsets: list[dict] | None = None
+
+
+class WorkoutSetUpdate(BaseModel):
+    order_index: int | None = None
+    intensity: float | None = None
+    effort: float | None = None
+    volume: int | None = None
+    working_weight: float | None = None
+    set_type: str | None = None
+    subsets: list[dict] | None = None
+
+
+class WorkoutExerciseInstanceCreate(BaseModel):
+    exercise_id: int
+    order: int | None = None
+    notes: str | None = None
+    rest_seconds: int | None = Field(default=None, ge=0)
+    sets: list[WorkoutSetCreate] = Field(default_factory=list)
+
+
+class WorkoutExerciseInstanceUpdate(BaseModel):
+    exercise_id: int | None = None
+    order: int | None = None
+    notes: str | None = None
+    rest_seconds: int | None = Field(default=None, ge=0)
+
+
+class WorkoutExerciseInstanceBatchCreate(BaseModel):
+    workout_id: int
+    instance: WorkoutExerciseInstanceCreate

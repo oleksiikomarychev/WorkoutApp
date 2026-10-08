@@ -39,15 +39,19 @@ dependencies:
   firebase_ui_auth: ^2.0.0
   google_sign_in: ^6.2.2
   firebase_ui_oauth_google: ^1.4.3
-
+  amplitude_flutter: ^4.0.0
+  
 dev_dependencies:
   flutter_test:
     sdk: flutter
   freezed: ^2.4.5
+  build_runner: ^2.4.13
+  json_serializable: ^6.8.0
   riverpod_generator: ^2.3.9
 
 flutter:
   uses-material-design: true
+  generate: true
   assets:
     - assets/env/app.env
     - assets/images/image.png

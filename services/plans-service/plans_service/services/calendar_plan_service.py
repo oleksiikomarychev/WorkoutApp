@@ -122,6 +122,8 @@ class CalendarPlanService:
                                 exercise_name=exercise_details["name"],
                                 order_index=ex_idx,
                                 plan_workout_id=plan_workout.id,
+                                rest_seconds=exercise_data.rest_seconds,
+                                notes=exercise_data.notes,
                             )
                             db.add(plan_exercise)
                             await db.flush()

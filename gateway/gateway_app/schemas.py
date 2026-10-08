@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 
 from pydantic import BaseModel
 
@@ -17,6 +18,12 @@ class WorkoutBase(BaseModel):
     scheduled_for: datetime | None = None
     completed_at: datetime | None = None
 
+class SetType(Enum):
+    NORMAL = "normal"
+    DROP = "drop"
+    CLUSTER = "cluster"
+    AMRAP = "amrap"
+    REST_PAUSE = "rest_pause"
 
 class ExerciseSetCreate(BaseModel):
     weight: float | None = None
@@ -24,6 +31,8 @@ class ExerciseSetCreate(BaseModel):
     rpe: float | None = None
     duration_seconds: int | None = None
     distance_meters: float | None = None
+    set_type: SetType | None = None
+    subsets: list["ExerciseSetCreate"] | None = None
 
 
 class ExerciseInstanceCreate(BaseModel):

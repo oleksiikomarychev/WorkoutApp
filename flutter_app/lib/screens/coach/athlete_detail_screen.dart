@@ -119,12 +119,12 @@ class AthleteDetailScreen extends ConsumerWidget {
                                 child: _TrendChart(details: details),
                               ),
                               const SizedBox(height: 16),
-                              if (details.rpeDistribution != null && details.rpeDistribution!.isNotEmpty) ...[
+                              if (details.effortDistribution != null && details.effortDistribution!.isNotEmpty) ...[
                                 const Text('RPE distribution'),
                                 SizedBox(height: 8),
                                 SizedBox(
                                   height: 140,
-                                  child: _RpeMiniChart(distribution: details.rpeDistribution),
+                                  child: _RpeMiniChart(distribution: details.effortDistribution),
                                 ),
                                 SizedBox(height: 16),
                               ],

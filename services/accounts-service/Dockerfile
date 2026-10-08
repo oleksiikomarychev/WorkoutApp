@@ -7,20 +7,33 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PORT=8007
 
-# Copy project metadata and sources
-COPY services/accounts-service/pyproject.toml /app/pyproject.toml
-COPY services/accounts-service/accounts_service /app/accounts_service
-COPY libs/backend-common /libs/backend-common
+ENV UV_NO_DEV=1 \
+    PATH="/app/.venv/bin:$PATH"
 
-# Install dependencies (editable install)
+# Install dependencies via uv (workspace lock)
 RUN pip install --no-cache-dir -U pip && \
-    pip install --no-cache-dir -e .
+    pip install --no-cache-dir uv
+
+COPY . /app
+
+RUN uv sync --frozen --all-packages
+
+# Install supervisord
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    supervisor \
+    && rm -rf /var/lib/apt/lists/*
 
 # Alembic config and migrations
 COPY services/accounts-service/alembic.ini /app/alembic.ini
 COPY services/accounts-service/alembic /app/alembic
 RUN mkdir -p /app/alembic/versions
 
-EXPOSE 8007
+# Copy supervisord configuration
+COPY services/accounts-service/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-CMD ["uvicorn", "accounts_service.main:app", "--host", "0.0.0.0", "--port", "8007"]
+# Create log directories for supervisord
+RUN mkdir -p /var/log/supervisor
+
+EXPOSE 8007 50055
+
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

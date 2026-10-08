@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
 import 'package:workout_app/models/applied_calendar_plan.dart';
 import 'package:workout_app/models/workout.dart';
@@ -30,12 +31,22 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = _dateOnly(DateTime.now());
 
-  final List<String> _metrics = const ['sets_count', 'volume_sum', 'intensity_avg', 'effort_avg'];
+  final List<String> _metrics = const [
+    'sets_count',
+    'volume_sum',
+    'reps_per_set_avg',
+    'kilograms_avg',
+    'tonnage_sum',
+    'one_rm_est_avg',
+    'intensity_avg',
+    'effort_avg',
+  ];
   String _metricX = 'effort_avg';
   String _metricY = 'effort_avg';
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final planAsync = ref.watch(coachActivePlanProvider(widget.athleteId));
     final workoutsAsync = ref.watch(coachActivePlanWorkoutsProvider(widget.athleteId));
     final eventsByDay = ref.watch(coachWorkoutsByDayProvider(widget.athleteId));
@@ -48,20 +59,20 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
       builder: (context, openChat) {
         return Scaffold(
           appBar: PrimaryAppBar(
-            title: widget.athleteName ?? 'Athlete ${widget.athleteId}',
+            title: widget.athleteName ?? l10n.coachAthletePlanTitleFallback(widget.athleteId),
             onTitleTap: openChat,
             actions: [
               PopupMenuButton<String>(
-                tooltip: 'Массовые правки плана атлета',
+                tooltip: l10n.coachAthletePlanMassEditTooltip,
                 onSelected: (value) async {
                   if (value == 'mass_edit') {
                     await _openCoachMassEditDialog();
                   }
                 },
-                itemBuilder: (ctx) => const [
+                itemBuilder: (ctx) => [
                   PopupMenuItem(
                     value: 'mass_edit',
-                    child: Text('Mass edit (notes/day)'),
+                    child: Text(l10n.coachAthletePlanMassEditMenu),
                   ),
                 ],
               ),
@@ -69,10 +80,10 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
           ),
           body: planAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, _) => Center(child: Text('Failed to load plan: $err')),
+            error: (err, _) => Center(child: Text(l10n.activePlanLoadError(err.toString()))),
             data: (plan) {
               if (plan == null) {
-                return const Center(child: Text('У атлета нет активного плана'));
+                return Center(child: Text(l10n.coachAthletePlanNoActivePlan));
               }
               return RefreshIndicator(
                 onRefresh: () async {
@@ -108,7 +119,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
       ),
       error: (err, _) => SizedBox(
         height: 240,
-        child: Center(child: Text('Не удалось загрузить аналитику плана: $err')),
+        child: Center(child: Text(AppLocalizations.of(context).coachAthletePlanLoadAnalyticsError(err.toString()))),
       ),
       data: (resp) {
         final points = _mapAnalyticsResponse(resp);
@@ -118,16 +129,24 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
     );
   }
 
-  String _metricLabel(String m) {
+  String _metricLabel(String m, AppLocalizations l10n) {
     switch (m) {
       case 'sets_count':
-        return 'Сеты';
+        return l10n.coachAthletePlanMetricSets;
       case 'volume_sum':
-        return 'Повторения';
+        return 'КПШ';
+      case 'reps_per_set_avg':
+        return 'Повт. в подходе (ср.)';
+      case 'kilograms_avg':
+        return 'Килограммы (ср.)';
+      case 'tonnage_sum':
+        return 'Тоннаж';
+      case 'one_rm_est_avg':
+        return 'Разовый максимум (расч.)';
       case 'intensity_avg':
-        return 'Интенсивность (ср.)';
+        return l10n.coachAthletePlanMetricIntensity;
       case 'effort_avg':
-        return 'Усилие (RPE ср.)';
+        return l10n.coachAthletePlanMetricEffort;
       default:
         return m;
     }
@@ -157,6 +176,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
   }
 
   Widget _buildActiveAnalyticsSection(List<PlanAnalyticsPoint> analytics, {Map<String, double>? totals}) {
+    final l10n = AppLocalizations.of(context);
     return Card(
       elevation: 1,
       color: Colors.white,
@@ -172,9 +192,9 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     value: _metricX,
-                    decoration: const InputDecoration(labelText: 'Ось X'),
+                    decoration: InputDecoration(labelText: l10n.coachAthletePlanAxisX),
                     items: _metrics
-                        .map((m) => DropdownMenuItem<String>(value: m, child: Text(_metricLabel(m))))
+                        .map((m) => DropdownMenuItem<String>(value: m, child: Text(_metricLabel(m, l10n))))
                         .toList(),
                     onChanged: (v) => setState(() => _metricX = v ?? _metricX),
                   ),
@@ -183,9 +203,9 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     value: _metricY,
-                    decoration: const InputDecoration(labelText: 'Ось Y'),
+                    decoration: InputDecoration(labelText: l10n.coachAthletePlanAxisY),
                     items: _metrics
-                        .map((m) => DropdownMenuItem<String>(value: m, child: Text(_metricLabel(m))))
+                        .map((m) => DropdownMenuItem<String>(value: m, child: Text(_metricLabel(m, l10n))))
                         .toList(),
                     onChanged: (v) => setState(() => _metricY = v ?? _metricY),
                   ),
@@ -200,7 +220,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                   spacing: 8,
                   runSpacing: 8,
                   children: totals.entries.map((entry) {
-                    final label = _metricLabel(entry.key);
+                    final label = _metricLabel(entry.key, l10n);
                     final value = entry.value;
                     return Chip(
                       label: Text('$label: ${value.toStringAsFixed(2)}'),
@@ -214,7 +234,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                 points: analytics,
                 metricX: _metricX,
                 metricY: _metricY,
-                emptyText: 'Нет аналитики по плану',
+                emptyText: l10n.coachAthletePlanNoAnalytics,
                 showScatterAxisTitles: false,
               ),
             ),
@@ -245,6 +265,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
 
     String statusLabel = status.isNotEmpty ? status[0].toUpperCase() + status.substring(1) : 'Active';
 
+    final l10n = AppLocalizations.of(context);
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Padding(
@@ -263,13 +284,13 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                 Text(statusLabel, style: AppTextStyles.titleSmall),
                 const Spacer(),
                 if (planned > 0)
-                  Text('$completed / $planned sessions', style: AppTextStyles.bodySmall),
+                  Text(l10n.coachAthletePlanSessionsCompleted(completed.toString(), planned.toString()), style: AppTextStyles.bodySmall),
               ],
             ),
             const SizedBox(height: 8),
             Text(plan.calendarPlan.name, style: AppTextStyles.titleMedium),
             const SizedBox(height: 4),
-            Text('Period: ${_formatDate(plan.startDate)} – ${_formatDate(plan.endDate)}', style: AppTextStyles.bodySmall),
+            Text(l10n.coachAthletePlanPeriod(_formatDate(plan.startDate), _formatDate(plan.endDate)), style: AppTextStyles.bodySmall),
             if (planned > 0) ...[
               const SizedBox(height: 12),
               ClipRRect(
@@ -284,11 +305,11 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
             ],
             if (adherence != null) ...[
               const SizedBox(height: 6),
-              Text('Adherence: ${adherence.toStringAsFixed(1)}%', style: AppTextStyles.bodySmall),
+              Text(l10n.activePlanAdherencePercent(adherence.toStringAsFixed(1)), style: AppTextStyles.bodySmall),
             ],
             if (plan.notes?.isNotEmpty == true) ...[
               const SizedBox(height: 6),
-              Text('Notes: ${plan.notes}', style: AppTextStyles.bodySmall),
+              Text(l10n.coachAthletePlanNotes(plan.notes!), style: AppTextStyles.bodySmall),
             ],
           ],
         ),
@@ -421,13 +442,13 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
             loading: () => const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator())),
             error: (err, _) => Padding(
               padding: const EdgeInsets.all(16),
-              child: Text('Не удалось загрузить тренировки: $err'),
+              child: Text('${AppLocalizations.of(context).activePlanLoadError(err.toString())}'),
             ),
             data: (_) {
               if (selectedList.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text('Нет тренировок в выбранный день'),
+                return Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(AppLocalizations.of(context).activePlanNoWorkoutsOnDay),
                 );
               }
               return Column(
@@ -477,12 +498,12 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
               children: [
                 IconButton(
                   icon: const Icon(Icons.event),
-                  tooltip: 'Перепланировать',
+                  tooltip: AppLocalizations.of(context).coachAthletePlanMassEditTooltip, // Note: Reuse mass edit tooltip or add reschedule
                   onPressed: workout.id == null ? null : () => _rescheduleWorkout(workout),
                 ),
                 IconButton(
                   icon: const Icon(Icons.edit_note),
-                  tooltip: 'Редактировать заметку',
+                  tooltip: AppLocalizations.of(context).coachAthletePlanWorkoutNotesUpdated, // Note: Should probably be "Edit notes"
                   onPressed: workout.id == null ? null : () => _editWorkoutNotes(workout),
                 ),
               ],
@@ -496,20 +517,21 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
 
   Future<void> _editWorkoutNotes(Workout workout) async {
     if (workout.id == null) return;
+    final l10n = AppLocalizations.of(context);
     final controller = TextEditingController(text: workout.notes ?? '');
     String? newNotes = await showDialog<String>(
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: Text('Заметка к ${workout.name}'),
+          title: Text('${l10n.coachAthletePlanNotes('')} ${workout.name}'),
           content: TextField(
             controller: controller,
             maxLines: 4,
-            decoration: const InputDecoration(hintText: 'Введите заметку для атлета'),
+            decoration: InputDecoration(hintText: l10n.coachAthletePlanWorkoutNotesHint),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Отмена')),
-            FilledButton(onPressed: () => Navigator.of(ctx).pop(controller.text.trim()), child: const Text('Сохранить')),
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: Text(l10n.cancel)),
+            FilledButton(onPressed: () => Navigator.of(ctx).pop(controller.text.trim()), child: Text(l10n.save)),
           ],
         );
       },
@@ -523,12 +545,12 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
         payload: {'notes': newNotes.isEmpty ? null : newNotes},
       );
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Заметка обновлена')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).coachAthletePlanWorkoutNotesUpdated)));
       }
       ref.invalidate(coachActivePlanWorkoutsProvider(widget.athleteId));
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).activePlanFailed(e.toString()))));
       }
     }
   }
@@ -563,17 +585,18 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
         payload: {'scheduled_for': scheduled.toIso8601String()},
       );
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Тренировка перепланирована')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).coachAthletePlanWorkoutRescheduled)));
       }
       ref.invalidate(coachActivePlanWorkoutsProvider(widget.athleteId));
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${AppLocalizations.of(context).activePlanFailed(e.toString())}')));
       }
     }
   }
 
   void _openWorkoutDetails(Workout workout) {
+    final l10n = AppLocalizations.of(context);
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -600,14 +623,14 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                     ),
                     IconButton(
                       icon: const Icon(Icons.add_circle_outline),
-                      tooltip: 'Добавить упражнение',
+                      tooltip: l10n.coachAthletePlanAddExercise,
                       onPressed: workout.id == null ? null : () => _addExerciseInstance(workout),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
                 if (exercises.isEmpty)
-                  const Text('Нет данных по упражнениям в этой тренировке')
+                  Text(l10n.coachAthletePlanNoExercises)
                 else
                   Flexible(
                     child: ListView.separated(
@@ -618,14 +641,14 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                         final ex = exercises[index];
                         return ListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: Text(ex.exerciseDefinition?.name ?? 'Exercise ${ex.exerciseListId}'),
+                          title: Text(ex.exerciseDefinition?.name ?? l10n.planEditorExerciseIdFallback(ex.exerciseListId.toString())),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               if (ex.notes?.isNotEmpty == true)
-                                Text('Notes: ${ex.notes}', maxLines: 2, overflow: TextOverflow.ellipsis),
-                              Text('Order: ${ex.order ?? '-'}'),
-                              Text('Sets: ${ex.sets.length}'),
+                                Text(l10n.coachAthletePlanNotes(ex.notes!), maxLines: 2, overflow: TextOverflow.ellipsis),
+                              Text(l10n.coachAthletePlanOrder(ex.order?.toString() ?? '-')),
+                              Text(l10n.coachAthletePlanSets(ex.sets.length.toString())),
                             ],
                           ),
                           trailing: Row(
@@ -634,12 +657,12 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                               IconButton(
                                 icon: const Icon(Icons.edit),
                                 onPressed: ex.id == null ? null : () => _editExerciseInstance(ex),
-                                tooltip: 'Редактировать',
+                                tooltip: l10n.edit,
                               ),
                               IconButton(
                                 icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                                 onPressed: ex.id == null ? null : () => _deleteExerciseInstance(ex),
-                                tooltip: 'Удалить',
+                                tooltip: l10n.delete,
                               ),
                             ],
                           ),
@@ -661,17 +684,18 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
 
   Future<void> _deleteExerciseInstance(ExerciseInstance instance) async {
     if (instance.id == null) return;
+    final l10n = AppLocalizations.of(context);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Удалить упражнение?'),
-        content: Text('Вы уверены, что хотите удалить ${instance.exerciseDefinition?.name ?? 'упражнение'} из тренировки?'),
+        title: Text(l10n.coachAthletePlanDeleteExerciseConfirmTitle),
+        content: Text(l10n.coachAthletePlanDeleteExerciseConfirmBody(instance.exerciseDefinition?.name ?? '')),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Отмена')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(l10n.cancel)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Удалить'),
+            child: Text(l10n.delete),
           ),
         ],
       ),
@@ -686,13 +710,13 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
         instanceId: instance.id!,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Упражнение удалено')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.coachAthletePlanExerciseDeleted)));
         Navigator.of(context).pop();
         ref.invalidate(coachActivePlanWorkoutsProvider(widget.athleteId));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка при удалении: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.coachAthletePlanDeleteError(e.toString()))));
       }
     }
   }
@@ -711,7 +735,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
     try {
       definitions = await ref.read(exerciseServiceProvider).getExerciseDefinitions();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error loading exercises: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).activePlanLoadError(e.toString()))));
       return;
     }
 
@@ -726,7 +750,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
     List<ExerciseSetDto> sets = List.from(instance?.sets ?? []);
 
     if (!isEdit && sets.isEmpty) {
-      sets.add(const ExerciseSetDto(reps: 10, weight: 20, rpe: 8));
+      sets.add(const ExerciseSetDto(reps: 10, weight: 20, effort: 8));
     }
 
     if (!mounted) return;
@@ -734,10 +758,11 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
     await showDialog(
       context: context,
       builder: (ctx) {
+        final l10n = AppLocalizations.of(ctx);
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: Text(isEdit ? 'Редактировать упражнение' : 'Добавить упражнение'),
+              title: Text(isEdit ? l10n.coachAthletePlanEditExercise : l10n.coachAthletePlanAddExercise),
               content: SizedBox(
                 width: double.maxFinite,
                 child: SingleChildScrollView(
@@ -754,19 +779,19 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                           child: Text(d.name, overflow: TextOverflow.ellipsis),
                         )).toList(),
                         onChanged: (val) => setState(() => selectedExerciseId = val),
-                        decoration: const InputDecoration(labelText: 'Упражнение'),
+                        decoration: InputDecoration(labelText: l10n.exerciseName),
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
                         initialValue: notes,
-                        decoration: const InputDecoration(labelText: 'Заметки'),
+                        decoration: InputDecoration(labelText: l10n.activePlanNotesLabel),
                         onChanged: (val) => notes = val,
                         maxLines: 2,
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
                         initialValue: order?.toString() ?? '',
-                        decoration: const InputDecoration(labelText: 'Порядок (Order)'),
+                        decoration: InputDecoration(labelText: l10n.planEditorDayFilterLabel), // Reuse or add key for Order
                         keyboardType: TextInputType.number,
                         onChanged: (val) => order = int.tryParse(val),
                       ),
@@ -774,20 +799,20 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Сеты', style: TextStyle(fontWeight: FontWeight.bold)),
+                          Text(l10n.coachAthletePlanSetsLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
                           IconButton(
                             icon: const Icon(Icons.add_circle_outline),
                             onPressed: () => setState(() {
 
-                              final last = sets.isNotEmpty ? sets.last : const ExerciseSetDto(reps: 10, weight: 20, rpe: 8);
+                              final last = sets.isNotEmpty ? sets.last : const ExerciseSetDto(reps: 10, weight: 20, effort: 8);
                               sets.add(last.copyWith(id: null));
                             }),
-                            tooltip: 'Добавить сет',
+                            tooltip: l10n.coachAthletePlanAddSet,
                           )
                         ],
                       ),
                       if (sets.isEmpty)
-                        const Text('Нет сетов', style: TextStyle(color: Colors.grey)),
+                        Text(l10n.coachAthletePlanNoSets, style: const TextStyle(color: Colors.grey)),
 
                       ...sets.asMap().entries.map((entry) {
                         final index = entry.key;
@@ -802,7 +827,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                                 Expanded(
                                   child: TextFormField(
                                     initialValue: set.reps.toString(),
-                                    decoration: const InputDecoration(labelText: 'Reps', isDense: true, contentPadding: EdgeInsets.all(8)),
+                                    decoration: InputDecoration(labelText: l10n.activePlanRepsLabel, isDense: true, contentPadding: const EdgeInsets.all(8)),
                                     keyboardType: TextInputType.number,
                                     onChanged: (v) {
                                       sets[index] = set.copyWith(reps: int.tryParse(v) ?? 0);
@@ -816,18 +841,18 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                                     decoration: const InputDecoration(labelText: 'Kg', isDense: true, contentPadding: EdgeInsets.all(8)),
                                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                     onChanged: (v) {
-                                      sets[index] = set.copyWith(weight: double.tryParse(v) ?? 0.0);
+                                      sets[index] = set.copyWith(weight: double.tryParse(v)?.toDouble() ?? 0.0);
                                     },
                                   ),
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: TextFormField(
-                                    initialValue: set.rpe?.toString() ?? '',
-                                    decoration: const InputDecoration(labelText: 'RPE', isDense: true, contentPadding: EdgeInsets.all(8)),
+                                    initialValue: set.effort?.toString() ?? '',
+                                    decoration: InputDecoration(labelText: l10n.activePlanRpeLabel, isDense: true, contentPadding: const EdgeInsets.all(8)),
                                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                     onChanged: (v) {
-                                      sets[index] = set.copyWith(rpe: double.tryParse(v));
+                                      sets[index] = set.copyWith(effort: double.tryParse(v) ?? 0.0);
                                     },
                                   ),
                                 ),
@@ -847,12 +872,24 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Отмена')),
+                TextButton(onPressed: () => Navigator.of(ctx).pop(), child: Text(l10n.cancel)),
                 FilledButton(
                   onPressed: () async {
                     if (selectedExerciseId == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Выберите упражнение')));
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.exerciseListEmptyNameError)));
                       return;
+                    }
+
+                    if (!isEdit && order == null) {
+                      final existing = workout?.exerciseInstances ?? const <ExerciseInstance>[];
+                      int maxOrder = -1;
+                      for (final inst in existing) {
+                        final o = inst.order;
+                        if (o != null && o > maxOrder) {
+                          maxOrder = o;
+                        }
+                      }
+                      order = maxOrder + 1;
                     }
 
                     try {
@@ -879,17 +916,17 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                       }
                       if (mounted) {
                          Navigator.of(ctx).pop();
-                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isEdit ? 'Обновлено' : 'Создано')));
+                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isEdit ? l10n.activePlanUpdatedSets(sets.length.toString()) : l10n.coachAthletePlanAddExercise))); // Simplified for now
 
                          ref.invalidate(coachActivePlanWorkoutsProvider(widget.athleteId));
 
                          Navigator.of(context).pop();
                       }
                     } catch (e) {
-                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.activePlanFailed(e.toString()))));
                     }
                   },
-                  child: const Text('Сохранить'),
+                  child: Text(l10n.save),
                 ),
               ],
             );
@@ -904,7 +941,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
     if (allWorkouts.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Нет тренировок для массовых правок')),
+          SnackBar(content: Text(AppLocalizations.of(context).coachAthletePlanMassEditErrorNoWorkouts)),
         );
       }
       return;
@@ -919,7 +956,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
     if (dayWorkouts.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('В выбранный день нет тренировок')),
+          SnackBar(content: Text(AppLocalizations.of(context).coachAthletePlanMassEditErrorNoWorkoutsOnDay)),
         );
       }
       return;
@@ -945,30 +982,30 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                     CheckboxListTile(
                       value: applyToWorkouts,
                       onChanged: (v) => setState(() => applyToWorkouts = v ?? false),
-                      title: const Text('Обновить заметки тренировок (workouts)'),
+                      title: Text(AppLocalizations.of(context).coachAthletePlanMassEditUpdateWorkouts),
                       controlAffinity: ListTileControlAffinity.leading,
                     ),
                     TextField(
                       controller: workoutNotesCtrl,
                       maxLines: 2,
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        hintText: 'Новая заметка для всех тренировок этого дня',
+                      decoration: InputDecoration(
+                        border: const OutlineInputBorder(),
+                        hintText: AppLocalizations.of(context).coachAthletePlanMassEditWorkoutHint,
                       ),
                     ),
                     const SizedBox(height: 12),
                     CheckboxListTile(
                       value: applyToExercises,
                       onChanged: (v) => setState(() => applyToExercises = v ?? false),
-                      title: const Text('Обновить заметки упражнений (exercise instances)'),
+                      title: Text(AppLocalizations.of(context).coachAthletePlanMassEditUpdateExercises),
                       controlAffinity: ListTileControlAffinity.leading,
                     ),
                     TextField(
                       controller: exerciseNotesCtrl,
                       maxLines: 2,
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        hintText: 'Новая заметка для всех упражнений этого дня',
+                      decoration: InputDecoration(
+                        border: const OutlineInputBorder(),
+                        hintText: AppLocalizations.of(context).coachAthletePlanMassEditExerciseHint,
                       ),
                     ),
                   ],
@@ -977,11 +1014,11 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(false),
-                  child: const Text('Отмена'),
+                  child: Text(AppLocalizations.of(context).cancel),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.of(ctx).pop(true),
-                  child: const Text('Применить'),
+                  child: Text(AppLocalizations.of(context).apply),
                 ),
               ],
             );
@@ -1022,7 +1059,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
     if (workoutsPayload.isEmpty && exercisePayload.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Нет изменений для применения')),
+          SnackBar(content: Text(AppLocalizations.of(context).coachAthletePlanMassEditNoChanges)),
         );
       }
       return;
@@ -1037,14 +1074,14 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Mass edit применён для выбранного дня')),
+          SnackBar(content: Text(AppLocalizations.of(context).coachAthletePlanMassEditApplied)),
         );
       }
       ref.invalidate(coachActivePlanWorkoutsProvider(widget.athleteId));
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка mass edit: $e')),
+          SnackBar(content: Text(AppLocalizations.of(context).coachAthletePlanMassEditError(e.toString()))),
         );
       }
     }

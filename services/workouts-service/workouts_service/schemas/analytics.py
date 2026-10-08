@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -15,3 +16,4 @@ class PlanAnalyticsItem(BaseModel):
 
 class PlanAnalyticsResponse(BaseModel):
     items: list[PlanAnalyticsItem]
+    meta: dict[str, Any] | None = None

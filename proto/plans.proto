@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package workoutapp.plans;
+
+import "common.proto";
+
+// Plans Service
+
+message CalendarPlan {
+  int32 id = 1;
+  string name = 2;
+  repeated Mesocycle mesocycles = 3;
+}
+
+message Mesocycle {
+  int32 id = 1;
+  string name = 2;
+  int32 order_index = 3;
+  repeated Microcycle microcycles = 4;
+}
+
+message Microcycle {
+  int32 id = 1;
+  string name = 2;
+  int32 order_index = 3;
+  repeated PlanWorkout plan_workouts = 4;
+}
+
+message PlanWorkout {
+  int32 id = 1;
+  string name = 2;
+  string day_label = 3;
+  int32 order_index = 4;
+  repeated PlanExercise exercises = 5;
+}
+
+message PlanExercise {
+  int32 exercise_definition_id = 1;
+  repeated PlanSet sets = 2;
+  string notes = 3;
+}
+
+message PlanSet {
+  optional int32 volume = 1;
+  optional float working_weight = 2;
+  optional float effort = 3;
+  optional float intensity = 4;
+}
+
+message GetCalendarPlanRequest {
+  int32 calendar_plan_id = 1;
+  workoutapp.common.UserContext user_context = 2;
+}
+
+message GetCalendarPlanResponse {
+  CalendarPlan calendar_plan = 1;
+}
+
+message ValidateMicrocyclesRequest {
+  repeated int32 microcycle_ids = 1;
+  workoutapp.common.UserContext user_context = 2;
+}
+
+message ValidateMicrocyclesResponse {
+  repeated int32 valid_ids = 1;
+}
+
+message GetParamsWorkoutRequest {
+  int32 params_workout_id = 1;
+  workoutapp.common.UserContext user_context = 2;
+}
+
+message GetParamsWorkoutResponse {
+  PlanWorkout params_workout = 1;
+}
+
+service PlansService {
+  rpc GetCalendarPlan(GetCalendarPlanRequest) returns (GetCalendarPlanResponse);
+  rpc ValidateMicrocycles(ValidateMicrocyclesRequest) returns (ValidateMicrocyclesResponse);
+  rpc GetParamsWorkout(GetParamsWorkoutRequest) returns (GetParamsWorkoutResponse);
+}

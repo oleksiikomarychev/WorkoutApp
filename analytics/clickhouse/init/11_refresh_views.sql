@@ -104,6 +104,42 @@ LEFT JOIN raw.applied_calendar_plans acp FINAL ON w.applied_plan_id = acp.id
 LEFT JOIN raw.calendar_plans cp FINAL ON acp.calendar_plan_id = cp.id
 WHERE ws.__op != 'd';
 
+ -- Обновить fact_workout_progress
+ INSERT INTO analytics.fact_workout_progress
+ SELECT
+     wp.id AS progress_id,
+     wp.plan_exercise_id,
+     wp.workout_set_id,
+     w.user_id,
+ 
+     toDate(coalesce(wp.date, wp.created_at, now())) AS date,
+     wp.created_at,
+ 
+     wp.planned_intensity,
+     wp.actual_intensity,
+     ifNull(wp.actual_intensity, 0) - toFloat64(ifNull(wp.planned_intensity, 0)) AS intensity_delta,
+ 
+     wp.planned_effort,
+     wp.actual_effort,
+     ifNull(wp.actual_effort, 0) - toFloat64(ifNull(wp.planned_effort, 0)) AS effort_delta,
+ 
+     wp.planned_volume,
+     wp.actual_volume,
+     ifNull(wp.actual_volume, 0) - ifNull(wp.planned_volume, 0) AS volume_delta,
+ 
+     we.exercise_id AS exercise_id,
+     el.name AS exercise_name,
+     w.id AS workout_id,
+     w.applied_plan_id AS applied_plan_id,
+ 
+     toUInt64(now64(3)) AS _version
+ FROM raw.workout_progress wp FINAL
+ JOIN raw.workout_sets ws FINAL ON wp.workout_set_id = ws.id
+ JOIN raw.workout_exercises we FINAL ON ws.exercise_id = we.id
+ JOIN raw.workouts w FINAL ON we.workout_id = w.id
+ LEFT JOIN raw.exercise_list el FINAL ON we.exercise_id = el.id
+ WHERE wp.__op != 'd';
+
 -- Обновить fact_user_maxes
 INSERT INTO analytics.fact_user_maxes
 SELECT

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -14,15 +15,18 @@ import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/config/constants/theme_constants.dart';
 import 'package:workout_app/widgets/primary_app_bar.dart';
 import 'package:workout_app/widgets/assistant_chat_host.dart';
+import 'package:workout_app/services/user_analytics_service.dart';
 import 'active_plan_screen.dart';
 
 import 'dart:async';
 
-final manualWorkoutsNotifierProvider = StateNotifierProvider<ManualWorkoutsNotifier, AsyncValue<List<Workout>>>((ref) {
-  final workoutService = ref.watch(workoutServiceProvider);
-  return ManualWorkoutsNotifier(workoutService);
-});
-
+final manualWorkoutsNotifierProvider =
+    StateNotifierProvider<ManualWorkoutsNotifier, AsyncValue<List<Workout>>>((
+      ref,
+    ) {
+      final workoutService = ref.watch(workoutServiceProvider);
+      return ManualWorkoutsNotifier(workoutService);
+    });
 
 final nextWorkoutProvider = StreamProvider<Workout?>((ref) {
   final apiClient = ref.watch(apiClientProvider);
@@ -42,7 +46,10 @@ final nextWorkoutProvider = StreamProvider<Workout?>((ref) {
           continue;
         }
 
-        final items = data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+        final items = data
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
         if (items.isEmpty) {
           yield null;
           continue;
@@ -50,8 +57,12 @@ final nextWorkoutProvider = StreamProvider<Workout?>((ref) {
 
         bool isCompletedSummary(Map<String, dynamic> m) {
           final status = (m['status']?.toString() ?? '').toLowerCase();
+          final isCancelled =
+              status == 'cancelled' ||
+              status == 'canceled' ||
+              status == 'dropped';
           if (status == 'completed') return true;
-          return m['completed_at'] != null;
+          return m['completed_at'] != null && !isCancelled;
         }
 
         DateTime? parseDate(dynamic raw) {
@@ -97,7 +108,9 @@ final nextWorkoutProvider = StreamProvider<Workout?>((ref) {
         }
 
         final rawId = selected['id'];
-        final workoutId = rawId is int ? rawId : int.tryParse(rawId?.toString() ?? '');
+        final workoutId = rawId is int
+            ? rawId
+            : int.tryParse(rawId?.toString() ?? '');
         if (workoutId == null) {
           yield null;
           continue;
@@ -105,7 +118,10 @@ final nextWorkoutProvider = StreamProvider<Workout?>((ref) {
 
         Workout? resolved;
         try {
-          await for (final w in workoutService.getWorkoutWithDetailsSWR(workoutId, ttlSeconds: 600)) {
+          await for (final w in workoutService.getWorkoutWithDetailsSWR(
+            workoutId,
+            ttlSeconds: 600,
+          )) {
             resolved = w;
             break;
           }
@@ -132,7 +148,6 @@ class WorkoutsScreen extends ConsumerStatefulWidget {
   ConsumerState<WorkoutsScreen> createState() => _WorkoutsScreenState();
 }
 
-
 class ManualWorkoutsNotifier extends StateNotifier<AsyncValue<List<Workout>>> {
   final WorkoutService _workoutService;
   final int _limit = 20;
@@ -141,8 +156,10 @@ class ManualWorkoutsNotifier extends StateNotifier<AsyncValue<List<Workout>>> {
   bool _isLoadingMore = false;
   List<Workout> _items = [];
   StreamSubscription<List<Workout>>? _sub;
+  int _nextLocalId = 1;
 
-  ManualWorkoutsNotifier(this._workoutService) : super(const AsyncValue.loading()) {
+  ManualWorkoutsNotifier(this._workoutService)
+    : super(const AsyncValue.loading()) {
     loadInitial();
   }
 
@@ -156,6 +173,26 @@ class ManualWorkoutsNotifier extends StateNotifier<AsyncValue<List<Workout>>> {
   bool get isLoadingMore => _isLoadingMore;
   List<Workout> get items => _items;
 
+  int addOptimistic(Workout workout) {
+    final localId = _nextLocalId++;
+    final optimistic = workout.copyWith(localId: localId);
+    _items = [optimistic, ..._items];
+    state = AsyncValue.data(_items);
+    return localId;
+  }
+
+  void commitOptimistic(int localId, Workout serverWorkout) {
+    final idx = _items.indexWhere((w) => w.localId == localId);
+    if (idx == -1) return;
+    _items = [..._items]..[idx] = serverWorkout;
+    state = AsyncValue.data(_items);
+  }
+
+  void rollbackOptimistic(int localId) {
+    _items = _items.where((w) => w.localId != localId).toList();
+    state = AsyncValue.data(_items);
+  }
+
   Future<void> loadInitial() async {
     await _sub?.cancel();
 
@@ -166,24 +203,32 @@ class ManualWorkoutsNotifier extends StateNotifier<AsyncValue<List<Workout>>> {
     _hasMore = true;
     _items = [];
 
-    _sub = _workoutService.getWorkoutsByTypeSWR(WorkoutType.manual).listen(
-      (workouts) {
-        _items = workouts;
-        _hasMore = workouts.length == _limit;
-        _skip = _items.length;
-        state = AsyncValue.data(_items);
-      },
-      onError: (e, st) {
-        state = AsyncValue.error(e, st is StackTrace ? st : StackTrace.current);
-      },
-    );
+    _sub = _workoutService
+        .getWorkoutsByTypeSWR(WorkoutType.manual)
+        .listen(
+          (workouts) {
+            _items = workouts;
+            _hasMore = workouts.length == _limit;
+            _skip = _items.length;
+            state = AsyncValue.data(_items);
+          },
+          onError: (e, st) {
+            state = AsyncValue.error(
+              e,
+              st is StackTrace ? st : StackTrace.current,
+            );
+          },
+        );
   }
 
   Future<void> loadMore() async {
     if (!_hasMore || _isLoadingMore) return;
     _isLoadingMore = true;
     try {
-      final page = await _workoutService.getWorkoutsPaged(skip: _skip, limit: _limit);
+      final page = await _workoutService.getWorkoutsPaged(
+        skip: _skip,
+        limit: _limit,
+      );
       if (page.isEmpty) {
         _hasMore = false;
       } else {
@@ -221,12 +266,17 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
   void initState() {
     super.initState();
 
+    // Track screen opening
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(
+        UserAnalyticsService.instance.trackScreenOpen('workouts_screen'),
+      );
       ref.read(manualWorkoutsNotifierProvider.notifier).loadInitial();
     });
 
     _scrollController.addListener(() {
-      if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      if (_scrollController.position.pixels >=
+          _scrollController.position.maxScrollExtent - 200) {
         ref.read(manualWorkoutsNotifierProvider.notifier).loadMore();
       }
     });
@@ -241,9 +291,14 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
   }
 
   Future<void> _showCreateWorkoutDialog() async {
+    // Track workout creation attempt
+    await UserAnalyticsService.instance.trackWorkoutAction(
+      'create_attempt',
+      null,
+    );
+
     _nameController.clear();
     final workoutService = ref.read(workoutServiceProvider);
-
 
     final notesController = TextEditingController();
     bool startNow = false;
@@ -274,7 +329,8 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                     children: [
                       Checkbox(
                         value: startNow,
-                        onChanged: (v) => setStateDialog(() => startNow = v ?? false),
+                        onChanged: (v) =>
+                            setStateDialog(() => startNow = v ?? false),
                       ),
                       const Text('Start now (sets started_at)'),
                     ],
@@ -289,7 +345,8 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
               ),
               ElevatedButton(
                 onPressed: () async {
-                  String? emptyToNull(String s) => s.trim().isEmpty ? null : s.trim();
+                  String? emptyToNull(String s) =>
+                      s.trim().isEmpty ? null : s.trim();
                   final name = _nameController.text.trim();
                   if (name.isEmpty) return;
                   try {
@@ -299,10 +356,46 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                       startedAt: startNow ? DateTime.now() : null,
                       exerciseInstances: const [],
                     );
-                    await workoutService.createWorkout(workout);
-                    if (!mounted) return;
                     Navigator.of(ctx).pop();
-                    await ref.read(manualWorkoutsNotifierProvider.notifier).loadInitial();
+                    if (!mounted) return;
+
+                    unawaited(() async {
+                      final notifier = ref.read(
+                        manualWorkoutsNotifierProvider.notifier,
+                      );
+                      final optimisticLocalId = notifier.addOptimistic(workout);
+                      try {
+                        final created = await workoutService.createWorkout(
+                          workout,
+                        );
+                        if (!mounted) return;
+
+                        // Track successful workout creation
+                        await UserAnalyticsService.instance.trackWorkoutAction(
+                          'create_success',
+                          created.id,
+                          properties: {
+                            'workout_name': created.name,
+                            'start_now': startNow,
+                          },
+                        );
+
+                        notifier.commitOptimistic(optimisticLocalId, created);
+
+                        await ref.read(apiClientProvider).invalidateCacheGroups(
+                          const ['workouts:list'],
+                        );
+                        notifier.loadInitial();
+                      } catch (e) {
+                        if (!mounted) return;
+                        notifier.rollbackOptimistic(optimisticLocalId);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Failed to create workout: $e'),
+                          ),
+                        );
+                      }
+                    }());
                   } catch (e) {
                     if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -333,7 +426,9 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                 icon: const Icon(Icons.account_circle_outlined),
                 onPressed: () async {
                   await Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => const UserProfileScreen(),
+                    ),
                   );
                 },
               ),
@@ -343,21 +438,43 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
             bottom: false,
             child: Consumer(
               builder: (context, ref, child) {
-                final manualWorkoutsState = ref.watch(manualWorkoutsNotifierProvider);
+                final manualWorkoutsState = ref.watch(
+                  manualWorkoutsNotifierProvider,
+                );
 
-                Widget buildError(String title, Object error, StackTrace? stackTrace, VoidCallback retry) {
+                Widget buildError(
+                  String title,
+                  Object error,
+                  StackTrace? stackTrace,
+                  VoidCallback retry,
+                ) {
                   _logger.e('$title: $error\n$stackTrace');
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                        const Icon(
+                          Icons.error_outline,
+                          color: Colors.red,
+                          size: 48,
+                        ),
                         const SizedBox(height: 16),
-                        Text(title, style: Theme.of(context).textTheme.titleMedium),
+                        Text(
+                          title,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
                         const SizedBox(height: 8),
-                        Text(error.toString(), textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
+                        Text(
+                          error.toString(),
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                         const SizedBox(height: 16),
-                        ElevatedButton.icon(onPressed: retry, icon: const Icon(Icons.refresh), label: const Text('Retry')),
+                        ElevatedButton.icon(
+                          onPressed: retry,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry'),
+                        ),
                       ],
                     ),
                   );
@@ -377,48 +494,76 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                       Expanded(
                         child: RefreshIndicator(
                           onRefresh: () async {
-
                             ref.invalidate(nextWorkoutProvider);
                             await Future.wait([
-                              ref.read(manualWorkoutsNotifierProvider.notifier).loadInitial(),
+                              ref
+                                  .read(manualWorkoutsNotifierProvider.notifier)
+                                  .loadInitial(),
                               ref.read(nextWorkoutProvider.future),
                             ]);
                           },
                           child: ListView(
                             controller: _scrollController,
-                            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                            physics: const BouncingScrollPhysics(
+                              parent: AlwaysScrollableScrollPhysics(),
+                            ),
                             padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
                             children: [
-                              _PlansSection(nextWorkoutAsync: ref.watch(nextWorkoutProvider)),
+                              _PlansSection(
+                                nextWorkoutAsync: ref.watch(
+                                  nextWorkoutProvider,
+                                ),
+                              ),
                               const SizedBox(height: 24),
                               _LibrarySection(
                                 manualWorkoutsState: manualWorkoutsState,
-                                onRetry: () => ref.read(manualWorkoutsNotifierProvider.notifier).loadInitial(),
+                                onRetry: () => ref
+                                    .read(
+                                      manualWorkoutsNotifierProvider.notifier,
+                                    )
+                                    .loadInitial(),
                                 onOpenWorkout: (workoutId) async {
+                                  // Track workout opening
+                                  await UserAnalyticsService.instance
+                                      .trackWorkoutAction('open', workoutId);
+
                                   // Warm detail cache in background to reduce perceived latency on first open.
                                   // Do not await: navigation should stay responsive.
                                   try {
                                     // ignore: unawaited_futures
-                                    ref.read(workoutServiceProvider).getWorkoutWithDetailsSWR(workoutId).first;
+                                    ref
+                                        .read(workoutServiceProvider)
+                                        .getWorkoutWithDetailsSWR(workoutId)
+                                        .first;
                                   } catch (_) {}
 
                                   await Navigator.of(context).push(
                                     MaterialPageRoute(
-                                      builder: (_) => WorkoutDetailScreen(workoutId: workoutId),
+                                      builder: (_) => WorkoutDetailScreen(
+                                        workoutId: workoutId,
+                                      ),
                                     ),
                                   );
                                   if (!mounted) return;
                                   try {
-                                    await ref.read(apiClientProvider).invalidateCacheGroups(const [
-                                      'workouts:list',
-                                      'workouts:detail',
-                                    ]);
+                                    await ref
+                                        .read(apiClientProvider)
+                                        .invalidateCacheGroups(const [
+                                          'workouts:list',
+                                          'workouts:detail',
+                                        ]);
                                   } catch (_) {}
                                   // Refresh list without blocking the UI thread.
                                   // ignore: unawaited_futures
-                                  ref.read(manualWorkoutsNotifierProvider.notifier).loadInitial();
+                                  ref
+                                      .read(
+                                        manualWorkoutsNotifierProvider.notifier,
+                                      )
+                                      .loadInitial();
                                 },
-                                readNotifier: () => ref.read(manualWorkoutsNotifierProvider.notifier),
+                                readNotifier: () => ref.read(
+                                  manualWorkoutsNotifierProvider.notifier,
+                                ),
                                 buildError: buildError,
                                 onCreateWorkout: _showCreateWorkoutDialog,
                               ),
@@ -451,13 +596,18 @@ class _HeroCarousel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const items = [
-      'assets/images/image.png',
-      'assets/images/image1.png',
-    ];
+    const items = ['assets/images/image.png', 'assets/images/image1.png'];
     final gradients = const [
-      LinearGradient(colors: [Color(0xFFFFC37F), Color(0xFFFF9472)], begin: Alignment.centerLeft, end: Alignment.centerRight),
-      LinearGradient(colors: [Color(0xFFFFC37F), Color(0xFFFF9472)], begin: Alignment.centerLeft, end: Alignment.centerRight),
+      LinearGradient(
+        colors: [Color(0xFFFFC37F), Color(0xFFFF9472)],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      ),
+      LinearGradient(
+        colors: [Color(0xFFFFC37F), Color(0xFFFF9472)],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      ),
     ];
 
     return Padding(
@@ -492,7 +642,9 @@ class _HeroCarousel extends StatelessWidget {
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
                           return Container(
-                            decoration: BoxDecoration(gradient: gradients[index % gradients.length]),
+                            decoration: BoxDecoration(
+                              gradient: gradients[index % gradients.length],
+                            ),
                           );
                         },
                       );
@@ -513,7 +665,9 @@ class _HeroCarousel extends StatelessWidget {
                 width: active ? 14 : 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: active ? AppColors.primary : AppColors.textDisabled.withOpacity(0.4),
+                  color: active
+                      ? AppColors.primary
+                      : AppColors.textDisabled.withOpacity(0.4),
                   borderRadius: BorderRadius.circular(4),
                 ),
               );
@@ -549,7 +703,10 @@ class _PlansSection extends StatelessWidget {
                   MaterialPageRoute(builder: (_) => const ActivePlanScreen()),
                 );
               },
-              icon: const Icon(Icons.calendar_today_outlined, color: AppColors.primary),
+              icon: const Icon(
+                Icons.calendar_today_outlined,
+                color: AppColors.primary,
+              ),
             ),
           ],
         ),
@@ -575,11 +732,20 @@ class _PlansSection extends StatelessWidget {
           ),
           data: (nextWorkout) {
             final isCompleted = nextWorkout == null;
-            final statusLabel = isCompleted ? 'Completed' : 'In Progress';
+            final status = (nextWorkout?.status ?? '').toLowerCase();
+            final isCancelled =
+                status == 'cancelled' ||
+                status == 'canceled' ||
+                status == 'dropped';
+            final statusLabel = isCompleted
+                ? 'Completed'
+                : (isCancelled ? 'Cancelled' : 'In Progress');
             final statusBackground = isCompleted
                 ? Colors.white.withOpacity(0.16)
                 : Colors.white.withOpacity(0.24);
-            final statusTextColor = isCompleted ? const Color(0xFFB2FF59) : Colors.white;
+            final statusTextColor = isCompleted
+                ? const Color(0xFFB2FF59)
+                : (isCancelled ? Colors.redAccent : Colors.white);
             final subtitle = nextWorkout?.name ?? 'No upcoming workouts';
             final scheduleText = isCompleted
                 ? 'All workouts completed or no active plan'
@@ -619,7 +785,11 @@ class _PlansSection extends StatelessWidget {
                           color: Colors.white.withOpacity(0.16),
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: const Icon(Icons.auto_graph, color: Colors.white, size: 20),
+                        child: const Icon(
+                          Icons.auto_graph,
+                          color: Colors.white,
+                          size: 20,
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -646,7 +816,10 @@ class _PlansSection extends StatelessWidget {
                       ),
                       const SizedBox(width: 10),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: statusBackground,
                           borderRadius: BorderRadius.circular(24),
@@ -701,7 +874,8 @@ class _PlansSection extends StatelessWidget {
                     await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => WorkoutDetailScreen(workoutId: nextWorkout.id!),
+                        builder: (_) =>
+                            WorkoutDetailScreen(workoutId: nextWorkout.id!),
                       ),
                     );
 
@@ -768,7 +942,8 @@ class _LibrarySection extends StatelessWidget {
               child: CircularProgressIndicator(),
             ),
           ),
-          error: (werr, wst) => buildError('Error loading workouts', werr, wst, onRetry),
+          error: (werr, wst) =>
+              buildError('Error loading workouts', werr, wst, onRetry),
           data: (workouts) {
             if (workouts.isEmpty) {
               return EmptyState(
@@ -791,7 +966,9 @@ class _LibrarySection extends StatelessWidget {
                         context: context,
                         builder: (ctx) => AlertDialog(
                           title: const Text('Delete workout?'),
-                          content: const Text('Are you sure you want to delete this manual workout?'),
+                          content: const Text(
+                            'Are you sure you want to delete this manual workout?',
+                          ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.of(ctx).pop(false),
@@ -839,7 +1016,11 @@ class _WorkoutCard extends StatelessWidget {
   final VoidCallback onTap;
   final Future<void> Function() onDelete;
 
-  const _WorkoutCard({required this.workout, required this.onTap, required this.onDelete});
+  const _WorkoutCard({
+    required this.workout,
+    required this.onTap,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -859,10 +1040,7 @@ class _WorkoutCard extends StatelessWidget {
               color: const Color(0xFFE8ECFF),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(
-              Icons.fitness_center,
-              color: AppColors.primary,
-            ),
+            child: const Icon(Icons.fitness_center, color: AppColors.primary),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -916,7 +1094,6 @@ class _WorkoutCard extends StatelessWidget {
     }
     return 'Manual session';
   }
-
 }
 
 class _SectionTitle extends StatelessWidget {
@@ -940,10 +1117,7 @@ class _SectionTitle extends StatelessWidget {
         const SizedBox(width: 12),
         Text(
           title,
-          style: const TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 18,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
         ),
       ],
     );

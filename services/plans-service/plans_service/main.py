@@ -20,6 +20,7 @@ from .routers import (
     mesocycles,
     templates,
 )
+from .routers.internal_purge import router as internal_purge_router
 
 configure_logging()
 logger = structlog.get_logger(__name__)
@@ -105,7 +106,7 @@ app.include_router(coach_eligibility.router, prefix="/plans", tags=["Plan Adopti
 app.include_router(mesocycles.router, prefix="/plans", tags=["Mesocycles"])
 app.include_router(macros.router, prefix="/plans", tags=["Plan Macros"])
 app.include_router(templates.router, prefix="/plans", tags=["Mesocycle Templates"])
-
+app.include_router(internal_purge_router)
 
 @app.get("/health")
 async def health():
@@ -129,4 +130,4 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, loop="uvloop", http="httptools")

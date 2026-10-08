@@ -1,6 +1,6 @@
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class EffortType(str, Enum):
@@ -48,61 +48,4 @@ class ExerciseListCreate(ExerciseListBase):
 class ExerciseListResponse(ExerciseListBase):
     id: int
 
-    class Config:
-        from_attributes = True
-
-
-class ExerciseSet(BaseModel):
-    id: int | None = Field(None, description="ID of the set within the instance")
-    weight: float | None = Field(None, ge=0, description="Weight in kg")
-    volume: int | None = Field(None, ge=1, description="Volume")
-    intensity: int | None = Field(None, description="Intensity, % of 1RM")
-    effort_type: EffortType | None = Field(None, description="Type of effort")
-    effort: int | None = Field(None, description="Effort value")
-
-    class Config:
-        extra = "allow"
-
-
-class ExerciseSetUpdate(BaseModel):
-    weight: float | None = Field(None, ge=0)
-    volume: int | None = Field(None, ge=1)
-    reps: int | None = Field(None, ge=0)
-    effort: int | None = Field(None, ge=4, le=10)
-
-    class Config:
-        extra = "allow"
-
-
-class ExerciseInstanceBase(BaseModel):
-    exercise_list_id: int
-    sets: list[ExerciseSet]
-    notes: str | None = None
-    order: int | None = None
-
-    class Config:
-        from_attributes = True
-
-
-class ExerciseInstanceCreate(ExerciseInstanceBase):
-    user_max_id: int | None = None
-
-
-class ExerciseInstanceResponse(ExerciseInstanceBase):
-    id: int
-    workout_id: int | None = None
-    user_max_id: int | None = None
-    exercise_definition: ExerciseListResponse | None = None
-
-    class Config:
-        from_attributes = True
-
-
-class ExerciseInstanceCoachUpdate(BaseModel):
-    notes: str | None = None
-    order: int | None = None
-    exercise_list_id: int | None = None
-    sets: list[ExerciseSet] | None = None
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, str_strip_whitespace=True)

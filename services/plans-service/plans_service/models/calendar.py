@@ -35,6 +35,7 @@ class CalendarPlan(Base):
     session_duration_target_min = Column(Integer, nullable=True)
     primary_focus_lifts = Column(JSON, nullable=True)
     required_equipment = Column(JSON, nullable=True)
+    nutrition_plan = Column(JSON, nullable=True)
 
     applied_instances = relationship(
         "AppliedCalendarPlan", back_populates="calendar_plan", cascade="all, delete-orphan"
@@ -121,6 +122,7 @@ class AppliedPlanWorkout(Base):
     applied_plan_id = Column(Integer, ForeignKey("applied_calendar_plans.id"), nullable=False)
     workout_id = Column(Integer, nullable=False)
     order_index = Column(Integer, nullable=False)
+    nutrition_plan = Column(JSON, nullable=True)
 
     applied_plan = relationship("AppliedCalendarPlan", back_populates="workouts")
 
@@ -227,6 +229,7 @@ class PlanWorkout(Base):
     order_index = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    nutrition_plan = Column(JSON, nullable=True)
 
     microcycle = relationship("Microcycle", back_populates="plan_workouts")
     exercises = relationship("PlanExercise", back_populates="plan_workout", cascade="all, delete-orphan")
@@ -243,6 +246,8 @@ class PlanExercise(Base):
     exercise_definition_id = Column(Integer, nullable=False)
     exercise_name = Column(String(255), nullable=False)
     order_index = Column(Integer, nullable=False, default=0)
+    rest_seconds = Column(Integer, nullable=True)
+    notes = Column(String(512), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -264,10 +269,12 @@ class PlanSet(Base):
     id = Column(Integer, primary_key=True, index=True)
     plan_exercise_id = Column(Integer, ForeignKey("plan_exercises.id", ondelete="CASCADE"), nullable=False)
     order_index = Column(Integer, nullable=False, default=0)
+    set_type = Column(String(32), nullable=True)
     intensity = Column(Integer, nullable=True)
     effort = Column(Integer, nullable=True)
     volume = Column(Integer, nullable=True)
     working_weight = Column(Float, nullable=True)
+    subsets = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -1,5 +1,3 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:workout_app/models/user_max.dart';
 import 'package:workout_app/config/api_config.dart';
 import 'package:workout_app/models/workout.dart';
@@ -9,6 +7,50 @@ import 'package:workout_app/services/api_client.dart';
 
 class PlanApi {
   static final ApiClient _apiClient = ApiClient();
+
+  static Future<Map<String, dynamic>> applyPlanAsync({
+    required int planId,
+    required List<int> userMaxIds,
+    required bool computeWeights,
+    required double roundingStep,
+    required String roundingMode,
+  }) async {
+    final endpoint = ApiConfig.applyPlanAsyncEndpoint(planId.toString());
+    final query = {
+      'user_max_ids': userMaxIds.join(','),
+    };
+    final payload = {
+      'name': 'Applied Plan',
+      'compute_weights': computeWeights,
+      'rounding_step': roundingStep,
+      'rounding_mode': roundingMode == 'up' ? 'ceil' : roundingMode == 'down' ? 'floor' : roundingMode,
+      'generate_workouts': true,
+    };
+    final data = await _apiClient.post(
+      endpoint,
+      payload,
+      queryParams: query,
+      timeout: const Duration(seconds: 30),
+      context: 'applyPlanAsync',
+    );
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    return <String, dynamic>{};
+  }
+
+  static Future<Map<String, dynamic>> getPlanTaskStatus(String taskId) async {
+    final endpoint = ApiConfig.plansTaskStatusEndpoint(taskId);
+    final data = await _apiClient.get(
+      endpoint,
+      timeout: const Duration(seconds: 30),
+      context: 'getPlanTaskStatus',
+    );
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    return <String, dynamic>{};
+  }
 
   static Future<List<UserMax>> getUserMaxes() async {
     final data = await _apiClient.get(ApiConfig.getUserMaxesEndpoint()) as List<dynamic>;

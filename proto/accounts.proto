@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package workoutapp.accounts;
+
+import "common.proto";
+
+// Accounts Service
+
+message Profile {
+  string user_id = 1;
+  string email = 2;
+  string name = 3;
+  string photo_url = 4;
+  map<string, string> preferences = 5;
+}
+
+message GetProfileRequest {
+  workoutapp.common.UserContext user_context = 1;
+}
+
+message GetProfileResponse {
+  Profile profile = 1;
+}
+
+message UpdateProfileRequest {
+  Profile profile = 1;
+  workoutapp.common.UserContext user_context = 2;
+}
+
+message UpdateProfileResponse {
+  Profile profile = 1;
+}
+
+message UploadAvatarRequest {
+  bytes image_data = 1;
+  string content_type = 2;
+  workoutapp.common.UserContext user_context = 3;
+}
+
+message UploadAvatarResponse {
+  string photo_url = 1;
+}
+
+service AccountsService {
+  rpc GetProfile(GetProfileRequest) returns (GetProfileResponse);
+  rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
+  rpc UploadAvatar(UploadAvatarRequest) returns (UploadAvatarResponse);
+}

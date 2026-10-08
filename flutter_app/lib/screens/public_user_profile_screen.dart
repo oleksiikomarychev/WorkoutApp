@@ -4,10 +4,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:workout_app/widgets/primary_app_bar.dart';
 import 'package:workout_app/widgets/assistant_chat_host.dart';
 import 'package:workout_app/services/base_api_service.dart';
+import 'package:workout_app/widgets/coach_rating_display.dart';
+import 'package:workout_app/widgets/review_card.dart';
+import 'package:workout_app/widgets/review_form_dialog.dart';
 
 import '../config/constants/theme_constants.dart';
 import '../models/user_profile.dart';
 import '../models/user_stats.dart';
+import '../models/crm_coach_athlete_link.dart';
 import '../providers/providers.dart';
 import '../services/service_locator.dart' as sl;
 import '../widgets/user_profile_view.dart';
@@ -23,6 +27,7 @@ class PublicUserProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(publicUserProfileProvider(userId));
     final aggregatesAsync = ref.watch(publicProfileAggregatesProvider(userId));
+    final reviewsAsync = ref.watch(coachReviewsProvider(userId));
 
     return AssistantChatHost(
       builder: (context, openChat) {
@@ -35,9 +40,11 @@ class PublicUserProfileScreen extends ConsumerWidget {
         onRefresh: () async {
           ref.invalidate(publicUserProfileProvider(userId));
           ref.invalidate(publicProfileAggregatesProvider(userId));
+          ref.invalidate(coachReviewsProvider(userId));
           await Future.wait([
             ref.read(publicUserProfileProvider(userId).future),
             ref.read(publicProfileAggregatesProvider(userId).future),
+            ref.read(coachReviewsProvider(userId).future),
           ]);
         },
         child: profileAsync.when(
@@ -85,10 +92,7 @@ class PublicUserProfileScreen extends ConsumerWidget {
     final currentUser = FirebaseAuth.instance.currentUser;
     final isSelf = currentUser != null && currentUser.uid == profile.userId;
     final coaching = profile.coaching;
-    final canRequestCoaching = !isSelf &&
-        coaching != null &&
-        coaching.enabled &&
-        coaching.acceptingClients;
+    final canRequestCoaching = !isSelf && coaching != null && coaching.enabled;
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
@@ -123,6 +127,10 @@ class PublicUserProfileScreen extends ConsumerWidget {
             );
           },
         ),
+        if (coaching != null && coaching.enabled) ...[
+          const SizedBox(height: 32),
+          _buildReviewsSection(context, ref, profile),
+        ],
       ],
     );
   }
@@ -175,6 +183,100 @@ class PublicUserProfileScreen extends ConsumerWidget {
         }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message)),
+        );
+      }
+    }
+  }
+
+  Widget _buildReviewsSection(BuildContext context, WidgetRef ref, UserProfile profile) {
+    final reviewsAsync = ref.watch(coachReviewsProvider(profile.userId));
+    final coaching = profile.coaching;
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final isSelf = currentUser != null && currentUser.uid == profile.userId;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              'Reviews',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(width: 8),
+            if (coaching != null && coaching.averageRating != null)
+              CoachRatingDisplay(
+                averageRating: coaching.averageRating,
+                reviewCount: coaching.reviewCount,
+              ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (!isSelf && coaching != null && coaching.enabled)
+          ElevatedButton.icon(
+            onPressed: () => _showReviewDialog(context, ref, profile),
+            icon: const Icon(Icons.star),
+            label: const Text('Write a Review'),
+          ),
+        if (!isSelf && coaching != null && coaching.enabled) const SizedBox(height: 16),
+        reviewsAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, _) => const Center(child: Text('Failed to load reviews')),
+          data: (response) {
+            if (response.reviews.isEmpty) {
+              return const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(
+                    child: Text('No reviews yet'),
+                  ),
+                ),
+              );
+            }
+            return Column(
+              children: response.reviews.map((review) => ReviewCard(review: review)).toList(),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showReviewDialog(BuildContext context, WidgetRef ref, UserProfile profile) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      final svc = ref.read(sl.crmRelationshipsServiceProvider);
+      final links = await svc.getMyCoaches(status: 'active');
+      final link = links.firstWhere(
+        (l) => l.coachId == profile.userId,
+        orElse: () => throw Exception('No active coaching relationship found'),
+      );
+
+      if (!context.mounted) return;
+
+      await showDialog(
+        context: context,
+        builder: (ctx) => ReviewFormDialog(
+          linkId: link.id,
+          coachName: profile.displayName ?? profile.userId,
+          onSubmit: (linkId, rating, comment) async {
+            final reviewSvc = ref.read(sl.crmReviewsServiceProvider);
+            await reviewSvc.createReview(
+              linkId: linkId,
+              rating: rating,
+              comment: comment,
+            );
+            ref.invalidate(coachReviewsProvider(profile.userId));
+            ref.invalidate(publicUserProfileProvider(profile.userId));
+          },
+        ),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Cannot review: $e')),
         );
       }
     }

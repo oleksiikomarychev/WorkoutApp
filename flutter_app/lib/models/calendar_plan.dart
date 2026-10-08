@@ -22,6 +22,7 @@ class CalendarPlan {
   final List<int>? primaryFocusLifts;
   final List<String>? requiredEquipment;
   final String? notes;
+  final Map<String, dynamic>? nutritionPlan;
 
   CalendarPlan({
     required this.id,
@@ -42,6 +43,7 @@ class CalendarPlan {
     this.primaryFocusLifts,
     this.requiredEquipment,
     this.notes,
+    this.nutritionPlan,
   });
 
   factory CalendarPlan.fromJson(Map<String, dynamic> json) {
@@ -70,6 +72,7 @@ class CalendarPlan {
           ?.map((e) => e.toString())
           .toList(),
       notes: json['notes'] as String?,
+      nutritionPlan: json['nutrition_plan'] as Map<String, dynamic>?,
     );
   }
 
@@ -93,6 +96,7 @@ class CalendarPlan {
       'primary_focus_lifts': primaryFocusLifts,
       'required_equipment': requiredEquipment,
       'notes': notes,
+      'nutrition_plan': nutritionPlan,
     };
   }
 }

@@ -1,15 +1,19 @@
+import re
 from pathlib import Path
 
 from exercises_service import schemas
 from exercises_service.config import get_settings
+from exercises_service.decorators import validate_exercise_definition
 from exercises_service.dependencies import get_db
-from exercises_service.metrics import EXERCISE_DEFINITIONS_CREATED_TOTAL
+from exercises_service.redis_client import get_redis_client
 from exercises_service.services.exercise_definition_service import ExerciseDefinitionService
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/definitions")
+
+_ID_PATTERN = re.compile(r'^\d+$')
 
 
 def _media_dir_for_exercise(exercise_list_id: int) -> Path:
@@ -18,83 +22,132 @@ def _media_dir_for_exercise(exercise_list_id: int) -> Path:
     return base / str(exercise_list_id)
 
 
-def _detect_image_kind(data: bytes) -> str | None:
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "png"
-    if data.startswith(b"\xff\xd8\xff"):
-        return "jpeg"
-    if data.startswith(b"GIF87a") or data.startswith(b"GIF89a"):
-        return "gif"
-    return None
-
-
-def _validate_upload(file: UploadFile, data: bytes, allowed_kinds: set[str]) -> str:
-    kind = _detect_image_kind(data)
-    if kind is None or kind not in allowed_kinds:
-        raise HTTPException(status_code=400, detail="Unsupported or invalid image format")
-
-    # Content-type guard (client-provided, but still useful)
-    allowed_content_types = {
-        "png": {"image/png"},
-        "jpeg": {"image/jpeg", "image/jpg"},
-        "gif": {"image/gif"},
+_GIF_PATTERNS = {
+    "gif": {
+        "signatures": [b"GIF87a", b"GIF89a"],
+        "content_types": {"image/gif"},
+        "max_size": 25 * 1024 * 1024,
     }
-    if file.content_type and file.content_type not in allowed_content_types.get(kind, set()):
-        raise HTTPException(status_code=400, detail=f"Invalid content-type for {kind}: {file.content_type}")
+}
 
-    return kind
 
+def _validate_gif_upload(file: UploadFile, data: bytes) -> str:
+    gif_config = _GIF_PATTERNS["gif"]
+    
+    if len(data) > gif_config["max_size"]:
+        raise HTTPException(
+            status_code=413, 
+            detail=f"GIF file too large (max {gif_config['max_size'] // (1024*1024)}MB)"
+        )
+    
+    is_gif = any(data.startswith(signature) for signature in gif_config["signatures"])
+    if not is_gif:
+        raise HTTPException(status_code=400, detail="Invalid or unsupported file format. Only GIF files are supported.")
+    
+    if file.content_type and file.content_type not in gif_config["content_types"]:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid content-type for GIF: {file.content_type}. Expected: image/gif"
+        )
+    
+    return "gif"
 
 @router.get("/", response_model=list[schemas.ExerciseListResponse])
-async def list_exercise_definitions(ids: str | None = None, db: AsyncSession = Depends(get_db)):
-    parsed_ids = [int(id_str) for id_str in ids.split(",")] if ids else None
-    service = ExerciseDefinitionService(db)
-    return await service.list_definitions(parsed_ids)
+async def list_exercise_definitions(
+    ids: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    muscle_group: str | None = None,
+    equipment: str | None = None,
+    search: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    redis_client = Depends(get_redis_client)
+):
+    parsed_ids = None
+    if ids:
+        id_parts = ids.split(",")
+        parsed_ids = []
+        for part in id_parts:
+            part = part.strip()
+            if part and _ID_PATTERN.match(part):
+                parsed_ids.append(int(part))
+            elif part:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid ID format: '{part}'. All IDs must be valid integers."
+                )
+    
+    muscle_groups = None
+    if muscle_group:
+        muscle_groups = [mg.strip() for mg in muscle_group.split(',') if mg.strip()]
+    
+    equipment_types = None
+    if equipment:
+        equipment_types = [eq.strip() for eq in equipment.split(',') if eq.strip()]
+    
+    service = ExerciseDefinitionService(db, redis_client)
+    
+    if parsed_ids is not None:
+        return await service.list_definitions(parsed_ids)
+    
+    return await service.list_definitions(
+        ids=None,
+        limit=limit,
+        offset=offset,
+        muscle_groups=muscle_groups,
+        equipment_types=equipment_types,
+        search=search
+    )
 
 
 @router.get("/{exercise_list_id}", response_model=schemas.ExerciseListResponse)
-async def get_exercise_definition(exercise_list_id: int, db: AsyncSession = Depends(get_db)):
-    service = ExerciseDefinitionService(db)
-    definition = await service.get_definition(exercise_list_id)
-    if not definition:
-        raise HTTPException(status_code=404, detail="Exercise definition not found")
-    return definition
+@validate_exercise_definition()
+async def get_exercise_definition(
+    exercise_list_id: int, 
+    db: AsyncSession = Depends(get_db), 
+    redis_client = Depends(get_redis_client),
+    _exercise_definition=None
+):
+    return _exercise_definition
 
 
 @router.post("/", response_model=schemas.ExerciseListResponse, status_code=status.HTTP_201_CREATED)
-async def create_exercise_definition(exercise: schemas.ExerciseListCreate, db: AsyncSession = Depends(get_db)):
-    service = ExerciseDefinitionService(db)
+async def create_exercise_definition(
+    exercise: schemas.ExerciseListCreate, 
+    db: AsyncSession = Depends(get_db),
+    redis_client = Depends(get_redis_client)
+):
+    service = ExerciseDefinitionService(db, redis_client)
     definition = await service.create_definition(exercise)
     EXERCISE_DEFINITIONS_CREATED_TOTAL.inc()
     return definition
 
 
 @router.post("/{exercise_list_id}/media/image", response_model=schemas.ExerciseListResponse)
+@validate_exercise_definition()
 async def upload_exercise_image(
     exercise_list_id: int,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
+    redis_client = Depends(get_redis_client),
+    _exercise_definition=None,
 ):
-    service = ExerciseDefinitionService(db)
-    definition = await service.get_definition(exercise_list_id)
-    if not definition:
-        raise HTTPException(status_code=404, detail="Exercise definition not found")
+    definition = _exercise_definition
+
+    service = ExerciseDefinitionService(db, redis_client)
 
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Empty file")
-    if len(data) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Image file too large")
 
-    kind = _validate_upload(file, data, {"png", "jpeg"})
-    ext = "png" if kind == "png" else "jpg"
+    kind = _validate_gif_upload(file, data)
+    ext = "gif"
 
     media_dir = _media_dir_for_exercise(exercise_list_id)
     media_dir.mkdir(parents=True, exist_ok=True)
     target = media_dir / f"image.{ext}"
     target.write_bytes(data)
 
-    # Persist URL (served by GET endpoint)
     update_payload = schemas.ExerciseListCreate(**definition.model_dump())
     update_payload = update_payload.model_copy(
         update={
@@ -106,23 +159,23 @@ async def upload_exercise_image(
 
 
 @router.post("/{exercise_list_id}/media/gif", response_model=schemas.ExerciseListResponse)
+@validate_exercise_definition()
 async def upload_exercise_gif(
     exercise_list_id: int,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
+    redis_client = Depends(get_redis_client),
+    _exercise_definition=None,
 ):
-    service = ExerciseDefinitionService(db)
-    definition = await service.get_definition(exercise_list_id)
-    if not definition:
-        raise HTTPException(status_code=404, detail="Exercise definition not found")
+    definition = _exercise_definition
+
+    service = ExerciseDefinitionService(db, redis_client)
 
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Empty file")
-    if len(data) > 25 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="GIF file too large")
 
-    _validate_upload(file, data, {"gif"})
+    _validate_gif_upload(file, data)
 
     media_dir = _media_dir_for_exercise(exercise_list_id)
     media_dir.mkdir(parents=True, exist_ok=True)
@@ -139,18 +192,6 @@ async def upload_exercise_gif(
     return await service.update_definition(exercise_list_id, update_payload)
 
 
-@router.get("/{exercise_list_id}/media/image")
-async def get_exercise_image(exercise_list_id: int):
-    media_dir = _media_dir_for_exercise(exercise_list_id)
-    png_path = media_dir / "image.png"
-    jpg_path = media_dir / "image.jpg"
-    if png_path.exists():
-        return FileResponse(png_path, media_type="image/png")
-    if jpg_path.exists():
-        return FileResponse(jpg_path, media_type="image/jpeg")
-    raise HTTPException(status_code=404, detail="Exercise image not found")
-
-
 @router.get("/{exercise_list_id}/media/gif")
 async def get_exercise_gif(exercise_list_id: int):
     media_dir = _media_dir_for_exercise(exercise_list_id)
@@ -161,15 +202,14 @@ async def get_exercise_gif(exercise_list_id: int):
 
 
 @router.put("/{exercise_list_id}", response_model=schemas.ExerciseListResponse)
+@validate_exercise_definition()
 async def update_exercise_definition(
     exercise_list_id: int,
     exercise_update: schemas.ExerciseListCreate,
     db: AsyncSession = Depends(get_db),
+    redis_client = Depends(get_redis_client),
 ):
-    service = ExerciseDefinitionService(db)
-    definition = await service.get_definition(exercise_list_id)
-    if not definition:
-        raise HTTPException(status_code=404, detail="Exercise definition not found")
+    service = ExerciseDefinitionService(db, redis_client)
     return await service.update_definition(exercise_list_id, exercise_update)
 
 
@@ -177,12 +217,17 @@ async def update_exercise_definition(
 async def batch_upsert_exercise_definitions(
     exercises: list[schemas.ExerciseListCreate],
     db: AsyncSession = Depends(get_db),
+    redis_client = Depends(get_redis_client),
 ):
-    service = ExerciseDefinitionService(db)
+    service = ExerciseDefinitionService(db, redis_client)
     return await service.batch_upsert_definitions(exercises)
 
 
 @router.delete("/{exercise_list_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_exercise_definition(exercise_list_id: int, db: AsyncSession = Depends(get_db)):
-    service = ExerciseDefinitionService(db)
+async def delete_exercise_definition(
+    exercise_list_id: int, 
+    db: AsyncSession = Depends(get_db),
+    redis_client = Depends(get_redis_client)
+):
+    service = ExerciseDefinitionService(db, redis_client)
     await service.delete_definition(exercise_list_id)

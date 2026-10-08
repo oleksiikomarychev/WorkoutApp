@@ -40,7 +40,8 @@ async def get_all_sessions(
         override_service = SessionService(session_service.db, user_id=user_id)
         target_service = override_service
     sessions = await target_service.get_all_sessions()
-    return [sm.WorkoutSessionResponse(**s.__dict__) for s in sessions]
+    # Use serialized data to ensure proper date formatting
+    return [sm.WorkoutSessionResponse(**target_service._serialize_session(s)) for s in sessions]
 
 
 @router.post(
@@ -90,6 +91,7 @@ async def get_session_history(workout_id: int, session_service: SessionService =
 @router.post("/{session_id}/finish", response_model=sm.WorkoutSessionResponse)
 async def finish_session(
     session_id: int,
+    payload: sm.SessionFinishRequest | None = None,
     session_service: SessionService = Depends(get_session_service),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -98,7 +100,8 @@ async def finish_session(
         user_id=user_id,
         session_id=session_id,
     )
-    session = await session_service.finish_session(session_id)
+    finished_at = payload.finished_at if payload else None
+    session = await session_service.finish_session(session_id, finished_at=finished_at)
     if not session:
         raise SessionNotFoundException(session_id)
     logger.info(
@@ -171,4 +174,24 @@ async def update_set_completion(
         set_id=set_id,
         completed=completed,
     )
+    return sm.WorkoutSessionResponse(**session.__dict__)
+
+
+@router.post(
+    "/{session_id}/complete-all",
+    response_model=sm.WorkoutSessionResponse,
+)
+async def complete_all_sets(
+    session_id: int,
+    payload: sm.SessionCompleteAllRequest,
+    session_service: SessionService = Depends(get_session_service),
+    user_id: str = Depends(get_current_user_id),
+):
+    logger.info(
+        "workout_session_complete_all_sets",
+        user_id=user_id,
+        session_id=session_id,
+        completed=payload.completed,
+    )
+    session = await session_service.complete_all_sets(session_id=session_id, completed=payload.completed)
     return sm.WorkoutSessionResponse(**session.__dict__)

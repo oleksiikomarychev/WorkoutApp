@@ -179,25 +179,6 @@ async def create_link(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Coach is not available for coaching",
             )
-        if not coaching.get("accepting_clients"):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Coach is not accepting new clients",
-            )
-        rate_plan = coaching.get("rate_plan") or {}
-        currency = rate_plan.get("currency")
-        amount_minor = rate_plan.get("amount_minor")
-        connect_account_id = coaching.get("stripe_connect_account_id")
-        if not connect_account_id:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Coach Stripe Connect account is not configured",
-            )
-        if not currency or amount_minor is None or amount_minor <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Coach rate plan is not configured",
-            )
 
     initial_status = CoachAthleteStatus.active if initiated_by_coach else CoachAthleteStatus.pending
 

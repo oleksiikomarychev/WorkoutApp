@@ -12,7 +12,7 @@ depends_on = None
 def upgrade():
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        op.execute("DROP TYPE IF EXISTS workouttypeenum")
+        op.execute("DROP TYPE IF EXISTS workouttypeenum CASCADE")
         op.execute("CREATE TYPE workouttypeenum AS ENUM ('manual', 'generated')")
     workout_type = sa.Enum("manual", "generated", name="workouttypeenum", create_type=False)
 
@@ -20,7 +20,6 @@ def upgrade():
         "workouts",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
-        sa.Column("user_id", sa.String(), nullable=True),
         sa.Column("applied_plan_id", sa.Integer(), nullable=True),
         sa.Column("plan_order_index", sa.Integer(), nullable=True),
         sa.Column("scheduled_for", sa.DateTime(), nullable=True),

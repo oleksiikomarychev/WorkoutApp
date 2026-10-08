@@ -1,10 +1,9 @@
 import 'package:firebase_ui_auth/firebase_ui_auth.dart' as fui;
 import 'package:firebase_ui_oauth_google/firebase_ui_oauth_google.dart';
-import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-
-
 
 class SignInScreen extends StatelessWidget {
   const SignInScreen({super.key});
@@ -13,16 +12,24 @@ class SignInScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     const androidClientIdFallback =
         '282810209663-2c8gaol6ijkhp96tc1c70fuj4bdvpgse.apps.googleusercontent.com';
-    const googleClientIdOverride = String.fromEnvironment(
+    const iosClientIdFallback =
+        '282810209663-u4upa0psrlsd24ls422na68n1gcmlllb.apps.googleusercontent.com';
+    const webClientIdFallback =
+        '282810209663-hqb6rd3lfme15d3l3s0ot6776stubutv.apps.googleusercontent.com';
+
+    const webClientIdOverride = String.fromEnvironment(
       'GOOGLE_WEB_CLIENT_ID',
       defaultValue: '',
     );
-    final googleClientIdFromEnv = dotenv.isInitialized
+
+    final webClientIdFromEnv = dotenv.isInitialized
         ? (dotenv.maybeGet('GOOGLE_WEB_CLIENT_ID') ?? '')
         : '';
-    final googleClientId = googleClientIdOverride.isNotEmpty
-        ? googleClientIdOverride
-        : googleClientIdFromEnv;
+    final webClientId = webClientIdOverride.isNotEmpty
+        ? webClientIdOverride
+        : (webClientIdFromEnv.isNotEmpty
+              ? webClientIdFromEnv
+              : webClientIdFallback);
 
     final androidClientIdFromEnv = dotenv.isInitialized
         ? (dotenv.maybeGet('GOOGLE_ANDROID_CLIENT_ID') ?? '')
@@ -31,19 +38,24 @@ class SignInScreen extends StatelessWidget {
         ? androidClientIdFromEnv
         : androidClientIdFallback;
 
+    final iosClientIdFromEnv = dotenv.isInitialized
+        ? (dotenv.maybeGet('GOOGLE_IOS_CLIENT_ID') ?? '')
+        : '';
+    final iosClientId = iosClientIdFromEnv.isNotEmpty
+        ? iosClientIdFromEnv
+        : iosClientIdFallback;
+
     final providerClientId = kIsWeb
-        ? googleClientId
-        : (defaultTargetPlatform == TargetPlatform.android ? androidClientId : googleClientId);
-    final providers = <fui.AuthProvider>[
-      fui.EmailAuthProvider(),
-    ];
+        ? webClientId
+        : (defaultTargetPlatform == TargetPlatform.android
+              ? androidClientId
+              : defaultTargetPlatform == TargetPlatform.iOS
+              ? iosClientId
+              : webClientId);
+    final providers = <fui.AuthProvider>[fui.EmailAuthProvider()];
 
     if (providerClientId.isNotEmpty) {
-      providers.add(
-        GoogleProvider(
-          clientId: providerClientId,
-        ),
-      );
+      providers.add(GoogleProvider(clientId: providerClientId));
     }
 
     return fui.SignInScreen(
@@ -58,8 +70,8 @@ class SignInScreen extends StatelessWidget {
               Text(
                 'Workout App',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 8),
               Text(

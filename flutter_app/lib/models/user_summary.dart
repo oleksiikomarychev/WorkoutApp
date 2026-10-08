@@ -5,6 +5,12 @@ class UserSummary {
   final bool isPublic;
   final DateTime createdAt;
   final DateTime? lastActiveAt;
+  final bool? coachingEnabled;
+  final double? averageRating;
+  final int? reviewCount;
+  final List<String> specializations;
+  final List<String> languages;
+  final int? rateAmountMinor;
 
   const UserSummary({
     required this.userId,
@@ -13,6 +19,12 @@ class UserSummary {
     required this.isPublic,
     required this.createdAt,
     required this.lastActiveAt,
+    this.coachingEnabled,
+    this.averageRating,
+    this.reviewCount,
+    this.specializations = const [],
+    this.languages = const [],
+    this.rateAmountMinor,
   });
 
   factory UserSummary.fromJson(Map<String, dynamic> json) {
@@ -25,6 +37,12 @@ class UserSummary {
       lastActiveAt: json['last_active_at'] != null
           ? DateTime.tryParse(json['last_active_at'].toString())
           : null,
+      coachingEnabled: json['coaching_enabled'] as bool?,
+      averageRating: (json['average_rating'] as num?)?.toDouble(),
+      reviewCount: json['review_count'] as int?,
+      specializations: (json['specializations'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      languages: (json['languages'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      rateAmountMinor: json['rate_amount_minor'] as int?,
     );
   }
 }

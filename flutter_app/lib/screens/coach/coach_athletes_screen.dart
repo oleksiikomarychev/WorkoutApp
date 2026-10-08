@@ -294,7 +294,7 @@ class _AthleteCard extends ConsumerWidget {
               const SizedBox(height: 12),
               _PlanAdherenceBar(value: athlete.planAdherence),
               const SizedBox(height: 12),
-              _RpeMiniChart(distribution: athlete.rpeDistribution),
+              _RpeMiniChart(distribution: athlete.effortDistribution),
             ],
           ),
         ),

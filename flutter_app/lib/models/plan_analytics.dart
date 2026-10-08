@@ -61,15 +61,18 @@ class PlanAnalyticsItem {
 class PlanAnalyticsResponse {
   final List<PlanAnalyticsItem> items;
   final Map<String, double> totals;
+  final Map<String, dynamic>? meta;
 
   const PlanAnalyticsResponse({
     required this.items,
     required this.totals,
+    this.meta,
   });
 
   factory PlanAnalyticsResponse.fromJson(Map<String, dynamic> json) {
     final itemsJson = json['items'];
     final totalsJson = json['totals'];
+    final metaJson = json['meta'];
     final itemList = <PlanAnalyticsItem>[];
     if (itemsJson is List) {
       for (final item in itemsJson.whereType<Map<String, dynamic>>()) {
@@ -83,9 +86,15 @@ class PlanAnalyticsResponse {
         if (parsed != null) totalsMap[key] = parsed;
       });
     }
+
+    Map<String, dynamic>? meta;
+    if (metaJson is Map<String, dynamic>) {
+      meta = Map<String, dynamic>.from(metaJson);
+    }
     return PlanAnalyticsResponse(
       items: List.unmodifiable(itemList),
       totals: UnmodifiableMapView(totalsMap),
+      meta: meta,
     );
   }
 }

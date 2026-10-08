@@ -31,7 +31,6 @@ flutter_app/.dart_tool/
 flutter_app/build/
 flutter_app/flutter-plugins-dependencies
 flutter_app/.metadata
-.gitignore
 Workout App Auth Firebase Service Account.json
 services/agent-service/agent_service/prompts
 services/calendar_plans.json
@@ -39,5 +38,21 @@ analysis_results.txt
 achievements.md
 render.txt
 services/exersices.json
+services/add_exersices.json
+services/my_plan.json
 services/exercises-service/exercises_service/muscle_metadata.json
 flutter_app/setup_firebase.sh
+
+# Local artifacts & binaries
+google-cloud-sdk/
+*.tar.gz
+*.backup
+*.bak
+*.db
+*.sqlite*
+workout_data.csv
+exercises.txt
+exercise_repo/
+*.code-workspace
+services/exercises-service/exercises_service/services/Refactoring*
+

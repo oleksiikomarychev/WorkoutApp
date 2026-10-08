@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:workout_app/services/analytics_service.dart';
 import 'package:workout_app/services/plan_service.dart';
 import 'package:workout_app/services/service_locator.dart';
+import 'package:workout_app/widgets/loading_indicator.dart';
 import 'package:workout_app/widgets/primary_app_bar.dart';
 import 'package:workout_app/widgets/assistant_chat_host.dart';
+import 'package:workout_app/widgets/error_message.dart';
+import 'package:workout_app/widgets/empty_state.dart';
 
 class AnalyticsScreen extends ConsumerStatefulWidget {
   const AnalyticsScreen({super.key});
@@ -52,7 +56,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       _error = null;
     });
     try {
-      final planService = ref.read(mesocycleServiceProvider) ;
+      final planService = ref.read(mesocycleServiceProvider);
       final ps = PlanService(apiClient: ref.read(apiClientProvider));
       final ap = await ps.getActivePlan();
       if (!mounted) return;
@@ -65,7 +69,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       if (!mounted) return;
       setState(() {
         _loadingPlan = false;
-        _error = 'Не удалось получить активный план';
+        _error = AppLocalizations.of(context).errorLoadingActivePlan;
       });
     }
   }
@@ -80,10 +84,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       'timestamp': nowIso,
       'entities': <String, dynamic>{
         'active_plan': _planId != null
-            ? {
-                'id': _planId,
-                'name': _planName,
-              }
+            ? {'id': _planId, 'name': _planName}
             : null,
       },
     };
@@ -91,11 +92,11 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
 
   Future<void> _fetch() async {
     if (_metricX == null || _metricY == null) {
-      setState(() => _error = 'Выберите две метрики');
+      setState(() => _error = AppLocalizations.of(context).selectTwoMetrics);
       return;
     }
     if (_planId == null) {
-      setState(() => _error = 'Активный план не найден');
+      setState(() => _error = AppLocalizations.of(context).activePlanNotFound);
       return;
     }
     setState(() {
@@ -120,81 +121,96 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'Ошибка загрузки данных';
+        _error = AppLocalizations.of(context).errorLoadingData;
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final df = DateFormat('dd.MM.yyyy');
+    final l10n = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).languageCode;
+    final df = DateFormat('dd.MM.yyyy', locale);
 
     return AssistantChatHost(
       contextBuilder: _buildChatContext,
       builder: (context, openChat) {
         return Scaffold(
           appBar: PrimaryAppBar(
-            title: 'Аналитика плана ${_planName ?? ''}'.trim(),
+            title: l10n.analyticsPlanTitle(_planName ?? ''),
             onTitleTap: openChat,
           ),
-          body: _loadingPlan
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-
-                  TableCalendar(
-                    firstDay: DateTime.utc(2020, 1, 1),
-                    lastDay: DateTime.utc(2100, 12, 31),
-                    focusedDay: _focusedDay,
-                    calendarFormat: CalendarFormat.month,
-                    rangeSelectionMode: _rangeSelectionMode,
-                    rangeStartDay: _rangeStart,
-                    rangeEndDay: _rangeEnd,
-                    onRangeSelected: (start, end, focusedDay) {
-                      setState(() {
-                        _focusedDay = focusedDay;
-                        _rangeStart = start;
-                        _rangeEnd = end;
-                        _rangeSelectionMode = RangeSelectionMode.toggledOn;
-                      });
-                    },
-                    onPageChanged: (fd) => _focusedDay = fd,
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(child: _buildMetricPicker('Ось X', true)),
-                      const SizedBox(width: 12),
-                      Expanded(child: _buildMetricPicker('Ось Y', false)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      ElevatedButton(
-                        onPressed: _loading ? null : _fetch,
-                        child: const Text('Показать график'),
-                      ),
-                      const SizedBox(width: 12),
-                      if (_rangeStart != null && _rangeEnd != null)
-                        Text('${df.format(_rangeStart!)} — ${df.format(_rangeEnd!)}'),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  if (_loading) const LinearProgressIndicator(),
-                  if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: _buildChartArea(),
-                  ),
-                ],
-              ),
-            ),
+          body: RefreshIndicator(
+            onRefresh: _loadActivePlan,
+            child: _buildBody(l10n, locale, df),
+          ),
         );
       },
+    );
+  }
+
+  Widget _buildBody(AppLocalizations l10n, String locale, DateFormat df) {
+    if (_loadingPlan) {
+      return LoadingIndicator();
+    }
+
+    if (_error != null && _planId == null) {
+      return ErrorMessage(message: _error!, onRetry: _loadActivePlan);
+    }
+
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TableCalendar(
+            firstDay: DateTime.utc(2020, 1, 1),
+            lastDay: DateTime.utc(2100, 12, 31),
+            focusedDay: _focusedDay,
+            calendarFormat: CalendarFormat.month,
+            locale: locale,
+            rangeSelectionMode: _rangeSelectionMode,
+            rangeStartDay: _rangeStart,
+            rangeEndDay: _rangeEnd,
+            onRangeSelected: (start, end, focusedDay) {
+              setState(() {
+                _focusedDay = focusedDay;
+                _rangeStart = start;
+                _rangeEnd = end;
+                _rangeSelectionMode = RangeSelectionMode.toggledOn;
+              });
+            },
+            onPageChanged: (fd) => _focusedDay = fd,
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(child: _buildMetricPicker(l10n.axisX, true)),
+              const SizedBox(width: 12),
+              Expanded(child: _buildMetricPicker(l10n.axisY, false)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              ElevatedButton(
+                onPressed: _loading ? null : _fetch,
+                child: Text(l10n.showChart),
+              ),
+              const SizedBox(width: 12),
+              if (_rangeStart != null && _rangeEnd != null)
+                Text('${df.format(_rangeStart!)} — ${df.format(_rangeEnd!)}'),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_loading) LoadingIndicator(),
+          if (_error != null && _data == null)
+            ErrorMessage(message: _error!, onRetry: _fetch),
+          const SizedBox(height: 8),
+          SizedBox(height: 400, child: _buildChartArea()),
+        ],
+      ),
     );
   }
 
@@ -208,7 +224,11 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: isX ? _metricX : _metricY,
-          items: _metrics.map((m) => DropdownMenuItem(value: m, child: Text(_metricLabel(m)))).toList(),
+          items: _metrics
+              .map(
+                (m) => DropdownMenuItem(value: m, child: Text(_metricLabel(m))),
+              )
+              .toList(),
           onChanged: (v) {
             setState(() {
               if (isX) {
@@ -224,25 +244,28 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   }
 
   String _metricLabel(String m) {
+    final l10n = AppLocalizations.of(context);
     switch (m) {
       case 'volume':
-        return 'Объем (кг)';
+        return l10n.metricVolumeKg;
       case 'effort':
-        return 'Усилие (RPE)';
+        return l10n.metricEffortRpe;
       case 'kpsh':
-        return 'КПШ';
+        return l10n.metricKpsh;
       case 'reps':
-        return 'Повторы';
+        return l10n.metricReps;
       case '1rm':
-        return '1RM';
+        return l10n.metricOneRm;
       default:
         return m;
     }
   }
 
   Widget _buildChartArea() {
+    final l10n = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).languageCode;
     if (_data == null) {
-      return const Center(child: Text('Выберите диапазон и метрики'));
+      return Center(child: Text(l10n.selectRangeAndMetrics));
     }
     final items = List<Map<String, dynamic>>.from(_data!["items"] ?? const []);
     final oneRm = List<Map<String, dynamic>>.from(_data!["one_rm"] ?? const []);
@@ -253,9 +276,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       return const SizedBox();
     }
 
-
     if (mx == my) {
-
       final is1rm = mx == '1rm';
       final points = <FlSpot>[];
       final List<DateTime> dates = [];
@@ -285,7 +306,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
         points.add(FlSpot(i.toDouble(), sorted[i].value));
       }
       if (points.isEmpty) {
-        return const Center(child: Text('Нет данных для выбранных метрик'));
+        return Center(child: Text(l10n.noDataForSelectedMetrics));
       }
       return LineChart(
         LineChartData(
@@ -300,7 +321,10 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                   final d = dates[idx];
                   return SideTitleWidget(
                     meta: meta,
-                    child: Text(DateFormat('dd.MM').format(d), style: const TextStyle(fontSize: 10)),
+                    child: Text(
+                      DateFormat('dd.MM', locale).format(d),
+                      style: const TextStyle(fontSize: 10),
+                    ),
                   );
                 },
               ),
@@ -319,13 +343,11 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       );
     }
 
-
     final scatters = <ScatterSpot>[];
     for (final it in items) {
       final vx = (it['values']?[mx] as num?)?.toDouble();
       double? vy;
       if (my == '1rm') {
-
         final dstr = it['date'] as String?;
         if (dstr != null) {
           final match = oneRm.firstWhere(
@@ -342,15 +364,19 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       }
     }
     if (scatters.isEmpty) {
-      return const Center(child: Text('Нет данных для выбранных метрик'));
+      return Center(child: Text(l10n.noDataForSelectedMetrics));
     }
 
     return ScatterChart(
       ScatterChartData(
         scatterSpots: scatters,
         titlesData: FlTitlesData(
-          bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 28)),
-          leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 28)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(showTitles: true, reservedSize: 28),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(showTitles: true, reservedSize: 28),
+          ),
         ),
       ),
     );

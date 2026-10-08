@@ -56,6 +56,10 @@ class WorkoutExercise(Base):
     workout_id = Column(Integer, ForeignKey("workouts.id", ondelete="CASCADE"), nullable=False)
     exercise_id = Column(Integer, nullable=False)
 
+    order = Column("order", Integer, nullable=True)
+    notes = Column(String, nullable=True)
+    rest_seconds = Column(Integer, nullable=True)
+
     workout = relationship("Workout", back_populates="exercises")
     sets = relationship("WorkoutSet", back_populates="exercise", cascade="all, delete-orphan")
 
@@ -65,11 +69,13 @@ class WorkoutSet(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     exercise_id = Column(Integer, ForeignKey("workout_exercises.id", ondelete="CASCADE"), nullable=False)
+    order_index = Column(Integer, nullable=True)
     intensity = Column(Float, nullable=True)
     effort = Column(Float, nullable=True)
     volume = Column(Integer, nullable=True)
     working_weight = Column(Float, nullable=True)
     set_type = Column(String(32), nullable=True)
+    subsets = Column(JSON, nullable=True)
 
     exercise = relationship("WorkoutExercise", back_populates="sets")
 

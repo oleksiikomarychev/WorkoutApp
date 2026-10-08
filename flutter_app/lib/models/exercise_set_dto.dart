@@ -19,11 +19,15 @@ class ExerciseSetDto with _$ExerciseSetDto {
   @JsonSerializable(explicitToJson: true)
   const factory ExerciseSetDto({
     int? id,
-    @Default(0) int reps,
-    @Default(0.0) double weight,
+    @JsonKey(name: 'set_type') String? setType,
+    @Default(<ExerciseSetDto>[]) List<ExerciseSetDto> subsets,
+    @JsonKey(name: 'volume') @Default(0) int reps,
+    @JsonKey(name: 'working_weight') @Default(0.0) double weight,
     double? rpe,
     int? order,
     @JsonKey(name: 'exercise_instance') int? exerciseInstanceId,
+    @Default(0) int intensity,
+    @Default(0) double effort,
 
     @JsonKey(includeFromJson: true, includeToJson: false, fromJson: _volumeFromJson) int? volume,
 
@@ -35,9 +39,15 @@ class ExerciseSetDto with _$ExerciseSetDto {
 
 
   int get computedVolume {
+    if (subsets.isNotEmpty) {
+      return subsets.fold(0, (sum, s) => sum + s.computedVolume);
+    }
     if (volume != null) return volume!;
     return (reps * weight).round();
   }
+
+  // Add getter for backward compatibility  
+  double? get rpeValue => rpe ?? effort.toDouble();
 
 
 
@@ -45,9 +55,11 @@ class ExerciseSetDto with _$ExerciseSetDto {
   Map<String, dynamic> toFormData() {
     return {
       if (id != null) 'id': id,
+      if (setType != null) 'set_type': setType,
+      if (subsets.isNotEmpty) 'subsets': subsets.map((s) => s.toFormData()).toList(),
       'reps': reps,
       'weight': weight,
-      if (rpe != null) 'rpe': rpe,
+      'rpe': effort, // Backend expects 'rpe' field
       if (order != null) 'order': order,
       if (exerciseInstanceId != null) 'exercise_instance': exerciseInstanceId,
     };

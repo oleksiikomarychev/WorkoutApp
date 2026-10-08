@@ -14,6 +14,7 @@ from ..metrics import (
 from ..schemas import (
     CoachingEligibilityResponse,
     CoachingProfileUpdateRequest,
+    CoachingRatingUpdate,
     ProfileResponse,
     ProfileUpdateRequest,
     SettingsResponse,
@@ -107,37 +108,6 @@ async def update_coaching_profile_me(
                     )
         coaching.enabled = payload.enabled
         modified = True
-    if payload.accepting_clients is not None:
-        if payload.accepting_clients:
-            final_enabled = coaching.enabled if payload.enabled is None else payload.enabled
-            if not final_enabled:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Coaching must be enabled before accepting clients",
-                )
-
-            preview_currency = coaching.rate_currency
-            preview_amount_minor = coaching.rate_amount_minor
-            if payload.rate_plan is not None:
-                rp_preview = payload.rate_plan.model_dump(exclude_unset=True)
-                if "currency" in rp_preview:
-                    preview_currency = rp_preview.get("currency")
-                if "amount_minor" in rp_preview:
-                    preview_amount_minor = rp_preview.get("amount_minor")
-
-            if not coaching.stripe_connect_account_id:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Coach Stripe Connect account is not configured",
-                )
-            if not preview_currency or preview_amount_minor is None or preview_amount_minor <= 0:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Coach rate plan is not configured",
-                )
-
-        coaching.accepting_clients = payload.accepting_clients
-        modified = True
     if payload.tagline is not None:
         coaching.tagline = payload.tagline.strip() or None
         modified = True
@@ -150,21 +120,9 @@ async def update_coaching_profile_me(
     if payload.languages is not None:
         coaching.languages = [s.strip() for s in payload.languages if s and s.strip()]
         modified = True
-    if payload.experience_years is not None:
-        coaching.experience_years = payload.experience_years
-        modified = True
-    if payload.timezone is not None:
-        coaching.timezone = payload.timezone.strip() or None
-        modified = True
     if payload.rate_plan is not None:
         rp = payload.rate_plan
         rp_data = rp.model_dump(exclude_unset=True)
-        if "type" in rp_data:
-            coaching.rate_type = rp_data.get("type")
-            modified = True
-        if "currency" in rp_data:
-            coaching.rate_currency = rp_data.get("currency")
-            modified = True
         if "amount_minor" in rp_data:
             coaching.rate_amount_minor = rp_data.get("amount_minor")
             modified = True
@@ -185,6 +143,27 @@ async def get_profile_by_id(
 ) -> ProfileResponse:
     data = await ensure_profile_and_settings(db, user_id)
     return build_profile_response(data)
+
+
+@router.patch("/{user_id}/coaching")
+async def update_coaching_rating(
+    user_id: str,
+    payload: CoachingRatingUpdate,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """Update coaching rating aggregates (called internally by CRM service)."""
+    coaching = await ensure_coaching_profile(db, user_id)
+    
+    if payload.average_rating is not None:
+        coaching.average_rating = payload.average_rating
+    if payload.review_count is not None:
+        coaching.review_count = payload.review_count
+    
+    await db.commit()
+    await db.refresh(coaching)
+    COACHING_PROFILES_UPDATED_TOTAL.inc()
+    
+    return {"status": "ok"}
 
 
 @router.patch("/me", response_model=ProfileResponse)

@@ -179,6 +179,31 @@ class WorkoutSessionService extends BaseApiService {
   }
 
 
+  Future<WorkoutSession> completeAllSets({
+    required int sessionId,
+    required bool completed,
+  }) async {
+    try {
+      final endpoint = ApiConfig.sessionCompleteAllEndpoint(sessionId.toString());
+      final payload = <String, dynamic>{
+        'completed': completed,
+      };
+      _logger.d('Complete all sets: session=$sessionId completed=$completed');
+      final response = await _apiClient.post(
+        endpoint,
+        payload,
+        context: 'WorkoutSessionService.completeAllSets',
+      );
+      if (response is Map<String, dynamic>) {
+        return WorkoutSession.fromJson(response);
+      }
+      throw Exception('Unexpected response format when completing all sets');
+    } catch (e, st) {
+      handleError('Failed to complete all sets', e, st);
+    }
+  }
+
+
   Future<WorkoutSession> finishSession(
     int sessionId, {
     bool cancelled = false,

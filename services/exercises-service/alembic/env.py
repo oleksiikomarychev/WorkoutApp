@@ -26,12 +26,8 @@ def _to_sync_url(url: str | None) -> str:
     """
     if not url:
         raise ValueError("EXERCISES_DATABASE_URL environment variable is not set")
-
     if url.startswith("postgresql+asyncpg://"):
         return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
-
-    if url.startswith("sqlite+aiosqlite:"):
-        return url.replace("sqlite+aiosqlite:", "sqlite:", 1)
     return url
 
 

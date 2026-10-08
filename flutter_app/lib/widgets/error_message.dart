@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
 
 class ErrorMessage extends StatelessWidget {
   final String message;
@@ -33,7 +34,7 @@ class ErrorMessage extends StatelessWidget {
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: onRetry,
-                child: const Text('Повторить'),
+                child: Text(AppLocalizations.of(context).retry),
               ),
             ],
           ],

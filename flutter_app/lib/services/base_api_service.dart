@@ -105,10 +105,10 @@ abstract class BaseApiService {
     }
   }
 
-  Future<T> get<T>(String endpoint, T Function(Map<String, dynamic>) fromJson) async {
+  Future<T> get<T>(String endpoint, T Function(Map<String, dynamic>) fromJson, {Map<String, dynamic>? queryParams}) async {
     try {
       _logger.d('GET request to: $endpoint');
-      final response = await _apiClient.get(endpoint);
+      final response = await _apiClient.get(endpoint, queryParams: queryParams);
 
       if (response is Map<String, dynamic>) {
         return fromJson(response);
@@ -116,7 +116,7 @@ abstract class BaseApiService {
         throw Exception('Unexpected response format: expected Map<String, dynamic>');
       }
     } catch (e) {
-      throw handleError('Failed to fetch data from $endpoint', e);
+      throw handleError('Failed to get from $endpoint', e);
     }
   }
 

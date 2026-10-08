@@ -1,6 +1,7 @@
-import 'package:workout_app/config/api_config.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:workout_app/services/base_api_service.dart';
-
+import 'package:workout_app/config/api_config.dart';
 
 class SocialService extends BaseApiService {
   SocialService(super.apiClient);
@@ -8,35 +9,41 @@ class SocialService extends BaseApiService {
 
 
 
-
   Future<List<Map<String, dynamic>>> getWorkoutFeed({
     int limit = 20,
     String scope = 'home',
-    String contextType = 'workout',
+    String? contextType,
     String? cursor,
+    String? expand,
   }) async {
     final query = <String, dynamic>{
       'scope': scope,
-      'context_type': contextType,
       'limit': limit.toString(),
     };
+    if (contextType != null && contextType.isNotEmpty) {
+      query['context_type'] = contextType;
+    }
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
     }
+    if (expand != null && expand.isNotEmpty) {
+      query['expand'] = expand;
+    }
 
-    return getList<Map<String, dynamic>>(
+    final response = await get<Map<String, dynamic>>(
       ApiConfig.socialPostsEndpoint,
       (json) => json,
       queryParams: query,
     );
+    return (response['posts'] as List<dynamic>).cast<Map<String, dynamic>>();
   }
 
 
 
 
   Future<Map<String, dynamic>> createWorkoutPost({
-    required String workoutId,
-    required String ownerId,
+    String? workoutId,
+    String? ownerId,
     required String content,
     String scope = 'public',
     Map<String, dynamic>? stats,
@@ -52,13 +59,17 @@ class SocialService extends BaseApiService {
     final body = <String, dynamic>{
       'content': content,
       'scope': scope,
-      'context_resource': {
-        'type': 'workout',
-        'id': workoutId,
-        'owner_id': ownerId,
-      },
       'attachments': attachments,
     };
+
+    // Only add context_resource if workoutId is provided
+    if (workoutId != null && workoutId.isNotEmpty) {
+      body['context_resource'] = {
+        'type': 'workout',
+        'id': workoutId,
+        if (ownerId != null && ownerId.isNotEmpty) 'owner_id': ownerId,
+      };
+    }
 
     return post<Map<String, dynamic>>(
       ApiConfig.socialPostsEndpoint,
@@ -99,5 +110,26 @@ class SocialService extends BaseApiService {
       body,
       (json) => json,
     );
+  }
+
+
+  Future<List<Map<String, dynamic>>> getUsersByIds(List<String> userIds) async {
+    if (userIds.isEmpty) return [];
+
+    final query = <String, dynamic>{
+      'user_ids': userIds.join(','),
+    };
+
+    final response = await apiClient.get(
+      ApiConfig.accountUsersEndpoint,
+      queryParams: query,
+    );
+
+    // The API returns a list of user objects directly
+    if (response is List) {
+      return response.whereType<Map<String, dynamic>>().toList();
+    }
+
+    return [];
   }
 }

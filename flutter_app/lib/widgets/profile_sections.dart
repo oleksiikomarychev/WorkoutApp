@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
 
 import '../config/constants/theme_constants.dart';
 import '../models/user_stats.dart';
@@ -13,6 +14,7 @@ class ProfileStatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Padding(
       padding: padding,
       child: Center(
@@ -20,11 +22,11 @@ class ProfileStatsRow extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 520),
           child: Row(
             children: [
-              Expanded(child: _StatCard(value: '${stats.totalWorkouts}', label: 'Total Workouts', color: const Color(0xFFD4F1D5))),
+              Expanded(child: _StatCard(value: '${stats.totalWorkouts}', label: l10n.statsTotalWorkouts, color: const Color(0xFFD4F1D5))),
               const SizedBox(width: 12),
-              Expanded(child: _StatCard(value: stats.totalVolume.toStringAsFixed(0), label: 'Volume (kg)', color: const Color(0xFFD4E6F1))),
+              Expanded(child: _StatCard(value: stats.totalVolume.toStringAsFixed(0), label: l10n.statsVolumeKg, color: const Color(0xFFD4E6F1))),
               const SizedBox(width: 12),
-              Expanded(child: _StatCard(value: '${stats.activeDays}', label: 'Active Days', color: const Color(0xFFFFE4C4))),
+              Expanded(child: _StatCard(value: '${stats.activeDays}', label: l10n.statsActiveDays, color: const Color(0xFFFFE4C4))),
             ],
           ),
         ),
@@ -64,18 +66,19 @@ class ProfileActivitySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Padding(
       padding: padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Activity', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+          Text(l10n.activityTitle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Last ${stats.weeks} weeks', style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-              Text('Max: ${stats.maxDayVolume.toStringAsFixed(0)} kg/day', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+              Text(l10n.lastWeeks(stats.weeks), style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+              Text(l10n.maxKgPerDay(stats.maxDayVolume.toStringAsFixed(0)), style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
             ],
           ),
           const SizedBox(height: 16),
@@ -97,6 +100,8 @@ class _ActivityGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).languageCode;
     final today = DateTime.now();
     final endDate = DateTime(today.year, today.month, today.day);
     final endWeekStart = endDate.subtract(Duration(days: endDate.weekday - 1));
@@ -140,8 +145,8 @@ class _ActivityGrid extends StatelessWidget {
                       final color = _getActivityColor(volume, maxVolume);
                       return Tooltip(
                         message: dayActivity != null
-                            ? '${DateFormat('MMM d').format(date)}\n${dayActivity.sessionCount} session(s)\n${volume.toStringAsFixed(0)} kg'
-                            : '${DateFormat('MMM d').format(date)}\nNo activity',
+                            ? '${DateFormat('MMM d', locale).format(date)}\n${l10n.sessionsCount(dayActivity.sessionCount)}\n${volume.toStringAsFixed(0)} kg'
+                            : '${DateFormat('MMM d', locale).format(date)}\n${l10n.noActivity}',
                         child: Container(width: 12, height: 12, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
                       );
                     }),
@@ -177,22 +182,23 @@ class _ActivityGrid extends StatelessWidget {
 class _ActivityLegend extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: const [
-        Text('Less', style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
-        SizedBox(width: 4),
-        _LegendBox(Color(0xFFEBEDF0)),
-        SizedBox(width: 2),
-        _LegendBox(Color(0xFFC6E48B)),
-        SizedBox(width: 2),
-        _LegendBox(Color(0xFF7BC96F)),
-        SizedBox(width: 2),
-        _LegendBox(Color(0xFF239A3B)),
-        SizedBox(width: 2),
-        _LegendBox(Color(0xFF196127)),
-        SizedBox(width: 4),
-        Text('More', style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+      children: [
+        Text(l10n.less, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+        const SizedBox(width: 4),
+        const _LegendBox(Color(0xFFEBEDF0)),
+        const SizedBox(width: 2),
+        const _LegendBox(Color(0xFFC6E48B)),
+        const SizedBox(width: 2),
+        const _LegendBox(Color(0xFF7BC96F)),
+        const SizedBox(width: 2),
+        const _LegendBox(Color(0xFF239A3B)),
+        const SizedBox(width: 2),
+        const _LegendBox(Color(0xFF196127)),
+        const SizedBox(width: 4),
+        Text(l10n.more, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
       ],
     );
   }
@@ -217,21 +223,22 @@ class ProfileCompletedWorkoutsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Padding(
       padding: padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.calendar_today, color: AppColors.primary, size: 24),
-              SizedBox(width: 8),
-              Text('Completed Workouts', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+              const Icon(Icons.calendar_today, color: AppColors.primary, size: 24),
+              const SizedBox(width: 8),
+              Text(l10n.completedWorkoutsTitle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
             ],
           ),
           const SizedBox(height: 16),
           if (sessions.isEmpty)
-            const Text('No completed workouts yet', style: TextStyle(color: AppColors.textSecondary))
+            Text(l10n.noCompletedWorkoutsYet, style: const TextStyle(color: AppColors.textSecondary))
           else
             Column(children: sessions.map((s) => _WorkoutCard(session: s, onTap: onSessionTap)).toList()),
         ],

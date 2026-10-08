@@ -74,7 +74,10 @@ class AuthService {
     try {
       await _auth.signOut();
       try {
-        final google = GoogleSignIn();
+        final google = GoogleSignIn(
+          clientId:
+              '282810209663-u4upa0psrlsd24ls422na68n1gcmlllb.apps.googleusercontent.com',
+        );
         try {
           await google.disconnect();
         } catch (_) {}

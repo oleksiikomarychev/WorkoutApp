@@ -13,6 +13,7 @@ class Microcycle {
   final int? daysCount;
   final double? normalizationValue;
   final String? normalizationUnit;
+  final List<NormalizationRule> normalizationRules;
 
   const Microcycle({
     required this.id,
@@ -25,6 +26,7 @@ class Microcycle {
     this.daysCount,
     this.normalizationValue,
     this.normalizationUnit,
+    this.normalizationRules = const [],
   });
 
   factory Microcycle.fromJson(Map<String, dynamic> json) {
@@ -52,6 +54,9 @@ class Microcycle {
       daysCount: json['days_count'] as int?,
       normalizationValue: (json['normalization_value'] as num?)?.toDouble(),
       normalizationUnit: json['normalization_unit'] as String?,
+      normalizationRules: (json['normalization_rules'] as List<dynamic>? ?? [])
+          .map((e) => NormalizationRule.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -66,6 +71,42 @@ class Microcycle {
         if (daysCount != null) 'days_count': daysCount,
         if (normalizationValue != null) 'normalization_value': normalizationValue,
         if (normalizationUnit != null) 'normalization_unit': normalizationUnit,
+        if (normalizationRules.isNotEmpty)
+          'normalization_rules': normalizationRules.map((e) => e.toJson()).toList(),
+      };
+}
+
+class NormalizationRule {
+  final List<int> exerciseIds;
+  final List<String> muscleGroups;
+  final List<String> targetMuscles;
+  final double value;
+  final String unit;
+
+  const NormalizationRule({
+    this.exerciseIds = const [],
+    this.muscleGroups = const [],
+    this.targetMuscles = const [],
+    required this.value,
+    required this.unit,
+  });
+
+  factory NormalizationRule.fromJson(Map<String, dynamic> json) => NormalizationRule(
+        exerciseIds: (json['exercise_ids'] as List<dynamic>? ?? []).map((e) => (e as num).toInt()).toList(),
+        muscleGroups:
+            (json['muscle_groups'] as List<dynamic>? ?? []).map((e) => (e as String?)?.trim() ?? '').where((v) => v.isNotEmpty).toList(),
+        targetMuscles:
+            (json['target_muscles'] as List<dynamic>? ?? []).map((e) => (e as String?)?.trim() ?? '').where((v) => v.isNotEmpty).toList(),
+        value: (json['value'] as num).toDouble(),
+        unit: json['unit'] as String? ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'exercise_ids': exerciseIds,
+        'muscle_groups': muscleGroups,
+        'target_muscles': targetMuscles,
+        'value': value,
+        'unit': unit,
       };
 }
 
@@ -75,6 +116,7 @@ class PlanWorkout {
   final String dayLabel;
   final int orderIndex;
   final List<PlanExercise> exercises;
+  final Map<String, dynamic>? nutritionPlan;
 
   const PlanWorkout({
     required this.id,
@@ -82,6 +124,7 @@ class PlanWorkout {
     required this.dayLabel,
     required this.orderIndex,
     this.exercises = const [],
+    this.nutritionPlan,
   });
 
   factory PlanWorkout.fromJson(Map<String, dynamic> json) => PlanWorkout(
@@ -92,6 +135,7 @@ class PlanWorkout {
         exercises: (json['exercises'] as List<dynamic>? ?? [])
             .map((e) => PlanExercise.fromJson(e as Map<String, dynamic>))
             .toList(),
+        nutritionPlan: json['nutrition_plan'] as Map<String, dynamic>?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -100,6 +144,7 @@ class PlanWorkout {
         'day_label': dayLabel,
         'order_index': orderIndex,
         'exercises': exercises.map((e) => e.toJson()).toList(),
+        'nutrition_plan': nutritionPlan,
       };
 }
 
@@ -109,6 +154,8 @@ class PlanExercise {
   final String exerciseName;
   final int orderIndex;
   final int? planWorkoutId;
+  final int? restSeconds;
+  final String? notes;
   final List<PlanSet> sets;
 
   const PlanExercise({
@@ -117,6 +164,8 @@ class PlanExercise {
     required this.exerciseName,
     required this.orderIndex,
     this.planWorkoutId,
+    this.restSeconds,
+    this.notes,
     this.sets = const [],
   });
 
@@ -126,6 +175,8 @@ class PlanExercise {
         exerciseName: json['exercise_name'] as String? ?? '',
         orderIndex: (json['order_index'] as int?) ?? 0,
         planWorkoutId: json['plan_workout_id'] as int?,
+        restSeconds: json['rest_seconds'] as int?,
+        notes: json['notes'] as String?,
         sets: (json['sets'] as List<dynamic>? ?? [])
             .map((e) => PlanSet.fromJson(e as Map<String, dynamic>))
             .toList(),
@@ -137,6 +188,8 @@ class PlanExercise {
         'exercise_name': exerciseName,
         'order_index': orderIndex,
         'plan_workout_id': planWorkoutId,
+        'rest_seconds': restSeconds,
+        'notes': notes,
         'sets': sets.map((e) => e.toJson()).toList(),
       };
 }

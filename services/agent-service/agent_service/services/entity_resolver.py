@@ -158,7 +158,47 @@ class ResolvedReference:
     errors: list[str] = field(default_factory=list)
 
 
+async def _fetch_exercise_definitions_by_names(exercise_names: list[str]) -> list[dict[str, Any]]:
+    """Fetch only specific exercises by names instead of all exercises"""
+    if not exercise_names:
+        return []
+    
+    base_url = settings.exercises_service_url
+    try:
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
+            # Build search query for multiple exercise names
+            search_queries = []
+            for name in exercise_names[:10]:  # Limit to 10 names to avoid too long URLs
+                search_queries.append(f"search={name}")
+            
+            # Make multiple requests if needed (batch by 10 names)
+            all_exercises = []
+            for i in range(0, len(search_queries), 10):
+                batch_queries = search_queries[i:i+10]
+                url = f"{base_url.rstrip('/')}/exercises/definitions?limit=50&{'&'.join(batch_queries)}"
+                resp = await client.get(url)
+                resp.raise_for_status()
+                data = resp.json()
+                if isinstance(data, list):
+                    all_exercises.extend(data)
+            
+            # Remove duplicates by ID
+            seen_ids = set()
+            unique_exercises = []
+            for exercise in all_exercises:
+                ex_id = exercise.get("id")
+                if ex_id and ex_id not in seen_ids:
+                    seen_ids.add(ex_id)
+                    unique_exercises.append(exercise)
+            
+            return unique_exercises
+    except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as exc:  # pragma: no cover
+        logger.warning("Failed to fetch exercise definitions by names", error=str(exc))
+    return []
+
+
 async def _fetch_exercise_definitions_json() -> list[dict[str, Any]]:
+    """Legacy method - fetch all exercises (fallback)"""
     base_url = settings.exercises_service_url
     try:
         async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
@@ -205,7 +245,16 @@ async def resolve_inline_references_for_active_plan(
     needs_ex_defs = any(r.kind == "exercise_name" and r.name for r in refs)
     exercise_defs: list[dict[str, Any]] = []
     if needs_ex_defs:
-        exercise_defs = await _fetch_exercise_definitions_json()
+        # Extract unique exercise names from references
+        exercise_names = list({r.name for r in refs if r.kind == "exercise_name" and r.name})
+        
+        # Try optimized fetch first
+        exercise_defs = await _fetch_exercise_definitions_by_names(exercise_names)
+        
+        # Fallback to full fetch if no results found
+        if not exercise_defs:
+            exercise_defs = await _fetch_exercise_definitions_json()
+    
     name_to_def: dict[str, dict[str, Any]] = {}
     for item in exercise_defs:
         name = item.get("name")

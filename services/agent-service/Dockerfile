@@ -1,31 +1,50 @@
-FROM python:3.12-slim
+# ===== BUILD STAGE =====
+FROM python:3.12-slim AS builder
 
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+# Build environment
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 
-WORKDIR /app
-
-# System deps for building Python packages
+# Install build dependencies (включая ML зависимости)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies (mirrors pyproject.toml)
+WORKDIR /app
+
+# Install uv
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir poetry
+    && pip install --no-cache-dir uv
 
-# Copy project metadata and shared backend-common library
-COPY services/agent-service/pyproject.toml /app/pyproject.toml
-COPY libs/backend-common /libs/backend-common
+# Copy dependency files (кешируемый слой)
+COPY pyproject.toml ./
 
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi --only main --no-root
+# Copy workspace dependency
+RUN mkdir -p /app/libs
+COPY libs/backend-common /app/libs/backend-common
+COPY pyproject.toml /app/pyproject.toml
+
+# Copy source code first for editable install
+COPY . .
+
+# Install dependencies
+RUN uv sync --all-packages
+
+# ===== RUNTIME STAGE =====
+FROM python:3.12-slim AS runtime
+
+# Runtime environment
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_NO_DEV=1 \
+    PATH="/app/.venv/bin:$PATH"
+
+WORKDIR /app
+
+# Copy installed virtual environment
+COPY --from=builder /app/.venv /app/.venv
 
 # Copy application code
-COPY services/agent-service/agent_service /app/agent_service
-COPY services/agent-service/alembic /app/alembic
-COPY services/agent-service/alembic.ini /app/alembic.ini
-
+COPY --from=builder /app /app
 
 EXPOSE 8006
 

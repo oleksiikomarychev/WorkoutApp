@@ -1,32 +1,42 @@
-from exercises_service.models import ExerciseInstance, ExerciseList
-from sqlalchemy import and_, delete, select
+from exercises_service.models import ExerciseList
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 
 class ExerciseRepository:
     @staticmethod
-    async def list_exercise_definitions(db, ids: list[int] | None = None):
+    async def list_exercise_definitions(
+        db, 
+        ids: list[int] | None = None, 
+        limit: int | None = None, 
+        offset: int = 0,
+        muscle_groups: list[str] | None = None,
+        equipment_types: list[str] | None = None,
+        search: str | None = None
+    ):
         query = select(ExerciseList)
+        
         if ids:
             query = query.where(ExerciseList.id.in_(ids))
+    
+        if muscle_groups:
+            query = query.where(ExerciseList.muscle_group.in_(muscle_groups))
+ 
+        if equipment_types:
+            query = query.where(ExerciseList.equipment.in_(equipment_types))
+    
+        if search:
+            await db.execute(text("SET LOCAL pg_trgm.similarity_threshold = 0.1"))
+            query = query.where(ExerciseList.name.op("%")(search))
+            query = query.order_by(ExerciseList.id)
+        else:
+            query = query.order_by(ExerciseList.id)
+    
+        if limit:
+            query = query.limit(limit).offset(offset)
+        
         result = await db.execute(query)
         return result.scalars().all()
-
-    @staticmethod
-    async def get_exercise_instance(db: AsyncSession, instance_id: int, user_id: str):
-        query = (
-            select(ExerciseInstance)
-            .options(selectinload(ExerciseInstance.exercise_definition))
-            .where(
-                and_(
-                    ExerciseInstance.id == instance_id,
-                    ExerciseInstance.user_id == user_id,
-                )
-            )
-        )
-        result = await db.execute(query)
-        return result.scalars().first()
 
     @staticmethod
     async def get_exercise_definition(db, exercise_list_id: int):
@@ -48,6 +58,9 @@ class ExerciseRepository:
 
     @staticmethod
     async def batch_upsert_exercise_definitions(db: AsyncSession, exercises: list[dict]) -> list[ExerciseList]:
+        if not exercises:
+            return []
+        
         names = [item.get("name") for item in exercises]
         existing = await ExerciseRepository.get_exercise_definitions_by_names(db, names)
         existing_by_name = {e.name: e for e in existing}
@@ -66,57 +79,21 @@ class ExerciseRepository:
                 result_items.append(db_item)
 
         await db.flush()
-        await db.commit()
-        for item in result_items:
-            await db.refresh(item)
         return result_items
 
     @staticmethod
     async def create_exercise_definition(db, exercise: dict):
         db_exercise = ExerciseList(**exercise)
         db.add(db_exercise)
-        await db.commit()
+        await db.flush()
         await db.refresh(db_exercise)
         return db_exercise
 
     @staticmethod
-    async def create_exercise_instance(db: AsyncSession, instance_data: dict):
-        db_instance = ExerciseInstance(**instance_data)
-        db.add(db_instance)
-        await db.commit()
-        await db.refresh(db_instance)
-        return db_instance
-
-    @staticmethod
-    async def update_exercise_instance(db: AsyncSession, db_instance: ExerciseInstance, update_data: dict):
-        for key, value in update_data.items():
-            setattr(db_instance, key, value)
-        await db.commit()
-        await db.refresh(db_instance)
-        return db_instance
-
-    @staticmethod
-    async def delete_exercise_instance(db: AsyncSession, instance_id: int, user_id: str):
-        query = select(ExerciseInstance).where(
-            and_(
-                ExerciseInstance.id == instance_id,
-                ExerciseInstance.user_id == user_id,
-            )
-        )
-        result = await db.execute(query)
-        db_instance = result.scalars().first()
-        if db_instance:
-            db.delete(db_instance)
-            await db.commit()
-
-    @staticmethod
     async def delete_exercise_definition(db, exercise_list_id: int):
-        stmt_instances = delete(ExerciseInstance).where(ExerciseInstance.exercise_list_id == exercise_list_id)
-        await db.execute(stmt_instances)
-
         stmt_definition = delete(ExerciseList).where(ExerciseList.id == exercise_list_id)
         result = await db.execute(stmt_definition)
-        await db.commit()
+        await db.flush()
         return result.rowcount > 0
 
     @staticmethod
@@ -128,66 +105,7 @@ class ExerciseRepository:
 
         for key, value in update_data.items():
             setattr(db_exercise, key, value)
-        await db.commit()
+        await db.flush()
         await db.refresh(db_exercise)
         return db_exercise
 
-    @staticmethod
-    async def get_instances_by_workout(db: AsyncSession, workout_id: int, user_id: str):
-        result = await db.execute(
-            select(ExerciseInstance)
-            .options(selectinload(ExerciseInstance.exercise_definition))
-            .filter(
-                and_(
-                    ExerciseInstance.workout_id == workout_id,
-                    ExerciseInstance.user_id == user_id,
-                )
-            )
-        )
-        return result.scalars().all()
-
-    @staticmethod
-    async def migrate_set_ids(db):
-        from exercises_service.services.exercise_service import ExerciseService
-
-        updated = 0
-        query = select(ExerciseInstance)
-        result = await db.execute(query)
-        instances = result.scalars().all()
-        for inst in instances:
-            if isinstance(inst.sets, list) and any(
-                not isinstance(s, dict) or "id" not in s or not isinstance(s.get("id"), int) for s in inst.sets
-            ):
-                inst.sets = ExerciseService.ensure_set_ids(inst.sets)
-                updated += 1
-        if updated:
-            await db.commit()
-        return {"updated_instances": updated}
-
-    @staticmethod
-    async def create_exercise_instances_batch(db: AsyncSession, instances_data: list, user_id: str):
-        from exercises_service.services.exercise_service import ExerciseService
-
-        created_instances = []
-        for data in instances_data:
-            instance_dict = dict(data)
-            if "sets" in instance_dict:
-                instance_dict["sets"] = ExerciseService.ensure_set_ids(instance_dict["sets"])
-            instance_dict["user_id"] = user_id
-            db_instance = ExerciseInstance(**instance_dict)
-            db.add(db_instance)
-            await db.flush()
-            created_instances.append(
-                {
-                    "id": db_instance.id,
-                    "exercise_list_id": db_instance.exercise_list_id,
-                    "sets": ExerciseService.normalize_sets_for_frontend(db_instance.sets or []),
-                    "notes": db_instance.notes,
-                    "order": db_instance.order,
-                    "workout_id": db_instance.workout_id,
-                    "user_max_id": db_instance.user_max_id,
-                    "user_id": db_instance.user_id,
-                }
-            )
-        await db.commit()
-        return created_instances

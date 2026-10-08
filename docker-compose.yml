@@ -1,6 +1,8 @@
 services:
   rpe-service:
-    build: ./services/rpe-service
+    build:
+      context: .
+      dockerfile: services/rpe-service/Dockerfile
     image: docker.io/oleksiikomarychev/workoutapp-rpe-service:latest
     container_name: rpe-service
     env_file:
@@ -8,10 +10,11 @@ services:
     environment:
       - RPE_TABLE_PATH=/app/rpe_table.json
       - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8001:8001"
+      - "50051:50051"
     restart: unless-stopped
     networks:
       - workout-net
@@ -20,7 +23,7 @@ services:
     build:
       context: .
       dockerfile: services/plans-service/Dockerfile
-    image: docker.io/oleksiikomarychev/workoutapp-plans-service:latest
+    image: docker.io/oleksiikomarychev/workoutapp-plans-celery-worker:latest
     command: >-
       sh -c "celery -A plans_service.celery_app worker
       -Q plans.tasks
@@ -32,16 +35,16 @@ services:
       - WORKOUTS_SERVICE_URL=http://workouts-service:8004
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
       - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
       - CELERY_PLANS_QUEUE=plans.tasks
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
       plans-service:
-        condition: service_started
+        condition: service_completed_successfully
     restart: unless-stopped
     networks:
       - workout-net
@@ -50,7 +53,7 @@ services:
     build:
       context: .
       dockerfile: services/agent-service/Dockerfile
-    image: docker.io/oleksiikomarychev/workoutapp-agent-service:latest
+    image: docker.io/oleksiikomarychev/workoutapp-agent-celery-worker:latest
     command: >-
       sh -c "celery -A agent_service.celery_app worker
       -Q agent.llm,agent.tools
@@ -65,8 +68,6 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - HF_TOKEN=${HF_TOKEN}
       - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
       - CELERY_PLAN_QUEUE=agent.llm
@@ -75,7 +76,7 @@ services:
       redis:
         condition: service_healthy
       agent-service:
-        condition: service_started
+        condition: service_completed_successfully
     restart: unless-stopped
     networks:
       - workout-net
@@ -95,8 +96,8 @@ services:
       - PLANS_SERVICE_URL=http://plans-service:8005
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
       - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8008:8008"
     restart: unless-stopped
@@ -119,19 +120,20 @@ services:
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
       - CORS_ORIGINS=*
       - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
       - PLANS_REDIS_HOST=redis
       - PLANS_REDIS_PORT=6379
       - PLANS_REDIS_DB=0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
       - CELERY_PLANS_QUEUE=plans.tasks
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - plans_data:/app/data
       - ./services/plans-service/alembic:/app/alembic
     ports:
       - "8005:8005"
+      - "50053:50053"
     restart: unless-stopped
     depends_on:
       redis:
@@ -151,23 +153,102 @@ services:
       - DATABASE_URL=${EXERCISES_DATABASE_URL}
       - PYTHONPATH=/app
       - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
       - EXERCISES_REDIS_HOST=redis
       - EXERCISES_REDIS_PORT=6379
       - EXERCISES_REDIS_DB=0
       - EXERCISES_MEDIA_DIR=/app/data/exercise_media
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - exercises_data:/app/data
       - ./services/exercises-service/alembic:/app/alembic
     ports:
       - "8002:8002"
+      - "50052:50052"
     restart: unless-stopped
     depends_on:
       redis:
         condition: service_healthy
     networks:
       - workout-net
+
+  social-service:
+    build: ./social-service
+    container_name: social-service
+    ports:
+      - "8011:8001"
+    environment:
+      - DATABASE_URL=postgresql://${SOCIAL_PG_USER:-user}:${SOCIAL_PG_PASSWORD:-pass}@postgres-social:5432/social
+      - REDIS_URL=redis://redis:6379
+      - WEBHOOK_HMAC_SECRET=${WEBHOOK_HMAC_SECRET}
+      - APP_ENV=${APP_ENV}
+    depends_on:
+      postgres-social:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - workout-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  messaging-service:
+    build: ./messaging-service
+    container_name: messaging-service
+    ports:
+      - "8012:8002"
+    environment:
+      - DATABASE_URL=postgresql://${MESSAGING_PG_USER:-user}:${MESSAGING_PG_PASSWORD:-pass}@postgres-messaging:5432/messaging
+      - REDIS_URL=redis://redis:6379
+      - WEBHOOK_HMAC_SECRET=${WEBHOOK_HMAC_SECRET}
+      - WS_HEARTBEAT_TIMEOUT=${WS_HEARTBEAT_TIMEOUT:-60}
+      - WS_MAX_MESSAGE_SIZE=${WS_MAX_MESSAGE_SIZE:-65536}
+      - TYPING_TTL=${TYPING_TTL:-5}
+      - PRESENCE_TTL=${PRESENCE_TTL:-90}
+      - APP_ENV=${APP_ENV}
+    depends_on:
+      postgres-messaging:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - workout-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  webhook-dispatcher:
+    build: ./webhook-dispatcher
+    container_name: webhook-dispatcher
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - SOCIAL_DATABASE_URL=postgresql://${SOCIAL_PG_USER:-user}:${SOCIAL_PG_PASSWORD:-pass}@postgres-social:5432/social
+      - MESSAGING_DATABASE_URL=postgresql://${MESSAGING_PG_USER:-user}:${MESSAGING_PG_PASSWORD:-pass}@postgres-messaging:5432/messaging
+      - WEBHOOK_TIMEOUT=${WEBHOOK_TIMEOUT:-10}
+      - WEBHOOK_MAX_RETRIES=${WEBHOOK_MAX_RETRIES:-5}
+      - APP_ENV=${APP_ENV}
+    networks:
+      - workout-net
+    depends_on:
+      redis:
+        condition: service_healthy
+      social-service:
+        condition: service_healthy
+      messaging-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   gateway:
     build:
@@ -185,8 +266,10 @@ services:
       PLANS_SERVICE_URL: "http://plans-service:8005"
       AGENT_SERVICE_URL: "http://agent-service:8006"
       ACCOUNTS_SERVICE_URL: "http://accounts-service:8007"
-      SOCIAL_API_URL: "http://messenger-gateway:8000/api/v1/social"
-      MESSAGING_API_URL: "http://messenger-gateway:8000/api/v1/messaging"
+      SOCIAL_SERVICE_URL: "http://social-service:8001"
+      MESSAGING_SERVICE_URL: "http://messaging-service:8002"
+      SOCIAL_API_URL: "http://social-service:8001"
+      MESSAGING_API_URL: "http://messaging-service:8002"
       MESSENGER_APP_ID: "workout-tracker"
       INTERNAL_GATEWAY_SECRET: ${INTERNAL_GATEWAY_SECRET}
       CRM_SERVICE_URL: "http://crm-service:8008"
@@ -195,27 +278,14 @@ services:
       FIREBASE_PROJECT_ID: "${FIREBASE_PROJECT_ID}"
       FIREBASE_AUTH_EMULATOR_HOST: "host.docker.internal:9099"
       APP_ENV: ${APP_ENV}
-      SENTRY_DSN: ${SENTRY_DSN}
-      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE}
+      REDIS_URL: "redis://redis:6379"
     ports:
       - "8000:8000"
     depends_on:
-      exercises-service:
-        condition: service_healthy
-      user-max-service:
-        condition: service_healthy
-      rpe-service:
-        condition: service_healthy
-      plans-service:
-        condition: service_healthy
-      workouts-service:
-        condition: service_healthy
-      accounts-service:
-        condition: service_healthy
+      - redis
     restart: unless-stopped
     networks:
       - workout-net
-      - default
 
   user-max-service:
     build:
@@ -229,8 +299,8 @@ services:
       - DATABASE_URL=${USER_MAX_DATABASE_URL}
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
       - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - user_max_data:/app/data
       - ./services/user-max-service/alembic:/app/alembic
@@ -256,16 +326,17 @@ services:
       - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET}
       - USER_MAX_SERVICE_URL=http://user-max-service:8003
       - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
       - WORKOUTS_REDIS_HOST=redis
       - WORKOUTS_REDIS_PORT=6379
       - WORKOUTS_REDIS_DB=0
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - workouts_data:/app/data
       - ./services/workouts-service/alembic/versions:/app/alembic/versions
     ports:
       - "8004:8004"
+      - "50054:50054"
     restart: unless-stopped
     depends_on:
       redis:
@@ -277,7 +348,7 @@ services:
     build:
       context: .
       dockerfile: services/workouts-service/Dockerfile
-    image: docker.io/oleksiikomarychev/workoutapp-workouts-service:latest
+    image: docker.io/oleksiikomarychev/workoutapp-workouts-celery-worker:latest
     command: >-
       sh -c "celery -A workouts_service.celery_app worker
       -Q workouts.tasks
@@ -292,19 +363,19 @@ services:
       - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET}
       - USER_MAX_SERVICE_URL=http://user-max-service:8003
       - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
       - WORKOUTS_REDIS_HOST=redis
       - WORKOUTS_REDIS_PORT=6379
       - WORKOUTS_REDIS_DB=0
       - CELERY_BROKER_URL=redis://redis:6379/3
       - CELERY_RESULT_BACKEND=redis://redis:6379/4
       - CELERY_WORKOUTS_QUEUE=workouts.tasks
+    volumes:
+      - workouts_data:/app/data
     depends_on:
       redis:
         condition: service_healthy
       workouts-service:
-        condition: service_started
+        condition: service_completed_successfully
     restart: unless-stopped
     networks:
       - workout-net
@@ -325,8 +396,6 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - HF_TOKEN=${HF_TOKEN}
       - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
       - CELERY_PLAN_QUEUE=agent.llm
@@ -350,13 +419,14 @@ services:
     env_file:
       - .env
     environment:
-      - ACCOUNTS_DATABASE_URL=${ACCOUNTS_DATABASE_URL}
+      - DATABASE_URL=${ACCOUNTS_DATABASE_URL}
       - PLANS_SERVICE_URL=http://plans-service:8005
       - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8007:8007"
+      - "50055:50055"
     restart: unless-stopped
     networks:
       - workout-net
@@ -364,7 +434,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy noeviction
     volumes:
       - redis_data:/data
     ports:
@@ -378,9 +448,49 @@ services:
     networks:
       - workout-net
 
+  postgres-social:
+    image: postgres:15
+    container_name: postgres-social
+    volumes:
+      - postgres_social_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=social
+      - POSTGRES_USER=${SOCIAL_PG_USER:-user}
+      - POSTGRES_PASSWORD=${SOCIAL_PG_PASSWORD:-pass}
+    ports:
+      - "5433:5432"
+    networks:
+      - workout-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d social"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-messaging:
+    image: postgres:15
+    container_name: postgres-messaging
+    volumes:
+      - postgres_messaging_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=messaging
+      - POSTGRES_USER=${MESSAGING_PG_USER:-user}
+      - POSTGRES_PASSWORD=${MESSAGING_PG_PASSWORD:-pass}
+    ports:
+      - "5434:5432"
+    networks:
+      - workout-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d messaging"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
+    profiles:
+      - monitoring
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
@@ -394,6 +504,8 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
+    profiles:
+      - monitoring
     environment:
       - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
@@ -409,8 +521,6 @@ services:
     networks:
       - workout-net
 
-  # === CDC / Analytics Stack ===
-  
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: zookeeper
@@ -574,6 +684,8 @@ volumes:
   plans_data:
   grafana_data:
   redis_data:
+  postgres_social_data:
+  postgres_messaging_data:
   zookeeper_data:
   zookeeper_log:
   kafka_data:

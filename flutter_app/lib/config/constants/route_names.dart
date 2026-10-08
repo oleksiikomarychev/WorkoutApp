@@ -7,6 +7,7 @@ class RouteNames {
   static const String home = '/home';
   static const String dashboard = '/dashboard';
   static const String debug = '/debug';
+  static const String amplitudeTest = '/debug/amplitude-test';
   static const String profile = '/profile';
 
 
@@ -45,6 +46,9 @@ class RouteNames {
 
 
   static const String settings = '/settings';
+  static const String settingsGeneral = '/settings/general';
+  static const String settingsLegal = '/settings/legal';
+  static const String settingsImport = '/settings/import';
   static const String notifications = '/notifications';
   static const String about = '/about';
 

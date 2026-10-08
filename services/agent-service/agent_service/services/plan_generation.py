@@ -13,7 +13,6 @@ from typing import Any
 
 import structlog
 from google import genai
-from google.genai import types
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..config import Settings
@@ -33,6 +32,7 @@ from ..schemas.training_plans import (
     TrainingPlan,
 )
 from ..schemas.user_data import UserDataInput
+from .llm_wrapper import generate_structured_output
 
 
 def _parse_int_tolerant(value: Any) -> int | None:
@@ -277,59 +277,29 @@ async def _genai_generate_json(
     model: str | None = None,
     max_output_tokens: int = 100000,
 ) -> dict[str, Any]:
-    client = _get_genai_client()
     chosen_model = model or _GENAI_MODEL
+    provider = _SETTINGS.staged_llm_provider
+    rate_key = f"{provider}:{chosen_model}"
 
     try:
         async with _GENAI_RATE_LIMIT_SEMAPHORE:
-            await _acquire_genai_rate_limit(chosen_model)
-            response = await asyncio.to_thread(
-                client.models.generate_content,
+            await _acquire_genai_rate_limit(rate_key)
+            parsed = await generate_structured_output(
+                prompt=prompt,
+                response_schema=response_schema,
+                provider=provider,
                 model=chosen_model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=response_schema,
-                    temperature=temperature,
-                    max_output_tokens=max_output_tokens,
-                ),
+                temperature=temperature,
+                max_output_tokens=max_output_tokens,
             )
     except Exception as exc:
-        logger.warning("GenAI request failed: %s", exc)
+        logger.warning("Staged LLM request failed: %s", exc)
         if _is_quota_or_rate_limit_error(exc):
-            raise GenAIUnavailableError("GenAI quota exhausted") from exc
-        raise
-
-    candidate = response.candidates[0] if getattr(response, "candidates", None) else None
-    finish_reason = getattr(candidate, "finish_reason", None)
-    safety_ratings = getattr(candidate, "safety_ratings", None)
-    usage = getattr(response, "usage_metadata", None)
-    logger.debug(
-        "GenAI finish_reason=%s safety=%s usage=%s",
-        finish_reason,
-        safety_ratings,
-        usage,
-    )
-
-    response_text = getattr(response, "text", None)
-    if not response_text:
-        raise ValueError("Empty GenAI JSON response text")
-
-    truncated_preview = response_text[:5000]
-
-    try:
-        parsed = json.loads(response_text)
-    except json.JSONDecodeError as exc:
-        logger.error(
-            "GenAI JSON parse error: %s | preview=%s",
-            exc,
-            truncated_preview,
-        )
+            raise GenAIUnavailableError("LLM quota exhausted") from exc
         raise
 
     if not isinstance(parsed, dict):
-        logger.error("GenAI JSON result is not dict | preview=%s", truncated_preview)
-        raise ValueError("Non-dict GenAI JSON response")
+        raise ValueError("Non-dict staged LLM JSON response")
 
     return parsed
 
@@ -735,7 +705,7 @@ def _is_staged_headers_enabled() -> bool:
     return os.getenv("LLM_SPLIT_GENERATION", "").strip() == "1"
 
 
-async def _get_available_exercises(settings: Settings) -> list[dict[str, Any]]:
+async def _get_available_exercises(settings: Settings, user_data: UserDataInput | None = None) -> list[dict[str, Any]]:
     now = time.time()
     async with _EXERCISES_CACHE_LOCK:
         cached = _EXERCISES_CACHE.get("data")
@@ -743,13 +713,28 @@ async def _get_available_exercises(settings: Settings) -> list[dict[str, Any]]:
         if cached is not None and expires_at > now:
             return cached  # type: ignore[return-value]
 
-    url = f"{settings.exercises_service_url.rstrip('/')}/exercises/definitions"
+    base_url = settings.exercises_service_url.rstrip('/')
     logger = logging.getLogger(__name__)
 
     try:
         import httpx
 
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            # Try to fetch filtered exercises if user data available
+            if user_data and user_data.available_equipment:
+                # Build equipment filter query
+                equipment_params = []
+                for equipment in user_data.available_equipment[:5]:  # Limit to 5 equipment types
+                    equipment_params.append(f"equipment={equipment}")
+                
+                if equipment_params:
+                    url = f"{base_url}/exercises/definitions?limit=200&{'&'.join(equipment_params)}"
+                else:
+                    url = f"{base_url}/exercises/definitions?limit=200"
+            else:
+                # Fallback to all exercises with reasonable limit
+                url = f"{base_url}/exercises/definitions?limit=500"
+
             resp = await client.get(url)
             resp.raise_for_status()
             data = resp.json()
@@ -1850,7 +1835,7 @@ async def generate_training_plan(user_data: UserDataInput) -> TrainingPlan:
     from ..config import Settings
 
     settings = Settings()
-    available_exercises = await _get_available_exercises(settings)
+    available_exercises = await _get_available_exercises(settings, user_data)
     plan, _ = await _generate_staged_plan(user_data, available_exercises)
     return plan
 
@@ -1861,7 +1846,7 @@ async def generate_training_plan_with_rationale(
     from ..config import Settings
 
     settings = Settings()
-    available_exercises = await _get_available_exercises(settings)
+    available_exercises = await _get_available_exercises(settings, user_data)
     plan, diagnostics = await _generate_staged_plan(user_data, available_exercises)
     rationale_json: str | None = None
     if diagnostics and diagnostics.plan_rationale is not None:
@@ -1882,7 +1867,7 @@ async def generate_training_plan_with_summary(
     from ..config import Settings
 
     settings = Settings()
-    available_exercises = await _get_available_exercises(settings)
+    available_exercises = await _get_available_exercises(settings, user_data)
     plan, diagnostics = await _generate_staged_plan(user_data, available_exercises)
     summary = diagnostics.plan_summary if diagnostics else None
     logger.info("Generated training plan with summary")

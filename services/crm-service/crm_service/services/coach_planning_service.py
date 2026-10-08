@@ -103,8 +103,8 @@ async def _proxy_request_for_athlete(
 
 async def _fetch_exercise_instances_for_workout(workout_id: int, athlete_id: str) -> list[dict]:
     print(f"DEBUG: Fetching instances for workout {workout_id}, athlete {athlete_id}")
-    base_url = settings.exercises_service_url.rstrip("/")
-    url = f"{base_url}/exercises/instances/workouts/{workout_id}/instances"
+    base_url = settings.workouts_service_url.rstrip("/")
+    url = f"{base_url}/instances/workouts/{workout_id}/instances"
     timeout = httpx.Timeout(10.0, connect=5.0)
     headers = {"X-User-Id": athlete_id}
     try:
@@ -237,8 +237,8 @@ async def update_exercise_instance_for_athlete(
     link = await _ensure_active_link(db, coach_id=coach_id, athlete_id=athlete_id)
     data = await _proxy_request_for_athlete(
         method="PATCH",
-        base_url=settings.exercises_service_url,
-        path=f"/exercises/instances/{instance_id}",
+        base_url=settings.workouts_service_url,
+        path=f"/instances/{instance_id}",
         athlete_id=athlete_id,
         json_body=payload,
     )
@@ -307,8 +307,8 @@ async def create_exercise_instance_for_athlete(
     link = await _ensure_active_link(db, coach_id=coach_id, athlete_id=athlete_id)
     data = await _proxy_request_for_athlete(
         method="POST",
-        base_url=settings.exercises_service_url,
-        path=f"/exercises/instances/workouts/{workout_id}/instances",
+        base_url=settings.workouts_service_url,
+        path=f"/instances/workouts/{workout_id}/instances",
         athlete_id=athlete_id,
         json_body=payload,
     )
@@ -332,8 +332,8 @@ async def delete_exercise_instance_for_athlete(
     link = await _ensure_active_link(db, coach_id=coach_id, athlete_id=athlete_id)
     await _proxy_request_for_athlete(
         method="DELETE",
-        base_url=settings.exercises_service_url,
-        path=f"/exercises/instances/{instance_id}",
+        base_url=settings.workouts_service_url,
+        path=f"/instances/{instance_id}",
         athlete_id=athlete_id,
     )
     _log_coach_athlete_event(

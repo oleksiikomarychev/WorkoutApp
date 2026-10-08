@@ -80,6 +80,42 @@ class ServiceClient:
             )
             return None
 
+    @staticmethod
+    def _normalize_query_params(
+        params: dict[str, Any] | None,
+    ) -> list[tuple[str, str]] | None:
+        """Normalize query params so list values become repeated keys.
+
+        httpx only encodes repeated query params when `params` is provided
+        as a list of tuples. If a dict contains a list value, it is stringified.
+        """
+        if not params:
+            return None
+        out: list[tuple[str, str]] = []
+        for k, v in params.items():
+            if k is None:
+                continue
+            key = str(k)
+            if not key:
+                continue
+            if v is None:
+                continue
+
+            if isinstance(v, (list, tuple, set)):
+                for item in v:
+                    if item is None:
+                        continue
+                    s = str(item)
+                    if not s:
+                        continue
+                    out.append((key, s))
+            else:
+                s = str(v)
+                if not s:
+                    continue
+                out.append((key, s))
+        return out or None
+
     async def get(
         self,
         url: str,
@@ -95,7 +131,8 @@ class ServiceClient:
 
         try:
             assert self._client is not None, "Client not initialized"
-            response = await self._client.get(url, headers=headers, params=params)
+            qp = self._normalize_query_params(params)
+            response = await self._client.get(url, headers=headers, params=qp)
         except httpx.HTTPError as exc:
             logger.error("http_request_failed", url=url, error=str(exc), **log_context)
             return ServiceResponse(success=False, error=str(exc))
@@ -161,6 +198,92 @@ class ServiceClient:
         data = self._parse_json(response, url, **log_context)
         if data is None:
             return ServiceResponse(success=False, status_code=response.status_code, error="JSON parse failed")
+
+        return ServiceResponse(
+            success=True,
+            data=data,
+            status_code=response.status_code,
+            headers=dict(response.headers),
+        )
+
+    async def put(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+        json: Any = None,
+        content: bytes | str | None = None,
+        expected_status: int | tuple[int, ...] = (200, 201),
+        **log_context: Any,
+    ) -> ServiceResponse:
+        """Perform PUT request and parse JSON response."""
+        if isinstance(expected_status, int):
+            expected_status = (expected_status,)
+
+        try:
+            assert self._client is not None
+            response = await self._client.put(url, headers=headers, json=json, content=content)
+        except httpx.HTTPError as exc:
+            logger.error("http_request_failed", url=url, error=str(exc), **log_context)
+            return ServiceResponse(success=False, error=str(exc))
+
+        if response.status_code not in expected_status:
+            logger.error(
+                "unexpected_status_code",
+                url=url,
+                status_code=response.status_code,
+                expected=expected_status,
+                body_preview=response.text[:500] if response.text else "",
+                **log_context,
+            )
+            return ServiceResponse(success=False, status_code=response.status_code)
+
+        data = self._parse_json(response, url, **log_context)
+        if data is None:
+            return ServiceResponse(success=False, status_code=response.status_code, error="JSON parse failed")
+
+        return ServiceResponse(
+            success=True,
+            data=data,
+            status_code=response.status_code,
+            headers=dict(response.headers),
+        )
+
+    async def delete(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+        params: dict[str, Any] | None = None,
+        expected_status: int | tuple[int, ...] = (200, 204),
+        **log_context: Any,
+    ) -> ServiceResponse:
+        """Perform DELETE request."""
+        if isinstance(expected_status, int):
+            expected_status = (expected_status,)
+
+        try:
+            assert self._client is not None
+            qp = self._normalize_query_params(params)
+            response = await self._client.delete(url, headers=headers, params=qp)
+        except httpx.HTTPError as exc:
+            logger.error("http_request_failed", url=url, error=str(exc), **log_context)
+            return ServiceResponse(success=False, error=str(exc))
+
+        if response.status_code not in expected_status:
+            logger.error(
+                "unexpected_status_code",
+                url=url,
+                status_code=response.status_code,
+                expected=expected_status,
+                body_preview=response.text[:500] if response.text else "",
+                **log_context,
+            )
+            return ServiceResponse(success=False, status_code=response.status_code)
+
+        data = None
+        if response.content:
+            data = self._parse_json(response, url, **log_context)
 
         return ServiceResponse(
             success=True,

@@ -32,9 +32,14 @@ class WorkoutSessionResponse(WorkoutSessionBase):
 class SessionFinishRequest(BaseModel):
     cancelled: bool = False
     mark_workout_completed: bool = False
+    finished_at: datetime | None = None
 
 
 class SessionProgressUpdate(BaseModel):
     instance_id: int
     set_id: int
+    completed: bool = True
+
+
+class SessionCompleteAllRequest(BaseModel):
     completed: bool = True
