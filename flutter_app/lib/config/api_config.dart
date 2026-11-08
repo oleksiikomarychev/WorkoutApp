@@ -20,7 +20,8 @@ class ApiConfig {
 
   static final String productionBaseUrl = _productionUrlOverride.isNotEmpty
       ? _productionUrlOverride
-      : dotenv.maybeGet('PROD_API_BASE_URL') ?? 'http://46.62.207.163:8000';
+      : dotenv.maybeGet('PROD_API_BASE_URL') ??
+          'http://9hcvrgsyv7t2uffk3myn7r54.46.62.252.90.sslip.io';
 
   static const int connectionTimeout = 60;
   static const int receiveTimeout = 60;
