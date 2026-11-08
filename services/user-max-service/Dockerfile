@@ -13,7 +13,7 @@ ENV UV_NO_DEV=1 \
 
 COPY . /app
 
-RUN uv sync --frozen --all-packages
+RUN uv sync --all-packages
 
 # Copy alembic config and migrations
 COPY services/user-max-service/alembic /app/alembic

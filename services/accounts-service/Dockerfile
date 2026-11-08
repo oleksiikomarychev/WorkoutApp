@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir -U pip && \
 
 COPY . /app
 
-RUN uv sync --frozen --all-packages
+RUN uv sync --all-packages
 
 # Install supervisord
 RUN apt-get update && apt-get install -y --no-install-recommends \
