@@ -1,16 +1,12 @@
 services:
   rpe-service:
     image: docker.io/oleksiikomarychev/workoutapp-rpe-service:latest
-    container_name: rpe-service
-    env_file:
-      - .env
     environment:
       - RPE_TABLE_PATH=/app/rpe_table.json
-      - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
-    ports:
-      - "8001:8001"
+      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET:?}
+      - APP_ENV=production
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0}
     restart: always
     networks:
       - workout-net
@@ -23,17 +19,15 @@ services:
       sh -c "celery -A plans_service.celery_app worker
       -Q plans.tasks
       --loglevel=${CELERY_LOG_LEVEL:-info}"
-    env_file:
-      - .env
     environment:
-      - PLANS_DATABASE_URL=${PLANS_DATABASE_URL}
+      - PLANS_DATABASE_URL=${PLANS_DATABASE_URL:?}
       - WORKOUTS_SERVICE_URL=http://workouts-service:8004
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
-      - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
-      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/2
+      - APP_ENV=production
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0}
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:?}@redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:?}@redis:6379/2
       - CELERY_PLANS_QUEUE=plans.tasks
     depends_on:
       redis:
@@ -52,26 +46,24 @@ services:
       sh -c "celery -A agent_service.celery_app worker
       -Q agent.llm,agent.tools
       --loglevel=${CELERY_LOG_LEVEL:-info}"
-    env_file:
-      - .env
     environment:
-      - AGENT_DATABASE_URL=${AGENT_DATABASE_URL}
+      - AGENT_DATABASE_URL=${AGENT_DATABASE_URL:-}
       - RPE_TABLE_URL=http://rpe-service:8001/rpe/table
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
       - PLANS_SERVICE_URL=http://plans-service:8005
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - LLM_PROVIDER=${LLM_PROVIDER}
-      - LLM_MODEL=${LLM_MODEL}
-      - STAGED_LLM_PROVIDER=${STAGED_LLM_PROVIDER}
-      - GENAI_STAGED_MODEL=${GENAI_STAGED_MODEL}
-      - FIREWORKS_API_KEY=${FIREWORKS_API_KEY}
-      - FIREWORKS_BASE_URL=${FIREWORKS_BASE_URL}
-      - HF_TOKEN=${HF_TOKEN}
-      - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
-      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/2
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - STAGED_LLM_PROVIDER=${STAGED_LLM_PROVIDER:-}
+      - GENAI_STAGED_MODEL=${GENAI_STAGED_MODEL:-}
+      - FIREWORKS_API_KEY=${FIREWORKS_API_KEY:-}
+      - FIREWORKS_BASE_URL=${FIREWORKS_BASE_URL:-}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - APP_ENV=production
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0}
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:?}@redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:?}@redis:6379/2
       - CELERY_PLAN_QUEUE=agent.llm
       - CELERY_TOOLS_QUEUE=agent.tools
     depends_on:
@@ -85,51 +77,48 @@ services:
 
   crm-service:
     image: docker.io/oleksiikomarychev/workoutapp-crm-service:latest
-    container_name: crm-service
     profiles:
       - crm
-    env_file:
-      - .env
     environment:
-      - CRM_DATABASE_URL=${CRM_DATABASE_URL}
-      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET}
+      - CRM_DATABASE_URL=${CRM_DATABASE_URL:-}
+      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET:?}
       - WORKOUTS_SERVICE_URL=http://workouts-service:8004
       - PLANS_SERVICE_URL=http://plans-service:8005
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
-      - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
-    ports:
-      - "8008:8008"
+      - APP_ENV=production
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - STRIPE_PLATFORM_FEE_PERCENT=${STRIPE_PLATFORM_FEE_PERCENT:-5.0}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
+      - STRIPE_CHECKOUT_SUCCESS_URL=${STRIPE_CHECKOUT_SUCCESS_URL:-}
+      - STRIPE_CHECKOUT_CANCEL_URL=${STRIPE_CHECKOUT_CANCEL_URL:-}
     restart: always
     networks:
       - workout-net
 
   plans-service:
     image: docker.io/oleksiikomarychev/workoutapp-plans-service:latest
-    container_name: plans-service
-    env_file:
-      - .env
     environment:
-      - DATABASE_URL=${PLANS_DATABASE_URL}
-      - PLANS_DATABASE_URL=${PLANS_DATABASE_URL}
+      - DATABASE_URL=${PLANS_DATABASE_URL:?}
+      - PLANS_DATABASE_URL=${PLANS_DATABASE_URL:?}
       - ENABLE_EXERCISES_ROUTER=true
       - WORKOUTS_SERVICE_URL=http://workouts-service:8004
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
       - CORS_ORIGINS=*
-      - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+      - APP_ENV=production
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0}
       - PLANS_REDIS_HOST=redis
       - PLANS_REDIS_PORT=6379
       - PLANS_REDIS_DB=0
-      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/2
+      - PLANS_REDIS_PASSWORD=${REDIS_PASSWORD:?}
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:?}@redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:?}@redis:6379/2
       - CELERY_PLANS_QUEUE=plans.tasks
     volumes:
       - plans_data:/app/data
-    ports:
-      - "8005:8005"
     restart: always
     depends_on:
       redis:
@@ -139,23 +128,20 @@ services:
 
   exercises-service:
     image: docker.io/oleksiikomarychev/workoutapp-exercises-service:latest
-    container_name: exercises-service
-    env_file:
-      - .env
     environment:
-      - DATABASE_URL=${EXERCISES_DATABASE_URL}
+      - DATABASE_URL=${EXERCISES_DATABASE_URL:?}
+      - EXERCISES_DATABASE_URL=${EXERCISES_DATABASE_URL:?}
       - PYTHONPATH=/app
-      - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+      - APP_ENV=production
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0}
       - EXERCISES_REDIS_HOST=redis
       - EXERCISES_REDIS_PORT=6379
       - EXERCISES_REDIS_DB=0
+      - EXERCISES_REDIS_PASSWORD=${REDIS_PASSWORD:?}
       - EXERCISES_MEDIA_DIR=/app/data/exercise_media
     volumes:
       - exercises_data:/app/data
-    ports:
-      - "8002:8002"
     restart: always
     depends_on:
       redis:
@@ -165,9 +151,6 @@ services:
 
   gateway:
     image: docker.io/oleksiikomarychev/workoutapp-gateway:latest
-    container_name: api-gateway
-    env_file:
-      - .env
     environment:
       RPE_SERVICE_URL: "http://rpe-service:8001"
       EXERCISES_SERVICE_URL: "http://exercises-service:8002"
@@ -176,20 +159,18 @@ services:
       PLANS_SERVICE_URL: "http://plans-service:8005"
       AGENT_SERVICE_URL: "http://agent-service:8006"
       ACCOUNTS_SERVICE_URL: "http://accounts-service:8007"
-      SOCIAL_API_URL: "http://messenger-gateway:8000/api/v1/social"
-      MESSAGING_API_URL: "http://messenger-gateway:8000/api/v1/messaging"
-      MESSENGER_APP_ID: "workout-tracker"
-      INTERNAL_GATEWAY_SECRET: ${INTERNAL_GATEWAY_SECRET}
+      INTERNAL_GATEWAY_SECRET: ${INTERNAL_GATEWAY_SECRET:?}
       CRM_SERVICE_URL: "http://crm-service:8008"
       MONO_WORKOUTS: "true"
-      FIREBASE_CREDENTIALS_BASE64: "${FIREBASE_CREDENTIALS_BASE64}"
-      FIREBASE_PROJECT_ID: "${FIREBASE_PROJECT_ID}"
-      FIREBASE_AUTH_EMULATOR_HOST: "host.docker.internal:9099"
-      APP_ENV: ${APP_ENV}
-      SENTRY_DSN: ${SENTRY_DSN}
-      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE}
-    ports:
-      - "8000:8000"
+      FIREBASE_CREDENTIALS_BASE64: ${FIREBASE_CREDENTIALS_BASE64:?}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:?}
+      GATEWAY_REDIS_HOST: redis
+      GATEWAY_REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+      APP_ENV: production
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
+    expose:
+      - "8000"
     depends_on:
       exercises-service:
         condition: service_started
@@ -204,50 +185,52 @@ services:
       accounts-service:
         condition: service_started
     restart: always
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     networks:
       - workout-net
-      - default
 
   user-max-service:
     image: docker.io/oleksiikomarychev/workoutapp-user-max-service:latest
-    container_name: user-max-service
-    env_file:
-      - .env
     environment:
-      - DATABASE_URL=${USER_MAX_DATABASE_URL}
+      - DATABASE_URL=${USER_MAX_DATABASE_URL:?}
+      - USER_MAX_DATABASE_URL=${USER_MAX_DATABASE_URL:?}
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
-      - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET:?}
+      - APP_ENV=production
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0}
     volumes:
       - user_max_data:/app/data
-    ports:
-      - "8003:8003"
     restart: always
     networks:
       - workout-net
 
   workouts-service:
     image: docker.io/oleksiikomarychev/workoutapp-workouts-service:latest
-    container_name: workouts-service
-    env_file:
-      - .env
     environment:
-      - WORKOUTS_DATABASE_URL=${WORKOUTS_DATABASE_URL}
+      - WORKOUTS_DATABASE_URL=${WORKOUTS_DATABASE_URL:?}
+      - SUPPLEMENTS_DATABASE_URL=sqlite:////app/data/supplements.db
       - PLANS_SERVICE_URL=http://plans-service:8005
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
       - RPE_SERVICE_URL=http://rpe-service:8001
-      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET}
+      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET:?}
       - USER_MAX_SERVICE_URL=http://user-max-service:8003
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+      - APP_ENV=production
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0}
       - WORKOUTS_REDIS_HOST=redis
       - WORKOUTS_REDIS_PORT=6379
       - WORKOUTS_REDIS_DB=0
+      - WORKOUTS_REDIS_PASSWORD=${REDIS_PASSWORD:?}
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:?}@redis:6379/3
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:?}@redis:6379/4
     volumes:
       - workouts_data:/app/data
-    ports:
-      - "8004:8004"
     depends_on:
       redis:
         condition: service_healthy
@@ -263,23 +246,23 @@ services:
       sh -c "celery -A workouts_service.celery_app worker
       -Q workouts.tasks
       --loglevel=${CELERY_LOG_LEVEL:-info}"
-    env_file:
-      - .env
     environment:
-      - WORKOUTS_DATABASE_URL=${WORKOUTS_DATABASE_URL}
+      - WORKOUTS_DATABASE_URL=${WORKOUTS_DATABASE_URL:?}
+      - SUPPLEMENTS_DATABASE_URL=sqlite:////app/data/supplements.db
       - PLANS_SERVICE_URL=http://plans-service:8005
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
       - RPE_SERVICE_URL=http://rpe-service:8001
-      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET}
+      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET:?}
       - USER_MAX_SERVICE_URL=http://user-max-service:8003
-      - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
+      - APP_ENV=production
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0}
       - WORKOUTS_REDIS_HOST=redis
       - WORKOUTS_REDIS_PORT=6379
       - WORKOUTS_REDIS_DB=0
-      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/3
-      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/4
+      - WORKOUTS_REDIS_PASSWORD=${REDIS_PASSWORD:?}
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:?}@redis:6379/3
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:?}@redis:6379/4
       - CELERY_WORKOUTS_QUEUE=workouts.tasks
     volumes:
       - workouts_data:/app/data
@@ -296,31 +279,29 @@ services:
     image: docker.io/oleksiikomarychev/workoutapp-agent-service:latest
     profiles:
       - agent
-    env_file:
-      - .env
     environment:
       - LLM_SPLIT_GENERATION=1
-      - AGENT_DATABASE_URL=${AGENT_DATABASE_URL}
+      - AGENT_DATABASE_URL=${AGENT_DATABASE_URL:-}
       - RPE_TABLE_URL=http://rpe-service:8001/rpe/table
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
       - PLANS_SERVICE_URL=http://plans-service:8005
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - LLM_PROVIDER=${LLM_PROVIDER}
-      - LLM_MODEL=${LLM_MODEL}
-      - STAGED_LLM_PROVIDER=${STAGED_LLM_PROVIDER}
-      - GENAI_STAGED_MODEL=${GENAI_STAGED_MODEL}
-      - FIREWORKS_API_KEY=${FIREWORKS_API_KEY}
-      - FIREWORKS_BASE_URL=${FIREWORKS_BASE_URL}
-      - HF_TOKEN=${HF_TOKEN}
-      - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
-      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/2
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - STAGED_LLM_PROVIDER=${STAGED_LLM_PROVIDER:-}
+      - GENAI_STAGED_MODEL=${GENAI_STAGED_MODEL:-}
+      - FIREWORKS_API_KEY=${FIREWORKS_API_KEY:-}
+      - FIREWORKS_BASE_URL=${FIREWORKS_BASE_URL:-}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - APP_ENV=production
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0}
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:?}@redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:?}@redis:6379/2
       - CELERY_PLAN_QUEUE=agent.llm
       - CELERY_TOOLS_QUEUE=agent.tools
-    ports:
-      - "8006:8006"
+    expose:
+      - "8006"
     depends_on:
       - user-max-service
       - exercises-service
@@ -331,34 +312,30 @@ services:
 
   accounts-service:
     image: docker.io/oleksiikomarychev/workoutapp-accounts-service:latest
-    container_name: accounts-service
-    env_file:
-      - .env
     environment:
-      - ACCOUNTS_DATABASE_URL=${ACCOUNTS_DATABASE_URL}
+      - ACCOUNTS_DATABASE_URL=${ACCOUNTS_DATABASE_URL:?}
       - PLANS_SERVICE_URL=http://plans-service:8005
-      - APP_ENV=${APP_ENV}
-      - SENTRY_DSN=${SENTRY_DSN}
-      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE}
-    ports:
-      - "8007:8007"
+      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET:?}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_CONNECT_RETURN_URL=${STRIPE_CONNECT_RETURN_URL:-}
+      - STRIPE_CONNECT_REFRESH_URL=${STRIPE_CONNECT_REFRESH_URL:-}
+      - APP_ENV=production
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0}
     restart: always
     networks:
       - workout-net
 
   redis:
     image: redis:7-alpine
-    container_name: redis
     environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?}
     command: ["sh", "-c", "redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
     restart: always
     healthcheck:
-      test: ["CMD", "sh", "-c", "redis-cli -a \"$$REDIS_PASSWORD\" ping"]
+      test: ["CMD", "sh", "-c", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -367,22 +344,18 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
-    container_name: prometheus
     profiles:
       - monitoring
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
-    ports:
-      - "9090:9090"
     restart: always
     networks:
       - workout-net
 
   grafana:
     image: grafana/grafana:latest
-    container_name: grafana
     profiles:
       - monitoring
     environment:
@@ -394,8 +367,6 @@ services:
       - ./grafana.ini:/etc/grafana/grafana.ini:ro
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
-    ports:
-      - "3000:3000"
     restart: always
     networks:
       - workout-net
@@ -404,7 +375,6 @@ services:
   
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
-    container_name: zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -424,7 +394,6 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
-    container_name: kafka
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -454,7 +423,6 @@ services:
 
   schema-registry:
     image: confluentinc/cp-schema-registry:7.5.0
-    container_name: schema-registry
     depends_on:
       kafka:
         condition: service_healthy
@@ -475,14 +443,11 @@ services:
 
   debezium-connect:
     image: debezium/connect:2.4
-    container_name: debezium-connect
     depends_on:
       kafka:
         condition: service_healthy
       schema-registry:
         condition: service_healthy
-    ports:
-      - "8083:8083"
     environment:
       BOOTSTRAP_SERVERS: kafka:29092
       GROUP_ID: debezium-connect-group
@@ -509,7 +474,6 @@ services:
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.1
-    container_name: clickhouse
     environment:
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
