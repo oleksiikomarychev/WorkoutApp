@@ -1,9 +1,10 @@
 # Backend deployment in Coolify
 
-This deployment uses `docker-compose.prod.yml`. It starts the API gateway, six
-backend services, and Redis. Social, messaging, the agent, CRM, Celery workers,
-monitoring, and analytics are not started by default. The corresponding API
-features need those services before they can work.
+This deployment uses `docker-compose.prod.yml`. It contains only the API gateway,
+six backend services, and Redis. Social, messaging, the agent, CRM, Celery workers,
+monitoring, and analytics are absent from this production file, so Coolify cannot
+pull their large images during deployment. The corresponding API features need
+those services before they can work.
 
 ## Server and images
 
@@ -64,12 +65,11 @@ cd flutter_app
 flutter build apk --release --dart-define=PROD_API_BASE_URL=https://api.example.com
 ```
 
-The build-time value overrides the older IP address in
-`flutter_app/assets/env/app.env`. Set `CHAT_WS_URL` with another `--dart-define`
-only after enabling the `agent` profile and adding a WSS domain for
-`agent-service` on internal port **8006**. Social and messaging features remain
-unavailable in this deployment.
+The build-time value overrides the production URL in
+`flutter_app/assets/env/app.env`. The web image routes `/api/` to the existing
+gateway through Nginx, so browser API calls use the website's HTTPS origin.
+The optional agent, social, and messaging features are unavailable in this
+deployment.
 
 If using Stripe, update public callback URLs to the new HTTPS domain and set
-the Stripe variables in Coolify. The optional CRM service also needs its own
-database URL and the `crm` profile.
+the Stripe variables in Coolify. CRM requires a separate deployment.
