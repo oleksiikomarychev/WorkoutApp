@@ -3,15 +3,25 @@ import logging
 import math
 import os
 import time
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
-from google import genai
+try:
+    from google import genai
+except ImportError:
+    genai = None  # type: ignore[assignment]
 
+from ..config import settings
 from ..models import UserMax
 from .exercise_service import get_all_exercises_meta
 from .true_1rm_service import calculate_true_1rm
 
 logger = logging.getLogger(__name__)
+
+
+def _utc_today() -> date:
+    return datetime.now(UTC).date()
+
 
 
 _CACHE: dict[tuple[int, int, float], tuple[float, dict]] = {}
@@ -59,7 +69,7 @@ def _now_ts() -> float:
 
 def _exp_decay_weight(sample_date: date, half_life_days: float = 90.0) -> float:
     try:
-        age_days = (datetime.utcnow().date() - sample_date).days
+        age_days = (_utc_today() - sample_date).days
         if age_days <= 0:
             return 1.0
         lam = math.log(2.0) / max(1e-6, half_life_days)
@@ -70,18 +80,16 @@ def _exp_decay_weight(sample_date: date, half_life_days: float = 90.0) -> float:
 
 class AlgorithmicLLMHelper:
     def __init__(self) -> None:
-        api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-        self.client: genai.Client | None
-        if api_key:
+        api_key = settings.GOOGLE_API_KEY or settings.GEMINI_API_KEY
+        self.client: Any = None
+        if api_key and genai is not None:
             try:
                 self.client = genai.Client(api_key=api_key)
             except Exception as e:
-                logger.warning(f"Failed to init genai client: {e}")
+                logger.warning("Failed to init genai client: %s", e)
                 self.client = None
-        else:
-            self.client = None
 
-    def classify_muscle_priority(self, muscle_data: dict) -> dict:
+    def classify_muscle_priority(self, muscle_data: dict[str, Any]) -> dict[str, str]:
         z = float(muscle_data.get("z") or 0.0)
 
         if not self.client:
@@ -114,13 +122,13 @@ class AlgorithmicLLMHelper:
                     "reason": str(data.get("reason", "")),
                 }
         except Exception as e:
-            logger.warning(f"LLM classify failed, using fallback: {e}")
+            logger.warning("LLM classify failed, using fallback: %s", e)
         return {
             "priority": ("high" if z < -1.0 else ("low" if z > 0.5 else "medium")),
             "reason": "fallback",
         }
 
-    def classify_muscle_priorities_batch(self, muscles: list[dict]) -> list[dict]:
+    def classify_muscle_priorities_batch(self, muscles: list[dict[str, Any]]) -> list[dict[str, str]]:
         if not muscles:
             return []
 
@@ -153,7 +161,7 @@ class AlgorithmicLLMHelper:
             text = getattr(resp, "text", None) or str(resp)
             parsed = json.loads(text)
             if isinstance(parsed, list) and len(parsed) == len(muscles):
-                out: list[dict] = []
+                out: list[dict[str, str]] = []
                 for idx, item in enumerate(parsed):
                     if isinstance(item, dict):
                         priority = str(item.get("priority", "")).strip() or "medium"
@@ -163,11 +171,11 @@ class AlgorithmicLLMHelper:
                         out.append(self.classify_muscle_priority(muscles[idx]))
                 return out
         except Exception as e:
-            logger.warning(f"Batch LLM classify failed, falling back: {e}")
+            logger.warning("Batch LLM classify failed, falling back: %s", e)
 
         return [self.classify_muscle_priority(m) for m in muscles]
 
-    def detect_anomalies(self, samples: list[dict]) -> list[int]:
+    def detect_anomalies(self, samples: list[dict[str, Any]]) -> list[int]:
         if not self.client or len(samples) < 5:
             return []
         try:
@@ -187,11 +195,11 @@ class AlgorithmicLLMHelper:
             if isinstance(data, list):
                 return [int(x) for x in data if isinstance(x, int | float)]
         except Exception as e:
-            logger.warning(f"LLM anomaly detection failed: {e}")
+            logger.warning("LLM anomaly detection failed: %s", e)
         return []
 
 
-def aggregate_exercise_strength_from_daily_agg(daily_rows) -> dict[int, float]:
+def aggregate_exercise_strength_from_daily_agg(daily_rows: Any) -> dict[int, float]:
     num: dict[int, float] = {}
     den: dict[int, float] = {}
     for row in daily_rows or []:
@@ -280,7 +288,7 @@ def _compute_exercise_robust_stats(
         for um in arr:
             val = um.verified_1rm if getattr(um, "verified_1rm", None) else calculate_true_1rm(um)
             v = math.log1p(max(0.0, float(val)))
-            w = _exp_decay_weight(getattr(um, "date", datetime.utcnow().date()), half_life_days)
+            w = _exp_decay_weight(getattr(um, "date", _utc_today()), half_life_days)
             vals.append(v)
             ws.append(w)
         if not vals:
@@ -354,7 +362,7 @@ def _compute_relative_trends(
     quantile_mode: str,
     quantile_p: float,
 ) -> dict[str, dict]:
-    today = datetime.utcnow().date()
+    today = _utc_today()
     recent_from = today - timedelta(days=recent_days)
     prev_from = today - timedelta(days=2 * recent_days)
 
@@ -411,7 +419,7 @@ def _aggregate_exercise_strength(user_maxes: list[UserMax]) -> dict[int, float]:
     by_ex: dict[int, list[tuple[float, float]]] = {}
     for um in user_maxes:
         val = um.verified_1rm if getattr(um, "verified_1rm", None) else calculate_true_1rm(um)
-        w = _exp_decay_weight(getattr(um, "date", datetime.utcnow().date()))
+        w = _exp_decay_weight(getattr(um, "date", _utc_today()))
         by_ex.setdefault(um.exercise_id, []).append((val, w))
 
     out: dict[int, float] = {}
@@ -481,7 +489,7 @@ def _distribute_to_muscles(ex_strength: dict[int, float], synergist_weight: floa
 
 
 def _compute_trends(user_maxes: list[UserMax], recent_days: int, synergist_weight: float) -> dict[str, dict]:
-    today = datetime.utcnow().date()
+    today = _utc_today()
     recent_from = today - timedelta(days=recent_days)
     prev_from = today - timedelta(days=2 * recent_days)
 
@@ -730,7 +738,7 @@ def compute_weak_muscles(
             samples: list[dict] = []
             simple_samples: list[dict] = []
             for um in filtered:
-                d = getattr(um, "date", datetime.utcnow().date()).isoformat()
+                d = getattr(um, "date", _utc_today()).isoformat()
                 max_w = float(getattr(um, "max_weight", 0))
                 sample: dict = {
                     "date": d,
@@ -758,7 +766,7 @@ def compute_weak_muscles(
                     det["index"] = i
                     anomaly_details.append(det)
         except Exception as e:
-            logger.warning(f"LLM enrichment failed: {e}")
+            logger.warning("LLM enrichment failed: %s", e)
 
     result = {
         "recent_days": recent_days,

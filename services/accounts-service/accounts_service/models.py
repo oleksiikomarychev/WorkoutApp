@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from sqlalchemy import (
     Boolean,
@@ -24,12 +24,16 @@ from sqlalchemy.orm import relationship
 from .database import Base
 
 
-class UnitSystem(str, Enum):
+class UnitSystem(StrEnum):
+    """Supported unit systems for user measurements."""
+
     METRIC = "metric"
     IMPERIAL = "imperial"
 
 
 class UserProfile(Base):
+    """Core user profile entity."""
+
     __tablename__ = "user_profiles"
 
     user_id = Column(String, primary_key=True, index=True)
@@ -60,6 +64,8 @@ class UserProfile(Base):
 
 
 class UserCoachingProfile(Base):
+    """Coach profile and marketplace details."""
+
     __tablename__ = "user_coaching_profiles"
 
     user_id = Column(String, ForeignKey("user_profiles.user_id", ondelete="CASCADE"), primary_key=True)
@@ -92,6 +98,8 @@ class UserCoachingProfile(Base):
 
 
 class UserAvatar(Base):
+    """User uploaded avatar binary blob storage."""
+
     __tablename__ = "user_avatars"
 
     user_id = Column(String, primary_key=True, index=True)
@@ -101,6 +109,8 @@ class UserAvatar(Base):
 
 
 class UserSettings(Base):
+    """User preferences and locale settings."""
+
     __tablename__ = "user_settings"
 
     user_id = Column(String, ForeignKey("user_profiles.user_id", ondelete="CASCADE"), primary_key=True)

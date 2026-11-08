@@ -1,8 +1,12 @@
-from .calendar import (  # noqa: F401
+from __future__ import annotations
+
+from .calendar import (
     AppliedCalendarPlan,
     AppliedMesocycle,
     AppliedMicrocycle,
     AppliedPlanWorkout,
+    AppliedWorkout,
+    Base,
     CalendarPlan,
     Mesocycle,
     Microcycle,
@@ -10,15 +14,18 @@ from .calendar import (  # noqa: F401
     PlanExercise,
     PlanSet,
     PlanWorkout,
+    WorkoutProgress,
 )
-from .macro import PlanMacro  # noqa: F401
-from .templates import MesocycleTemplate, MicrocycleTemplate  # noqa: F401
+from .macro import PlanMacro
+from .templates import MesocycleTemplate, MicrocycleTemplate
 
 __all__ = [
+    "Base",
     "AppliedCalendarPlan",
     "AppliedMesocycle",
     "AppliedMicrocycle",
     "AppliedPlanWorkout",
+    "AppliedWorkout",
     "CalendarPlan",
     "Mesocycle",
     "Microcycle",
@@ -29,4 +36,5 @@ __all__ = [
     "PlanMacro",
     "MesocycleTemplate",
     "MicrocycleTemplate",
+    "WorkoutProgress",
 ]

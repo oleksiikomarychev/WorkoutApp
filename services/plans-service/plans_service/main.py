@@ -1,14 +1,14 @@
-import time
-import uuid
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import structlog
-from asgi_correlation_id import CorrelationIdMiddleware
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from prometheus_fastapi_instrumentator import Instrumentator
+from backend_common.fastapi_app import create_service_app
+from fastapi import FastAPI
 from sqlalchemy import text
 
-from .dependencies import engine
+from .database import engine
 from .logging_config import configure_logging
 from .models.calendar import Base
 from .redis_client import close_redis, init_redis
@@ -26,8 +26,24 @@ configure_logging()
 logger = structlog.get_logger(__name__)
 
 
-def create_tables():
-    Base.metadata.create_all(bind=engine)
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Manage application startup and shutdown lifecycle events."""
+    logger.info("plans_service_starting")
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            try:
+                await conn.execute(text("ALTER TABLE calendar_plans ALTER COLUMN root_plan_id DROP NOT NULL"))
+            except Exception:
+                pass
+    except Exception:
+        logger.warning("plans_database_init_skipped_or_failed", exc_info=True)
+
+    await init_redis()
+    yield
+    logger.info("plans_service_stopping")
+    await close_redis()
 
 
 tags_metadata = [
@@ -49,56 +65,30 @@ tags_metadata = [
     },
 ]
 
-app = FastAPI(
-    title="Workout Tracking App",
-    description="A comprehensive API for tracking workouts, exercises, and user progressions",
+app = create_service_app(
+    title="Workout Tracking App - Plans Service",
     version="1.0.0",
+    description="Calendar plans microservice for tracking workout plans, mesocycles, and progressions",
     openapi_tags=tags_metadata,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    lifespan=lifespan,
+    cors_allow_origins=["*"],
+    cors_allow_credentials=True,
+    cors_allow_methods=["*"],
+    cors_allow_headers=["*"],
 )
 
-Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    """Health check endpoint."""
+    return {"status": "ok"}
 
 
-@app.on_event("startup")
-async def startup_event():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+@app.get("/")
+async def root() -> dict[str, str]:
+    """Root welcome endpoint."""
+    return {"message": "Welcome to Workout Tracking App"}
 
-        try:
-            await conn.execute(text("ALTER TABLE calendar_plans ALTER COLUMN root_plan_id DROP NOT NULL"))
-        except Exception:
-            logger.warning("calendar_plans_root_plan_id_migration_failed_or_unnecessary", exc_info=True)
-
-    await init_redis()
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    await close_redis()
-
-
-origins = [
-    "http://localhost",
-    "http://localhost:8000",
-    "http://localhost:3000",
-    "http://10.0.2.2:8000",
-]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
-app.add_middleware(
-    CorrelationIdMiddleware,
-    header_name="X-Request-ID",
-    generator=lambda: str(uuid.uuid4()),
-    update_request_header=True,
-)
 
 app.include_router(applied_calendar_plans.router, prefix="/plans", tags=["Applied Plans"])
 app.include_router(calendar_plans.router, prefix="/plans", tags=["Calendar Plans"])
@@ -107,27 +97,3 @@ app.include_router(mesocycles.router, prefix="/plans", tags=["Mesocycles"])
 app.include_router(macros.router, prefix="/plans", tags=["Plan Macros"])
 app.include_router(templates.router, prefix="/plans", tags=["Mesocycle Templates"])
 app.include_router(internal_purge_router)
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
-
-
-@app.middleware("http")
-async def add_process_time_header(request: Request, call_next):
-    start_time = time.time()
-    response = await call_next(request)
-    process_time = time.time() - start_time
-    response.headers["X-Process-Time"] = str(process_time)
-    return response
-
-
-@app.get("/")
-async def root():
-    return {"message": "Welcome to Workout Tracking App"}
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=8000, loop="uvloop", http="httptools")

@@ -8,7 +8,7 @@ from celery import shared_task
 from celery.utils.log import get_task_logger
 
 from ..celery_app import PLANS_TASK_QUEUE
-from ..dependencies import DATABASE_URL
+from ..database import DATABASE_URL
 from ..schemas.calendar_plan import ApplyPlanComputeSettings
 from ..services.applied_calendar_plan_service import AppliedCalendarPlanService
 from ..services.macro_apply import MacroApplier
@@ -18,25 +18,26 @@ logger = get_task_logger(__name__)
 
 
 def _run_async(coro_or_func):
-    
     if asyncio.iscoroutinefunction(coro_or_func):
         coro = coro_or_func()
     else:
         coro = coro_or_func
-    
+
     def run_in_new_loop():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
             return loop.run_until_complete(coro)
         finally:
-            loop.close()
-            pending = asyncio.all_tasks(loop)
-            if pending:
-                for task in pending:
-                    task.cancel()
-                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-    
+            try:
+                pending = asyncio.all_tasks(loop)
+                if pending:
+                    for task in pending:
+                        task.cancel()
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            finally:
+                loop.close()
+
     with concurrent.futures.ThreadPoolExecutor() as executor:
         future = executor.submit(run_in_new_loop)
         return future.result()

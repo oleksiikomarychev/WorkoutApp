@@ -1,4 +1,6 @@
-from typing import Any, TypeVar
+from __future__ import annotations
+
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -10,8 +12,8 @@ CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
 UpdateSchemaType = TypeVar("UpdateSchemaType", bound=BaseModel)
 
 
-class BaseRepository[ModelType: Base, CreateSchemaType: BaseModel, UpdateSchemaType: BaseModel]:
-    def __init__(self, model: type[ModelType]):
+class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
+    def __init__(self, model: type[ModelType]) -> None:
         self.model = model
 
     def get(self, db: Session, id: Any) -> ModelType | None:
@@ -59,7 +61,7 @@ class BaseRepository[ModelType: Base, CreateSchemaType: BaseModel, UpdateSchemaT
             db.rollback()
             return None
 
-    def remove(self, db: Session, *, id: int) -> ModelType | None:
+    def remove(self, db: Session, *, id: Any) -> ModelType | None:
         try:
             obj = db.query(self.model).get(id)
             if obj:

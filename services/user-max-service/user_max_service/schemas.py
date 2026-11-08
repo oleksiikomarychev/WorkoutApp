@@ -1,27 +1,26 @@
-from datetime import date
+import datetime as dt
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UserMaxBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     exercise_id: int
-    exercise_name: str
+    exercise_name: str | None = None
     max_weight: float
     rep_max: int
-    date: date
+    date: dt.date
     true_1rm: float | None = None
     verified_1rm: float | None = None
     source: str | None = None
-
-    class Config:
-        from_attributes = True
 
 
 class UserMaxCreate(BaseModel):
     exercise_id: int
     max_weight: float
     rep_max: int
-    date: date
+    date: dt.date
     true_1rm: float | None = None
     verified_1rm: float | None = None
     source: str | None = None
@@ -29,18 +28,21 @@ class UserMaxCreate(BaseModel):
 
 class UserMaxResponse(UserMaxBase):
     id: int
-    exercise_name: str
 
 
 class UserMax(UserMaxBase):
     id: int
 
-    class Config:
-        from_attributes = True
-
 
 class UserMaxUpdate(BaseModel):
-    max_weight: int | None = Field(gt=0)
+    model_config = ConfigDict(from_attributes=True)
+
+    max_weight: float | None = Field(default=None, gt=0)
+    rep_max: int | None = Field(default=None, gt=0)
+    true_1rm: float | None = Field(default=None, gt=0)
+    verified_1rm: float | None = Field(default=None, gt=0)
+    source: str | None = None
+    date: dt.date | None = None
 
 
 class UserMaxBulkResponse(UserMaxBase):

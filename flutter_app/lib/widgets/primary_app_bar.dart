@@ -133,7 +133,7 @@ class PrimaryAppBar extends StatelessWidget implements PreferredSizeWidget {
           ],
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: resolvedTitle,
         ),
       );
@@ -205,29 +205,21 @@ class PrimaryAppBar extends StatelessWidget implements PreferredSizeWidget {
                       ),
                     ],
                   ),
-                  child: Stack(
-                    alignment: Alignment.center,
+                  child: Row(
                     children: [
                       if (resolvedLeading != null)
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [resolvedLeading!],
-                          ),
-                        ),
-                      if (wrappedActions.isNotEmpty)
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: wrappedActions,
-                          ),
-                        ),
-                      if (resolvedTitle != null)
-                        Center(
-                          child: resolvedTitle,
-                        ),
+                        resolvedLeading!,
+                      Expanded(
+                        child: resolvedTitle == null
+                            ? const SizedBox.shrink()
+                            : Align(
+                                alignment: centerTitle
+                                    ? Alignment.center
+                                    : Alignment.centerLeft,
+                                child: resolvedTitle,
+                              ),
+                      ),
+                      ...wrappedActions,
                     ],
                   ),
                 ),

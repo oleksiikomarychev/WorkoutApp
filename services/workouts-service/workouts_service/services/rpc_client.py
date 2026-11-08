@@ -1,19 +1,25 @@
+from __future__ import annotations
+
 import logging
-import os
+from typing import Any
 
 import httpx
 from fastapi import HTTPException
 
+from ..config import settings
+
 logger = logging.getLogger(__name__)
 
 
-async def get_exercise_by_id(exercise_id: int):
-    base_url = os.getenv("EXERCISES_SERVICE_URL") or os.getenv("GATEWAY_URL")
-    if not base_url:
-        logger.error("EXERCISES_SERVICE_URL or GATEWAY_URL must be set")
-        raise HTTPException(status_code=503, detail="Exercises service URL not configured")
-    if not base_url.startswith("http"):
-        base_url = "https://" + base_url
+def _normalize_url(url: str | None, default: str) -> str:
+    resolved = (url or default).strip().rstrip("/")
+    if not resolved.startswith("http://") and not resolved.startswith("https://"):
+        resolved = f"http://{resolved}"
+    return resolved
+
+
+async def get_exercise_by_id(exercise_id: int) -> dict[str, Any]:
+    base_url = _normalize_url(settings.EXERCISES_SERVICE_URL, "http://exercises-service:8002")
     url = f"{base_url}/exercises/{exercise_id}"
     try:
         async with httpx.AsyncClient() as client:
@@ -21,38 +27,32 @@ async def get_exercise_by_id(exercise_id: int):
             response.raise_for_status()
             return response.json()
     except httpx.HTTPStatusError as e:
-        logger.error(f"HTTP error from exercises-service: {str(e)}")
+        logger.error("HTTP error from exercises-service: %s", e)
         raise HTTPException(status_code=e.response.status_code, detail=f"Exercises service error: {e.response.text}")
     except httpx.RequestError as e:
-        logger.error(f"Request to exercises-service failed: {str(e)}")
+        logger.error("Request to exercises-service failed: %s", e)
         raise HTTPException(status_code=503, detail="Service unavailable")
 
 
 class PlansServiceRPC:
-    def __init__(self, base_url: str = ""):
-        if not base_url:
-            base_url = os.getenv("PLANS_SERVICE_URL") or os.getenv("GATEWAY_URL")
-        if not base_url:
-            logger.error("PLANS_SERVICE_URL or GATEWAY_URL must be set")
-            raise HTTPException(status_code=503, detail="Plans service URL not configured")
+    """RPC client for plans-service."""
 
-        if not base_url.startswith("http"):
-            base_url = "https://" + base_url
-        self.base_url = base_url
+    def __init__(self, base_url: str = "") -> None:
+        self.base_url = _normalize_url(base_url or settings.PLANS_SERVICE_URL, "http://plans-service:8005")
 
-    async def get_calendar_plan(self, calendar_plan_id: int):
+    async def get_calendar_plan(self, calendar_plan_id: int) -> dict[str, Any]:
         try:
             url = f"{self.base_url}/plans/calendar-plans/{calendar_plan_id}"
-            logger.debug(f"Fetching calendar plan from: {url}")
+            logger.debug("Fetching calendar plan from: %s", url)
             async with httpx.AsyncClient() as client:
                 response = await client.get(url, timeout=30.0)
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error from plans-service: {str(e)}")
+            logger.error("HTTP error from plans-service: %s", e)
             raise HTTPException(status_code=e.response.status_code, detail=f"Plans service error: {e.response.text}")
         except httpx.RequestError as e:
-            logger.error(f"Request to plans-service failed: {str(e)}")
+            logger.error("Request to plans-service failed: %s", e)
             raise HTTPException(status_code=503, detail="Service unavailable")
 
     async def validate_microcycle_ids(self, microcycle_ids: list[int]) -> list[int]:
@@ -67,23 +67,14 @@ class PlansServiceRPC:
                     return response.json().get("valid_ids", [])
                 raise HTTPException(status_code=response.status_code, detail=response.text)
         except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"Plans service unreachable: {str(e)}")
-
-    async def get_params_workout(self, params_workout_id: int):
-        response = await self.call_rpc("get_params_workout", {"params_workout_id": params_workout_id})
-        return response
+            raise HTTPException(status_code=503, detail=f"Plans service unreachable: {e}")
 
 
 class RpeServiceRPC:
-    def __init__(self, base_url: str = ""):
-        if not base_url:
-            base_url = os.getenv("RPE_SERVICE_URL") or os.getenv("GATEWAY_URL")
-        if not base_url:
-            logger.error("RPE_SERVICE_URL or GATEWAY_URL must be set")
-            raise HTTPException(status_code=503, detail="RPE service URL not configured")
-        if not base_url.startswith("http"):
-            base_url = "https://" + base_url
-        self.base_url = base_url.rstrip("/")
+    """RPC client for rpe-service."""
+
+    def __init__(self, base_url: str = "") -> None:
+        self.base_url = _normalize_url(base_url or settings.RPE_SERVICE_URL, "http://rpe-service:8001")
 
     async def compute(
         self,
@@ -97,7 +88,7 @@ class RpeServiceRPC:
         rounding_mode: str = "nearest",
         headers: dict[str, str] | None = None,
         user_id: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         payload = {
             "intensity": intensity,
             "effort": effort,
@@ -110,20 +101,14 @@ class RpeServiceRPC:
         try:
             target_base = self.base_url
             if headers and headers.get("Authorization"):
-                gw = os.getenv("GATEWAY_URL")
+                gw = settings.GATEWAY_URL
                 if gw:
-                    if not gw.startswith("http"):
-                        gw = "https://" + gw
-                    target_base = gw.rstrip("/")
+                    target_base = _normalize_url(gw, "http://gateway:8000")
 
             send_headers = dict(headers or {})
-            if not send_headers.get("Authorization"):
-                svc_token = os.getenv("SERVICE_TOKEN") or os.getenv("RPE_SERVICE_TOKEN")
-                if svc_token:
-                    send_headers["Authorization"] = f"Bearer {svc_token}"
-
             if user_id and not send_headers.get("X-User-Id"):
                 send_headers["X-User-Id"] = user_id
+
             async with httpx.AsyncClient() as client:
                 resp = await client.post(
                     f"{target_base}/rpe/compute",
@@ -134,11 +119,11 @@ class RpeServiceRPC:
                 resp.raise_for_status()
                 return resp.json()
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error from rpe-service: {e.response.status_code} {e.response.text}")
+            logger.error("HTTP error from rpe-service: %s %s", e.response.status_code, e.response.text)
             raise HTTPException(
                 status_code=e.response.status_code,
                 detail=f"RPE service error: {e.response.text}",
             )
         except httpx.RequestError as e:
-            logger.error(f"Request to rpe-service failed: {str(e)}")
+            logger.error("Request to rpe-service failed: %s", e)
             raise HTTPException(status_code=503, detail="RPE service unavailable")

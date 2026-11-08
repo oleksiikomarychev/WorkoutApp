@@ -1,30 +1,36 @@
+from __future__ import annotations
+
 import logging
-import os
 from collections.abc import Iterable
 from datetime import date
+from typing import Any
 
 import httpx
+
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
 
 class UserMaxClient:
+    """Client for pushing workout max records to user-max-service."""
+
     def __init__(self, base_url: str | None = None, timeout: float = 5.0) -> None:
-        base_env = base_url or os.getenv("USER_MAX_SERVICE_URL")
+        base_env = base_url or settings.USER_MAX_SERVICE_URL
         resolved = (base_env or "http://user-max-service:8003").rstrip("/")
         if resolved and not resolved.startswith("http"):
             resolved = "http://" + resolved
         self.base_url = resolved
         self.timeout = timeout
 
-    async def push_entries(self, entries: Iterable[dict], user_id: str) -> None:
+    async def push_entries(self, entries: Iterable[dict[str, Any]], user_id: str) -> None:
         payload = [self._normalize_entry(e) for e in entries if self._normalize_entry(e)]
         if not payload:
             logger.info("UserMaxClient.push_entries: no valid entries to send")
             return
 
-        internal_secret = (os.getenv("INTERNAL_GATEWAY_SECRET") or os.getenv("GATEWAY_INTERNAL_SECRET") or "").strip()
-        gateway_url = (os.getenv("GATEWAY_URL") or "").strip().rstrip("/")
+        internal_secret = settings.INTERNAL_GATEWAY_SECRET
+        gateway_url = (settings.GATEWAY_URL or "").strip().rstrip("/")
         if gateway_url and not gateway_url.startswith("http"):
             gateway_url = "http://" + gateway_url
 
@@ -36,15 +42,12 @@ class UserMaxClient:
         headers = {"X-User-Id": user_id}
         if internal_secret:
             headers["X-Internal-Secret"] = internal_secret
+
         logger.info(
             "UserMaxClient.push_entries: sending %d entries to %s for user %s",
             len(payload),
             url,
             user_id,
-        )
-        logger.debug(
-            "UserMaxClient.push_entries payload=%s",
-            payload,
         )
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
@@ -54,14 +57,10 @@ class UserMaxClient:
                     "UserMaxClient.push_entries: success | status=%d",
                     response.status_code,
                 )
-                logger.debug(
-                    "UserMaxClient.push_entries response_text=%s",
-                    response.text[:200],
-                )
             except (httpx.RequestError, httpx.HTTPStatusError) as exc:
                 logger.exception("UserMaxClient.push_entries failed: %s", exc)
 
-    def _normalize_entry(self, entry: dict) -> dict | None:
+    def _normalize_entry(self, entry: dict[str, Any]) -> dict[str, Any] | None:
         try:
             exercise_id = int(entry["exercise_id"])
             max_weight = float(entry["max_weight"])

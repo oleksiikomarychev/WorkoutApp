@@ -10,16 +10,25 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from uuid import uuid4
 
+import pytest
+import database
 from database import Base, get_db
 from fastapi.testclient import TestClient
 from main import app
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from sqlalchemy.pool import StaticPool
+
 # Create test database
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test_comments_reactions.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+database.SessionLocal = TestingSessionLocal
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -34,6 +43,13 @@ def override_get_db():
 app.dependency_overrides[get_db] = override_get_db
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def setup_comments_test():
+    """Ensure db override is active for comments tests."""
+    app.dependency_overrides[get_db] = override_get_db
+    yield
 
 def test_create_comment():
     """Test creating a comment on a post."""

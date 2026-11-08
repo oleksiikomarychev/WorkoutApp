@@ -27,6 +27,7 @@ dependencies = [
     "grpcio-tools>=1.60.0",
     "grpcio-health-checking",
     "protobuf>=4.25.0",
+    "pydantic-settings>=2.0.0",
     "backend-common",
 ]
 

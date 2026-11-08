@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,10 +20,10 @@ router = APIRouter(prefix="/crm/analytics", tags=["crm-analytics"])
 
 @router.get("/coaches/my/athletes", response_model=CoachAthletesAnalyticsResponse)
 async def get_my_athletes_analytics(
-    weeks: int = Query(12, ge=1, le=104),
-    inactive_after_days: int = Query(14, ge=1, le=365),
-    limit: int = Query(100, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    weeks: int = Query(default=12, ge=1, le=104),
+    inactive_after_days: int = Query(default=14, ge=1, le=365),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ) -> CoachAthletesAnalyticsResponse:
@@ -37,10 +39,10 @@ async def get_my_athletes_analytics(
 
 @router.get("/coaches/my/summary", response_model=CoachSummaryAnalyticsResponse)
 async def get_my_summary_analytics(
-    weeks: int = Query(12, ge=1, le=104),
-    inactive_after_days: int = Query(14, ge=1, le=365),
-    limit: int = Query(100, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    weeks: int = Query(default=12, ge=1, le=104),
+    inactive_after_days: int = Query(default=14, ge=1, le=365),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ) -> CoachSummaryAnalyticsResponse:
@@ -57,8 +59,8 @@ async def get_my_summary_analytics(
 @router.get("/athletes/{athlete_id}", response_model=AthleteDetailedAnalyticsResponse)
 async def get_athlete_detailed(
     athlete_id: str,
-    weeks: int = Query(12, ge=1, le=104),
-    inactive_after_days: int = Query(14, ge=1, le=365),
+    weeks: int = Query(default=12, ge=1, le=104),
+    inactive_after_days: int = Query(default=14, ge=1, le=365),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ) -> AthleteDetailedAnalyticsResponse:

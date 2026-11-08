@@ -1810,7 +1810,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
 
     return Container(
       width: double.infinity,
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1831,10 +1831,10 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
                   const SizedBox(width: 8),
                   Text(
                     statusLabel,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                 ],
@@ -1842,9 +1842,9 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
               if (planned > 0)
                 Text(
                   '$completed / $planned sessions',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: AppColors.textSecondary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
             ],
@@ -1856,7 +1856,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
               child: LinearProgressIndicator(
                 minHeight: 6,
                 value: (completed / planned).clamp(0, 1).toDouble(),
-                backgroundColor: Colors.grey.shade200,
+                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
                 valueColor: AlwaysStoppedAnimation<Color>(statusColor),
               ),
             ),
@@ -1864,9 +1864,9 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
             const SizedBox(height: 4),
             Text(
               'Adherence: ${adherence.toStringAsFixed(1)}%',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
-                color: AppColors.textSecondary,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -1997,7 +1997,7 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
         final st = _statusOf(w);
         return Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
             borderRadius: BorderRadius.circular(16),
             boxShadow: AppShadows.sm,
           ),
@@ -2136,23 +2136,23 @@ class _ActivePlanScreenState extends ConsumerState<ActivePlanScreen> {
     if (completed) {
       return _StatusView(
         'Completed',
-        const Color(0xFFEFF8F2),
-        Colors.green,
-        Colors.green,
+        Theme.of(context).colorScheme.tertiaryContainer,
+        Theme.of(context).colorScheme.onTertiaryContainer,
+        Theme.of(context).colorScheme.tertiary,
       );
     } else if (inProgress) {
       return _StatusView(
         'In Progress',
-        const Color(0xFFEAEFFF),
-        AppColors.primary,
-        AppColors.primary,
+        Theme.of(context).colorScheme.primaryContainer,
+        Theme.of(context).colorScheme.onPrimaryContainer,
+        Theme.of(context).colorScheme.primary,
       );
     } else {
       return _StatusView(
         'Planned',
-        const Color(0xFFFFEBEE),
-        Colors.redAccent,
-        Colors.redAccent,
+        Theme.of(context).colorScheme.errorContainer,
+        Theme.of(context).colorScheme.onErrorContainer,
+        Theme.of(context).colorScheme.error,
       );
     }
   }
@@ -2236,7 +2236,7 @@ extension _APAnalytics on _ActivePlanScreenState {
   }) {
     return Card(
       elevation: 1,
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
       margin: const EdgeInsets.symmetric(horizontal: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(

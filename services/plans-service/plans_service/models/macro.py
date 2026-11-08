@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
-from .calendar import Base
+from .calendar import Base, _utc_now
 
 
 class PlanMacro(Base):
@@ -20,7 +20,7 @@ class PlanMacro(Base):
 
     rule_json = Column(Text, nullable=False)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=_utc_now, nullable=False)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now, nullable=False)
 
     calendar_plan = relationship("CalendarPlan", back_populates="macros", passive_deletes=True)

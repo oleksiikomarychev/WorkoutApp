@@ -1,3 +1,9 @@
+"""Router for training plan generation tasks in agent-service."""
+
+from __future__ import annotations
+
+from typing import Any, Callable
+
 import structlog
 from backend_common.celery_utils import build_task_status_response, enqueue_task
 from fastapi import APIRouter, Depends
@@ -13,11 +19,10 @@ from ..tasks.plan_tasks import (
 )
 
 router = APIRouter()
-
 logger = structlog.get_logger(__name__)
 
 
-def _submit_task(task_fn, user_data: UserDataInput, user_id: str) -> TaskSubmissionResponse:
+def _submit_task(task_fn: Callable[..., Any], user_data: UserDataInput, user_id: str) -> TaskSubmissionResponse:
     payload = enqueue_task(
         task_fn,
         logger=logger,
@@ -34,7 +39,11 @@ def _submit_task(task_fn, user_data: UserDataInput, user_id: str) -> TaskSubmiss
 
 
 @router.post("/generate-plan/", response_model=TaskSubmissionResponse)
-async def generate_plan(user_data: UserDataInput, user_id: str = Depends(get_current_user_id)):
+async def generate_plan(
+    user_data: UserDataInput,
+    user_id: str = Depends(get_current_user_id),
+) -> TaskSubmissionResponse:
+    """Enqueue a training plan generation Celery task."""
     return _submit_task(generate_plan_task, user_data, user_id)
 
 
@@ -42,7 +51,8 @@ async def generate_plan(user_data: UserDataInput, user_id: str = Depends(get_cur
 async def generate_plan_with_rationale(
     user_data: UserDataInput,
     user_id: str = Depends(get_current_user_id),
-):
+) -> TaskSubmissionResponse:
+    """Enqueue a training plan generation with rationale Celery task."""
     return _submit_task(generate_plan_with_rationale_task, user_data, user_id)
 
 
@@ -50,12 +60,14 @@ async def generate_plan_with_rationale(
 async def generate_plan_with_summary(
     user_data: UserDataInput,
     user_id: str = Depends(get_current_user_id),
-):
+) -> TaskSubmissionResponse:
+    """Enqueue a training plan generation with summary Celery task."""
     return _submit_task(generate_plan_with_summary_task, user_data, user_id)
 
 
 @router.get("/tasks/{task_id}", response_model=TaskStatusResponse)
 async def get_training_plan_task_status(task_id: str) -> TaskStatusResponse:
+    """Retrieve current Celery execution status of a training plan generation task."""
     return build_task_status_response(
         task_id=task_id,
         celery_app=celery_app,

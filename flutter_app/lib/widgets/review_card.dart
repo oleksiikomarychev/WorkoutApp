@@ -21,7 +21,7 @@ class ReviewCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                _buildStarRating(review.rating),
+                _buildStarRating(context, review.rating),
                 const SizedBox(width: 8),
                 Text(
                   review.rating.toString(),
@@ -34,7 +34,7 @@ class ReviewCard extends StatelessWidget {
                 Text(
                   _formatDate(review.createdAt),
                   style: TextStyle(
-                    color: AppColors.textSecondary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                   ),
                 ),
@@ -45,7 +45,7 @@ class ReviewCard extends StatelessWidget {
               Text(
                 'by ${review.reviewerName!}',
                 style: TextStyle(
-                  color: AppColors.textSecondary,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,
                   fontStyle: FontStyle.italic,
                 ),
@@ -64,7 +64,7 @@ class ReviewCard extends StatelessWidget {
     );
   }
 
-  Widget _buildStarRating(int rating) {
+  Widget _buildStarRating(BuildContext context, int rating) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(5, (index) {
@@ -77,7 +77,7 @@ class ReviewCard extends StatelessWidget {
         } else {
           return Icon(
             Icons.star_border,
-            color: AppColors.textSecondary.withOpacity(0.3),
+            color: Theme.of(context).colorScheme.outlineVariant,
             size: 20,
           );
         }

@@ -3,11 +3,9 @@ import os
 import httpx
 from fastapi import APIRouter, HTTPException
 
-EXERCISE_SERVICE_URL = os.getenv("EXERCISES_SERVICE_URL") or os.getenv("GATEWAY_URL")
-if not EXERCISE_SERVICE_URL:
-    raise RuntimeError("EXERCISES_SERVICE_URL or GATEWAY_URL must be set")
+EXERCISE_SERVICE_URL = os.getenv("EXERCISES_SERVICE_URL") or os.getenv("GATEWAY_URL") or "http://exercises-service:8002"
 if not EXERCISE_SERVICE_URL.startswith(("http://", "https://")):
-    EXERCISE_SERVICE_URL = f"https://{EXERCISE_SERVICE_URL}"
+    EXERCISE_SERVICE_URL = f"http://{EXERCISE_SERVICE_URL}"
 
 router = APIRouter()
 

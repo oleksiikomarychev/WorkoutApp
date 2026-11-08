@@ -85,10 +85,7 @@ async def _finish_session_postprocess_async(session_id: int, user_id: str) -> di
                 await db.commit()
                 await db.refresh(session)
                 try:
-                    base_url = os.getenv("PLANS_SERVICE_URL")
-                    if not base_url:
-                        raise RuntimeError("PLANS_SERVICE_URL is not set")
-                    base_url = base_url.rstrip("/")
+                    base_url = (os.getenv("PLANS_SERVICE_URL") or "http://plans-service:8005").rstrip("/")
                     adv_url = f"{base_url}/plans/applied-plans/{applied_plan_id}/advance-index?by=1"
                     headers = {"X-User-Id": user_id}
                     async with httpx.AsyncClient(timeout=4.0) as client:

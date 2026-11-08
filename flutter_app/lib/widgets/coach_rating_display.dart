@@ -22,7 +22,7 @@ class CoachRatingDisplay extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _buildStarRating(averageRating!),
+        _buildStarRating(context, averageRating!),
         const SizedBox(width: 4),
         Text(
           averageRating!.toStringAsFixed(1),
@@ -36,7 +36,7 @@ class CoachRatingDisplay extends StatelessWidget {
           Text(
             '($reviewCount)',
             style: TextStyle(
-              color: AppColors.textSecondary,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
             ),
           ),
@@ -45,7 +45,7 @@ class CoachRatingDisplay extends StatelessWidget {
     );
   }
 
-  Widget _buildStarRating(double rating) {
+  Widget _buildStarRating(BuildContext context, double rating) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(5, (index) {
@@ -64,7 +64,7 @@ class CoachRatingDisplay extends StatelessWidget {
         } else {
           return Icon(
             Icons.star_border,
-            color: AppColors.textSecondary.withOpacity(0.3),
+            color: Theme.of(context).colorScheme.outlineVariant,
             size: 16,
           );
         }

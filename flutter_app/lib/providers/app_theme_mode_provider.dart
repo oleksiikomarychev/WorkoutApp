@@ -6,23 +6,32 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const _kThemeModePrefsKey = 'app_theme_mode';
 
-final appThemeModeProvider = StateNotifierProvider<AppThemeModeController, ThemeMode>((ref) {
-  return AppThemeModeController();
-});
+final appThemeModeProvider =
+    StateNotifierProvider<AppThemeModeController, ThemeMode>((ref) {
+      return AppThemeModeController();
+    });
 
 class AppThemeModeController extends StateNotifier<ThemeMode> {
   bool _loaded = false;
   ThemeMode? _pending;
 
-  AppThemeModeController() : super(ThemeMode.system) {
-    unawaited(_load());
+  AppThemeModeController({ThemeMode? initialThemeMode})
+    : super(initialThemeMode ?? ThemeMode.system) {
+    if (initialThemeMode != null) {
+      _loaded = true;
+    } else {
+      unawaited(_load());
+    }
+  }
+
+  static Future<ThemeMode> loadInitialThemeMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return _parse(prefs.getString(_kThemeModePrefsKey)) ?? ThemeMode.system;
   }
 
   Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kThemeModePrefsKey);
-    final parsed = _parse(raw);
-    state = parsed ?? ThemeMode.system;
+    final parsed = await loadInitialThemeMode();
+    if (_pending == null) state = parsed;
     _loaded = true;
 
     final pending = _pending;
@@ -32,7 +41,7 @@ class AppThemeModeController extends StateNotifier<ThemeMode> {
     }
   }
 
-  ThemeMode? _parse(String? raw) {
+  static ThemeMode? _parse(String? raw) {
     switch ((raw ?? '').trim()) {
       case 'system':
         return ThemeMode.system;

@@ -126,7 +126,6 @@ async def create_review_for_link(
         
         # Update rating aggregates
         await _update_coaching_rating_aggregates(db, coach_id)
-        await db.commit()
         
         logger.info(
             "review_created",
@@ -195,8 +194,10 @@ async def get_reviews_for_coach(
                 
             if resp.status_code == 200:
                 users_data = resp.json()
-                for user in users_data:
-                    reviewer_names[user['user_id']] = user.get('display_name')
+                if isinstance(users_data, list):
+                    for user in users_data:
+                        if isinstance(user, dict) and "user_id" in user:
+                            reviewer_names[user["user_id"]] = user.get("display_name")
         except Exception as exc:
             logger.warning("reviews_fetch_reviewer_names_failed", coach_id=coach_id, error=str(exc))
     

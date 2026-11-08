@@ -1,27 +1,26 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class EffortType(str, Enum):
+class EffortType(StrEnum):
     RPE = "RPE"
     RIR = "RIR"
 
 
 class ExerciseSet(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     id: int | None = Field(None, description="ID of the set within the instance")
     weight: float | None = Field(None, ge=0, description="Weight in kg")
     volume: int | None = Field(None, ge=1, description="Volume")
     intensity: int | None = Field(None, description="Intensity, % of 1RM")
     effort_type: EffortType | None = Field(None, description="Type of effort")
     effort: int | None = Field(None, description="Effort value")
-
-    class Config:
-        extra = "allow"
 
 
 class CoachWorkoutUpdate(BaseModel):

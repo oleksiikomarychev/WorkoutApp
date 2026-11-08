@@ -17,6 +17,8 @@ from ..schemas import (
 
 @dataclass
 class ProfileData:
+    """Aggregated profile data containing user profile, settings, and coaching info."""
+
     profile: UserProfile
     settings: UserSettings
     coaching: UserCoachingProfile | None = None
@@ -24,19 +26,23 @@ class ProfileData:
 
 
 async def _fetch_profile(db: AsyncSession, user_id: str) -> UserProfile | None:
+    """Fetch user profile by user ID."""
     return await db.get(UserProfile, user_id)
 
 
 async def _fetch_settings(db: AsyncSession, user_id: str) -> UserSettings | None:
+    """Fetch user settings by user ID."""
     return await db.get(UserSettings, user_id)
 
 
 async def _fetch_coaching_profile(db: AsyncSession, user_id: str) -> UserCoachingProfile | None:
+    """Fetch coaching profile by user ID."""
     return await db.get(UserCoachingProfile, user_id)
 
 
 async def ensure_profile_and_settings(db: AsyncSession, user_id: str) -> ProfileData:
-    if (user_id or "").startswith("deleted:"):
+    """Ensure user profile and settings exist in database; create defaults if missing."""
+    if not user_id or user_id.startswith("deleted:"):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User profile not found")
 
     profile = await _fetch_profile(db, user_id)
@@ -58,11 +64,17 @@ async def ensure_profile_and_settings(db: AsyncSession, user_id: str) -> Profile
         await db.commit()
         await db.refresh(profile)
         await db.refresh(settings)
+
     coaching = await _fetch_coaching_profile(db, user_id)
     return ProfileData(profile=profile, settings=settings, coaching=coaching)
 
 
 async def ensure_coaching_profile(db: AsyncSession, user_id: str) -> UserCoachingProfile:
+    """Ensure coaching profile exists for given user ID, raising 404 if profile does not exist."""
+    profile = await _fetch_profile(db, user_id)
+    if profile is None or getattr(profile, "deleted_at", None) is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User profile not found")
+
     coaching = await _fetch_coaching_profile(db, user_id)
     if coaching is None:
         coaching = UserCoachingProfile(user_id=user_id)
@@ -72,6 +84,7 @@ async def ensure_coaching_profile(db: AsyncSession, user_id: str) -> UserCoachin
 
 
 def build_profile_response(data: ProfileData) -> ProfileResponse:
+    """Convert ProfileData domain object into API ProfileResponse schema."""
     return ProfileResponse(
         user_id=data.profile.user_id,
         display_name=data.profile.display_name,
@@ -106,6 +119,7 @@ def build_profile_response(data: ProfileData) -> ProfileResponse:
 def build_coaching_response(
     entity: UserCoachingProfile | None,
 ) -> CoachingProfileResponse | None:
+    """Convert UserCoachingProfile entity into CoachingProfileResponse schema."""
     if entity is None:
         return None
 
@@ -127,11 +141,12 @@ def build_coaching_response(
 
 
 def parse_unit_system(raw: str | None) -> UnitSystem | None:
+    """Parse and validate raw unit system string into UnitSystem enum."""
     if raw is None:
         return None
     try:
-        return UnitSystem(raw)
-    except ValueError as exc:  # pragma: no cover - validation error path
+        return UnitSystem(raw.lower().strip())
+    except (ValueError, AttributeError) as exc:
         allowed = ", ".join(u.value for u in UnitSystem)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

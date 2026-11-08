@@ -1,35 +1,58 @@
+from __future__ import annotations
+
 import logging
-import os
+from typing import Any
 
 import httpx
+
+from .config import settings
 
 logger = logging.getLogger(__name__)
 
 
 class WorkoutCalculator:
+    """Workout metrics and 1RM calculation helpers."""
+
     @staticmethod
-    async def get_true_1rm_from_user_max(user_max: dict) -> float | None:
+    async def get_true_1rm_from_user_max(user_max: dict[str, Any] | None) -> float | None:
+        """Calculate true 1RM from user max record, respecting precalculated true_1rm."""
         if not user_max:
             return None
+
+        # If true_1rm is already precalculated, prioritize it
+        true_1rm = user_max.get("true_1rm")
+        if true_1rm is not None:
+            try:
+                return float(true_1rm)
+            except (TypeError, ValueError):
+                pass
+
         max_weight = user_max.get("max_weight")
         rep_max = user_max.get("rep_max")
-        if max_weight is None or rep_max is None:
+        if max_weight is None:
             return None
 
-        return max_weight * (1 + 0.0333 * rep_max)
+        try:
+            w = float(max_weight)
+            r = int(rep_max) if rep_max is not None else 1
+            if r <= 0:
+                return w
+            return w * (1 + 0.0333 * r)
+        except (TypeError, ValueError):
+            return None
 
     async def _get_base_candidates(self) -> list[str]:
         candidates: list[str] = []
-        um_env = os.getenv("USER_MAX_SERVICE_URL")
+        um_env = settings.USER_MAX_SERVICE_URL
         if um_env:
             candidates.append(um_env.rstrip("/"))
-        else:
-            candidates.append("http://user-max-service:8003")
-        gw_env = os.getenv("GATEWAY_URL")
-        internal_secret = (os.getenv("INTERNAL_GATEWAY_SECRET") or os.getenv("GATEWAY_INTERNAL_SECRET") or "").strip()
+
+        gw_env = settings.GATEWAY_URL
+        internal_secret = settings.INTERNAL_GATEWAY_SECRET
         if gw_env and internal_secret:
             candidates.append(gw_env.rstrip("/"))
-        seen = set()
+
+        seen: set[str] = set()
         unique: list[str] = []
         for c in candidates:
             if c and not c.startswith("http"):
@@ -39,21 +62,17 @@ class WorkoutCalculator:
                 unique.append(c)
         return unique
 
-    async def _fetch_user_maxes(self, exercise_ids: list[int], *, user_id: str) -> list[dict]:
+    async def _fetch_user_maxes(self, exercise_ids: list[int], *, user_id: str) -> list[dict[str, Any]]:
         if not exercise_ids:
             return []
-        headers = {"Content-Type": "application/json", "X-User-Id": user_id}
+        headers: dict[str, str] = {"Content-Type": "application/json", "X-User-Id": user_id}
 
-        internal_secret = (os.getenv("INTERNAL_GATEWAY_SECRET") or os.getenv("GATEWAY_INTERNAL_SECRET") or "").strip()
+        internal_secret = settings.INTERNAL_GATEWAY_SECRET
         if internal_secret:
             headers["X-Internal-Secret"] = internal_secret
 
-        svc_token = os.getenv("SERVICE_TOKEN") or os.getenv("USER_MAX_SERVICE_TOKEN")
-        if svc_token:
-            headers["Authorization"] = f"Bearer {svc_token}"
         bases = await self._get_base_candidates()
-        gw_env = (os.getenv("GATEWAY_URL") or "").strip()
-        gw_base = gw_env.rstrip("/")
+        gw_base = (settings.GATEWAY_URL or "").strip().rstrip("/")
         if gw_base and not gw_base.startswith("http"):
             gw_base = "http://" + gw_base
 
@@ -70,7 +89,7 @@ class WorkoutCalculator:
                     if isinstance(data, list) and data:
                         return data
                 except Exception as e:
-                    logger.error(f"Failed to fetch user maxes from {base}: {e}")
+                    logger.error("Failed to fetch user maxes from %s: %s", base, e)
                     continue
 
         logger.error("All user-max services failed. Aborting workout calculation.")
@@ -81,12 +100,10 @@ class WorkoutCalculator:
             return
 
         bases: list[str] = []
-        ex_env = os.getenv("EXERCISES_SERVICE_URL")
-        if ex_env:
-            bases.append(ex_env.rstrip("/"))
-        gw_env = os.getenv("GATEWAY_URL")
-        if gw_env:
-            bases.append(gw_env.rstrip("/"))
+        if settings.EXERCISES_SERVICE_URL:
+            bases.append(settings.EXERCISES_SERVICE_URL.rstrip("/"))
+        if settings.GATEWAY_URL:
+            bases.append(settings.GATEWAY_URL.rstrip("/"))
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             for ex_id in exercise_ids:
@@ -102,11 +119,15 @@ class WorkoutCalculator:
                     except Exception:
                         continue
                 if not found:
-                    logger.warning(f"Exercise definition id={ex_id} not found via remote services")
+                    logger.warning("Exercise definition id=%s not found via remote services", ex_id)
                     continue
-        return
 
-    def _apply_normalization(self, effective_1rms: dict[int, float], value: float | None, unit: str | None):
+    def _apply_normalization(
+        self,
+        effective_1rms: dict[int, float],
+        value: float | None,
+        unit: str | None,
+    ) -> None:
         if value is None or unit is None:
             return
         if unit == "percentage":

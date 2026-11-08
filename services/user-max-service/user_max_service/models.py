@@ -27,14 +27,11 @@ class UserMax(Base):
         Index("idx_user_exercise_date", "user_id", "exercise_id", "date"),
     )
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"UserMax(exercise_id={self.exercise_id}): {self.max_weight} kg ({self.rep_max} reps)"
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<UserMax(id={self.id}, exercise_id={self.exercise_id}, max_weight={self.max_weight})>"
-
-    class Config:
-        from_attributes = True
 
 
 class UserMaxDailyAgg(Base):

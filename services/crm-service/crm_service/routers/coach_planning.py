@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..dependencies import get_current_user_id, get_db
 from ..schemas.coach_planning import (
     CoachExerciseInstanceCreate,
     CoachExerciseInstanceUpdate,
+    CoachWorkoutsMassEditRequest,
     CoachWorkoutUpdate,
 )
 from ..services.coach_planning_service import (
@@ -15,6 +18,7 @@ from ..services.coach_planning_service import (
     get_active_plan_analytics_for_athlete,
     get_active_plan_for_athlete,
     get_active_plan_workouts_for_athlete,
+    mass_edit_workouts_for_athlete,
     update_exercise_instance_for_athlete,
     update_workout_for_athlete,
 )
@@ -27,17 +31,17 @@ async def coach_get_active_plan(
     athlete_id: str,
     coach_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
-):
+) -> Any:
     return await get_active_plan_for_athlete(db=db, coach_id=coach_id, athlete_id=athlete_id)
 
 
 @router.get("/athletes/{athlete_id}/active-plan/analytics")
 async def coach_get_active_plan_analytics(
     athlete_id: str,
-    group_by: str | None = Query(None, regex="^(order|date)$"),
+    group_by: str | None = Query(default=None, pattern="^(order|date)$"),
     coach_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
-):
+) -> Any:
     return await get_active_plan_analytics_for_athlete(
         db=db,
         coach_id=coach_id,
@@ -51,7 +55,7 @@ async def coach_get_active_plan_workouts(
     athlete_id: str,
     coach_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
-):
+) -> list[Any]:
     return await get_active_plan_workouts_for_athlete(db=db, coach_id=coach_id, athlete_id=athlete_id)
 
 
@@ -62,7 +66,7 @@ async def coach_update_workout(
     payload: CoachWorkoutUpdate,
     coach_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
-):
+) -> Any:
     body = payload.model_dump(mode="json", exclude_none=True)
     if not body:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nothing to update")
@@ -82,7 +86,7 @@ async def coach_update_exercise_instance(
     payload: CoachExerciseInstanceUpdate,
     coach_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
-):
+) -> Any:
     body = payload.model_dump(mode="json", exclude_none=True)
     if not body:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nothing to update")
@@ -102,7 +106,7 @@ async def coach_create_exercise_instance(
     payload: CoachExerciseInstanceCreate,
     coach_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
-):
+) -> Any:
     body = payload.model_dump(mode="json", exclude_none=True)
     return await create_exercise_instance_for_athlete(
         db=db,
@@ -113,16 +117,36 @@ async def coach_create_exercise_instance(
     )
 
 
-@router.delete("/athletes/{athlete_id}/exercises/{instance_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/athletes/{athlete_id}/exercises/{instance_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
 async def coach_delete_exercise_instance(
     athlete_id: str,
     instance_id: int,
     coach_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
-):
+) -> None:
     await delete_exercise_instance_for_athlete(
         db=db,
         coach_id=coach_id,
         athlete_id=athlete_id,
         instance_id=instance_id,
+    )
+
+
+@router.post("/athletes/{athlete_id}/workouts/mass-edit")
+async def coach_mass_edit_workouts(
+    athlete_id: str,
+    payload: CoachWorkoutsMassEditRequest,
+    coach_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    return await mass_edit_workouts_for_athlete(
+        db=db,
+        coach_id=coach_id,
+        athlete_id=athlete_id,
+        request=payload,
     )

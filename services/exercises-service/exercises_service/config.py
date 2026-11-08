@@ -5,12 +5,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    EXERCISES_REDIS_HOST: str = os.getenv("EXERCISES_REDIS_HOST")
-    EXERCISES_REDIS_PORT: int = int(os.getenv("EXERCISES_REDIS_PORT"))
-    EXERCISES_REDIS_DB: int = int(os.getenv("EXERCISES_REDIS_DB"))
-    EXERCISES_REDIS_PASSWORD: str | None = os.getenv("EXERCISES_REDIS_PASSWORD")
+    """Configuration settings for exercises-service."""
 
-    EXERCISES_MEDIA_DIR: str = os.getenv("EXERCISES_MEDIA_DIR")
+    EXERCISES_REDIS_HOST: str = "localhost"
+    EXERCISES_REDIS_PORT: int = 6379
+    EXERCISES_REDIS_DB: int = 0
+    EXERCISES_REDIS_PASSWORD: str | None = None
+
+    EXERCISES_MEDIA_DIR: str = "data/exercise_media"
+    EXERCISES_DATABASE_URL: str = os.getenv(
+        "EXERCISES_DATABASE_URL",
+        os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/exercises_db"),
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

@@ -12,9 +12,23 @@ from main import app
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+import pytest
+import database
+from models import Base
+
+from sqlalchemy.pool import StaticPool
+
 # Create test database session
-engine = create_engine(settings.database_url)
+SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+database.SessionLocal = TestingSessionLocal
+
+Base.metadata.create_all(bind=engine)
 
 
 def override_get_db():
@@ -26,9 +40,25 @@ def override_get_db():
         db.close()
 
 
+import database
+database.SessionLocal = TestingSessionLocal
+
 app.dependency_overrides[get_db] = override_get_db
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def setup_posts_test():
+    """Ensure db override is active for posts tests."""
+    app.dependency_overrides[get_db] = override_get_db
+    yield
+
+
+@pytest.fixture
+def created_post():
+    """Fixture providing a created post ID and user ID."""
+    return test_create_post()
 
 
 def test_create_post():
@@ -88,8 +118,9 @@ def test_create_post():
     return post_id, user_id
 
 
-def test_get_post(post_id: str, user_id: str):
+def test_get_post(created_post: tuple[str, str]):
     """Test getting a post."""
+    post_id, user_id = created_post
     print("\n=== Test: Get Post ===")
     
     response = client.get(
@@ -125,8 +156,9 @@ def test_get_post(post_id: str, user_id: str):
     print("✓ Fields filtering works correctly")
 
 
-def test_get_feed(user_id: str):
+def test_get_feed(created_post: tuple[str, str]):
     """Test getting feed."""
+    _post_id, user_id = created_post
     print("\n=== Test: Get Feed ===")
     
     response = client.get(

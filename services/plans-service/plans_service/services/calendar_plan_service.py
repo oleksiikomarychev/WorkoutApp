@@ -54,6 +54,7 @@ logger = structlog.get_logger(__name__)
 
 
 class CalendarPlanService:
+    @staticmethod
     async def create_plan(db: AsyncSession, plan_data: CalendarPlanCreate, user_id: str) -> CalendarPlanResponse:
         try:
             plan = CalendarPlan(
@@ -165,6 +166,7 @@ class CalendarPlanService:
             logger.exception("calendar_plan_create_failed", user_id=user_id)
             raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
+    @staticmethod
     async def create_variant(
         db: AsyncSession,
         plan_id: int,
@@ -276,6 +278,7 @@ class CalendarPlanService:
         await invalidate_plans_cache(user_id, plan_ids=[variant.id, plan_id, source.id])
         return CalendarPlanService._get_plan_response(created_variant)
 
+    @staticmethod
     async def list_variants(db: AsyncSession, plan_id: int, user_id: str) -> list[CalendarPlanSummaryResponse]:
         stmt = select(CalendarPlan).where(
             CalendarPlan.id == plan_id,
@@ -323,6 +326,7 @@ class CalendarPlanService:
             )
         return summaries
 
+    @staticmethod
     async def get_plan(db: AsyncSession, plan_id: int, user_id: str) -> CalendarPlanResponse | None:
         cache_key = calendar_plan_key(user_id, plan_id)
         redis = await get_redis()
@@ -384,6 +388,7 @@ class CalendarPlanService:
                 detail=f"Failed to get plan: {str(e)}",
             )
 
+    @staticmethod
     async def get_all_plans(db: AsyncSession, user_id: str, roots_only: bool = True) -> list[CalendarPlanResponse]:
         cache_key = plans_list_key(user_id, roots_only)
         redis = await get_redis()
@@ -451,6 +456,7 @@ class CalendarPlanService:
                 detail=f"Failed to fetch plans: {str(e)}",
             )
 
+    @staticmethod
     async def get_favorite_plans(db: AsyncSession, user_id: str) -> list[CalendarPlanResponse]:
         cache_key = favorite_plans_key(user_id)
         redis = await get_redis()
@@ -507,6 +513,7 @@ class CalendarPlanService:
                 detail=f"Failed to fetch favorite plans: {str(e)}",
             )
 
+    @staticmethod
     async def generate_workouts(db: AsyncSession, plan_id: int, user_id: str) -> list[dict[str, Any]]:
         try:
             stmt = (
@@ -613,6 +620,7 @@ class CalendarPlanService:
             return False
         return True
 
+    @staticmethod
     async def apply_mass_edit(
         db: AsyncSession,
         plan_id: int,
@@ -764,6 +772,7 @@ class CalendarPlanService:
                 detail=f"Failed to apply mass edit: {str(e)}",
             )
 
+    @staticmethod
     async def recalc_sets(
         db: AsyncSession,
         plan_id: int,
@@ -857,6 +866,7 @@ class CalendarPlanService:
                 detail=f"Failed to recalc plan sets: {str(e)}",
             )
 
+    @staticmethod
     async def update_plan(
         db: AsyncSession, plan_id: int, plan_data: CalendarPlanUpdate, user_id: str
     ) -> CalendarPlanResponse:
@@ -887,6 +897,7 @@ class CalendarPlanService:
             raise ValueError("Plan not found or permission denied")
         return CalendarPlanService._get_plan_response(plan2)
 
+    @staticmethod
     async def delete_plan(db: AsyncSession, plan_id: int, user_id: str, cascade: bool = False) -> None:
         try:
             stmt = (
@@ -1001,12 +1012,14 @@ class CalendarPlanService:
 
     @staticmethod
     async def _get_exercise_details(exercise_definition_id: int) -> dict:
+        import os
         import httpx
 
+        exercises_base = (os.getenv("EXERCISES_SERVICE_URL") or "http://exercises-service:8002").rstrip("/")
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"http://exercises-service:8002/exercises/definitions/{exercise_definition_id}",
+                    f"{exercises_base}/exercises/definitions/{exercise_definition_id}",
                     timeout=5.0,
                 )
             if response.status_code == 200:
@@ -1028,6 +1041,7 @@ class CalendarPlanService:
                 detail="Exercises service unavailable",
             )
 
+    @staticmethod
     async def get_flattened_workouts(db: AsyncSession, plan_id: int, user_id: str) -> list[dict[str, Any]]:
         plan = await CalendarPlanService.get_plan(db, plan_id, user_id)
         if not plan:

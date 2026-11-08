@@ -1,11 +1,12 @@
-import 'package:flutter/foundation.dart'
-    show kIsWeb, defaultTargetPlatform, TargetPlatform, kReleaseMode;
-import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ApiConfig {
-  static bool useProd = false;
+  static bool useProd = kReleaseMode;
+
+  static const String _productionUrlOverride =
+      String.fromEnvironment('PROD_API_BASE_URL', defaultValue: '');
 
   static String get localBaseUrl {
     // 1. Если это Web, жестко возвращаем localhost
@@ -17,8 +18,9 @@ class ApiConfig {
     return dotenv.maybeGet('LOCAL_API_BASE_URL') ?? 'http://192.168.31.75:8000';
   }
 
-  static final String productionBaseUrl =
-      dotenv.maybeGet('PROD_API_BASE_URL') ?? 'http://46.62.207.163:8000';
+  static final String productionBaseUrl = _productionUrlOverride.isNotEmpty
+      ? _productionUrlOverride
+      : dotenv.maybeGet('PROD_API_BASE_URL') ?? 'http://46.62.207.163:8000';
 
   static const int connectionTimeout = 60;
   static const int receiveTimeout = 60;

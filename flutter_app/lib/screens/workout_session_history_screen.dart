@@ -59,7 +59,7 @@ class _WorkoutSessionHistoryScreenState extends ConsumerState<WorkoutSessionHist
     return AssistantChatHost(
       builder: (context, openChat) {
         return Scaffold(
-          backgroundColor: AppColors.background,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           appBar: PrimaryAppBar(
             title: 'Session History',
             onTitleTap: openChat,

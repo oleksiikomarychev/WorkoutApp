@@ -231,8 +231,11 @@ class _WorkoutListDialog extends StatelessWidget {
     return AlertDialog(
       title: Text(l10n.macroWorkoutPickerTitle),
       content: SizedBox(
-        width: 420,
-        height: 420,
+        width: (MediaQuery.sizeOf(context).width - 96).clamp(0.0, 420.0),
+        height: (MediaQuery.sizeOf(context).height -
+                MediaQuery.viewInsetsOf(context).bottom -
+                180)
+            .clamp(160.0, 420.0),
         child: ListView.separated(
           itemCount: workouts.length,
           separatorBuilder: (_, __) => const Divider(height: 1),

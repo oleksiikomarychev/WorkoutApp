@@ -40,7 +40,10 @@ class UserProfileView extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             profile.bio!,
-            style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
+            style: TextStyle(
+              fontSize: 14,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
         if (showCoachingCard) ...[
@@ -63,20 +66,26 @@ class UserProfileView extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 50,
-              backgroundColor: AppColors.primary.withOpacity(0.15),
-              backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+              backgroundImage: avatarUrl != null
+                  ? NetworkImage(avatarUrl)
+                  : null,
               child: avatarUrl == null
                   ? Text(
                       (profile.displayName?.isNotEmpty ?? false)
                           ? profile.displayName!.substring(0, 1).toUpperCase()
                           : profile.userId.substring(0, 1).toUpperCase(),
-                      style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.primary),
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
                     )
                   : null,
             ),
             if (isOwner && onAvatarTool != null)
               Material(
-                color: AppColors.surface,
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
                 shape: const CircleBorder(),
                 elevation: 2,
                 child: IconButton(
@@ -91,13 +100,20 @@ class UserProfileView extends StatelessWidget {
         Text(
           profile.displayName ?? 'User ${profile.userId}',
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
         ),
         const SizedBox(height: 4),
         Text(
           subtitle ?? profile.userId,
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          style: TextStyle(
+            fontSize: 13,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
         if (isOwner && (onEditProfile != null || onManageCoaching != null)) ...[
           const SizedBox(height: 12),
@@ -134,7 +150,7 @@ class UserProfileView extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         boxShadow: AppShadows.sm,
       ),
@@ -143,46 +159,75 @@ class UserProfileView extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.workspace_premium_outlined, color: AppColors.primary),
+              const Icon(
+                Icons.workspace_premium_outlined,
+                color: AppColors.primary,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   l10n.coachingTitle,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
               ),
               if (enabled)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE6F4EA),
+                    color: Theme.of(context).colorScheme.tertiaryContainer,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     l10n.coachingAcceptingNewClients,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: AppColors.success,
+                      color: Theme.of(context).colorScheme.onTertiaryContainer,
                     ),
                   ),
                 )
               else
-                Text(l10n.coachingDisabled, style: const TextStyle(color: AppColors.textSecondary)),
+                Text(
+                  l10n.coachingDisabled,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 16),
           if (!enabled)
             Text(
               l10n.coachingDisabledDescription,
-              style: const TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             )
           else ...[
             if ((coaching?.tagline?.isNotEmpty ?? false)) ...[
-              Text(coaching!.tagline!, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              Text(
+                coaching!.tagline!,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
               const SizedBox(height: 8),
             ],
             if ((coaching?.description?.isNotEmpty ?? false)) ...[
-              Text(coaching!.description!, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+              Text(
+                coaching!.description!,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
               const SizedBox(height: 12),
             ],
             Wrap(
@@ -190,11 +235,20 @@ class UserProfileView extends StatelessWidget {
               runSpacing: 8,
               children: [
                 if ((coaching?.specializations ?? []).isNotEmpty)
-                  _chip(l10n.coachingSpecializations, coaching!.specializations.join(', ')),
+                  _chip(
+                    context,
+                    l10n.coachingSpecializations,
+                    coaching!.specializations.join(', '),
+                  ),
                 if ((coaching?.languages ?? []).isNotEmpty)
-                  _chip(l10n.coachingLanguages, coaching!.languages.join(', ')),
+                  _chip(
+                    context,
+                    l10n.coachingLanguages,
+                    coaching!.languages.join(', '),
+                  ),
                 if (coaching?.ratePlan != null)
                   _chip(
+                    context,
                     l10n.coachingRate,
                     coaching!.ratePlan!.amountMinor != null
                         ? '${(coaching.ratePlan!.amountMinor! / 100).toStringAsFixed(0)} USD / month'
@@ -209,9 +263,9 @@ class UserProfileView extends StatelessWidget {
                 icon: const Icon(Icons.handshake_outlined),
                 label: Text(l10n.requestCoaching),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.textPrimary,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: AppColors.textSecondary.withOpacity(0.3),
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                  disabledBackgroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
@@ -221,20 +275,33 @@ class UserProfileView extends StatelessWidget {
     );
   }
 
-  Widget _chip(String label, String value) {
+  Widget _chip(BuildContext context, String label, String value) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: Theme.of(context).colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
           const SizedBox(height: 2),
-          Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
         ],
       ),
     );

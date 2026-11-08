@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from sqlalchemy import JSON, ForeignKey, Index, String
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -6,6 +8,8 @@ from .database import Base
 
 
 class ExerciseList(Base, AsyncAttrs):
+    """Database model for an exercise definition in the catalog."""
+
     __tablename__ = "exercise_list"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
@@ -17,9 +21,9 @@ class ExerciseList(Base, AsyncAttrs):
     movement_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     region: Mapped[str | None] = mapped_column(String(32), nullable=True)
     root_exercise_id: Mapped[int | None] = mapped_column(
-        ForeignKey("exercise_list.id", ondelete="SET NULL"), 
-        nullable=True, 
-        index=True
+        ForeignKey("exercise_list.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     gif_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
@@ -29,18 +33,18 @@ class ExerciseList(Base, AsyncAttrs):
         Index("ix_equipment_btree", "equipment"),
     )
 
-    root_exercise: Mapped["ExerciseList"] = relationship(
+    root_exercise: Mapped[ExerciseList | None] = relationship(
         "ExerciseList",
         remote_side=[id],
         foreign_keys=[root_exercise_id],
         back_populates="variants",
     )
-    
-    variants: Mapped[list["ExerciseList"]] = relationship(
+
+    variants: Mapped[list[ExerciseList]] = relationship(
         "ExerciseList",
         foreign_keys=[root_exercise_id],
         back_populates="root_exercise",
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ExerciseList(id={self.id}, name='{self.name}')>"

@@ -305,7 +305,7 @@ class UserProfileScreen extends ConsumerWidget {
       contextBuilder: _buildProfileChatContext,
       builder: (hostContext, openChat) {
         return Scaffold(
-          backgroundColor: AppColors.background,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           body: Stack(
             children: [
               SafeArea(

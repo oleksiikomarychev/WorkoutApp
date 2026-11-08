@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class CoachAthleteStatus(str, Enum):
+class CoachAthleteStatus(StrEnum):
     pending = "pending"
     active = "active"
     paused = "paused"
@@ -29,6 +29,8 @@ class CoachAthleteLinkStatusUpdate(BaseModel):
 
 
 class CoachAthleteLinkResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     coach_id: str
     athlete_id: str
@@ -39,9 +41,6 @@ class CoachAthleteLinkResponse(BaseModel):
     updated_at: datetime
     ended_at: datetime | None = None
     ended_reason: str | None = None
-
-    class Config:
-        from_attributes = True
 
 
 class CoachAthleteTagBase(BaseModel):
@@ -61,6 +60,8 @@ class CoachAthleteTagUpdate(BaseModel):
 
 
 class CoachAthleteTagResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
     color: str | None
@@ -69,9 +70,6 @@ class CoachAthleteTagResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class CoachAthleteTagAssignRequest(BaseModel):
@@ -95,6 +93,8 @@ class CoachAthleteNoteUpdate(BaseModel):
 
 
 class CoachAthleteNoteResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     link_id: int
     author_id: str
@@ -103,6 +103,3 @@ class CoachAthleteNoteResponse(BaseModel):
     pinned: bool
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True

@@ -1,19 +1,22 @@
 """FastAPI HTTP service for RPE calculations."""
 
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+import hmac
 import logging
 import os
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, status
 from fastapi.responses import JSONResponse
 
 from .calculation import calculate_rpe_set_values, get_rpe_table
 from .config import settings
-from .rpc import get_effective_max
+from .rpc import close_http_client, get_effective_max
 from .schemas import (
     ComputationError,
     InternalPurgeResponse,
+    PlanNotificationRequest,
+    PlanNotificationResponse,
     RpeComputeRequest,
     RpeComputeResponse,
 )
@@ -22,16 +25,18 @@ from .schemas import (
 try:
     from prometheus_fastapi_instrumentator import Instrumentator
 except ImportError:
-    Instrumentator = None  # type: ignore[assignment]
+    Instrumentator = None  # type: ignore[assignment, misc]
 
 try:
     from sentry_sdk import set_tag, set_user
 except ImportError:
+
     def set_tag(key: str, value: str) -> None:  # type: ignore[misc]
         pass
 
     def set_user(user: dict[str, str]) -> None:  # type: ignore[misc]
         pass
+
 
 logger = logging.getLogger("rpe_service")
 
@@ -46,13 +51,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.warning("Could not preload RPE table on startup: %s", e)
 
-    for route in app.routes:
-        route_path = getattr(route, "path", None)
-        methods = getattr(route, "methods", None)
-        if route_path:
-            logger.info("Registered route: %s (%s)", route_path, methods)
-
     yield
+
+    try:
+        await close_http_client()
+    except Exception as e:
+        logger.warning("Error closing HTTP client on shutdown: %s", e)
+
     logger.info("RPE service shut down cleanly")
 
 
@@ -86,7 +91,7 @@ def purge_user_internal(
     the internal secret to integrate with the gateway purge pipeline.
     """
     expected_secret = (settings.INTERNAL_GATEWAY_SECRET or os.getenv("INTERNAL_GATEWAY_SECRET") or "").strip()
-    if expected_secret and x_internal_secret != expected_secret:
+    if expected_secret and not hmac.compare_digest(x_internal_secret or "", expected_secret):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     logger.info("Purged user data for user_id=%s (stateless service, 0 records)", user_id)
@@ -102,7 +107,15 @@ def get_current_user_id(x_user_id: str | None = Header(default=None, alias="X-Us
     return x_user_id
 
 
-@router.get("/table", tags=["Utils"])
+def get_optional_user_id(x_user_id: str | None = Header(default=None, alias="X-User-Id")) -> str | None:
+    """Dependency that extracts optional user ID without blocking unauthenticated internal math calls."""
+    if x_user_id:
+        set_user({"id": str(x_user_id)})
+        set_tag("service", "rpe-service")
+    return x_user_id
+
+
+@router.get("/table", tags=["Utils"], response_model=dict[int, dict[int, int]])
 def get_table(user_id: str = Depends(get_current_user_id)) -> dict[int, dict[int, int]] | JSONResponse:
     """Get the full RPE table matrix."""
     try:
@@ -119,7 +132,7 @@ def get_table(user_id: str = Depends(get_current_user_id)) -> dict[int, dict[int
 @router.post("/compute", tags=["Utils"], response_model=RpeComputeResponse)
 async def compute_rpe_set(
     payload: RpeComputeRequest,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str | None = Depends(get_optional_user_id),
 ) -> RpeComputeResponse | JSONResponse:
     """Compute missing RPE parameters and calculated target weight."""
     try:
@@ -153,7 +166,8 @@ async def compute_rpe_set(
             f"RPE calculation failed: {str(e)}. "
             f"Input: intensity={payload.intensity}, volume={payload.volume}, effort={payload.effort}. "
             "This combination may not exist in the RPE table. "
-            "Valid ranges: 90-100%→1-3 reps, 80-89%→3-6 reps, 70-79%→6-10 reps, 60-69%→10-20 reps, 50-59%→15-25 reps."
+            "Valid ranges: 90-100%->1-3 reps, 80-89%->3-6 reps, 70-79%->6-10 reps, "
+            "60-69%->10-20 reps, 50-59%->15-25 reps."
         )
         logger.error("%s", error_msg)
         return JSONResponse(
@@ -162,10 +176,19 @@ async def compute_rpe_set(
         )
 
 
+@router.post("/plans", tags=["Plans"], response_model=PlanNotificationResponse)
+async def handle_plan_notification(
+    payload: PlanNotificationRequest,
+    user_id: str | None = Depends(get_optional_user_id),
+) -> PlanNotificationResponse:
+    """Acknowledge training plan notifications from agent-service."""
+    logger.info("Received plan notification for user_id=%s", user_id)
+    return PlanNotificationResponse()
+
+
 app.include_router(router)
 
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=settings.SERVICE_PORT)
-

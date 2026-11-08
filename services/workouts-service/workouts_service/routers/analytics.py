@@ -570,13 +570,15 @@ def _compute_actual_layer_metrics(
                         muscle_group_tonnage[muscle_group] = muscle_group_tonnage.get(muscle_group, 0.0) + ton
                     if effort is not None:
                         try:
-                            muscle_group_eff_sum[muscle_group] = muscle_group_eff_sum.get(muscle_group, 0.0) + float(effort)
+                            eff_val = float(effort)
+                            muscle_group_eff_sum[muscle_group] = muscle_group_eff_sum.get(muscle_group, 0.0) + eff_val
                             muscle_group_eff_cnt[muscle_group] = muscle_group_eff_cnt.get(muscle_group, 0.0) + 1.0
                         except (TypeError, ValueError):
                             pass
                     if intensity is not None:
                         try:
-                            muscle_group_int_sum[muscle_group] = muscle_group_int_sum.get(muscle_group, 0.0) + float(intensity)
+                            int_val = float(intensity)
+                            muscle_group_int_sum[muscle_group] = muscle_group_int_sum.get(muscle_group, 0.0) + int_val
                             muscle_group_int_cnt[muscle_group] = muscle_group_int_cnt.get(muscle_group, 0.0) + 1.0
                         except (TypeError, ValueError):
                             pass
@@ -876,8 +878,6 @@ async def get_completed_workouts_analytics(
     if not workouts:
         return PlanAnalyticsResponse(items=[])
 
-    rpe_table = await _get_rpe_table(user_id)
-
     workout_ids = [w.id for w in workouts if w.id is not None]
 
     ex_q = (
@@ -936,18 +936,6 @@ async def get_completed_workouts_analytics(
                     total_weight += float(s.working_weight)
                     cnt_weight += 1
 
-                reps_i: int | None = None
-                try:
-                    if s.volume is not None:
-                        reps_i = int(round(float(s.volume)))
-                except (TypeError, ValueError):
-                    reps_i = None
-                rpe_i: int | None = None
-                try:
-                    if s.effort is not None:
-                        rpe_i = int(math.floor(float(s.effort)))
-                except (TypeError, ValueError):
-                    rpe_i = None
                 if s.working_weight is not None:
                     inten_eff = None
                     try:
@@ -1249,7 +1237,7 @@ async def get_plan_analytics(
             continue
 
     need_defs = include_meta or any(
-        l.startswith("muscle:") or l.startswith("muscle_group:") for l in parsed_layers
+        layer.startswith("muscle:") or layer.startswith("muscle_group:") for layer in parsed_layers
     )
     exercise_defs: dict[int, dict[str, Any]] = {}
     if need_defs:
@@ -1420,8 +1408,8 @@ async def get_plan_analytics(
                                     s.volume
                                 )
                             if s.working_weight is not None:
-                                planned_muscle_group_weight_sum[mg] = planned_muscle_group_weight_sum.get(mg, 0.0) + float(
-                                    s.working_weight
+                                planned_muscle_group_weight_sum[mg] = (
+                                    planned_muscle_group_weight_sum.get(mg, 0.0) + float(s.working_weight)
                                 )
                                 planned_muscle_group_weight_den[mg] = planned_muscle_group_weight_den.get(mg, 0.0) + 1.0
                             if s.volume is not None and s.working_weight is not None:
@@ -1470,19 +1458,29 @@ async def get_plan_analytics(
                                     frac = wgt / total_w
                                     planned_muscle_sets[m] = planned_muscle_sets.get(m, 0.0) + frac
                                     if s.effort is not None:
-                                        planned_muscle_eff_sum[m] = planned_muscle_eff_sum.get(m, 0.0) + float(s.effort) * frac
+                                        eff_contrib = float(s.effort) * frac
+                                        planned_muscle_eff_sum[m] = planned_muscle_eff_sum.get(m, 0.0) + eff_contrib
                                         planned_muscle_eff_den[m] = planned_muscle_eff_den.get(m, 0.0) + frac
                                     if s.intensity is not None:
-                                        planned_muscle_int_sum[m] = planned_muscle_int_sum.get(m, 0.0) + float(s.intensity) * frac
+                                        int_contrib = float(s.intensity) * frac
+                                        planned_muscle_int_sum[m] = planned_muscle_int_sum.get(m, 0.0) + int_contrib
                                         planned_muscle_int_den[m] = planned_muscle_int_den.get(m, 0.0) + frac
                                     if s.volume is not None:
                                         share = float(s.volume) * frac
                                         planned_muscle_volume[m] = planned_muscle_volume.get(m, 0.0) + share
                                         if s.working_weight is not None:
-                                            planned_muscle_weight_sum[m] = planned_muscle_weight_sum.get(m, 0.0) + float(s.working_weight) * frac
-                                            planned_muscle_weight_den[m] = planned_muscle_weight_den.get(m, 0.0) + frac
+                                            weight_contrib = float(s.working_weight) * frac
+                                            planned_muscle_weight_sum[m] = (
+                                                planned_muscle_weight_sum.get(m, 0.0) + weight_contrib
+                                            )
+                                            planned_muscle_weight_den[m] = (
+                                                planned_muscle_weight_den.get(m, 0.0) + frac
+                                            )
                                         if s.working_weight is not None:
-                                            planned_muscle_tonnage[m] = planned_muscle_tonnage.get(m, 0.0) + share * float(s.working_weight)
+                                            ton_contrib = share * float(s.working_weight)
+                                            planned_muscle_tonnage[m] = (
+                                                planned_muscle_tonnage.get(m, 0.0) + ton_contrib
+                                            )
 
                                     if s.working_weight is not None:
                                         inten_eff = None
@@ -1580,7 +1578,9 @@ async def get_plan_analytics(
                     metrics[_layer_metric_key(layer, "kilograms_avg")] = (
                         float(planned_muscle_group_weight_sum.get(name, 0.0)) / wden if wden > 0 else 0.0
                     )
-                    metrics[_layer_metric_key(layer, "tonnage_sum")] = float(planned_muscle_group_tonnage.get(name, 0.0))
+                    metrics[_layer_metric_key(layer, "tonnage_sum")] = float(
+                        planned_muscle_group_tonnage.get(name, 0.0)
+                    )
                     e1cnt = float(planned_muscle_group_e1rm_cnt.get(name, 0.0))
                     metrics[_layer_metric_key(layer, "one_rm_est_avg")] = (
                         float(planned_muscle_group_e1rm_sum.get(name, 0.0)) / e1cnt if e1cnt > 0 else 0.0
@@ -1597,7 +1597,9 @@ async def get_plan_analytics(
         if include_meta:
             for ex_id, agg in per_exercise.items():
                 layer = f"exercise:{ex_id}"
-                planned_layer_totals[layer] = planned_layer_totals.get(layer, 0.0) + float(agg.get("volume_sum", 0.0))
+                planned_layer_totals[layer] = (
+                    planned_layer_totals.get(layer, 0.0) + float(agg.get("volume_sum", 0.0))
+                )
             for name, v in planned_muscle_volume.items():
                 layer = f"muscle:{name}"
                 planned_layer_totals[layer] = planned_layer_totals.get(layer, 0.0) + float(v)

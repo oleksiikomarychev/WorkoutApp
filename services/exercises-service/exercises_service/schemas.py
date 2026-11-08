@@ -1,19 +1,19 @@
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class EffortType(str, Enum):
+class EffortType(StrEnum):
     RPE = "RPE"
     RIR = "RIR"
 
 
-class MovementType(str, Enum):
+class MovementType(StrEnum):
     compound = "compound"
     isolation = "isolation"
 
 
-class Region(str, Enum):
+class Region(StrEnum):
     upper = "upper"
     lower = "lower"
 
@@ -34,7 +34,7 @@ class ExerciseListBase(BaseModel):
     region: Region | None = Field(None, description="upper or lower")
     root_exercise_id: int | None = Field(
         None,
-        description=("ID of the root/base exercise definition this exercise is a variant of"),
+        description="ID of the root/base exercise definition this exercise is a variant of",
     )
 
     image_url: str | None = Field(None, description="URL to exercise image (png/jpg)")

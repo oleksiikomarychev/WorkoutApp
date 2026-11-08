@@ -1,30 +1,60 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:workout_app/main.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:workout_app/config/theme/app_theme.dart';
+import 'package:workout_app/l10n/app_localizations.dart';
+import 'package:workout_app/models/user_stats.dart';
+import 'package:workout_app/providers/app_theme_mode_provider.dart';
+import 'package:workout_app/widgets/profile_sections.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  test('saved theme is available before the first frame', () async {
+    SharedPreferences.setMockInitialValues({'app_theme_mode': 'dark'});
+    final mode = await AppThemeModeController.loadInitialThemeMode();
+    expect(mode, ThemeMode.dark);
+    final controller = AppThemeModeController(initialThemeMode: mode);
+    expect(controller.debugState, ThemeMode.dark);
+    controller.dispose();
+  });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  testWidgets('profile stat cards use the active color scheme', (tester) async {
+    const stats = UserStats(
+      totalWorkouts: 8,
+      totalVolume: 1200,
+      activeDays: 4,
+      activityMap: {},
+      completedSessions: [],
+      maxDayVolume: 0,
+      weeks: 1,
+    );
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+      final theme = mode == ThemeMode.light
+          ? AppTheme.lightTheme()
+          : AppTheme.darkTheme();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme(),
+          darkTheme: AppTheme.darkTheme(),
+          themeMode: mode,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const Scaffold(body: ProfileStatsRow(stats: stats)),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+      final value = tester.widget<Text>(find.text('8'));
+      expect(value.style?.color, theme.colorScheme.onTertiaryContainer);
+      final card = tester.widget<Container>(
+        find
+            .ancestor(of: find.text('8'), matching: find.byType(Container))
+            .first,
+      );
+      expect(
+        (card.decoration as BoxDecoration).color,
+        theme.colorScheme.tertiaryContainer,
+      );
+    }
   });
 }

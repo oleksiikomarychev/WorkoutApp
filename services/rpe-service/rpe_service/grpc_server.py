@@ -1,46 +1,55 @@
 """gRPC server for RPE calculations."""
 
-from collections.abc import AsyncIterator
 import asyncio
-from concurrent import futures
 import logging
-from pathlib import Path
 import sys
+from collections.abc import AsyncIterator
+from concurrent import futures
+from pathlib import Path
 from typing import Any
 
-import grpc
+import grpc  # type: ignore[import-untyped]
+
+from .calculation import calculate_rpe_set_values, get_rpe_table
+from .config import settings
+from .rpc import get_effective_max
 
 # Add proto_gen to path for imports
-proto_gen_path = Path(__file__).parent.parent / "proto_gen"
+proto_gen_path = Path(__file__).resolve().parent.parent / "proto_gen"
 if str(proto_gen_path) not in sys.path:
     sys.path.insert(0, str(proto_gen_path))
 
 try:
-    from grpc_health.v1 import health_pb2, health_pb2_grpc
+    from grpc_health.v1 import health_pb2, health_pb2_grpc  # type: ignore[import-untyped]  # noqa: E402
 except ImportError:
-    import health_pb2  # type: ignore[no-redef]
-    import health_pb2_grpc  # type: ignore[no-redef]
+    import health_pb2  # type: ignore[no-redef, import-not-found]  # noqa: E402
+    import health_pb2_grpc  # type: ignore[no-redef, import-not-found]  # noqa: E402
 
+# Ensure common_pb2 is registered in descriptor pool before rpe_pb2
 try:
-    import workoutapp.common.common_pb2 as common_pb2  # noqa: F401, E402
+    import workoutapp.common.common_pb2 as common_pb2  # type: ignore[import-not-found]  # noqa: E402, F401
 except ImportError:
     try:
-        import common_pb2 as common_pb2  # noqa: F401, E402
+        import common_pb2 as common_pb2  # type: ignore[import-not-found]  # noqa: E402, F401
     except ImportError:
         pass
 
 try:
-    import workoutapp.rpe.rpe_pb2 as rpe_pb2  # noqa: E402
-    import workoutapp.rpe.rpe_pb2_grpc as rpe_pb2_grpc  # noqa: E402
+    import workoutapp.rpe.rpe_pb2 as rpe_pb2  # type: ignore[import-not-found]  # noqa: E402
+    import workoutapp.rpe.rpe_pb2_grpc as rpe_pb2_grpc  # type: ignore[import-not-found]  # noqa: E402
 except ImportError:
-    import rpe_pb2 as rpe_pb2  # type: ignore[no-redef]  # noqa: E402
-    import rpe_pb2_grpc as rpe_pb2_grpc  # type: ignore[no-redef]  # noqa: E402
-
-from .calculation import calculate_rpe_set_values, get_rpe_table  # noqa: E402
-from .config import settings  # noqa: E402
-from .rpc import get_effective_max  # noqa: E402
+    import rpe_pb2 as rpe_pb2  # type: ignore[no-redef, import-not-found]  # noqa: E402
+    import rpe_pb2_grpc as rpe_pb2_grpc  # type: ignore[no-redef, import-not-found]  # noqa: E402
 
 logger = logging.getLogger("rpe_service.grpc")
+
+
+def _has_field(msg: Any, field_name: str) -> bool:
+    """Safely check if a protobuf message has an optional field set."""
+    try:
+        return bool(msg.HasField(field_name))
+    except (ValueError, AttributeError):
+        return getattr(msg, field_name, None) is not None
 
 
 class RPEServicer(rpe_pb2_grpc.RPEServiceServicer):
@@ -53,25 +62,29 @@ class RPEServicer(rpe_pb2_grpc.RPEServiceServicer):
     ) -> rpe_pb2.RPEComputeResponse:
         """Compute RPE-based weight calculation via gRPC."""
         try:
-            intensity = request.intensity if request.HasField("intensity") else None
-            effort = request.effort if request.HasField("effort") else None
-            volume = request.volume if request.HasField("volume") else None
+            intensity = request.intensity if _has_field(request, "intensity") else None
+            effort = request.effort if _has_field(request, "effort") else None
+            volume = request.volume if _has_field(request, "volume") else None
 
             user_id: str | None = None
-            if request.HasField("user_context") and request.user_context.user_id:
+            if _has_field(request, "user_context") and getattr(request.user_context, "user_id", None):
                 user_id = request.user_context.user_id
 
-            max_weight: float | None = request.max_weight if request.HasField("max_weight") else None
-            if request.user_max_id:
+            max_weight: float | None = request.max_weight if _has_field(request, "max_weight") else None
+            user_max_id: int | None = request.user_max_id if _has_field(request, "user_max_id") else None
+
+            if user_max_id:
                 try:
-                    fetched_max = await get_effective_max(request.user_max_id, user_id=user_id)
+                    fetched_max = await get_effective_max(user_max_id, user_id=user_id)
                     max_weight = fetched_max
                 except Exception as e:
-                    logger.warning("Failed to get effective max for user_max_id=%s: %s", request.user_max_id, e)
+                    logger.warning("Failed to get effective max for user_max_id=%s: %s", user_max_id, e)
 
             table = get_rpe_table()
             rounding_step = request.rounding_step if request.rounding_step > 0 else 2.5
-            rounding_mode = request.rounding_mode or "nearest"
+            rounding_mode = (request.rounding_mode or "nearest").lower().strip()
+            if rounding_mode not in ("nearest", "floor", "ceil"):
+                rounding_mode = "nearest"
 
             _, _, _, weight = calculate_rpe_set_values(
                 table=table,
@@ -83,11 +96,14 @@ class RPEServicer(rpe_pb2_grpc.RPEServiceServicer):
                 rounding_mode=rounding_mode,
             )
 
-            return rpe_pb2.RPEComputeResponse(
-                computed_weight=weight,
-                suggested_weight=weight,
-                message="RPE calculation completed successfully",
-            )
+            kwargs: dict[str, Any] = {
+                "message": "RPE calculation completed successfully",
+            }
+            if weight is not None:
+                kwargs["computed_weight"] = weight
+                kwargs["suggested_weight"] = weight
+
+            return rpe_pb2.RPEComputeResponse(**kwargs)
 
         except Exception as e:
             error_msg = (
@@ -120,9 +136,12 @@ class HealthServicer(health_pb2_grpc.HealthServicer):
         context: grpc.aio.ServicerContext,
     ) -> AsyncIterator[health_pb2.HealthCheckResponse]:
         """Watch service health stream."""
-        while True:
-            yield health_pb2.HealthCheckResponse(status=health_pb2.HealthCheckResponse.SERVING)
-            await asyncio.sleep(1)
+        try:
+            while not context.cancelled():
+                yield health_pb2.HealthCheckResponse(status=health_pb2.HealthCheckResponse.SERVING)
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            pass
 
 
 async def serve(port: int = settings.GRPC_PORT) -> None:
@@ -135,10 +154,13 @@ async def serve(port: int = settings.GRPC_PORT) -> None:
     logger.info("RPE gRPC server started on port %d", port)
 
     await server.start()
-    await server.wait_for_termination()
+    try:
+        await server.wait_for_termination()
+    except asyncio.CancelledError:
+        logger.info("RPE gRPC server stopping...")
+        await server.stop(grace=5.0)
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     asyncio.run(serve())
-

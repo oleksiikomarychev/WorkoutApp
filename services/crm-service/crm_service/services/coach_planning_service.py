@@ -102,7 +102,6 @@ async def _proxy_request_for_athlete(
 
 
 async def _fetch_exercise_instances_for_workout(workout_id: int, athlete_id: str) -> list[dict]:
-    print(f"DEBUG: Fetching instances for workout {workout_id}, athlete {athlete_id}")
     base_url = settings.workouts_service_url.rstrip("/")
     url = f"{base_url}/instances/workouts/{workout_id}/instances"
     timeout = httpx.Timeout(10.0, connect=5.0)
@@ -110,20 +109,24 @@ async def _fetch_exercise_instances_for_workout(workout_id: int, athlete_id: str
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.get(url, headers=headers, follow_redirects=True)
-        logger.info(
-            "fetched_exercise_instances",
-            workout_id=workout_id,
-            status_code=resp.status_code,
-            count=len(resp.json()) if resp.status_code == 200 and isinstance(resp.json(), list) else 0,
-        )
-        print(f"DEBUG: Fetched instances for workout {workout_id}: status={resp.status_code}")
         if resp.status_code != 200:
             return []
         data = resp.json() or []
         if isinstance(data, list):
+            logger.info(
+                "fetched_exercise_instances",
+                workout_id=workout_id,
+                status_code=resp.status_code,
+                count=len(data),
+            )
             return data
-    except Exception as e:
-        print(f"DEBUG: Error fetching instances for workout {workout_id}: {e}")
+    except Exception as exc:
+        logger.warning(
+            "fetch_exercise_instances_failed",
+            workout_id=workout_id,
+            athlete_id=athlete_id,
+            error=str(exc),
+        )
         return []
     return []
 
@@ -181,9 +184,7 @@ async def get_active_plan_workouts_for_athlete(
         athlete_id=athlete_id,
         params={"applied_plan_id": applied_plan_id},
     )
-    print(f"DEBUG: Got workouts data type: {type(data)}")
     if not isinstance(data, list):
-        print(f"DEBUG: Workouts data is not a list: {data}")
         return []
 
     enriched: list[dict] = []
@@ -317,7 +318,7 @@ async def create_exercise_instance_for_athlete(
         link_id=link.id,
         actor_id=coach_id,
         event_type="exercise_instance_created",
-        payload={"workout_id": workout_id, "instance_id": data.get("id")},
+        payload={"workout_id": workout_id, "instance_id": data.get("id") if isinstance(data, dict) else None},
     )
     await db.commit()
     return data

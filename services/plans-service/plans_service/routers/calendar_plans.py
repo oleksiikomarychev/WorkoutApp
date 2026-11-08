@@ -47,6 +47,8 @@ async def create_calendar_plan(
         return result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error") from e
 
@@ -78,6 +80,8 @@ async def get_all_plans(
 ) -> list[CalendarPlanResponse]:
     try:
         return await CalendarPlanService.get_all_plans(db, user_id, roots_only=roots_only)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error") from e
 
@@ -89,8 +93,10 @@ async def get_favorite_plans(
 ) -> list[CalendarPlanResponse]:
     try:
         return await CalendarPlanService.get_favorite_plans(db, user_id)
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed to get favorite plans: {str(e)}") from e
+        raise HTTPException(status_code=500, detail=f"Failed to get favorite plans: {str(e)}") from e
 
 
 @router.get("/{plan_id}/flattened-workouts", response_model=list[dict[str, Any]])
@@ -101,6 +107,8 @@ async def get_flattened_workouts(
 ):
     try:
         return await CalendarPlanService.get_flattened_workouts(db, plan_id, user_id)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
@@ -118,6 +126,8 @@ async def get_calendar_plan(
 
         plan_data = CalendarPlanResponse.model_validate(plan)
         return plan_data
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error") from e
 
@@ -157,6 +167,8 @@ async def update_calendar_plan(
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error") from e
 

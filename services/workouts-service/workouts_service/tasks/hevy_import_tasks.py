@@ -82,10 +82,7 @@ async def _import_hevy_csv_async(
             "workout_ids": [],
         }
 
-    exercises_base = os.getenv("EXERCISES_SERVICE_URL")
-    if not exercises_base:
-        raise RuntimeError("EXERCISES_SERVICE_URL is not set")
-    exercises_base = exercises_base.rstrip("/")
+    exercises_base = (os.getenv("EXERCISES_SERVICE_URL") or "http://exercises-service:8002").rstrip("/")
 
     created_ids: list[int] = []
     errors: list[dict[str, Any]] = []

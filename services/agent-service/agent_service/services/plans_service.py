@@ -1,11 +1,10 @@
-import logging
-
 import httpx
+import structlog
 
 from ..config import settings
 from ..schemas.training_plans import TrainingPlan
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def _to_calendar_plan_create_payload(plan: TrainingPlan) -> dict:
@@ -86,19 +85,20 @@ async def save_plan_to_plans_service(plan: TrainingPlan, user_id: str):
     try:
         payload = _to_calendar_plan_create_payload(plan)
         headers = {"X-User-Id": user_id}
+        base_url = settings.plans_service_url.rstrip("/")
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
-                f"{settings.plans_service_url}/plans/calendar-plans/",
+                f"{base_url}/plans/calendar-plans/",
                 json=payload,
                 headers=headers,
             )
             response.raise_for_status()
-            logger.info(
-                "Plan saved to plans-service for user %s | id=%s",
-                user_id,
-                response.json().get("id"),
-            )
+            plan_id = response.json().get("id")
+            logger.info("plan_saved_to_plans_service", user_id=user_id, plan_id=plan_id)
             return response.json()
     except (httpx.RequestError, httpx.HTTPStatusError) as e:
-        logger.error(f"Ошибка сохранения плана: {str(e)}")
+        logger.error("failed_to_save_plan_to_plans_service", user_id=user_id, error=str(e))
+        return None
+    except Exception as e:
+        logger.error("failed_to_save_plan_to_plans_service_unexpected", user_id=user_id, error=str(e))
         return None

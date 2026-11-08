@@ -417,7 +417,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
     return AssistantChatHost(
       builder: (context, openChat) {
         return Scaffold(
-          backgroundColor: AppColors.background,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           appBar: PrimaryAppBar.main(
             title: 'Workouts',
             onTitleTap: openChat,
@@ -481,7 +481,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                 }
 
                 return Container(
-                  color: AppColors.background,
+                  color: Theme.of(context).colorScheme.surface,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -1027,7 +1027,7 @@ class _WorkoutCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(20),
         boxShadow: AppShadows.sm,
       ),
@@ -1037,10 +1037,13 @@ class _WorkoutCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: const Color(0xFFE8ECFF),
+              color: Theme.of(context).colorScheme.primaryContainer,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.fitness_center, color: AppColors.primary),
+            child: Icon(
+              Icons.fitness_center,
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -1049,16 +1052,17 @@ class _WorkoutCard extends StatelessWidget {
               children: [
                 Text(
                   workout.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 16,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   _buildSubtitle(workout),
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 13,
                   ),
                 ),

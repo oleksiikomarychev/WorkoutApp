@@ -145,7 +145,9 @@ class ExerciseInstanceService:
             except Exception:
                 logger.warning("workout_exercise_cache_invalidate_failed", keys=keys, exc_info=True)
 
-    async def create_instance(self, workout_id: int, instance_data: workout_schemas.WorkoutExerciseInstanceCreate) -> dict:
+    async def create_instance(
+        self, workout_id: int, instance_data: workout_schemas.WorkoutExerciseInstanceCreate
+    ) -> dict[str, Any]:
         logger.info(
             "exercise_instance_create_requested",
             workout_id=workout_id,
@@ -193,7 +195,9 @@ class ExerciseInstanceService:
         await self._cache_instance(workout_exercise_key(self.user_id, ex.id), serialized)
         return serialized
 
-    async def update_instance(self, instance_id: int, update_data: workout_schemas.WorkoutExerciseInstanceUpdate) -> dict:
+    async def update_instance(
+        self, instance_id: int, update_data: workout_schemas.WorkoutExerciseInstanceUpdate
+    ) -> dict[str, Any]:
         stmt = select(models.WorkoutExercise).where(
             models.WorkoutExercise.id == instance_id,
             models.WorkoutExercise.user_id == self.user_id,

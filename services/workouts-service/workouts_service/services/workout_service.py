@@ -523,7 +523,6 @@ class WorkoutService:
                                 if need_weight:
                                     ww = compute_res.get("weight")
                                     if ww is not None:
-                                        old_weight = working_weight
                                         working_weight = ww
                             except Exception:
                                 logger.warning(
@@ -1403,8 +1402,12 @@ class WorkoutService:
             select(models.Workout.id).where(models.Workout.id == workout_id, models.Workout.user_id == self.user_id)
         )
         if not workout_exists.scalar():
-             logger.warning("replace_exercise_only_id_workout_not_found_or_access_denied", workout_id=workout_id, user_id=self.user_id)
-             return 0
+            logger.warning(
+                "replace_exercise_only_id_workout_not_found_or_access_denied",
+                workout_id=workout_id,
+                user_id=self.user_id,
+            )
+            return 0
 
         local_updated = 0
         try:

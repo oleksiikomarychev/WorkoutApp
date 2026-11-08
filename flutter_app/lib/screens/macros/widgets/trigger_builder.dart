@@ -99,8 +99,11 @@ class _TriggerBuilderState extends ConsumerState<TriggerBuilder> {
             return AlertDialog(
               title: const Text('Выбор упражнений'),
               content: SizedBox(
-                width: 420,
-                height: 480,
+                width: (MediaQuery.sizeOf(ctx).width - 96).clamp(0.0, 420.0),
+                height: (MediaQuery.sizeOf(ctx).height -
+                        MediaQuery.viewInsetsOf(ctx).bottom -
+                        180)
+                    .clamp(160.0, 480.0),
                 child: Column(
                   children: [
                     TextField(

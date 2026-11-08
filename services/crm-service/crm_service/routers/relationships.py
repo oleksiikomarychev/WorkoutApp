@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,10 +54,10 @@ async def create_coach_athlete_link(
 
 @router.get("/my/athletes", response_model=list[CoachAthleteLinkResponse])
 async def get_my_athletes(
-    status: CoachAthleteStatus | None = Query(None),
-    tags: list[int] | None = Query(None, description="Список ID тегов для фильтрации"),
-    limit: int = Query(100, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    status: CoachAthleteStatus | None = Query(default=None),
+    tags: list[int] | None = Query(default=None, description="Список ID тегов для фильтрации"),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ) -> list[CoachAthleteLinkResponse]:
@@ -71,10 +73,10 @@ async def get_my_athletes(
 
 @router.get("/my/coaches", response_model=list[CoachAthleteLinkResponse])
 async def get_my_coaches(
-    status: CoachAthleteStatus | None = Query(None),
-    tags: list[int] | None = Query(None, description="Список ID тегов для фильтрации"),
-    limit: int = Query(100, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    status: CoachAthleteStatus | None = Query(default=None),
+    tags: list[int] | None = Query(default=None, description="Список ID тегов для фильтрации"),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ) -> list[CoachAthleteLinkResponse]:
@@ -123,8 +125,8 @@ async def create_note(
 @router.get("/{link_id}/notes", response_model=list[CoachAthleteNoteResponse])
 async def list_notes(
     link_id: int,
-    limit: int = Query(100, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ) -> list[CoachAthleteNoteResponse]:
@@ -165,7 +167,7 @@ async def create_coach_tag(
 
 @router.get("/tags", response_model=list[CoachAthleteTagResponse])
 async def list_coach_tags(
-    include_inactive: bool = Query(False),
+    include_inactive: bool = Query(default=False),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ) -> list[CoachAthleteTagResponse]:

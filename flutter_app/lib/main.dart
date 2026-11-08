@@ -58,7 +58,17 @@ Future<void> main() async {
     }
   }
 
-  runApp(const ProviderScope(child: MyApp()));
+  final initialThemeMode = await AppThemeModeController.loadInitialThemeMode();
+  runApp(
+    ProviderScope(
+      overrides: [
+        appThemeModeProvider.overrideWith(
+          (ref) => AppThemeModeController(initialThemeMode: initialThemeMode),
+        ),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends ConsumerWidget {

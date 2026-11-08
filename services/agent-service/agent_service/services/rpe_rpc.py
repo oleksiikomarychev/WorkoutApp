@@ -1,12 +1,16 @@
-import logging
+"""RPC client to notify RPE service about generated plans."""
+
+from __future__ import annotations
+
 from typing import Any
 
 import httpx
+import structlog
 
 from ..config import settings
 from ..schemas.training_plans import TrainingPlan
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 async def notify_rpe_plan_created(plan: TrainingPlan, user_id: str) -> bool:
@@ -21,11 +25,14 @@ async def notify_rpe_plan_created(plan: TrainingPlan, user_id: str) -> bool:
             response = await client.post(url, json=payload, headers=headers)
             response.raise_for_status()
         logger.info(
-            "Notified RPE service about generated plan for user %s | status=%d",
-            user_id,
-            response.status_code,
+            "notified_rpe_plan_created",
+            user_id=user_id,
+            status_code=response.status_code,
         )
         return True
     except (httpx.RequestError, httpx.HTTPStatusError) as exc:
-        logger.warning("Failed to notify RPE service about generated plan: %s", exc)
+        logger.warning("failed_to_notify_rpe_service", user_id=user_id, error=str(exc))
+        return False
+    except Exception as exc:
+        logger.warning("failed_to_notify_rpe_service_unexpected", user_id=user_id, error=str(exc))
         return False

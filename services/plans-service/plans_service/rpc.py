@@ -1,10 +1,13 @@
+from __future__ import annotations
+
+import os
 
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-_client = httpx.AsyncClient(timeout=10.0, limits=httpx.Limits(max_connections=100, max_keepalive_connections=20))
+from .config import settings
 
-RPE_SERVICE_BASE = "http://rpe-service:8001"
+RPE_SERVICE_BASE = (os.getenv("RPE_SERVICE_URL") or getattr(settings, "RPE_SERVICE_URL", "http://rpe-service:8001")).rstrip("/")
 
 RETRY_CONFIG = {
     "stop": stop_after_attempt(3),
@@ -21,6 +24,25 @@ _CACHE_MAX_SIZE = 1000
 _cache_hits = 0
 _cache_misses = 0
 _rpc_calls = 0
+
+_client: httpx.AsyncClient | None = None
+
+
+def get_rpc_client() -> httpx.AsyncClient:
+    global _client
+    if _client is None or _client.is_closed:
+        _client = httpx.AsyncClient(
+            timeout=10.0,
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+        )
+    return _client
+
+
+async def close_rpc_client() -> None:
+    global _client
+    if _client is not None and not _client.is_closed:
+        await _client.aclose()
+        _client = None
 
 
 def _cache_key(compute_type: str, a: float, b: float, c: float | None = None) -> tuple[str, float, float, float | None]:
@@ -67,15 +89,15 @@ def reset_rpe_metrics() -> None:
     _rpc_calls = 0
 
 
-async def get_rpe_table(headers: dict[str, str] | None = None):
+async def get_rpe_table(headers: dict[str, str] | None = None) -> dict | None:
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{RPE_SERVICE_BASE}/rpe/table",
-                headers=headers,
-            )
-            response.raise_for_status()
-            return response.json()
+        client = get_rpc_client()
+        response = await client.get(
+            f"{RPE_SERVICE_BASE}/rpe/table",
+            headers=headers,
+        )
+        response.raise_for_status()
+        return response.json()
     except Exception:
         return None
 
@@ -90,14 +112,15 @@ async def get_volume(intensity: float, effort: float, headers: dict[str, str] | 
 
     _rpc_calls += 1
     payload = {"intensity": intensity, "effort": effort}
-    response = await _client.post(
+    client = get_rpc_client()
+    response = await client.post(
         f"{RPE_SERVICE_BASE}/rpe/compute",
         json=payload,
         headers=headers,
     )
     response.raise_for_status()
     data = response.json()
-    result = data["volume"]
+    result = float(data["volume"])
     _set_cache(key, result)
     return result
 
@@ -112,14 +135,15 @@ async def get_intensity(volume: float, effort: float, headers: dict[str, str] | 
 
     _rpc_calls += 1
     payload = {"volume": volume, "effort": effort}
-    response = await _client.post(
+    client = get_rpc_client()
+    response = await client.post(
         f"{RPE_SERVICE_BASE}/rpe/compute",
         json=payload,
         headers=headers,
     )
     response.raise_for_status()
     data = response.json()
-    result = data["intensity"]
+    result = float(data["intensity"])
     _set_cache(key, result)
     return result
 
@@ -134,13 +158,14 @@ async def get_effort(volume: float, intensity: float, headers: dict[str, str] | 
 
     _rpc_calls += 1
     payload = {"volume": volume, "intensity": intensity}
-    response = await _client.post(
+    client = get_rpc_client()
+    response = await client.post(
         f"{RPE_SERVICE_BASE}/rpe/compute",
         json=payload,
         headers=headers,
     )
     response.raise_for_status()
     data = response.json()
-    result = data["effort"]
+    result = float(data["effort"])
     _set_cache(key, result)
     return result

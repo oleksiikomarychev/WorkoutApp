@@ -15,10 +15,14 @@ from ..models.relationships import CoachAthleteLink
 
 logger = structlog.get_logger(__name__)
 
-_STRIPE_SECRET_KEY = (os.getenv("STRIPE_SECRET_KEY") or "").strip()
-_STRIPE_PLATFORM_FEE_PERCENT = float(os.getenv("STRIPE_PLATFORM_FEE_PERCENT", "5.0"))
-_STRIPE_CHECKOUT_SUCCESS_URL = (os.getenv("STRIPE_CHECKOUT_SUCCESS_URL") or "").strip()
-_STRIPE_CHECKOUT_CANCEL_URL = (os.getenv("STRIPE_CHECKOUT_CANCEL_URL") or "").strip()
+_STRIPE_SECRET_KEY = (settings.STRIPE_SECRET_KEY or os.getenv("STRIPE_SECRET_KEY") or "").strip()
+_STRIPE_PLATFORM_FEE_PERCENT = float(settings.STRIPE_PLATFORM_FEE_PERCENT)
+_STRIPE_CHECKOUT_SUCCESS_URL = (
+    settings.STRIPE_CHECKOUT_SUCCESS_URL or os.getenv("STRIPE_CHECKOUT_SUCCESS_URL") or ""
+).strip()
+_STRIPE_CHECKOUT_CANCEL_URL = (
+    settings.STRIPE_CHECKOUT_CANCEL_URL or os.getenv("STRIPE_CHECKOUT_CANCEL_URL") or ""
+).strip()
 
 if _STRIPE_SECRET_KEY:
     stripe.api_key = _STRIPE_SECRET_KEY

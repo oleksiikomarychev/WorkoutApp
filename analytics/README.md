@@ -114,3 +114,9 @@ DEBEZIUM_PASSWORD=debezium_password_here
 - `analytics.dim_users` — пользователи
 - `analytics.dim_exercises` — упражнения
 - `analytics.dim_plans` — планы
+
+## Данные для персонализации RPE
+
+Приложение пока не собирает подтверждённый пользователем RPE отдельно от автоматически рассчитанного. В текущих витринах `fact_workout_sets.effort` и `fact_workout_progress.actual_effort` нет происхождения значения; эти поля нельзя считать обучающими метками. Выполнение подхода хранится в `workout_sessions.progress.completed`, а `workout_sets` содержит изменяемые параметры подхода.
+
+План: добавить в `workouts-service` отдельное наблюдение на пару `(workout_session_id, workout_set_id)` со снимком фактических веса и повторов, их происхождением, `predicted_rpe`, необязательным `actual_rpe`, `actual_rpe_source`, `feedback_method`, временем подтверждения, версией прогноза и транзакционной `revision`. После миграции PostgreSQL обновить publication, `workouts-connector.json`, raw-таблицу и новую витрину `fact_rpe_observations`; проверить вставку, правку, отмену, повтор CDC-события и удаление. Для воспроизводимой калибровки сохранять неизменяемый snapshot фактических признаков и версий, а не полагаться на текущее состояние ClickHouse. Старые витрины не следует объявлять датасетом задним числом. Подробности — в [плане RPE Engine](../services/rpe-service/autonomy_plan.md).

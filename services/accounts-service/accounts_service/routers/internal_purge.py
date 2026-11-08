@@ -1,10 +1,13 @@
-import os
+from __future__ import annotations
+
+import hashlib
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import settings
 from ..dependencies import get_db
 from ..models import UnitSystem, UserAvatar, UserCoachingProfile, UserProfile, UserSettings
 
@@ -12,8 +15,7 @@ router = APIRouter(prefix="/internal/users", tags=["internal"])
 
 
 def _deleted_user_id(user_id: str) -> str:
-    import hashlib
-
+    """Generate deterministic anonymized tombstone ID for soft-deleted user."""
     digest = hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:12]
     return f"deleted:{digest}"
 
@@ -22,9 +24,10 @@ def _deleted_user_id(user_id: str) -> str:
 async def purge_user(
     user_id: str,
     db: AsyncSession = Depends(get_db),
-    x_internal_secret: str | None = Header(None, alias="X-Internal-Secret"),
+    x_internal_secret: str | None = Header(default=None, alias="X-Internal-Secret"),
 ) -> dict[str, str]:
-    expected_secret = (os.getenv("INTERNAL_GATEWAY_SECRET") or "").strip()
+    """Purge user data (GDPR soft-delete / anonymization) invoked by internal gateway."""
+    expected_secret = (settings.INTERNAL_GATEWAY_SECRET or "").strip()
     if not expected_secret or x_internal_secret != expected_secret:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
@@ -57,16 +60,16 @@ async def purge_user(
     await db.execute(delete(UserAvatar).where(UserAvatar.user_id == user_id))
 
     result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
-    settings: UserSettings | None = result.scalar_one_or_none()
-    if settings is None:
-        settings = UserSettings(user_id=user_id)
-        db.add(settings)
+    settings_obj: UserSettings | None = result.scalar_one_or_none()
+    if settings_obj is None:
+        settings_obj = UserSettings(user_id=user_id)
+        db.add(settings_obj)
         await db.flush()
 
-    settings.unit_system = UnitSystem.METRIC
-    settings.locale = "en"
-    settings.timezone = None
-    settings.notifications_enabled = True
+    settings_obj.unit_system = UnitSystem.METRIC
+    settings_obj.locale = "en"
+    settings_obj.timezone = None
+    settings_obj.notifications_enabled = True
 
     await db.execute(delete(UserCoachingProfile).where(UserCoachingProfile.user_id == user_id))
 

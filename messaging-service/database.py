@@ -1,8 +1,12 @@
 """Database configuration and session management."""
+
+from __future__ import annotations
+
+from collections.abc import Generator
+
 from config import settings
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 # Create SQLAlchemy engine
 engine = create_engine(
@@ -10,7 +14,7 @@ engine = create_engine(
     pool_pre_ping=True,
     pool_size=20,
     max_overflow=0,
-    echo=False
+    echo=False,
 )
 
 # Create SessionLocal class
@@ -20,9 +24,9 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
-def get_db():
+def get_db() -> Generator[Session, None, None]:
     """Dependency for getting database session."""
-    db = SessionLocal()
+    db: Session = SessionLocal()
     try:
         yield db
     finally:

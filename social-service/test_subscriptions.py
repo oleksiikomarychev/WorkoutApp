@@ -38,9 +38,11 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def setup_database():
     """Create tables before each test and drop after."""
+    app.dependency_overrides[get_db] = override_get_db
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+    app.dependency_overrides.pop(get_db, None)
 
 
 def test_follow_user_success():

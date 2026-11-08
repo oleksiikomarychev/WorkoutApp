@@ -37,7 +37,9 @@ INTERNAL_GATEWAY_SECRET = (os.getenv("INTERNAL_GATEWAY_SECRET") or "").strip()
 
 
 class SessionService:
-    def __init__(self, db: AsyncSession, user_max_client: UserMaxClient | None = None, user_id: str = None):
+    def __init__(
+        self, db: AsyncSession, user_max_client: UserMaxClient | None = None, user_id: str | None = None
+    ):
         self.db = db
         self.user_max_client = user_max_client or UserMaxClient()
         self.user_id = user_id

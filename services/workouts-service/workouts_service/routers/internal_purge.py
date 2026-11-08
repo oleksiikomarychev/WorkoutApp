@@ -1,11 +1,12 @@
-import os
+from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import settings
 from ..database import get_db
-from ..models import Workout
+from ..models import Workout, WorkoutSession
 from ..redis_client import get_redis
 
 router = APIRouter(prefix="/internal/users", tags=["internal"])
@@ -17,10 +18,11 @@ async def purge_user(
     db: AsyncSession = Depends(get_db),
     x_internal_secret: str | None = Header(None, alias="X-Internal-Secret"),
 ) -> dict[str, str]:
-    expected_secret = (os.getenv("INTERNAL_GATEWAY_SECRET") or "").strip()
+    expected_secret = (settings.INTERNAL_GATEWAY_SECRET or "").strip()
     if not expected_secret or x_internal_secret != expected_secret:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
+    await db.execute(delete(WorkoutSession).where(WorkoutSession.user_id == user_id))
     await db.execute(delete(Workout).where(Workout.user_id == user_id))
     await db.commit()
 

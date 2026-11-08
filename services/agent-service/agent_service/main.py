@@ -31,25 +31,31 @@ app.include_router(internal_purge_router)
 
 
 @app.get("/")
-def read_root():
+def read_root() -> dict[str, str]:
     return {"message": "Agent service is running"}
 
 
+@app.get("/health")
+def health_check() -> dict[str, str]:
+    return {"status": "ok", "service": "agent-service"}
+
+
 _firebase_request = requests.Request()
-_firebase_project_id = os.getenv("FIREBASE_PROJECT_ID")
 
 
 def _verify_firebase_token_sync(token: str) -> str | None:
     if not token:
         return None
+    firebase_project_id = settings.FIREBASE_PROJECT_ID or os.getenv("FIREBASE_PROJECT_ID")
     try:
         claims = id_token.verify_firebase_token(token, _firebase_request)
         firebase_info = claims.get("firebase") or {}
         project_id = firebase_info.get("project_id")
-        if _firebase_project_id and project_id and project_id != _firebase_project_id:
-            print(
-                f"[agent-service] Firebase token project_id mismatch: "
-                f"got={project_id}, expected={_firebase_project_id}"
+        if firebase_project_id and project_id and project_id != firebase_project_id:
+            logger.warning(
+                "firebase_token_project_id_mismatch",
+                got=project_id,
+                expected=firebase_project_id,
             )
             return None
         user_id = claims.get("uid") or claims.get("sub")
@@ -57,7 +63,7 @@ def _verify_firebase_token_sync(token: str) -> str | None:
             return None
         return str(user_id)
     except Exception as exc:  # pragma: no cover - best-effort logging
-        print(f"[agent-service] Firebase token verification failed: {exc}")
+        logger.warning("firebase_token_verification_failed", error=str(exc))
         return None
 
 

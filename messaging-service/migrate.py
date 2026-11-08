@@ -1,4 +1,5 @@
 """Database migration script."""
+
 import sys
 
 from alembic import command
@@ -8,7 +9,7 @@ from alembic.config import Config
 def run_migrations():
     """Run database migrations."""
     alembic_cfg = Config("alembic.ini")
-    
+
     try:
         print("Running database migrations...")
         command.upgrade(alembic_cfg, "head")

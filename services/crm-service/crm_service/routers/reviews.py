@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,14 +23,14 @@ async def create_review(
         acting_user_id=user_id,
         payload=payload,
     )
-    return review
+    return CoachReviewResponse.model_validate(review)
 
 
 @router.get("/coaches/{coach_id}/reviews", response_model=CoachReviewListResponse)
 async def list_coach_reviews(
     coach_id: str,
-    limit: int = Query(100, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
 ) -> CoachReviewListResponse:
     return await get_reviews_for_coach(

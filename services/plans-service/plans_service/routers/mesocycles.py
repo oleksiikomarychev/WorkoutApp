@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from ..dependencies import get_current_user_id, get_db
 from ..models import Microcycle
@@ -22,7 +21,7 @@ router = APIRouter(prefix="/mesocycles")
 @router.get("/{plan_id}/mesocycles", response_model=list[MesocycleResponse])
 async def list_mesocycles(
     plan_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     svc = MesocycleService(db, user_id)
@@ -33,7 +32,7 @@ async def list_mesocycles(
 async def create_mesocycle(
     plan_id: int,
     body: MesocycleCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     svc = MesocycleService(db, user_id)
@@ -44,7 +43,7 @@ async def create_mesocycle(
 async def update_mesocycle(
     mesocycle_id: int,
     body: MesocycleUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     svc = MesocycleService(db, user_id)
@@ -54,7 +53,7 @@ async def update_mesocycle(
 @router.delete("/{mesocycle_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_mesocycle(
     mesocycle_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     svc = MesocycleService(db, user_id)
@@ -65,7 +64,7 @@ async def delete_mesocycle(
 @router.get("/{mesocycle_id}", response_model=MesocycleResponse)
 async def get_mesocycle(
     mesocycle_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     svc = MesocycleService(db, user_id)
@@ -78,7 +77,7 @@ async def get_mesocycle(
 @router.get("/{mesocycle_id}/microcycles", response_model=list[MicrocycleResponse])
 async def list_microcycles(
     mesocycle_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     svc = MesocycleService(db, user_id)
@@ -93,7 +92,7 @@ async def list_microcycles(
 async def create_microcycle(
     mesocycle_id: int,
     body: MicrocycleUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     data = MicrocycleCreate(
@@ -114,7 +113,7 @@ async def create_microcycle(
 async def update_microcycle(
     microcycle_id: int,
     body: MicrocycleUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     svc = MesocycleService(db, user_id)
@@ -124,7 +123,7 @@ async def update_microcycle(
 @router.delete("/microcycles/{microcycle_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_microcycle(
     microcycle_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     svc = MesocycleService(db, user_id)

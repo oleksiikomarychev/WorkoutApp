@@ -1,8 +1,12 @@
 """HTTP delivery for webhooks with HMAC signing."""
+
+from __future__ import annotations
+
 import hashlib
 import hmac
 import json
 import logging
+from typing import Any, NamedTuple
 from uuid import uuid4
 
 import httpx
@@ -12,175 +16,154 @@ from models import WebhookSubscription
 logger = logging.getLogger(__name__)
 
 
+class DeliveryResult(NamedTuple):
+    """Result of a webhook delivery attempt (tuple-compatible)."""
+
+    success: bool
+    status_code: int | None
+    error_message: str | None
+    delivery_id: str
+
+
 class WebhookDelivery:
     """Handles HTTP delivery of webhooks with HMAC signing."""
-    
-    def __init__(self):
-        """Initialize webhook delivery."""
+
+    def __init__(self) -> None:
+        """Initialize HTTP client for webhook delivery."""
         self.http_client = httpx.AsyncClient(
             timeout=settings.delivery_timeout,
-            follow_redirects=False
+            follow_redirects=False,
         )
-    
-    async def close(self):
+
+    async def close(self) -> None:
         """Close HTTP client."""
         await self.http_client.aclose()
-    
+
     def generate_signature(self, payload: bytes, secret: str) -> str:
-        """
-        Generate HMAC-SHA256 signature for webhook payload.
-        
-        Args:
-            payload: Payload bytes to sign
-            secret: Secret key for HMAC
-            
-        Returns:
-            Hex digest of HMAC signature
-        """
-        signature = hmac.new(
-            secret.encode('utf-8'),
+        """Generate HMAC-SHA256 signature for webhook payload."""
+        return hmac.new(
+            secret.encode("utf-8"),
             payload,
-            hashlib.sha256
+            hashlib.sha256,
         ).hexdigest()
-        return signature
-    
-    async def deliver(self, subscription: WebhookSubscription, payload: dict, 
-                     retry_count: int = 0, delivery_id: str | None = None) -> tuple[bool, int | None, str | None, str]:
-        """
-        Deliver webhook to target URL with HMAC signature.
-        
-        Args:
-            subscription: Webhook subscription
-            payload: Payload to deliver
-            retry_count: Current retry attempt number
-            delivery_id: Optional delivery ID for deduplication (reused across retries)
-            
-        Returns:
-            Tuple of (success, status_code, error_message, delivery_id)
-        """
-        # Generate or reuse delivery ID for deduplication
-        # Same delivery_id is used across all retry attempts for the same event
+
+    async def deliver(
+        self,
+        subscription: WebhookSubscription,
+        payload: dict[str, Any],
+        retry_count: int = 0,
+        delivery_id: str | None = None,
+    ) -> DeliveryResult:
+        """Deliver webhook to target URL with HMAC signature."""
         if delivery_id is None:
             delivery_id = str(uuid4())
-        
-        # Serialize payload
-        payload_bytes = json.dumps(payload).encode('utf-8')
-        
+
+        # Serialize payload safely
+        payload_bytes = json.dumps(payload, default=str).encode("utf-8")
+
         # Generate HMAC signature
         signature = self.generate_signature(payload_bytes, subscription.secret)
-        
+
         # Build headers
         headers = {
             "Content-Type": "application/json",
             "X-Delivery-Id": delivery_id,
-            "X-Event-Type": payload.get("event_type", "unknown"),
+            "X-Event-Type": str(payload.get("event_type", "unknown")),
             "X-Signature": f"sha256={signature}",
             "X-Retry": str(retry_count),
-            "User-Agent": "SocialMessagingPlatform/1.0"
+            "User-Agent": "SocialMessagingPlatform/1.0",
         }
-        
+
         try:
-            logger.info(f"Delivering webhook to {subscription.target_url} (delivery_id={delivery_id}, retry={retry_count})")
-            
-            # Send POST request
+            logger.info(
+                "Delivering webhook to %s (delivery_id=%s, retry=%d)",
+                subscription.target_url,
+                delivery_id,
+                retry_count,
+            )
+
             response = await self.http_client.post(
                 subscription.target_url,
                 content=payload_bytes,
-                headers=headers
+                headers=headers,
             )
-            
+
             status_code = response.status_code
-            
-            # Check if delivery was successful
+
             if 200 <= status_code < 300:
-                logger.info(f"Webhook delivered successfully to {subscription.target_url} (status={status_code})")
-                return (True, status_code, None, delivery_id)
-            elif 400 <= status_code < 500:
-                # Client error - don't retry (except 429)
+                logger.info(
+                    "Webhook delivered successfully to %s (status=%d)",
+                    subscription.target_url,
+                    status_code,
+                )
+                return DeliveryResult(True, status_code, None, delivery_id)
+
+            if 400 <= status_code < 500:
                 if status_code == 429:
-                    logger.warning(f"Rate limited by {subscription.target_url} (status=429)")
-                    return (False, status_code, "Rate limited", delivery_id)
-                else:
-                    logger.warning(f"Client error from {subscription.target_url} (status={status_code})")
-                    return (False, status_code, f"Client error: {status_code}", delivery_id)
-            else:
-                # Server error - retry
-                logger.warning(f"Server error from {subscription.target_url} (status={status_code})")
-                return (False, status_code, f"Server error: {status_code}", delivery_id)
-                
+                    logger.warning("Rate limited by %s (status=429)", subscription.target_url)
+                    return DeliveryResult(False, status_code, "Rate limited", delivery_id)
+                logger.warning(
+                    "Client error from %s (status=%d)",
+                    subscription.target_url,
+                    status_code,
+                )
+                return DeliveryResult(False, status_code, f"Client error: {status_code}", delivery_id)
+
+            logger.warning(
+                "Server error from %s (status=%d)",
+                subscription.target_url,
+                status_code,
+            )
+            return DeliveryResult(False, status_code, f"Server error: {status_code}", delivery_id)
+
         except httpx.TimeoutException as e:
-            logger.warning(f"Timeout delivering webhook to {subscription.target_url}: {e}")
-            return (False, None, "Timeout", delivery_id)
+            logger.warning("Timeout delivering webhook to %s: %s", subscription.target_url, e)
+            return DeliveryResult(False, None, "Timeout", delivery_id)
         except httpx.RequestError as e:
-            logger.warning(f"Request error delivering webhook to {subscription.target_url}: {e}")
-            return (False, None, f"Request error: {str(e)}", delivery_id)
+            logger.warning("Request error delivering webhook to %s: %s", subscription.target_url, e)
+            return DeliveryResult(False, None, f"Request error: {e}", delivery_id)
         except Exception as e:
-            logger.error(f"Unexpected error delivering webhook to {subscription.target_url}: {e}", exc_info=True)
-            return (False, None, f"Unexpected error: {str(e)}", delivery_id)
-    
+            logger.error(
+                "Unexpected error delivering webhook to %s: %s",
+                subscription.target_url,
+                e,
+                exc_info=True,
+            )
+            return DeliveryResult(False, None, f"Unexpected error: {e}", delivery_id)
+
     def should_retry(self, status_code: int | None, error_message: str | None) -> bool:
-        """
-        Determine if a failed delivery should be retried.
-        
-        Retry conditions:
-        - HTTP 5xx (server errors)
-        - HTTP 429 (rate limiting)
-        - Timeout errors (no status code)
-        - Network errors (no status code)
-        
-        Don't retry:
-        - HTTP 4xx (client errors, except 429)
-        
-        Args:
-            status_code: HTTP status code (None if request failed)
-            error_message: Error message
-            
-        Returns:
-            True if delivery should be retried
-        """
-        # Retry on network errors (timeout, connection errors, etc.)
+        """Determine if a failed delivery attempt should be retried."""
+        # Retry on network errors and timeouts
         if status_code is None:
-            logger.debug(f"Will retry due to network error: {error_message}")
+            logger.debug("Will retry due to network error: %s", error_message)
             return True
-        
+
         # Retry on server errors (5xx)
         if status_code >= 500:
-            logger.debug(f"Will retry due to server error: {status_code}")
+            logger.debug("Will retry due to server error: %d", status_code)
             return True
-        
+
         # Retry on rate limiting (429)
         if status_code == 429:
-            logger.debug(f"Will retry due to rate limiting: {status_code}")
+            logger.debug("Will retry due to rate limiting: 429")
             return True
-        
+
         # Don't retry on client errors (4xx except 429)
         if 400 <= status_code < 500:
-            logger.debug(f"Will NOT retry due to client error: {status_code}")
+            logger.debug("Will NOT retry due to client error: %d", status_code)
             return False
-        
-        # Default: don't retry for unexpected status codes
-        logger.debug(f"Will NOT retry for unexpected status code: {status_code}")
+
+        # Default for any unexpected status code
+        logger.debug("Will NOT retry for unexpected status code: %d", status_code)
         return False
-    
+
     def get_retry_delay(self, retry_count: int) -> int:
-        """
-        Get delay in seconds before next retry attempt using exponential backoff.
-        
-        Retry delays (configurable):
-        - Attempt 1: 60s (1 minute)
-        - Attempt 2: 300s (5 minutes)
-        - Attempt 3: 900s (15 minutes)
-        - Attempt 4: 3600s (1 hour)
-        - Attempt 5: 10800s (3 hours)
-        
-        Args:
-            retry_count: Current retry count (0-based, so 0 = first retry)
-            
-        Returns:
-            Delay in seconds before next retry
-        """
+        """Get delay in seconds before next retry attempt using exponential backoff."""
+        if not settings.retry_delays:
+            return 60
+        if retry_count < 0:
+            return settings.retry_delays[0]
         if retry_count >= len(settings.retry_delays):
-            # If we somehow exceed configured delays, use the last one
             return settings.retry_delays[-1]
         return settings.retry_delays[retry_count]
 

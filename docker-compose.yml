@@ -44,7 +44,7 @@ services:
       redis:
         condition: service_healthy
       plans-service:
-        condition: service_completed_successfully
+        condition: service_started
     restart: unless-stopped
     networks:
       - workout-net
@@ -76,7 +76,7 @@ services:
       redis:
         condition: service_healthy
       agent-service:
-        condition: service_completed_successfully
+        condition: service_started
     restart: unless-stopped
     networks:
       - workout-net
@@ -190,7 +190,7 @@ services:
     networks:
       - workout-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -375,7 +375,7 @@ services:
       redis:
         condition: service_healthy
       workouts-service:
-        condition: service_completed_successfully
+        condition: service_started
     restart: unless-stopped
     networks:
       - workout-net

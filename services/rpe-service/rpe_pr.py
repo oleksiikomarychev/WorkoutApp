@@ -1,4 +1,6 @@
-RPE_TABLE = {
+"""Reference RPE tables for various exercise categories."""
+
+RPE_TABLE: dict[int, dict[int, int]] = {
     100: {10: 1},
     99: {10: 1},
     98: {10: 1},
@@ -63,7 +65,7 @@ RPE_TABLE = {
 }
 
 
-RPE_TABLE_LOWER_BODY_PRESS = {
+RPE_TABLE_LOWER_BODY_PRESS: dict[int, dict[int, int]] = {
     100: {10: 1},
     99: {10: 1},
     98: {10: 1},
@@ -97,7 +99,7 @@ RPE_TABLE_LOWER_BODY_PRESS = {
     70: {10: 15, 9: 14, 8: 13, 7: 12, 6: 11, 5: 10},
 }
 
-RPE_TABLE_UPPER_BODY_PRESS = {
+RPE_TABLE_UPPER_BODY_PRESS: dict[int, dict[int, int]] = {
     100: {10: 1},
     99: {10: 1},
     98: {10: 1},
@@ -131,7 +133,7 @@ RPE_TABLE_UPPER_BODY_PRESS = {
     70: {10: 13, 9: 12, 8: 11, 7: 10, 6: 9, 5: 8},
 }
 
-RPE_TABLE_FULL_BODY_PULL = {
+RPE_TABLE_FULL_BODY_PULL: dict[int, dict[int, int]] = {
     100: {10: 1},
     99: {10: 1},
     98: {10: 1},
@@ -166,7 +168,7 @@ RPE_TABLE_FULL_BODY_PULL = {
 }
 
 
-RPE_TABLE_ISOLATION = {
+RPE_TABLE_ISOLATION: dict[int, dict[int, int]] = {
     100: {10: 1},
     99: {10: 1},
     98: {10: 1},

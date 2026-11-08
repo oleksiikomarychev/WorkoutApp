@@ -1,0 +1,63 @@
+name: Publish backend images
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-images-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - service: rpe-service
+            dockerfile: services/rpe-service/Dockerfile
+          - service: plans-service
+            dockerfile: services/plans-service/Dockerfile
+          - service: exercises-service
+            dockerfile: services/exercises-service/Dockerfile
+          - service: gateway
+            dockerfile: gateway/Dockerfile
+          - service: user-max-service
+            dockerfile: services/user-max-service/Dockerfile
+          - service: workouts-service
+            dockerfile: services/workouts-service/Dockerfile
+          - service: accounts-service
+            dockerfile: services/accounts-service/Dockerfile
+          - service: agent-service
+            dockerfile: services/agent-service/Dockerfile
+          - service: crm-service
+            dockerfile: services/crm-service/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          tags: |
+            oleksiikomarychev/workoutapp-${{ matrix.service }}:latest
+            oleksiikomarychev/workoutapp-${{ matrix.service }}:sha-${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}

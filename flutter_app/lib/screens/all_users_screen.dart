@@ -115,7 +115,7 @@ class _AllUsersScreenState extends ConsumerState<AllUsersScreen> {
         final user = users[index];
         return ListTile(
           leading: CircleAvatar(
-            backgroundColor: AppColors.surface,
+            backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
             backgroundImage: user.photoUrl != null ? NetworkImage(user.photoUrl!) : null,
             child: user.photoUrl == null
                 ? Text(
@@ -140,7 +140,7 @@ class _AllUsersScreenState extends ConsumerState<AllUsersScreen> {
                 ),
               user.isPublic
                   ? const Icon(Icons.lock_open, size: 18, color: AppColors.success)
-                  : const Icon(Icons.lock_outline, size: 18, color: AppColors.textSecondary),
+                  : Icon(Icons.lock_outline, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ],
           ),
           onTap: () {

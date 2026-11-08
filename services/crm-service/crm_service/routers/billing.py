@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import settings
 from ..dependencies import get_current_user_id, get_db
 from ..models import CoachAthletePayment
 from ..models.relationships import CoachAthleteLink
@@ -15,7 +16,7 @@ from ..services.billing_service import create_checkout_session_for_link
 
 router = APIRouter(prefix="/crm/billing", tags=["crm-billing"])
 
-_STRIPE_WEBHOOK_SECRET = (os.getenv("STRIPE_WEBHOOK_SECRET") or "").strip()
+_STRIPE_WEBHOOK_SECRET = (settings.STRIPE_WEBHOOK_SECRET or os.getenv("STRIPE_WEBHOOK_SECRET") or "").strip()
 
 
 @router.post("/links/{link_id}/checkout-session")

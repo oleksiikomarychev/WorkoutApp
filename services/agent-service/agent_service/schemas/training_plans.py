@@ -1,4 +1,8 @@
-from pydantic import BaseModel
+"""Pydantic schemas for training plans in agent-service."""
+
+from __future__ import annotations
+
+from pydantic import BaseModel, ConfigDict
 
 
 class CalendarPlanCreate(BaseModel):
@@ -8,9 +12,7 @@ class CalendarPlanCreate(BaseModel):
 
 class CalendarPlan(CalendarPlanCreate):
     id: int
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MesocycleCreate(BaseModel):
@@ -22,9 +24,7 @@ class MesocycleCreate(BaseModel):
 class Mesocycle(MesocycleCreate):
     id: int
     calendar_plan_id: int
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MicrocycleCreate(BaseModel):
@@ -36,9 +36,7 @@ class MicrocycleCreate(BaseModel):
 class Microcycle(MicrocycleCreate):
     id: int
     mesocycle_id: int
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PlanWorkoutCreate(BaseModel):
@@ -49,9 +47,7 @@ class PlanWorkoutCreate(BaseModel):
 class PlanWorkout(PlanWorkoutCreate):
     id: int
     microcycle_id: int
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PlanExerciseCreate(BaseModel):
@@ -63,9 +59,7 @@ class PlanExerciseCreate(BaseModel):
 class PlanExercise(PlanExerciseCreate):
     id: int
     plan_workout_id: int
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PlanSetCreate(BaseModel):
@@ -78,9 +72,7 @@ class PlanSetCreate(BaseModel):
 class PlanSet(PlanSetCreate):
     id: int
     plan_exercise_id: int
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TrainingPlan(BaseModel):

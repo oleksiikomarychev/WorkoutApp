@@ -13,9 +13,23 @@ from models import Follow, Post
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+import pytest
+import database
+from models import Base
+
+from sqlalchemy.pool import StaticPool
+
 # Create test database session
-engine = create_engine(settings.database_url)
+SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+database.SessionLocal = TestingSessionLocal
+
+Base.metadata.create_all(bind=engine)
 
 
 def override_get_db():
@@ -27,8 +41,24 @@ def override_get_db():
         db.close()
 
 
+import database
+database.SessionLocal = TestingSessionLocal
+
 app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def setup_feed_test():
+    """Ensure db override is active for feed tests."""
+    app.dependency_overrides[get_db] = override_get_db
+    yield
+
+
+@pytest.fixture(scope="module")
+def test_data():
+    """Pytest fixture providing test data for feed tests."""
+    return setup_test_data()
 
 
 def setup_test_data():
@@ -105,13 +135,12 @@ def setup_test_data():
     db.commit()
     
     print("✓ Created 6 posts and 1 follow relationship")
-    
-    db.close()
-    
-    return {
+
+    result = {
         "user1_id": str(user1_id),
         "user2_id": str(user2_id),
         "user3_id": str(user3_id),
+        "now": now,
         "posts": {
             "post1": str(post1.id),
             "post2": str(post2.id),
@@ -121,6 +150,8 @@ def setup_test_data():
             "post6": str(post6.id),
         }
     }
+    db.close()
+    return result
 
 
 def test_home_feed(test_data):
@@ -218,8 +249,8 @@ def test_feed_with_since_filter(test_data):
     
     user1_id = test_data["user1_id"]
     
-    # Get posts from last 7 minutes
-    since_time = (datetime.utcnow() - timedelta(minutes=7)).isoformat()
+    # Get posts from last 7.5 minutes relative to test data creation
+    since_time = (test_data["now"] - timedelta(minutes=7, seconds=30)).isoformat()
     
     response = client.get(
         f"/social/posts?scope=home&since={since_time}&limit=20",

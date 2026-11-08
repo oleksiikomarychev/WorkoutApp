@@ -14,17 +14,16 @@ except ImportError:
 logger = structlog.get_logger(__name__)
 
 
+from ..config import settings
+
+
 class MacroApplier:
     def __init__(self, user_id: str) -> None:
         self.user_id = user_id
-        self.exercises_base = os.getenv("EXERCISES_SERVICE_URL")
-        if not self.exercises_base:
-            raise RuntimeError("EXERCISES_SERVICE_URL must be set")
-        self.exercises_base = self.exercises_base.rstrip("/")
-        self.workouts_base = os.getenv("WORKOUTS_SERVICE_URL")
-        if not self.workouts_base:
-            raise RuntimeError("WORKOUTS_SERVICE_URL must be set")
-        self.workouts_base = self.workouts_base.rstrip("/")
+        ex_base = os.getenv("EXERCISES_SERVICE_URL") or getattr(settings, "EXERCISES_SERVICE_URL", "http://exercises-service:8002")
+        self.exercises_base = ex_base.rstrip("/")
+        wo_base = os.getenv("WORKOUTS_SERVICE_URL") or getattr(settings, "WORKOUTS_SERVICE_URL", "http://workouts-service:8004")
+        self.workouts_base = wo_base.rstrip("/")
 
     async def apply(self, preview: dict[str, Any]) -> dict[str, Any]:
         if not httpx:

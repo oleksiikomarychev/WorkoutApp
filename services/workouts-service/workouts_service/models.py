@@ -1,4 +1,6 @@
-from datetime import datetime
+from __future__ import annotations
+
+from datetime import UTC, datetime
 
 from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSON
@@ -7,6 +9,11 @@ from sqlalchemy.orm import relationship
 from .database import Base
 
 workout_type_enum = Enum("manual", "generated", name="workouttypeenum")
+
+
+def _utcnow() -> datetime:
+    """Return timezone-naive UTC timestamp for DB consistency."""
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Workout(Base):
@@ -41,7 +48,7 @@ class Workout(Base):
 
     exercises = relationship("WorkoutExercise", back_populates="workout", cascade="all, delete-orphan")
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"<Workout(id={self.id}, name='{self.name}', "
             f"applied_plan_id={self.applied_plan_id}, order={self.plan_order_index})>"
@@ -86,7 +93,7 @@ class WorkoutSession(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String(255), nullable=False, index=True)
     workout_id = Column(Integer, ForeignKey("workouts.id", ondelete="CASCADE"), nullable=False, index=True)
-    started_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=False, default=_utcnow)
     finished_at = Column(DateTime, nullable=True)
     status = Column(String(50), nullable=False, default="active")
 
@@ -97,5 +104,5 @@ class WorkoutSession(Base):
 
     workout = relationship("Workout", back_populates="sessions")
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<WorkoutSession(id={self.id}, workout_id={self.workout_id}, status={self.status})>"

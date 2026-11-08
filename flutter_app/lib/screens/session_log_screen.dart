@@ -26,7 +26,7 @@ class _SessionLogScreenState extends ConsumerState<SessionLogScreen> {
   String _fmtDate(DateTime? dt) {
     if (dt == null) return '-';
     return DateFormat('yyyy-MM-dd HH:mm').format(dt.toLocal());
-    }
+  }
 
   @override
   void initState() {
@@ -67,7 +67,11 @@ class _SessionLogScreenState extends ConsumerState<SessionLogScreen> {
         final defs = await exSvc.getExercisesByIds(ids);
         final defMap = {for (final d in defs) d.id: d};
         final withNames = instances
-            .map((inst) => inst.copyWith(exerciseDefinition: defMap[inst.exerciseListId]))
+            .map(
+              (inst) => inst.copyWith(
+                exerciseDefinition: defMap[inst.exerciseListId],
+              ),
+            )
             .toList();
         if (!mounted) return;
         setState(() {
@@ -80,7 +84,6 @@ class _SessionLogScreenState extends ConsumerState<SessionLogScreen> {
         _workout = w;
       });
     } catch (_) {
-
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -93,7 +96,7 @@ class _SessionLogScreenState extends ConsumerState<SessionLogScreen> {
     return AssistantChatHost(
       builder: (context, openChat) {
         return Scaffold(
-          backgroundColor: AppColors.background,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           appBar: PrimaryAppBar(
             title: 'Session #${session.id ?? '-'} Logs',
             onTitleTap: openChat,
@@ -101,46 +104,61 @@ class _SessionLogScreenState extends ConsumerState<SessionLogScreen> {
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-          _InfoRow(label: 'Workout ID', value: session.workoutId.toString()),
-          _InfoRow(label: 'Status', value: session.status),
-          _InfoRow(label: 'Started', value: _fmtDate(session.startedAt)),
-          _InfoRow(label: 'Finished', value: _fmtDate(session.finishedAt)),
-          _InfoRow(label: 'Duration (sec)', value: (session.durationSeconds ?? 0).toString()),
-          const SizedBox(height: 16),
-          Text('Exercises & Sets', style: AppTextStyles.titleMedium),
-          const SizedBox(height: 8),
-          if (_loading)
-            const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
-          else if (_workout == null || _workout!.exerciseInstances.isEmpty)
-            const Text('No exercise data available for this workout')
-          else
-            ..._workout!.exerciseInstances.map(_buildInstanceCard),
-          const SizedBox(height: 16),
-          Text('Raw Progress', style: AppTextStyles.titleMedium),
-          const SizedBox(height: 4),
-          Text(
-            'Diagnostics only: JSON с ключом completed, где ключи — id инстансов упражнения, а значения — массив id завершённых сетов. Используется для подсветки сетов выше.',
-            style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary),
+              _InfoRow(
+                label: 'Workout ID',
+                value: session.workoutId.toString(),
+              ),
+              _InfoRow(label: 'Status', value: session.status),
+              _InfoRow(label: 'Started', value: _fmtDate(session.startedAt)),
+              _InfoRow(label: 'Finished', value: _fmtDate(session.finishedAt)),
+              _InfoRow(
+                label: 'Duration (sec)',
+                value: (session.durationSeconds ?? 0).toString(),
+              ),
+              const SizedBox(height: 16),
+              Text('Exercises & Sets', style: AppTextStyles.titleMedium),
+              const SizedBox(height: 8),
+              if (_loading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (_workout == null || _workout!.exerciseInstances.isEmpty)
+                const Text('No exercise data available for this workout')
+              else
+                ..._workout!.exerciseInstances.map(_buildInstanceCard),
+              const SizedBox(height: 16),
+              Text('Raw Progress', style: AppTextStyles.titleMedium),
+              const SizedBox(height: 4),
+              Text(
+                'Diagnostics only: JSON с ключом completed, где ключи — id инстансов упражнения, а значения — массив id завершённых сетов. Используется для подсветки сетов выше.',
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: AppShadows.sm,
+                ),
+                child: Text(session.progress.toString()),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              boxShadow: AppShadows.sm,
-            ),
-            child: Text(session.progress.toString()),
-          ),
-        ],
-      ),
-    );
+        );
       },
     );
   }
 
   Widget _buildInstanceCard(ExerciseInstance instance) {
-    final name = instance.exerciseDefinition?.name ?? 'Exercise #${instance.id ?? instance.exerciseListId}';
+    final name =
+        instance.exerciseDefinition?.name ??
+        'Exercise #${instance.id ?? instance.exerciseListId}';
     final completed = _completedByInstance[instance.id ?? -1] ?? const <int>{};
     final sets = instance.sets;
 
@@ -148,7 +166,7 @@ class _SessionLogScreenState extends ConsumerState<SessionLogScreen> {
       margin: const EdgeInsets.symmetric(vertical: 6),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF6F4FF),
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         boxShadow: AppShadows.sm,
       ),
@@ -162,22 +180,35 @@ class _SessionLogScreenState extends ConsumerState<SessionLogScreen> {
               Expanded(
                 child: Text(
                   name,
-                  style: AppTextStyles.titleMedium.copyWith(fontWeight: FontWeight.w700),
+                  style: AppTextStyles.titleMedium.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               if (sets.isNotEmpty)
-                Text('${sets.length} set${sets.length == 1 ? '' : 's'}', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+                Text(
+                  '${sets.length} set${sets.length == 1 ? '' : 's'}',
+                  style: AppTextStyles.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 8),
           if (sets.isEmpty)
-            Text('No sets', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary))
+            Text(
+              'No sets',
+              style: AppTextStyles.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            )
           else
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final s in sets) _SetChip(set: s, completed: completed.contains(s.id)),
+                for (final s in sets)
+                  _SetChip(set: s, completed: completed.contains(s.id)),
               ],
             ),
         ],
@@ -199,7 +230,12 @@ class _InfoRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 140,
-            child: Text(label, style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+            child: Text(
+              label,
+              style: AppTextStyles.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
           ),
           const SizedBox(width: 8),
           Expanded(child: Text(value, style: AppTextStyles.bodyMedium)),
@@ -217,10 +253,15 @@ class _SetChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = _formatSet(set);
-    final bg = completed ? const Color(0xFFEFF8F2) : Colors.white;
-    final border = completed ? const Color(0xFF2E7D32) : AppColors.textDisabled.withOpacity(0.2);
+    final scheme = Theme.of(context).colorScheme;
+    final bg = completed
+        ? scheme.tertiaryContainer
+        : scheme.surfaceContainerHigh;
+    final border = completed ? scheme.tertiary : scheme.outlineVariant;
     final icon = completed ? Icons.check_circle : Icons.radio_button_unchecked;
-    final iconColor = completed ? const Color(0xFF2E7D32) : AppColors.textDisabled;
+    final iconColor = completed
+        ? scheme.onTertiaryContainer
+        : scheme.onSurfaceVariant;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
@@ -234,7 +275,13 @@ class _SetChip extends StatelessWidget {
         children: [
           Icon(icon, size: 16, color: iconColor),
           const SizedBox(width: 6),
-          Text(text, style: AppTextStyles.bodySmall.copyWith(fontWeight: FontWeight.w600)),
+          Text(
+            text,
+            style: AppTextStyles.bodySmall.copyWith(
+              fontWeight: FontWeight.w600,
+              color: completed ? scheme.onTertiaryContainer : scheme.onSurface,
+            ),
+          ),
         ],
       ),
     );
@@ -254,4 +301,3 @@ class _SetChip extends StatelessWidget {
     return (v % 1 == 0) ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
   }
 }
-

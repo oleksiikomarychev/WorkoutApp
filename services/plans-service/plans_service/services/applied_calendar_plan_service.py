@@ -76,7 +76,8 @@ class AppliedCalendarPlanService:
     async def _fetch_user_maxes(self, exercise_ids: list[int]) -> list[dict]:
         if not exercise_ids:
             return []
-        base = "http://user-max-service:8003/user-max"
+        user_max_base = (os.getenv("USER_MAX_SERVICE_URL") or "http://user-max-service:8003").rstrip("/")
+        base = f"{user_max_base}/user-max"
         headers = self._auth_headers()
 
         async def fetch_one(ex_id, client):
@@ -103,7 +104,7 @@ class AppliedCalendarPlanService:
         if not user_max_ids:
             return []
         headers = self._auth_headers()
-        base = "http://user-max-service:8003"
+        base = (os.getenv("USER_MAX_SERVICE_URL") or "http://user-max-service:8003").rstrip("/")
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
@@ -198,7 +199,7 @@ class AppliedCalendarPlanService:
             caller_stack=traceback.format_stack()[-3].strip() if traceback.format_stack() else "unknown",
         )
         
-        bases = [os.getenv("WORKOUTS_SERVICE_URL", "http://localhost:8004")]
+        bases = [os.getenv("WORKOUTS_SERVICE_URL", "http://workouts-service:8004")]
         headers = self._auth_headers()
 
         logger.info(
@@ -1799,7 +1800,7 @@ class AppliedCalendarPlanService:
         return out
 
     async def _fetch_workouts_for_applied_plan(self, applied_plan_id: int) -> list[dict[str, Any]]:
-        base = os.getenv("WORKOUTS_SERVICE_URL", "http://localhost:8004")
+        base = os.getenv("WORKOUTS_SERVICE_URL", "http://workouts-service:8004")
         headers = self._auth_headers()
         url = urllib.parse.urljoin(base + "/", f"workouts/?applied_plan_id={applied_plan_id}")
         async with ServiceClient(timeout=15.0) as client:
@@ -1817,7 +1818,7 @@ class AppliedCalendarPlanService:
         only_future: bool,
         baseline_date: datetime | None,
     ) -> dict[str, Any] | None:
-        base = os.getenv("WORKOUTS_SERVICE_URL", "http://localhost:8004")
+        base = os.getenv("WORKOUTS_SERVICE_URL", "http://workouts-service:8004")
         headers = self._auth_headers()
         path = "workouts/schedule/shift-in-plan"
         url = urllib.parse.urljoin(base + "/", path)
@@ -1847,7 +1848,7 @@ class AppliedCalendarPlanService:
         include_meta: bool = False,
         top_layers_limit: int = 20,
     ) -> dict[str, Any]:
-        base = os.getenv("WORKOUTS_SERVICE_URL", "http://localhost:8004")
+        base = os.getenv("WORKOUTS_SERVICE_URL", "http://workouts-service:8004")
         headers = self._auth_headers()
         path = "workouts/analytics/in-plan"
         url = urllib.parse.urljoin(base + "/", path)

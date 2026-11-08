@@ -192,13 +192,15 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               ElevatedButton(
                 onPressed: _loading ? null : _fetch,
                 child: Text(l10n.showChart),
               ),
-              const SizedBox(width: 12),
               if (_rangeStart != null && _rangeEnd != null)
                 Text('${df.format(_rangeStart!)} — ${df.format(_rangeEnd!)}'),
             ],

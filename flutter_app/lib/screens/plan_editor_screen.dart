@@ -109,15 +109,16 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
           return AlertDialog(
             title: const Text('Массовая замена упражнений'),
             content: SizedBox(
-              width: 440,
+              width: (MediaQuery.sizeOf(ctx).width - 96).clamp(0.0, 440.0),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      Expanded(
-                        child: TextButton.icon(
+                      TextButton.icon(
                           onPressed: () async {
                             final res = await Navigator.of(context).push(
                               MaterialPageRoute(
@@ -130,9 +131,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
                           },
                           icon: const Icon(Icons.search),
                           label: Text(target == null ? 'Выбрать целевое упражнение' : 'Цель: ${target!.name}'),
-                        ),
                       ),
-                      const SizedBox(width: 8),
                       TextButton(
                         onPressed: () {
                           setState(() {
@@ -149,7 +148,10 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
                   ),
                   const SizedBox(height: 8),
                   SizedBox(
-                    height: 260,
+                    height: (MediaQuery.sizeOf(ctx).height -
+                            MediaQuery.viewInsetsOf(ctx).bottom -
+                            320)
+                        .clamp(100.0, 260.0),
                     child: Scrollbar(
                       child: ListView(
                         children: exerciseIdsSorted.map((id) => CheckboxListTile(
@@ -272,7 +274,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Предпросмотр замены упражнений'),
         content: SizedBox(
-          width: 440,
+          width: (MediaQuery.sizeOf(ctx).width - 96).clamp(0.0, 440.0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1105,16 +1107,17 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
           return AlertDialog(
             title: const Text('Предпросмотр массовых правок'),
             content: SizedBox(
-              width: 460,
+              width: (MediaQuery.sizeOf(ctx).width - 96).clamp(0.0, 460.0),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      Expanded(child: Text('Микроциклов: ${diffs.length}')),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text('Несоответствий: $sumInvalid')),
+                      Text('Микроциклов: ${diffs.length}'),
+                      Text('Несоответствий: $sumInvalid'),
                     ],
                   ),
                   Text('Изменённых сетов: $sumChanged из $sumTotal'),

@@ -56,7 +56,7 @@ def _ensure_day_labels(plan: dict[str, Any]) -> None:
                 if not isinstance(w, dict):
                     continue
                 if not w.get("day_label"):
-                    w["day_label"] = f"Day {i + 1}" if i < days_count else f"Day {i + 1}"
+                    w["day_label"] = f"Day {i + 1}"
 
 
 def _build_endpoint(base_url: str, target: str) -> str:

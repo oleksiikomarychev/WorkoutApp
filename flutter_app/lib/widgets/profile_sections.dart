@@ -10,7 +10,11 @@ class ProfileStatsRow extends StatelessWidget {
   final UserStats stats;
   final EdgeInsetsGeometry padding;
 
-  const ProfileStatsRow({super.key, required this.stats, this.padding = const EdgeInsets.symmetric(horizontal: 24)});
+  const ProfileStatsRow({
+    super.key,
+    required this.stats,
+    this.padding = const EdgeInsets.symmetric(horizontal: 24),
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -22,11 +26,38 @@ class ProfileStatsRow extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 520),
           child: Row(
             children: [
-              Expanded(child: _StatCard(value: '${stats.totalWorkouts}', label: l10n.statsTotalWorkouts, color: const Color(0xFFD4F1D5))),
+              Expanded(
+                child: _StatCard(
+                  value: '${stats.totalWorkouts}',
+                  label: l10n.statsTotalWorkouts,
+                  color: Theme.of(context).colorScheme.tertiaryContainer,
+                  foregroundColor: Theme.of(
+                    context,
+                  ).colorScheme.onTertiaryContainer,
+                ),
+              ),
               const SizedBox(width: 12),
-              Expanded(child: _StatCard(value: stats.totalVolume.toStringAsFixed(0), label: l10n.statsVolumeKg, color: const Color(0xFFD4E6F1))),
+              Expanded(
+                child: _StatCard(
+                  value: stats.totalVolume.toStringAsFixed(0),
+                  label: l10n.statsVolumeKg,
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  foregroundColor: Theme.of(
+                    context,
+                  ).colorScheme.onPrimaryContainer,
+                ),
+              ),
               const SizedBox(width: 12),
-              Expanded(child: _StatCard(value: '${stats.activeDays}', label: l10n.statsActiveDays, color: const Color(0xFFFFE4C4))),
+              Expanded(
+                child: _StatCard(
+                  value: '${stats.activeDays}',
+                  label: l10n.statsActiveDays,
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  foregroundColor: Theme.of(
+                    context,
+                  ).colorScheme.onSecondaryContainer,
+                ),
+              ),
             ],
           ),
         ),
@@ -39,19 +70,39 @@ class _StatCard extends StatelessWidget {
   final String value;
   final String label;
   final Color color;
+  final Color foregroundColor;
 
-  const _StatCard({required this.value, required this.label, required this.color});
+  const _StatCard({
+    required this.value,
+    required this.label,
+    required this.color,
+    required this.foregroundColor,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Column(
         children: [
-          Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: foregroundColor,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11, color: foregroundColor),
+          ),
         ],
       ),
     );
@@ -62,7 +113,11 @@ class ProfileActivitySection extends StatelessWidget {
   final UserStats stats;
   final EdgeInsetsGeometry padding;
 
-  const ProfileActivitySection({super.key, required this.stats, this.padding = const EdgeInsets.symmetric(horizontal: 24)});
+  const ProfileActivitySection({
+    super.key,
+    required this.stats,
+    this.padding = const EdgeInsets.symmetric(horizontal: 24),
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -72,17 +127,41 @@ class ProfileActivitySection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(l10n.activityTitle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+          Text(
+            l10n.activityTitle,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(l10n.lastWeeks(stats.weeks), style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-              Text(l10n.maxKgPerDay(stats.maxDayVolume.toStringAsFixed(0)), style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+              Text(
+                l10n.lastWeeks(stats.weeks),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              Text(
+                l10n.maxKgPerDay(stats.maxDayVolume.toStringAsFixed(0)),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),
-          _ActivityGrid(activityMap: stats.activityMap, maxVolume: stats.maxDayVolume, weeks: stats.weeks),
+          _ActivityGrid(
+            activityMap: stats.activityMap,
+            maxVolume: stats.maxDayVolume,
+            weeks: stats.weeks,
+          ),
           const SizedBox(height: 8),
           _ActivityLegend(),
         ],
@@ -96,7 +175,11 @@ class _ActivityGrid extends StatelessWidget {
   final double maxVolume;
   final int weeks;
 
-  const _ActivityGrid({required this.activityMap, required this.maxVolume, required this.weeks});
+  const _ActivityGrid({
+    required this.activityMap,
+    required this.maxVolume,
+    required this.weeks,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -105,7 +188,9 @@ class _ActivityGrid extends StatelessWidget {
     final today = DateTime.now();
     final endDate = DateTime(today.year, today.month, today.day);
     final endWeekStart = endDate.subtract(Duration(days: endDate.weekday - 1));
-    final startWeekStart = endWeekStart.subtract(Duration(days: (weeks - 1) * 7));
+    final startWeekStart = endWeekStart.subtract(
+      Duration(days: (weeks - 1) * 7),
+    );
 
     final columns = <List<DateTime>>[];
     for (int w = 0; w < weeks; w++) {
@@ -132,24 +217,45 @@ class _ActivityGrid extends StatelessWidget {
               children: [
                 SizedBox(
                   width: 12,
-                  child: Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.textPrimary), textAlign: TextAlign.center, softWrap: false),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                    textAlign: TextAlign.center,
+                    softWrap: false,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 for (final date in weekDays)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4),
-                    child: Builder(builder: (_) {
-                      final day = DateTime(date.year, date.month, date.day);
-                      final dayActivity = _getActivityForDate(activityMap, day);
-                      final volume = dayActivity?.volume ?? 0;
-                      final color = _getActivityColor(volume, maxVolume);
-                      return Tooltip(
-                        message: dayActivity != null
-                            ? '${DateFormat('MMM d', locale).format(date)}\n${l10n.sessionsCount(dayActivity.sessionCount)}\n${volume.toStringAsFixed(0)} kg'
-                            : '${DateFormat('MMM d', locale).format(date)}\n${l10n.noActivity}',
-                        child: Container(width: 12, height: 12, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
-                      );
-                    }),
+                    child: Builder(
+                      builder: (_) {
+                        final day = DateTime(date.year, date.month, date.day);
+                        final dayActivity = _getActivityForDate(
+                          activityMap,
+                          day,
+                        );
+                        final volume = dayActivity?.volume ?? 0;
+                        final color = _getActivityColor(volume, maxVolume);
+                        return Tooltip(
+                          message: dayActivity != null
+                              ? '${DateFormat('MMM d', locale).format(date)}\n${l10n.sessionsCount(dayActivity.sessionCount)}\n${volume.toStringAsFixed(0)} kg'
+                              : '${DateFormat('MMM d', locale).format(date)}\n${l10n.noActivity}',
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: color,
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ),
               ],
             ),
@@ -168,7 +274,10 @@ class _ActivityGrid extends StatelessWidget {
     return const Color(0xFF196127);
   }
 
-  DayActivity? _getActivityForDate(Map<DateTime, DayActivity> map, DateTime date) {
+  DayActivity? _getActivityForDate(
+    Map<DateTime, DayActivity> map,
+    DateTime date,
+  ) {
     for (final entry in map.entries) {
       final d = entry.key;
       if (d.year == date.year && d.month == date.month && d.day == date.day) {
@@ -186,7 +295,10 @@ class _ActivityLegend extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Text(l10n.less, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+        Text(
+          l10n.less,
+          style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
         const SizedBox(width: 4),
         const _LegendBox(Color(0xFFEBEDF0)),
         const SizedBox(width: 2),
@@ -198,7 +310,10 @@ class _ActivityLegend extends StatelessWidget {
         const SizedBox(width: 2),
         const _LegendBox(Color(0xFF196127)),
         const SizedBox(width: 4),
-        Text(l10n.more, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+        Text(
+          l10n.more,
+          style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
       ],
     );
   }
@@ -210,7 +325,14 @@ class _LegendBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(width: 10, height: 10, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)));
+    return Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(2),
+      ),
+    );
   }
 }
 
@@ -219,7 +341,12 @@ class ProfileCompletedWorkoutsSection extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final void Function(WorkoutSession session)? onSessionTap;
 
-  const ProfileCompletedWorkoutsSection({super.key, required this.sessions, this.padding = const EdgeInsets.symmetric(horizontal: 24), this.onSessionTap});
+  const ProfileCompletedWorkoutsSection({
+    super.key,
+    required this.sessions,
+    this.padding = const EdgeInsets.symmetric(horizontal: 24),
+    this.onSessionTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -231,16 +358,34 @@ class ProfileCompletedWorkoutsSection extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.calendar_today, color: AppColors.primary, size: 24),
+              Icon(
+                Icons.calendar_today,
+                color: Theme.of(context).colorScheme.primary,
+                size: 24,
+              ),
               const SizedBox(width: 8),
-              Text(l10n.completedWorkoutsTitle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+              Text(
+                l10n.completedWorkoutsTitle,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),
           if (sessions.isEmpty)
-            Text(l10n.noCompletedWorkoutsYet, style: const TextStyle(color: AppColors.textSecondary))
+            Text(
+              l10n.noCompletedWorkoutsYet,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            )
           else
-            Column(children: sessions.map((s) => _WorkoutCard(session: s, onTap: onSessionTap)).toList()),
+            Column(
+              children: sessions
+                  .map((s) => _WorkoutCard(session: s, onTap: onSessionTap))
+                  .toList(),
+            ),
         ],
       ),
     );
@@ -260,7 +405,11 @@ class _WorkoutCard extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12), boxShadow: AppShadows.sm),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: AppShadows.sm,
+      ),
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(12),
@@ -272,14 +421,37 @@ class _WorkoutCard extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(color: AppColors.success, borderRadius: BorderRadius.circular(20)),
-                  child: Text(workoutCode, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    workoutCode,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onTertiaryContainer,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 16),
-                Text(dateFormat.format(session.startedAt), style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+                Text(
+                  dateFormat.format(session.startedAt),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
                 const Spacer(),
-                const Icon(Icons.check_circle, color: AppColors.success, size: 24),
+                Icon(
+                  Icons.check_circle,
+                  color: Theme.of(context).colorScheme.tertiary,
+                  size: 24,
+                ),
               ],
             ),
           ),

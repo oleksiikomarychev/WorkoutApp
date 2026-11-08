@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
-from .calendar import Base
+from .calendar import Base, _utc_now
 
 
 class MesocycleTemplate(Base):
@@ -24,8 +24,8 @@ class MesocycleTemplate(Base):
 
     is_public = Column(Boolean, nullable=False, default=False)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=_utc_now, nullable=False)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now, nullable=False)
 
     microcycles = relationship(
         "MicrocycleTemplate",

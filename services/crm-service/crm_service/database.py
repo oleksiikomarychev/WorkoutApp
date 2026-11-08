@@ -1,14 +1,37 @@
+from __future__ import annotations
+
+import os
+from collections.abc import AsyncGenerator
+
+import structlog
 from backend_common.database import (
     create_async_engine_and_session,
-    ensure_asyncpg_url,
-    get_required_env_url,
+    ensure_async_driver_url,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import declarative_base
 
-DATABASE_URL = get_required_env_url("CRM_DATABASE_URL")
+from .config import settings
 
-# Ensure we use an async driver for SQLAlchemy's asyncio extension
-DATABASE_URL = ensure_asyncpg_url(DATABASE_URL)
+logger = structlog.get_logger(__name__)
+
+Base = declarative_base()
+
+raw_url = settings.CRM_DATABASE_URL or os.getenv("DATABASE_URL")
+if raw_url:
+    DATABASE_URL = ensure_async_driver_url(raw_url)
+    if (os.getenv("DOCKER_CONTAINER") or os.path.exists("/.dockerenv")) and "localhost" in DATABASE_URL:
+        DATABASE_URL = DATABASE_URL.replace("localhost", "host.docker.internal")
+    scheme = DATABASE_URL.split("://")[0]
+    logger.info("CRM DB configured", scheme=scheme)
+else:
+    DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+    logger.warning("CRM_DATABASE_URL not set; falling back to in-memory sqlite")
 
 engine, AsyncSessionLocal = create_async_engine_and_session(DATABASE_URL, expire_on_commit=False)
-Base = declarative_base()
+
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Yield an async database session."""
+    async with AsyncSessionLocal() as session:
+        yield session

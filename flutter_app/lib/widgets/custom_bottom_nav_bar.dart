@@ -44,13 +44,20 @@ class CustomBottomNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-    final mediaQuery = MediaQuery.of(context);
-    final bottomPadding = mediaQuery.padding.bottom;
-    const double outerHorizontalPadding = 24.0;
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
+    final scaledLabelHeight =
+        MediaQuery.textScalerOf(context).scale(
+          selectedFontSize > unselectedFontSize
+              ? selectedFontSize
+              : unselectedFontSize,
+        ) *
+        1.1;
+    final barHeight = height > iconSize + 4 + scaledLabelHeight * 2.6 + 18
+        ? height
+        : iconSize + 4 + scaledLabelHeight * 2.6 + 18;
+    const double outerHorizontalPadding = 12.0;
     const double islandOffset = 16.0;
-    final Color panelColor = backgroundColor ?? theme.scaffoldBackgroundColor;
     const List<Color> gradientColors = [
       Color(0xFF0D47A1),
       Color(0xFF1976D2),
@@ -61,8 +68,7 @@ class CustomBottomNavBar extends StatelessWidget {
       color: Colors.transparent,
       elevation: 0,
       child: SizedBox(
-
-        height: height + bottomPadding + islandOffset,
+        height: barHeight + bottomPadding + islandOffset,
         child: SafeArea(
           top: false,
           bottom: true,
@@ -79,6 +85,7 @@ class CustomBottomNavBar extends StatelessWidget {
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                   child: Container(
+                    constraints: const BoxConstraints(maxWidth: 600),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         begin: Alignment.topLeft,
@@ -98,7 +105,7 @@ class CustomBottomNavBar extends StatelessWidget {
                       ],
                     ),
                     child: SizedBox(
-                      height: height,
+                      height: barHeight,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: List.generate(
@@ -148,7 +155,7 @@ class CustomBottomNavBar extends StatelessWidget {
         child: AnimatedContainer(
           duration: animationDuration,
           curve: animationCurve,
-          padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 12.0),
+          padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 4.0),
           decoration: BoxDecoration(
             borderRadius: borderRadius,
             color: isSelected
@@ -163,24 +170,21 @@ class CustomBottomNavBar extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                item.icon,
-                size: 20.0,
-                color: iconColor,
-              ),
+              Icon(item.icon, size: iconSize, color: iconColor),
               const SizedBox(height: 4.0),
               AnimatedDefaultTextStyle(
                 duration: animationDuration,
                 curve: animationCurve,
                 style: textTheme.labelSmall!.copyWith(
-                  fontSize: isSelected ? 11.0 : 10.0,
+                  fontSize: isSelected ? selectedFontSize : unselectedFontSize,
                   color: textColor,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                   height: 1.1,
                 ),
                 child: Text(
                   label,
-                  maxLines: 1,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -191,12 +195,3 @@ class CustomBottomNavBar extends StatelessWidget {
     );
   }
 }
-
-
-
-
-
-
-
-
-

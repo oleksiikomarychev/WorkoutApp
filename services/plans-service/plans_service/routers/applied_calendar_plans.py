@@ -4,7 +4,7 @@ import structlog
 from backend_common.celery_utils import build_task_status_response, enqueue_task
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..celery_app import celery_app
 from ..dependencies import get_current_user_id, get_db
@@ -42,7 +42,7 @@ def _submit_task(task_fn, *, user_id: str, **kwargs: Any) -> TaskSubmissionRespo
 
 
 @router.get("/active", response_model=AppliedCalendarPlanResponse | None)
-async def get_active_plan(db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id)):
+async def get_active_plan(db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     try:
         service = AppliedCalendarPlanService(db, user_id)
         plan = await service.get_active_plan()
@@ -61,14 +61,14 @@ async def get_applied_plan_analytics(
     applied_plan_id: int,
     from_date: str | None = Query(None, alias="from"),
     to_date: str | None = Query(None, alias="to"),
-    group_by: str | None = Query(None, regex="^(order|date)$"),
+    group_by: str | None = Query(None, pattern="^(order|date)$"),
     layers: list[str] | None = Query(
         None,
         description="Optional multilayer series keys. Example: layers=exercise:10&layers=muscle:chest",
     ),
     include_meta: bool = Query(False, description="If true, include meta payload for UI"),
     top_layers_limit: int = Query(20, ge=1, le=200, description="Limit for meta.available_layers lists"),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     try:
@@ -96,7 +96,7 @@ async def get_applied_plan_analytics(
 async def apply_plan_macros(
     applied_plan_id: int,
     index_offset: int = Query(0, description="Offset to apply to current_workout_index when evaluating macros"),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     try:
@@ -156,7 +156,7 @@ async def apply_plan_macros_async(
 @router.get("/{applied_plan_id}/flattened-workouts", response_model=list[dict[str, Any]])
 async def get_flattened_workouts(
     applied_plan_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     try:
@@ -172,7 +172,7 @@ async def get_flattened_workouts(
 
 @router.get("/{plan_id}", response_model=AppliedCalendarPlanResponse)
 async def get_applied_plan_details(
-    plan_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id)
+    plan_id: int, db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user_id)
 ):
     try:
         service = AppliedCalendarPlanService(db, user_id)
@@ -189,7 +189,7 @@ async def get_applied_plan_details(
 
 @router.get("/user", response_model=list[AppliedCalendarPlanSummaryResponse])
 async def get_user_applied_plans(
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     try:
@@ -206,7 +206,7 @@ async def get_user_applied_plans(
 async def advance_applied_plan_index(
     applied_plan_id: int,
     by: int = Query(1, description="How many positions to advance the current_workout_index by"),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     try:
@@ -232,7 +232,7 @@ class CancelAppliedPlanRequest(BaseModel):
 async def cancel_applied_plan(
     applied_plan_id: int,
     payload: CancelAppliedPlanRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     try:
@@ -259,7 +259,7 @@ async def cancel_applied_plan(
 
 @router.get("", response_model=list[AppliedCalendarPlanResponse])
 async def get_applied_plans(
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     try:
@@ -273,7 +273,7 @@ async def get_applied_plans(
 
 
 @router.get("/active/workouts", response_model=list[dict[str, Any]])
-async def get_active_plan_workouts(db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id)):
+async def get_active_plan_workouts(db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     try:
         service = AppliedCalendarPlanService(db, user_id)
         active_plan = await service.get_active_plan()
@@ -303,7 +303,7 @@ async def apply_plan(
     plan_id: int,
     compute: ApplyPlanComputeSettings,
     user_max_ids: str = Query(..., description="Comma-separated list of user_max IDs"),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     try:
@@ -362,7 +362,7 @@ async def apply_plan_async(
 async def run_plan_macros(
     applied_plan_id: int,
     index_offset: int = Query(1, description="Offset to apply to current_workout_index when evaluating macros"),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     try:

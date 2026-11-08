@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import os
+from datetime import datetime
 
 import httpx
 import structlog
@@ -32,8 +32,8 @@ from ..schemas.relationships import (
 )
 
 logger = structlog.get_logger(__name__)
-MESSAGING_GATEWAY_URL = (os.getenv("MESSAGING_GATEWAY_URL") or "http://gateway:8000/api/v1/messaging").rstrip("/")
-INTERNAL_GATEWAY_SECRET = (os.getenv("INTERNAL_GATEWAY_SECRET") or "").strip()
+MESSAGING_GATEWAY_URL = (settings.MESSAGING_GATEWAY_URL or "http://gateway:8000/api/v1/messaging").rstrip("/")
+INTERNAL_GATEWAY_SECRET = (settings.INTERNAL_GATEWAY_SECRET or "").strip()
 
 
 def _log_coach_athlete_event(
@@ -618,8 +618,6 @@ async def update_link_status(
     old_status = link.status
     link.status = payload.status.value
     if payload.status == CoachAthleteStatus.ended:
-        from datetime import datetime
-
         link.ended_at = datetime.utcnow()
         link.ended_reason = payload.ended_reason
 

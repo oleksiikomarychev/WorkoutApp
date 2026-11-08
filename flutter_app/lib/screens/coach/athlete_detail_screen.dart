@@ -8,12 +8,19 @@ import 'package:workout_app/services/service_locator.dart' as sl;
 import 'package:workout_app/widgets/floating_header_bar.dart';
 import 'package:workout_app/widgets/plan_analytics_chart.dart';
 
-final athleteDetailedAnalyticsProvider = FutureProvider.family<AthleteDetailedAnalyticsModel, String>((ref, athleteId) async {
-  final svc = ref.watch(sl.crmAnalyticsServiceProvider);
-  return svc.getAthleteAnalytics(athleteId: athleteId);
-});
+final athleteDetailedAnalyticsProvider =
+    FutureProvider.family<AthleteDetailedAnalyticsModel, String>((
+      ref,
+      athleteId,
+    ) async {
+      final svc = ref.watch(sl.crmAnalyticsServiceProvider);
+      return svc.getAthleteAnalytics(athleteId: athleteId);
+    });
 
-final athleteDetailDisplayNameProvider = FutureProvider.family<String, String>((ref, athleteId) async {
+final athleteDetailDisplayNameProvider = FutureProvider.family<String, String>((
+  ref,
+  athleteId,
+) async {
   final profileService = ref.watch(sl.profileServiceProvider);
   try {
     final profile = await profileService.fetchProfileById(athleteId);
@@ -33,7 +40,9 @@ class AthleteDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final asyncData = ref.watch(athleteDetailedAnalyticsProvider(athleteId));
-    final displayNameAsync = ref.watch(athleteDetailDisplayNameProvider(athleteId));
+    final displayNameAsync = ref.watch(
+      athleteDetailDisplayNameProvider(athleteId),
+    );
     final df = DateFormat('dd.MM.yyyy');
 
     final headerTitle = displayNameAsync.when(
@@ -43,7 +52,7 @@ class AthleteDetailScreen extends ConsumerWidget {
     );
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: SafeArea(
         bottom: false,
         child: Stack(
@@ -60,7 +69,10 @@ class AthleteDetailScreen extends ConsumerWidget {
                 return SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 24,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -68,7 +80,9 @@ class AthleteDetailScreen extends ConsumerWidget {
                         Container(
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerLow,
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: AppShadows.sm,
                           ),
@@ -77,37 +91,54 @@ class AthleteDetailScreen extends ConsumerWidget {
                             children: [
                               Text(
                                 cardName,
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                      color: AppColors.textPrimary,
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface,
                                       fontWeight: FontWeight.w700,
                                     ),
                               ),
                               const SizedBox(height: 12),
                               Text('Sessions: ${details.sessionsCount}'),
                               const SizedBox(height: 4),
-                              Text('Total volume: ${details.totalVolume?.toStringAsFixed(1) ?? '-'}'),
+                              Text(
+                                'Total volume: ${details.totalVolume?.toStringAsFixed(1) ?? '-'}',
+                              ),
                               const SizedBox(height: 4),
                               if (details.sessionsPerWeek != null)
-                                Text('Sessions/week: ${details.sessionsPerWeek!.toStringAsFixed(1)}'),
+                                Text(
+                                  'Sessions/week: ${details.sessionsPerWeek!.toStringAsFixed(1)}',
+                                ),
                               if (details.sessionsPerWeek != null)
                                 const SizedBox(height: 4),
                               if (details.planAdherence != null)
-                                Text('Plan adherence: ${(details.planAdherence! * 100).round()}%'),
+                                Text(
+                                  'Plan adherence: ${(details.planAdherence! * 100).round()}%',
+                                ),
                               if (details.planAdherence != null)
                                 const SizedBox(height: 4),
                               if (details.avgIntensity != null)
-                                Text('Avg intensity: ${details.avgIntensity!.toStringAsFixed(1)}'),
+                                Text(
+                                  'Avg intensity: ${details.avgIntensity!.toStringAsFixed(1)}',
+                                ),
                               if (details.avgIntensity != null)
                                 const SizedBox(height: 4),
                               if (details.avgEffort != null)
-                                Text('Avg effort (RPE): ${details.avgEffort!.toStringAsFixed(1)}'),
+                                Text(
+                                  'Avg effort (RPE): ${details.avgEffort!.toStringAsFixed(1)}',
+                                ),
                               if (details.avgEffort != null)
                                 const SizedBox(height: 4),
                               if (details.lastWorkoutAt != null)
-                                Text('Last workout: ${df.format(details.lastWorkoutAt!)}'),
+                                Text(
+                                  'Last workout: ${df.format(details.lastWorkoutAt!)}',
+                                ),
                               const SizedBox(height: 4),
                               if (details.daysSinceLastWorkout != null)
-                                Text('Days since last workout: ${details.daysSinceLastWorkout}'),
+                                Text(
+                                  'Days since last workout: ${details.daysSinceLastWorkout}',
+                                ),
                               const SizedBox(height: 8),
                               if (details.activePlanName != null)
                                 Text('Active plan: ${details.activePlanName}'),
@@ -119,12 +150,15 @@ class AthleteDetailScreen extends ConsumerWidget {
                                 child: _TrendChart(details: details),
                               ),
                               const SizedBox(height: 16),
-                              if (details.effortDistribution != null && details.effortDistribution!.isNotEmpty) ...[
+                              if (details.effortDistribution != null &&
+                                  details.effortDistribution!.isNotEmpty) ...[
                                 const Text('RPE distribution'),
                                 SizedBox(height: 8),
                                 SizedBox(
                                   height: 140,
-                                  child: _RpeMiniChart(distribution: details.effortDistribution),
+                                  child: _RpeMiniChart(
+                                    distribution: details.effortDistribution,
+                                  ),
                                 ),
                                 SizedBox(height: 16),
                               ],
@@ -132,13 +166,18 @@ class AthleteDetailScreen extends ConsumerWidget {
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
                                 itemCount: details.trend.length,
-                                separatorBuilder: (_, __) => const Divider(height: 1),
+                                separatorBuilder: (_, __) =>
+                                    const Divider(height: 1),
                                 itemBuilder: (context, index) {
                                   final t = details.trend[index];
                                   return ListTile(
                                     title: Text(df.format(t.periodStart)),
-                                    subtitle: Text('Sessions: ${t.sessionsCount}'),
-                                    trailing: Text('Vol: ${t.totalVolume.toStringAsFixed(1)}'),
+                                    subtitle: Text(
+                                      'Sessions: ${t.sessionsCount}',
+                                    ),
+                                    trailing: Text(
+                                      'Vol: ${t.totalVolume.toStringAsFixed(1)}',
+                                    ),
                                   );
                                 },
                               ),
@@ -156,7 +195,10 @@ class AthleteDetailScreen extends ConsumerWidget {
               child: FloatingHeaderBar(
                 title: headerTitle,
                 leading: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+                  icon: Icon(
+                    Icons.arrow_back,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                   onPressed: () => Navigator.of(context).maybePop(),
                 ),
                 onProfileTap: null,
@@ -218,11 +260,12 @@ class _RpeMiniChart extends StatelessWidget {
       return const Text('No RPE data');
     }
 
-    final entries = data.entries
-        .map((e) => MapEntry(int.tryParse(e.key) ?? 0, e.value))
-        .where((e) => e.key > 0)
-        .toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
+    final entries =
+        data.entries
+            .map((e) => MapEntry(int.tryParse(e.key) ?? 0, e.value))
+            .where((e) => e.key > 0)
+            .toList()
+          ..sort((a, b) => a.key.compareTo(b.key));
 
     final barGroups = <BarChartGroupData>[];
     for (var i = 0; i < entries.length; i++) {
@@ -254,8 +297,12 @@ class _RpeMiniChart extends StatelessWidget {
                 getTitlesWidget: (value, meta) => Text('${value.toInt()}%'),
               ),
             ),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import (
     JSON,
@@ -15,6 +15,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class CalendarPlan(Base):
@@ -55,16 +59,13 @@ class CalendarPlan(Base):
     def __repr__(self):
         return f"<CalendarPlan(id={self.id}, name='{self.name}')>"
 
-    class Config:
-        from_attributes = True
-
 
 class AppliedCalendarPlan(Base):
     __tablename__ = "applied_calendar_plans"
 
     id = Column(Integer, primary_key=True, index=True)
     calendar_plan_id = Column(Integer, ForeignKey("calendar_plans.id", ondelete="CASCADE"), nullable=False)
-    start_date = Column(DateTime, default=datetime.utcnow)
+    start_date = Column(DateTime, default=_utc_now)
     end_date = Column(DateTime)
     is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     user_max_ids = Column(JSON, nullable=True)
@@ -227,8 +228,8 @@ class PlanWorkout(Base):
     microcycle_id = Column(Integer, ForeignKey("microcycles.id", ondelete="CASCADE"), nullable=False)
     day_label = Column(String(50), nullable=False)
     order_index = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
     nutrition_plan = Column(JSON, nullable=True)
 
     microcycle = relationship("Microcycle", back_populates="plan_workouts")
@@ -248,8 +249,8 @@ class PlanExercise(Base):
     order_index = Column(Integer, nullable=False, default=0)
     rest_seconds = Column(Integer, nullable=True)
     notes = Column(String(512), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
 
     plan_workout = relationship("PlanWorkout", back_populates="exercises")
     sets = relationship("PlanSet", back_populates="plan_exercise", cascade="all, delete-orphan")
@@ -275,8 +276,8 @@ class PlanSet(Base):
     volume = Column(Integer, nullable=True)
     working_weight = Column(Float, nullable=True)
     subsets = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
 
     plan_exercise = relationship("PlanExercise", back_populates="sets")
 
@@ -297,7 +298,7 @@ class WorkoutProgress(Base):
     planned_volume = Column(Integer, nullable=True)
     actual_volume = Column(Integer, nullable=True)
     date = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
 
     plan_exercise = relationship("PlanExercise")
 

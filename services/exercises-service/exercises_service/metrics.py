@@ -14,3 +14,8 @@ EXERCISE_CACHE_ERRORS_TOTAL = Counter(
     "exercise_cache_errors_total",
     "Number of Redis cache errors in exercises-service",
 )
+
+EXERCISE_DEFINITIONS_CREATED_TOTAL = Counter(
+    "exercise_definitions_created_total",
+    "Total number of exercise definitions created in exercises-service",
+)
