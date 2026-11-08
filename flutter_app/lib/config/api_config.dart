@@ -18,10 +18,12 @@ class ApiConfig {
     return dotenv.maybeGet('LOCAL_API_BASE_URL') ?? 'http://192.168.31.75:8000';
   }
 
-  static final String productionBaseUrl = _productionUrlOverride.isNotEmpty
-      ? _productionUrlOverride
-      : dotenv.maybeGet('PROD_API_BASE_URL') ??
-          'http://9hcvrgsyv7t2uffk3myn7r54.46.62.252.90.sslip.io';
+  static String get productionBaseUrl {
+    if (_productionUrlOverride.isNotEmpty) return _productionUrlOverride;
+    if (kIsWeb) return Uri.base.origin;
+    return dotenv.maybeGet('PROD_API_BASE_URL') ??
+        'https://oleksii-workoutapp.duckdns.org';
+  }
 
   static const int connectionTimeout = 60;
   static const int receiveTimeout = 60;
