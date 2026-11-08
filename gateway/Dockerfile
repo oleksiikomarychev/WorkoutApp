@@ -20,13 +20,19 @@ COPY libs/backend-common /app/libs/backend-common
 COPY gateway/pyproject.toml /app/gateway/
 COPY gateway/gateway_app /app/gateway/gateway_app
 COPY gateway/proto_gen /app/gateway/proto_gen
+COPY proto /app/proto
 
 WORKDIR /app/gateway
 
 # Create virtual environment and install dependencies
 RUN uv venv .venv \
     && uv pip install --no-cache-dir -e /app/libs/backend-common \
-    && uv pip install --no-cache-dir -e .
+    && uv pip install --no-cache-dir -e . \
+    && .venv/bin/python -m grpc_tools.protoc \
+        -I/app/proto \
+        --python_out=/app/gateway/proto_gen \
+        --grpc_python_out=/app/gateway/proto_gen \
+        /app/proto/*.proto
 
 # ===== RUNTIME STAGE =====
 FROM python:3.12-slim AS runtime
@@ -34,6 +40,7 @@ FROM python:3.12-slim AS runtime
 # Runtime environment
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    PYTHONPATH="/app/proto_gen:/app" \
     PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
