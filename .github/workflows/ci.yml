@@ -36,11 +36,13 @@ jobs:
           cache: 'pip'
           cache-dependency-path: |
             gateway/pyproject.toml
+            libs/backend-common/pyproject.toml
             services/**/pyproject.toml
 
       - name: Install service in editable mode
         run: |
           python -m pip install -U pip
+          python -m pip install -e "$GITHUB_WORKSPACE/libs/backend-common"
           python -m pip install -e .
           # Install optional test extras if defined
           python -m pip install ".[test]" || echo "No [test] extra for this service"
