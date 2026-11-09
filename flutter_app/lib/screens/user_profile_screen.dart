@@ -358,15 +358,15 @@ class UserProfileScreen extends ConsumerWidget {
                       child: FloatingHeaderBar(
                         title: l10n.accountTitle,
                         leading: IconButton(
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.arrow_back,
-                            color: AppColors.textPrimary,
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                           onPressed: () => Navigator.of(hostContext).maybePop(),
                         ),
                         actions: [
                           IconButton(
-                            icon: const Icon(Icons.settings),
+                            icon: Icon(Icons.settings),
                             onPressed: () => Navigator.of(
                               hostContext,
                             ).pushNamed(RouteNames.settings),
@@ -386,30 +386,33 @@ class UserProfileScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildStatsRow(UserStats stats) {
+  Widget _buildStatsRow(BuildContext context, UserStats stats) {
     return Row(
       children: [
         Expanded(
           child: _buildStatCard(
+            context,
             '${stats.totalWorkouts}',
             'Total Workouts',
-            const Color(0xFFD4F1D5),
+            Theme.of(context).colorScheme.tertiaryContainer,
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
+            context,
             stats.totalVolume.toStringAsFixed(0),
             'Volume (kg)',
-            const Color(0xFFD4E6F1),
+            Theme.of(context).colorScheme.primaryContainer,
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
+            context,
             '${stats.activeDays}',
             'Active Days',
-            const Color(0xFFFFE4C4),
+            Theme.of(context).colorScheme.secondaryContainer,
           ),
         ),
       ],
@@ -705,13 +708,13 @@ class UserProfileScreen extends ConsumerWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.error_outline, size: 48, color: AppColors.error),
+          Icon(Icons.error_outline, size: 48, color: AppColors.error),
           const SizedBox(height: 16),
           Text('Ошибка загрузки: $error'),
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: () => _invalidateAllProfileProviders(ref),
-            child: const Text('Повторить'),
+            child: Text('Повторить'),
           ),
         ],
       ),
@@ -775,25 +778,25 @@ class UserProfileScreen extends ConsumerWidget {
                     Text(
                       user?.email ?? '',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
-                        color: AppColors.textSecondary,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'Member since ${user?.metadata.creationTime != null ? DateFormat('yyyy').format(user!.metadata.creationTime!) : DateFormat('yyyy').format(DateTime.now())}',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
-                        color: AppColors.textSecondary,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 24),
                     Center(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 520),
-                        child: _buildStatsRow(stats),
+                        child: _buildStatsRow(context, stats),
                       ),
                     ),
                     if (sectionPrefs.showWorkoutAnalytics) ...[
@@ -812,7 +815,7 @@ class UserProfileScreen extends ConsumerWidget {
                 constraints: const BoxConstraints(maxWidth: 720),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: _buildActivitySection(stats),
+                  child: _buildActivitySection(context, stats),
                 ),
               ),
             ),
@@ -843,7 +846,7 @@ class UserProfileScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Row(
+        Row(
           children: [
             Icon(Icons.edit, color: AppColors.primary, size: 20),
             SizedBox(width: 8),
@@ -852,15 +855,15 @@ class UserProfileScreen extends ConsumerWidget {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Use fofr/sdxl-emoji to create something unique.',
-          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 12),
         if (imageBytes != null)
@@ -908,8 +911,8 @@ class UserProfileScreen extends ConsumerWidget {
                         }
                       }
                     },
-              icon: const Icon(Icons.check_circle_outline),
-              label: const Text('Use as profile picture'),
+              icon: Icon(Icons.check_circle_outline),
+              label: Text('Use as profile picture'),
             ),
           ),
         if (imageBytes != null) const SizedBox(height: 12),
@@ -921,14 +924,14 @@ class UserProfileScreen extends ConsumerWidget {
                 onChanged: (v) =>
                     ref.read(avatarPromptProvider.notifier).state = v,
                 decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.casino_outlined),
+                  prefixIcon: Icon(Icons.casino_outlined),
                   hintText: 'Describe your avatar',
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 12,
                   ),
                   filled: true,
-                  fillColor: AppColors.surface,
+                  fillColor: Theme.of(context).colorScheme.surfaceContainerLow,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -962,8 +965,8 @@ class UserProfileScreen extends ConsumerWidget {
                         }
                       },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.textPrimary,
-                  foregroundColor: Colors.white,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -978,21 +981,21 @@ class UserProfileScreen extends ConsumerWidget {
                           color: Colors.white,
                         ),
                       )
-                    : const Text('Generate'),
+                    : Text('Generate'),
               ),
             ),
           ],
         ),
         const SizedBox(height: 6),
-        const Text(
+        Text(
           'Randomize or write your own prompt! Your avatar will be displayed on your public profile.',
-          style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ],
     );
   }
 
-  Widget _buildStatCard(String value, String label, Color color) {
+  Widget _buildStatCard(BuildContext context, String value, String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: BoxDecoration(
@@ -1003,19 +1006,19 @@ class UserProfileScreen extends ConsumerWidget {
         children: [
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             label,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
-              color: AppColors.textSecondary,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -1023,16 +1026,16 @@ class UserProfileScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildActivitySection(UserStats stats) {
+  Widget _buildActivitySection(BuildContext context, UserStats stats) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Activity',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
+            color: Theme.of(context).colorScheme.onSurface,
           ),
         ),
         const SizedBox(height: 8),
@@ -1041,30 +1044,31 @@ class UserProfileScreen extends ConsumerWidget {
           children: [
             Text(
               'Last $kActivityWeeks weeks',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
-                color: AppColors.textSecondary,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             Text(
               'Max: ${stats.maxDayVolume.toStringAsFixed(0)} kg/day',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
-                color: AppColors.textSecondary,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w500,
               ),
             ),
           ],
         ),
         const SizedBox(height: 16),
-        _buildActivityGrid(stats.activityMap, stats.maxDayVolume),
+        _buildActivityGrid(context, stats.activityMap, stats.maxDayVolume),
         const SizedBox(height: 8),
-        _buildActivityLegend(stats.maxDayVolume),
+        _buildActivityLegend(context, stats.maxDayVolume),
       ],
     );
   }
 
   Widget _buildActivityGrid(
+    BuildContext context,
     Map<DateTime, DayActivity> activityMap,
     double maxVolume,
   ) {
@@ -1108,10 +1112,10 @@ class UserProfileScreen extends ConsumerWidget {
                   width: 12,
                   child: Text(
                     label,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                     textAlign: TextAlign.center,
                     softWrap: false,
@@ -1184,13 +1188,13 @@ class UserProfileScreen extends ConsumerWidget {
     return null;
   }
 
-  Widget _buildActivityLegend(double maxVolume) {
+  Widget _buildActivityLegend(BuildContext context, double maxVolume) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Text(
+        Text(
           'Less',
-          style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+          style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
         const SizedBox(width: 4),
         _legendBox(const Color(0xFFEBEDF0)),
@@ -1203,9 +1207,9 @@ class UserProfileScreen extends ConsumerWidget {
         const SizedBox(width: 2),
         _legendBox(const Color(0xFF196127)),
         const SizedBox(width: 4),
-        const Text(
+        Text(
           'More',
-          style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+          style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ],
     );
@@ -1227,7 +1231,7 @@ class UserProfileScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Row(
+        Row(
           children: [
             Icon(Icons.calendar_today, color: AppColors.primary, size: 24),
             SizedBox(width: 8),
@@ -1236,7 +1240,7 @@ class UserProfileScreen extends ConsumerWidget {
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
           ],
@@ -1262,7 +1266,7 @@ class UserProfileScreen extends ConsumerWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
         boxShadow: AppShadows.sm,
       ),
@@ -1288,13 +1292,13 @@ class UserProfileScreen extends ConsumerWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.success,
+                    color: Theme.of(context).colorScheme.tertiaryContainer,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     workoutCode,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onTertiaryContainer,
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
@@ -1303,13 +1307,13 @@ class UserProfileScreen extends ConsumerWidget {
                 const SizedBox(width: 16),
                 Text(
                   dateFormat.format(session.startedAt),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
-                    color: AppColors.textSecondary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const Spacer(),
-                const Icon(
+                Icon(
                   Icons.check_circle,
                   color: AppColors.success,
                   size: 24,
@@ -1642,11 +1646,11 @@ class _UserHistoryAnalyticsSectionState
                   const SizedBox(height: 10),
                   Text(
                     title,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 6),
                   if (options.isEmpty)
-                    const Text(
+                    Text(
                       'Нет опций',
                       style: TextStyle(color: Colors.black54),
                     )
@@ -1692,7 +1696,7 @@ class _UserHistoryAnalyticsSectionState
                   children: [
                     Text(
                       initial == null ? 'Add series' : 'Edit series',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                       ),
@@ -1732,7 +1736,7 @@ class _UserHistoryAnalyticsSectionState
                         Expanded(
                           child: TextButton(
                             onPressed: () => Navigator.of(ctx2).pop(),
-                            child: const Text('Cancel'),
+                            child: Text('Cancel'),
                           ),
                         ),
                         Expanded(
@@ -1762,7 +1766,7 @@ class _UserHistoryAnalyticsSectionState
                               _syncAnalyticsLayers();
                               Navigator.of(ctx2).pop();
                             },
-                            child: const Text('Apply'),
+                            child: Text('Apply'),
                           ),
                         ),
                       ],
@@ -1853,7 +1857,7 @@ class _UserHistoryAnalyticsSectionState
           width: double.infinity,
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
             borderRadius: BorderRadius.circular(16),
             boxShadow: AppShadows.sm,
           ),
@@ -1868,7 +1872,7 @@ class _UserHistoryAnalyticsSectionState
                     padding: EdgeInsets.zero,
                     tooltip: 'Add series',
                     onPressed: () => _openSeriesEditor(resp),
-                    icon: const Icon(Icons.add),
+                    icon: Icon(Icons.add),
                   ),
                   IconButton(
                     visualDensity: VisualDensity.compact,
@@ -1881,7 +1885,7 @@ class _UserHistoryAnalyticsSectionState
                       });
                       _syncAnalyticsLayers();
                     },
-                    icon: const Icon(Icons.delete_outline),
+                    icon: Icon(Icons.delete_outline),
                   ),
                 ],
               ),
@@ -1897,7 +1901,7 @@ class _UserHistoryAnalyticsSectionState
                       labelPadding: const EdgeInsets.symmetric(horizontal: 6),
                       label: Text(
                         _seriesLabel(s, meta),
-                        style: const TextStyle(fontSize: 12),
+                        style: TextStyle(fontSize: 12),
                       ),
                       onPressed: () => _openSeriesEditor(resp, initial: s),
                       onDeleted: () {

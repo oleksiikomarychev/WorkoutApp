@@ -135,7 +135,7 @@ class _SessionLogScreenState extends ConsumerState<SessionLogScreen> {
               Text(
                 'Diagnostics only: JSON с ключом completed, где ключи — id инстансов упражнения, а значения — массив id завершённых сетов. Используется для подсветки сетов выше.',
                 style: AppTextStyles.bodySmall.copyWith(
-                  color: AppColors.textSecondary,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 8),
@@ -189,7 +189,7 @@ class _SessionLogScreenState extends ConsumerState<SessionLogScreen> {
                 Text(
                   '${sets.length} set${sets.length == 1 ? '' : 's'}',
                   style: AppTextStyles.bodySmall.copyWith(
-                    color: AppColors.textSecondary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
             ],
@@ -199,7 +199,7 @@ class _SessionLogScreenState extends ConsumerState<SessionLogScreen> {
             Text(
               'No sets',
               style: AppTextStyles.bodySmall.copyWith(
-                color: AppColors.textSecondary,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             )
           else
@@ -233,7 +233,7 @@ class _InfoRow extends StatelessWidget {
             child: Text(
               label,
               style: AppTextStyles.bodySmall.copyWith(
-                color: AppColors.textSecondary,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ),

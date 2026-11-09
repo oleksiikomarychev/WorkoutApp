@@ -3020,7 +3020,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                               ),
                               hintText: 'kg',
                               hintStyle: AppTextStyles.bodySmall.copyWith(
-                                color: AppColors.textHint,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
                               ),
                             ),
                             enabled: !isCompleted,
@@ -3078,7 +3078,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                               ),
                               hintText: 'reps',
                               hintStyle: AppTextStyles.bodySmall.copyWith(
-                                color: AppColors.textHint,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
                               ),
                             ),
                             enabled: !isCompleted,
@@ -3139,7 +3139,7 @@ class _WorkoutDetailContentState extends State<_WorkoutDetailContent> {
                               ),
                               hintText: 'RPE',
                               hintStyle: AppTextStyles.bodySmall.copyWith(
-                                color: AppColors.textHint,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
                               ),
                             ),
                             enabled: !isCompleted,

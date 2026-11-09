@@ -61,4 +61,66 @@ void main() {
     expect(title.right, lessThanOrEqualTo(search.left));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('main app bar centers its agent title with one action', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        appBar: PrimaryAppBar.main(
+          title: 'Workouts',
+          actions: [IconButton(onPressed: () {}, icon: const Icon(Icons.person))],
+        ),
+      ),
+    ));
+
+    final titleCenter = tester.getCenter(find.text('Workouts')).dx;
+    expect(titleCenter, closeTo(160, 4));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('dark app bar keeps the assistant action discoverable', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    var taps = 0;
+
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData.dark(),
+      home: Scaffold(
+        appBar: PrimaryAppBar.main(
+          title: 'Workouts',
+          onTitleTap: () => taps++,
+          actions: [IconButton(onPressed: () {}, icon: const Icon(Icons.person))],
+        ),
+      ),
+    ));
+
+    expect(find.byIcon(Icons.auto_awesome_outlined), findsOneWidget);
+    await tester.tap(find.text('Workouts'));
+    expect(taps, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('plan title stays centered between back and two actions', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(400, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData.dark(),
+      home: Scaffold(
+        appBar: PrimaryAppBar(
+          title: 'Training Plans',
+          showBack: true,
+          actions: [
+            IconButton(onPressed: () {}, icon: const Icon(Icons.check)),
+            IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert)),
+          ],
+        ),
+      ),
+    ));
+
+    expect(tester.getCenter(find.text('Training Plans')).dx, closeTo(200, 4));
+    expect(tester.takeException(), isNull);
+  });
 }

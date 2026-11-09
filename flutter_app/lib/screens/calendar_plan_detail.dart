@@ -379,17 +379,18 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
     required String label,
     double? maxWidth,
   }) {
+    final colors = Theme.of(context).colorScheme;
     final chip = Container(
       constraints: maxWidth != null ? BoxConstraints(maxWidth: maxWidth) : null,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.grey[200],
+        color: colors.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Colors.grey[700]),
+          Icon(icon, size: 14, color: colors.onSurfaceVariant),
           const SizedBox(width: 6),
           Flexible(
             child: Text(
@@ -1454,6 +1455,8 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
 
   Widget _buildAnalyticsSection(BuildContext context) {
     final filtersReady = !_loadingMeta && _metaError == null;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Card(
       elevation: 1,
       color: Colors.transparent,
@@ -1461,7 +1464,8 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
+          color: isDark ? theme.colorScheme.surfaceContainerLow : null,
+          gradient: isDark ? null : const LinearGradient(
             colors: [Color(0xFFFDF7FF), Color(0xFFEFF5FF)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -1558,18 +1562,18 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                     final totalLabel = Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.scatter_plot,
                           size: 16,
-                          color: Color(0xFF6B5BFF),
+                          color: isDark ? theme.colorScheme.onSurfaceVariant : const Color(0xFF6B5BFF),
                         ),
                         const SizedBox(width: 6),
                         Text(
                           'Всего точек (${_bucketShort()}): ${_planAnalytics.length}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF443A7A),
+                            color: isDark ? theme.colorScheme.onSurface : const Color(0xFF443A7A),
                           ),
                         ),
                       ],
@@ -1605,7 +1609,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                     borderRadius: BorderRadius.circular(12),
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: isDark ? theme.colorScheme.surfaceContainerHighest : Colors.white,
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
@@ -1617,11 +1621,14 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(12),
-                        child: PlanAnalyticsChart(
-                          points: _planAnalytics,
-                          metricX: _metricX,
-                          metricY: _metricY,
-                          emptyText: 'Нет данных для плана',
+                        child: DefaultTextStyle.merge(
+                          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                          child: PlanAnalyticsChart(
+                            points: _planAnalytics,
+                            metricX: _metricX,
+                            metricY: _metricY,
+                            emptyText: 'Нет данных для плана',
+                          ),
                         ),
                       ),
                     ),
@@ -1639,22 +1646,25 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                       width: 32,
                       height: 32,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF8066FF).withOpacity(0.18),
+                        color: isDark
+                            ? theme.colorScheme.surfaceContainerHighest
+                            : const Color(0xFF8066FF).withOpacity(0.18),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.analytics_outlined,
-                        color: Color(0xFF6745FF),
+                        color: isDark ? theme.colorScheme.onSurfaceVariant : const Color(0xFF6745FF),
                         size: 18,
                       ),
                     ),
                     const SizedBox(width: 10),
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         'Аналитика плана',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.onSurface,
                         ),
                       ),
                     ),
@@ -1766,7 +1776,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       children: [
         Text(
           label,
-          style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 2),
         GestureDetector(
@@ -2050,6 +2060,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   }
 
   Widget _buildWorkoutDayCard(PlanWorkout workout) {
+    final colors = Theme.of(context).colorScheme;
     return Card(
       elevation: 1,
       margin: const EdgeInsets.only(bottom: 8.0),
@@ -2068,7 +2079,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
           ),
           title: Row(
             children: [
-              Icon(Icons.fitness_center, size: 16, color: Colors.grey[700]),
+              Icon(Icons.fitness_center, size: 16, color: colors.onSurfaceVariant),
               const SizedBox(width: 8),
               Text(
                 workout.dayLabel,
@@ -2080,7 +2091,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
               const SizedBox(width: 8),
               Text(
                 '(${workout.exercises.length} ex)',
-                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
               ),
             ],
           ),
@@ -2099,6 +2110,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   }
 
   Widget _buildExerciseCard(PlanExercise exercise, int index) {
+    final colors = Theme.of(context).colorScheme;
     final userMaxes = _userMaxesForExercise(exercise);
     final latestUserMax = _latestUserMax(userMaxes);
     final hasNotes =
@@ -2109,9 +2121,9 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       margin: const EdgeInsets.only(bottom: 8.0),
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
+        color: colors.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.grey.shade300, width: 1),
+        border: Border.all(color: colors.outlineVariant, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2165,8 +2177,8 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
             style: TextStyle(
               fontSize: 12,
               color: latestUserMax != null
-                  ? Colors.green[700]
-                  : Colors.grey[600],
+                  ? colors.tertiary
+                  : colors.onSurfaceVariant,
               fontWeight: latestUserMax != null
                   ? FontWeight.w600
                   : FontWeight.w500,
@@ -2182,12 +2194,13 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   }
 
   Widget _buildSetsSection(List<PlanSet> sets) {
+    final colors = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           '${sets.length} set${sets.length != 1 ? 's' : ''}',
-          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+          style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
         ),
         const SizedBox(height: 6),
         ...sets.asMap().entries.map((entry) {
@@ -2200,6 +2213,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   }
 
   Widget _buildSetRow(PlanSet set, int setNumber) {
+    final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 4.0),
       child: Row(
@@ -2208,7 +2222,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
             width: 50,
             child: Text(
               'Set $setNumber',
-              style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+              style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
             ),
           ),
           Expanded(
@@ -2237,12 +2251,13 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   }
 
   Widget _buildCompactParameter(String label, String value) {
+    final colors = Theme.of(context).colorScheme;
     return Expanded(
       child: Row(
         children: [
           Text(
             '$label:',
-            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
           ),
           const SizedBox(width: 4),
           Text(
@@ -2275,13 +2290,15 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   }
 
   Widget _buildCompactInfo(String label, String value) {
+    final colors = Theme.of(context).colorScheme;
     return Text(
       '$label: $value',
-      style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+      style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
     );
   }
 
   Widget _buildPlanInfo(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -2369,9 +2386,9 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.green[100],
+                    color: colors.tertiaryContainer,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green[300]!),
+                    border: Border.all(color: colors.tertiary),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -2379,7 +2396,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                       Icon(
                         Icons.restaurant,
                         size: 14,
-                        color: Colors.green[700],
+                        color: colors.onTertiaryContainer,
                       ),
                       const SizedBox(width: 6),
                       Text(
@@ -2387,7 +2404,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
-                          color: Colors.green[700],
+                          color: colors.onTertiaryContainer,
                         ),
                       ),
                     ],
@@ -2480,6 +2497,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   }
 
   Widget _buildMesocycleExpansionTile(Mesocycle mesocycle) {
+    final colors = Theme.of(context).colorScheme;
     return Card(
       elevation: 1,
       margin: const EdgeInsets.only(bottom: 8.0),
@@ -2512,7 +2530,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
             ),
             Text(
               '(${mesocycle.microcycles.length} micro)',
-              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
             ),
           ],
         ),
@@ -2556,6 +2574,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   }
 
   Widget _buildMicrocycleCard(Microcycle microcycle) {
+    final colors = Theme.of(context).colorScheme;
     final name = microcycle.name.trim();
     final orderIndex = microcycle.orderIndex;
     final orderNumber = orderIndex >= 0 ? orderIndex + 1 : 1;
@@ -2572,7 +2591,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
       elevation: 1,
       margin: const EdgeInsets.only(bottom: 6.0),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-      color: Colors.grey[50],
+      color: colors.surfaceContainerLow,
       child: ExpansionTile(
         tilePadding: const EdgeInsets.symmetric(
           horizontal: 12.0,
@@ -2593,14 +2612,14 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
             if (hasSecondaryLabel)
               Text(
                 fallbackLabel,
-                style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 11),
               ),
           ],
         ),
         subtitle: subtitleText != null
             ? Text(
                 subtitleText,
-                style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 11),
               )
             : null,
         children: [
@@ -2655,11 +2674,12 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
   }
 
   Widget _buildNormalizationRuleChip(NormalizationRule rule) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.grey.shade200,
+        color: colors.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
@@ -2673,7 +2693,7 @@ class _CalendarPlanDetailState extends State<CalendarPlanDetail> {
           Expanded(
             child: Text(
               _formatNormalizationScope(rule),
-              style: const TextStyle(fontSize: 12, color: Colors.black87),
+              style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
             ),
           ),
         ],

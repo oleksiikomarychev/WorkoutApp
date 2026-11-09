@@ -179,7 +179,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
     final l10n = AppLocalizations.of(context);
     return Card(
       elevation: 1,
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
       margin: const EdgeInsets.symmetric(horizontal: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
@@ -297,7 +297,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
                 borderRadius: BorderRadius.circular(999),
                 child: LinearProgressIndicator(
                   minHeight: 6,
-                  backgroundColor: Colors.grey.shade200,
+                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
                   valueColor: AlwaysStoppedAnimation<Color>(statusColor),
                   value: (completed / planned).clamp(0, 1).toDouble(),
                 ),
@@ -378,7 +378,7 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
 
   Widget _buildCalendar(Map<DateTime, List<Workout>> eventsByDay) {
     return Container(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       child: TableCalendar<Workout>(
         firstDay: DateTime.utc(2020, 1, 1),
@@ -1103,14 +1103,18 @@ class _CoachAthletePlanScreenState extends ConsumerState<CoachAthletePlanScreen>
         (w.status?.toLowerCase() == 'completed') || (w.completedAt != null);
     final inProgress = (w.startedAt != null) && (w.completedAt == null);
     if (completed) {
-      return const _StatusView(
-          'Завершена', Color(0xFFEFF8F2), Colors.green, Colors.green);
+      return _StatusView(
+          'Завершена', Theme.of(context).colorScheme.tertiaryContainer,
+          Theme.of(context).colorScheme.onTertiaryContainer,
+          Theme.of(context).colorScheme.tertiary);
     } else if (inProgress) {
-      return const _StatusView('В процессе', Color(0xFFEAEFFF),
-          AppColors.primary, AppColors.primary);
+      return _StatusView('В процессе', Theme.of(context).colorScheme.primaryContainer,
+          Theme.of(context).colorScheme.onPrimaryContainer,
+          Theme.of(context).colorScheme.primary);
     } else {
-      return const _StatusView('Запланирована', Color(0xFFFFEBEE),
-          Colors.redAccent, Colors.redAccent);
+      return _StatusView('Запланирована', Theme.of(context).colorScheme.errorContainer,
+          Theme.of(context).colorScheme.onErrorContainer,
+          Theme.of(context).colorScheme.error);
     }
   }
 

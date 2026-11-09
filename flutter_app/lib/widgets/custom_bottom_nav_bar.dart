@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:workout_app/config/constants/theme_constants.dart';
 
 class BottomNavBarItem {
   final IconData icon;
@@ -58,11 +59,6 @@ class CustomBottomNavBar extends StatelessWidget {
         : iconSize + 4 + scaledLabelHeight * 2.6 + 18;
     const double outerHorizontalPadding = 12.0;
     const double islandOffset = 16.0;
-    const List<Color> gradientColors = [
-      Color(0xFF0D47A1),
-      Color(0xFF1976D2),
-      Color(0xFF5E35B1),
-    ];
 
     return Material(
       color: Colors.transparent,
@@ -81,22 +77,22 @@ class CustomBottomNavBar extends StatelessWidget {
             child: Align(
               alignment: Alignment.bottomCenter,
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(isDark ? 16 : 999),
                 child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  filter: ImageFilter.blur(
+                    sigmaX: isDark ? 0 : 20,
+                    sigmaY: isDark ? 0 : 20,
+                  ),
                   child: Container(
                     constraints: const BoxConstraints(maxWidth: 600),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: gradientColors,
-                      ),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(isDark ? 0.18 : 0.30),
+                      color: isDark ? AppColors.darkChrome : null,
+                      gradient: isDark ? null : AppGradients.blue,
+                      border: isDark ? null : Border.all(
+                        color: Colors.white.withOpacity(0.30),
                         width: 1.0,
                       ),
-                      boxShadow: [
+                      boxShadow: isDark ? null : [
                         BoxShadow(
                           color: Colors.black.withOpacity(isDark ? 0.35 : 0.18),
                           blurRadius: 20,
@@ -140,12 +136,13 @@ class CustomBottomNavBar extends StatelessWidget {
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
     final label = isSelected ? (item.activeLabel ?? item.label) : item.label;
-    final Color iconColor = isSelected
-        ? Colors.white
-        : Colors.white.withOpacity(0.85);
+    final isDark = theme.brightness == Brightness.dark;
+    final Color iconColor = isDark
+        ? (isSelected ? const Color(0xFF8ED4C6) : const Color(0xFFB8C1C2))
+        : Colors.white;
     final Color textColor = iconColor;
 
-    const borderRadius = BorderRadius.all(Radius.circular(999));
+    final borderRadius = BorderRadius.circular(isDark ? 12 : 999);
 
     return Material(
       color: Colors.transparent,
@@ -158,10 +155,12 @@ class CustomBottomNavBar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 4.0),
           decoration: BoxDecoration(
             borderRadius: borderRadius,
-            color: isSelected
-                ? Colors.white.withOpacity(0.18)
-                : Colors.white.withOpacity(0.08),
-            border: Border.all(
+            color: isDark
+                ? (isSelected ? const Color(0xFF2D393B) : Colors.transparent)
+                : (isSelected
+                    ? Colors.white.withOpacity(0.18)
+                    : Colors.white.withOpacity(0.08)),
+            border: isDark ? null : Border.all(
               color: Colors.white.withOpacity(isSelected ? 0.85 : 0.35),
               width: 1.0,
             ),

@@ -42,6 +42,16 @@ class AppColors {
   static const Color surfaceDark = Color(0xFF1E1E1E);
   static const Color onSurfaceDark = Color(0xFFFFFFFF);
   static const Color onBackgroundDark = Color(0xFFFFFFFF);
+  static const Color darkChrome = Color(0xFF202A2D);
+}
+
+class AppGradients {
+  static const LinearGradient blue = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF0D47A1), Color(0xFF1976D2), Color(0xFF5E35B1)],
+  );
+
 }
 
 class AppTextStyles {

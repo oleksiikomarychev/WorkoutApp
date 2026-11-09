@@ -6,11 +6,6 @@ import 'package:workout_app/config/constants/theme_constants.dart';
 
 class PrimaryAppBar extends StatelessWidget implements PreferredSizeWidget {
   static const double _toolbarHeight = 72;
-  static const List<Color> _gradientColors = [
-    Color(0xFF0D47A1),
-    Color(0xFF1976D2),
-    Color(0xFF5E35B1),
-  ];
 
   final String? title;
   final Widget? titleWidget;
@@ -34,7 +29,7 @@ class PrimaryAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.showBack,
     this.onBack,
     this.leading,
-    this.centerTitle = false,
+    this.centerTitle = true,
     this.backgroundColor,
     this.titleTextStyle,
     this.elevation = 0,
@@ -52,7 +47,7 @@ class PrimaryAppBar extends StatelessWidget implements PreferredSizeWidget {
         showBack = null,
         onBack = null,
         leading = null,
-        centerTitle = false,
+        centerTitle = true,
         titleTextStyle = null,
         elevation = 0;
 
@@ -62,7 +57,7 @@ class PrimaryAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.actions,
     this.onBack,
     this.leading,
-    this.centerTitle = false,
+    this.centerTitle = true,
     this.backgroundColor,
     this.titleTextStyle,
     this.elevation = 0,
@@ -79,7 +74,9 @@ class PrimaryAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    final chipColor = backgroundColor ?? Colors.white.withOpacity(0.12);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final chipColor = backgroundColor ??
+        (isDark ? Colors.transparent : Colors.white.withOpacity(0.12));
     final VoidCallback? effectiveOnTitleTap = onTitleTap ?? AssistantChatHost.of(context)?.openChat;
     final TextStyle effectiveTitleStyle = titleTextStyle ??
         Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -117,27 +114,19 @@ class PrimaryAppBar extends StatelessWidget implements PreferredSizeWidget {
     Widget? resolvedTitle = titleWidget;
     if (resolvedTitle == null && title != null) {
       resolvedTitle = Text(title!, style: effectiveTitleStyle, overflow: TextOverflow.ellipsis);
+      if (effectiveOnTitleTap != null) {
+        resolvedTitle = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.auto_awesome_outlined, size: 18, color: Color(0xFF9CB7B1)),
+            const SizedBox(width: 8),
+            Flexible(child: resolvedTitle),
+          ],
+        );
+      }
     }
 
     if (resolvedTitle != null) {
-      resolvedTitle = DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          color: Colors.white.withOpacity(0.1),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x221A1A1A),
-              blurRadius: 18,
-              offset: Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: resolvedTitle,
-        ),
-      );
-
       if (effectiveOnTitleTap != null) {
         resolvedTitle = Material(
           color: Colors.transparent,
@@ -181,17 +170,17 @@ class PrimaryAppBar extends StatelessWidget implements PreferredSizeWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(28),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                  filter: ImageFilter.blur(
+                    sigmaX: isDark ? 0 : 22,
+                    sigmaY: isDark ? 0 : 22,
+                  ),
                 child: Container(
                   height: 56,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: _gradientColors,
-                    ),
-                    boxShadow: [
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkChrome : null,
+                    gradient: isDark ? null : AppGradients.blue,
+                    boxShadow: isDark ? null : [
                       BoxShadow(
                         color: Color(0x331B1F3B),
                         blurRadius: 36,
@@ -205,21 +194,18 @@ class PrimaryAppBar extends StatelessWidget implements PreferredSizeWidget {
                       ),
                     ],
                   ),
-                  child: Row(
+                  child: CustomMultiChildLayout(
+                    delegate: _HeaderLayoutDelegate(centerTitle: centerTitle),
                     children: [
                       if (resolvedLeading != null)
-                        resolvedLeading!,
-                      Expanded(
-                        child: resolvedTitle == null
-                            ? const SizedBox.shrink()
-                            : Align(
-                                alignment: centerTitle
-                                    ? Alignment.center
-                                    : Alignment.centerLeft,
-                                child: resolvedTitle,
-                              ),
-                      ),
-                      ...wrappedActions,
+                        LayoutId(id: _HeaderSlot.leading, child: resolvedLeading!),
+                      if (resolvedTitle != null)
+                        LayoutId(id: _HeaderSlot.title, child: resolvedTitle),
+                      if (wrappedActions.isNotEmpty)
+                        LayoutId(
+                          id: _HeaderSlot.actions,
+                          child: Row(mainAxisSize: MainAxisSize.min, children: wrappedActions),
+                        ),
                     ],
                   ),
                 ),
@@ -230,6 +216,50 @@ class PrimaryAppBar extends StatelessWidget implements PreferredSizeWidget {
       ),
     );
   }
+}
+
+enum _HeaderSlot { leading, title, actions }
+
+class _HeaderLayoutDelegate extends MultiChildLayoutDelegate {
+  final bool centerTitle;
+
+  _HeaderLayoutDelegate({required this.centerTitle});
+
+  @override
+  void performLayout(Size size) {
+    Size leading = Size.zero;
+    Size actions = Size.zero;
+    final sideConstraints = BoxConstraints.loose(Size(size.width / 2, size.height));
+    if (hasChild(_HeaderSlot.leading)) {
+      leading = layoutChild(_HeaderSlot.leading, sideConstraints);
+      positionChild(_HeaderSlot.leading, Offset(0, (size.height - leading.height) / 2));
+    }
+    if (hasChild(_HeaderSlot.actions)) {
+      actions = layoutChild(_HeaderSlot.actions, sideConstraints);
+      positionChild(_HeaderSlot.actions, Offset(size.width - actions.width, (size.height - actions.height) / 2));
+    }
+    if (hasChild(_HeaderSlot.title)) {
+      final reserve = centerTitle
+          ? (leading.width > actions.width ? leading.width : actions.width)
+          : leading.width;
+      final availableWidth = centerTitle
+          ? (size.width - 2 * reserve).clamp(0.0, size.width)
+          : (size.width - leading.width - actions.width).clamp(0.0, size.width);
+      final title = layoutChild(
+        _HeaderSlot.title,
+        BoxConstraints.loose(Size(availableWidth, size.height)),
+      );
+      positionChild(
+        _HeaderSlot.title,
+        Offset(centerTitle ? (size.width - title.width) / 2 : leading.width,
+            (size.height - title.height) / 2),
+      );
+    }
+  }
+
+  @override
+  bool shouldRelayout(covariant _HeaderLayoutDelegate oldDelegate) =>
+      oldDelegate.centerTitle != centerTitle;
 }
 
 class _GlassChip extends StatelessWidget {

@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:workout_app/services/logger_service.dart';
 import 'package:workout_app/services/workout_service.dart';
-import 'package:workout_app/widgets/empty_state.dart';
 import 'package:workout_app/models/workout.dart';
 import 'package:workout_app/services/service_locator.dart';
 import 'package:workout_app/screens/workout_detail_screen.dart';
@@ -666,7 +665,9 @@ class _HeroCarousel extends StatelessWidget {
                 height: 8,
                 decoration: BoxDecoration(
                   color: active
-                      ? AppColors.primary
+                      ? (Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFFB8C1C2)
+                          : AppColors.primary)
                       : AppColors.textDisabled.withOpacity(0.4),
                   borderRadius: BorderRadius.circular(4),
                 ),
@@ -686,6 +687,7 @@ class _PlansSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -703,9 +705,9 @@ class _PlansSection extends StatelessWidget {
                   MaterialPageRoute(builder: (_) => const ActivePlanScreen()),
                 );
               },
-              icon: const Icon(
+              icon: Icon(
                 Icons.calendar_today_outlined,
-                color: AppColors.primary,
+                color: isDark ? Theme.of(context).colorScheme.onSurfaceVariant : AppColors.primary,
               ),
             ),
           ],
@@ -715,7 +717,7 @@ class _PlansSection extends StatelessWidget {
           loading: () => Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
               borderRadius: BorderRadius.circular(20),
               boxShadow: AppShadows.md,
             ),
@@ -724,7 +726,7 @@ class _PlansSection extends StatelessWidget {
           error: (err, stack) => Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
               borderRadius: BorderRadius.circular(20),
               boxShadow: AppShadows.md,
             ),
@@ -740,12 +742,12 @@ class _PlansSection extends StatelessWidget {
             final statusLabel = isCompleted
                 ? 'Completed'
                 : (isCancelled ? 'Cancelled' : 'In Progress');
-            final statusBackground = isCompleted
-                ? Colors.white.withOpacity(0.16)
-                : Colors.white.withOpacity(0.24);
+            final statusBackground = isDark
+                ? const Color(0xFF30383C)
+                : Colors.white.withOpacity(isCompleted ? 0.16 : 0.24);
             final statusTextColor = isCompleted
-                ? const Color(0xFFB2FF59)
-                : (isCancelled ? Colors.redAccent : Colors.white);
+                ? (isDark ? const Color(0xFF9CD0B0) : const Color(0xFFB2FF59))
+                : (isDark ? const Color(0xFFD8E2E0) : Colors.white);
             final subtitle = nextWorkout?.name ?? 'No upcoming workouts';
             final scheduleText = isCompleted
                 ? 'All workouts completed or no active plan'
@@ -758,17 +760,10 @@ class _PlansSection extends StatelessWidget {
             final card = Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF0D47A1),
-                    Color(0xFF1976D2),
-                    Color(0xFF5E35B1),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: AppShadows.sm,
+                color: isDark ? const Color(0xFF20262B) : null,
+                gradient: isDark ? null : AppGradients.blue,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: isDark ? null : AppShadows.sm,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -782,12 +777,12 @@ class _PlansSection extends StatelessWidget {
                         width: 44,
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.16),
-                          borderRadius: BorderRadius.circular(14),
+                          color: isDark ? const Color(0xFF30383C) : Colors.white.withOpacity(0.16),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.auto_graph,
-                          color: Colors.white,
+                          color: isDark ? const Color(0xFF9CB7B1) : Colors.white,
                           size: 20,
                         ),
                       ),
@@ -807,7 +802,7 @@ class _PlansSection extends StatelessWidget {
                             Text(
                               subtitle,
                               style: AppTextStyles.bodyMedium.copyWith(
-                                color: Colors.white.withOpacity(0.85),
+                                color: Colors.white,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -839,7 +834,9 @@ class _PlansSection extends StatelessWidget {
                       ),
                       if (!isCompleted) ...[
                         const SizedBox(width: 6),
-                        Container(
+                        if (isDark)
+                          const Icon(Icons.chevron_right, size: 20, color: Color(0xFFB8C1C2))
+                        else Container(
                           height: 28,
                           width: 28,
                           decoration: BoxDecoration(
@@ -859,7 +856,7 @@ class _PlansSection extends StatelessWidget {
                   Text(
                     scheduleText,
                     style: AppTextStyles.bodySmall.copyWith(
-                      color: Colors.white.withOpacity(0.8),
+                      color: isDark ? Theme.of(context).colorScheme.onSurfaceVariant : Colors.white,
                     ),
                   ),
                 ],
@@ -929,6 +926,12 @@ class _LibrarySection extends StatelessWidget {
                   onPressed: onCreateWorkout,
                   icon: const Icon(Icons.play_arrow),
                   label: const Text('Start Workout'),
+                  style: Theme.of(context).brightness == Brightness.dark
+                      ? ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2A3237),
+                          foregroundColor: Colors.white,
+                        )
+                      : null,
                 ),
               ],
             ),
@@ -946,10 +949,30 @@ class _LibrarySection extends StatelessWidget {
               buildError('Error loading workouts', werr, wst, onRetry),
           data: (workouts) {
             if (workouts.isEmpty) {
-              return EmptyState(
-                icon: Icons.fitness_center,
-                title: 'No Manual Workouts',
-                description: 'Create a manual workout',
+              final scheme = Theme.of(context).colorScheme;
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.fitness_center_outlined, size: 28, color: scheme.onSurfaceVariant),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('No Manual Workouts', style: Theme.of(context).textTheme.titleMedium),
+                          const SizedBox(height: 4),
+                          Text('Create a manual workout', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               );
             }
 
@@ -1108,9 +1131,12 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: [
-        Container(
+        if (isDark)
+          Icon(icon, color: Theme.of(context).colorScheme.onSurfaceVariant, size: 22)
+        else Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: const Color(0xFFE8ECFF),

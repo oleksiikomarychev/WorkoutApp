@@ -22,15 +22,10 @@ class FloatingHeaderBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const gradientColors = [
-      Color(0xFF0D47A1),
-      Color(0xFF1976D2),
-      Color(0xFF5E35B1),
-    ];
-
     final VoidCallback? effectiveOnTitleTap = onTitleTap ?? AssistantChatHost.of(context)?.openChat;
 
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final textStyle = theme.textTheme.titleMedium?.copyWith(
           fontWeight: FontWeight.w700,
           color: Colors.white,
@@ -55,22 +50,15 @@ class FloatingHeaderBar extends StatelessWidget {
       if (profileButton != null) profileButton,
     ];
 
-    Widget titleWidget = DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        color: Colors.white.withOpacity(0.08),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x221A1A1A),
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
+    Widget titleWidget = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (effectiveOnTitleTap != null) ...[
+          const Icon(Icons.auto_awesome_outlined, size: 18, color: Color(0xFF9CB7B1)),
+          const SizedBox(width: 8),
         ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-        child: Text(title, style: textStyle, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
-      ),
+        Flexible(child: Text(title, style: textStyle, overflow: TextOverflow.ellipsis)),
+      ],
     );
     if (effectiveOnTitleTap != null) {
       titleWidget = Material(
@@ -89,7 +77,9 @@ class FloatingHeaderBar extends StatelessWidget {
             margin: const EdgeInsets.only(left: 6),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(999),
-              color: Colors.white.withOpacity(0.12),
+              color: isDark
+                  ? Colors.transparent
+                  : Colors.white.withOpacity(0.12),
             ),
             child: IconTheme(
               data: const IconThemeData(color: Colors.white),
@@ -105,7 +95,9 @@ class FloatingHeaderBar extends StatelessWidget {
             margin: const EdgeInsets.only(right: 8),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(999),
-              color: Colors.white.withOpacity(0.12),
+              color: isDark
+                  ? Colors.transparent
+                  : Colors.white.withOpacity(0.12),
             ),
             child: IconTheme(
               data: const IconThemeData(color: Colors.white),
@@ -120,19 +112,23 @@ class FloatingHeaderBar extends StatelessWidget {
         child: Align(
           alignment: Alignment.topCenter,
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(isDark ? 16 : 28),
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+              filter: ImageFilter.blur(
+                sigmaX: isDark ? 0 : 22,
+                sigmaY: isDark ? 0 : 22,
+              ),
               child: Container(
                 height: 56,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: gradientColors,
-                  ),
-                  boxShadow: const [
+                  color: theme.brightness == Brightness.dark
+                      ? AppColors.darkChrome
+                      : null,
+                  gradient: theme.brightness == Brightness.dark
+                      ? null
+                      : AppGradients.blue,
+                  boxShadow: isDark ? null : const [
                     BoxShadow(
                       color: Color(0x331B1F3B),
                       blurRadius: 36,
