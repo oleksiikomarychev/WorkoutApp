@@ -4,12 +4,13 @@
 
 | Path | Responsibility |
 | --- | --- |
-| `flutter_app/` | Flutter client |
 | `gateway/` | HTTP entry point for the client; proxies requests to services |
 | `services/` | Accounts, exercises, plans, workouts, strength calculations, CRM, and agent services |
 | `social-service/`, `messaging-service/`, `webhook-dispatcher/` | Social data, messaging, and webhook delivery |
 | `analytics/` | CDC configuration and scripts for the analytics pipeline |
 | `proto/` | Protocol Buffer contracts and generated Python stubs for gRPC calls |
+
+The Flutter client lives in the separate [athletic-performance-clients repository](https://github.com/oleksiikomarychev/athletic-performance-clients).
 
 ## Agent behavior
 

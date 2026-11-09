@@ -52,7 +52,6 @@ exclude = [
     ".pytest_cache",
     "build",
     "dist",
-    "flutter_app",
     "grafana",
     "docs",
     "**/proto_gen/**",

@@ -57,17 +57,19 @@ is stored in the persistent `workouts_data` volume.
 
 ## Client configuration
 
-Flutter release builds now select the production API endpoint. Set it when
+The Flutter client and its web image workflow live in the separate
+[athletic-performance-clients repository](https://github.com/oleksiikomarychev/athletic-performance-clients).
+In a checkout of that repository, set the production API endpoint when
 building the client, for example:
 
 ```sh
-cd flutter_app
 flutter build apk --release --dart-define=PROD_API_BASE_URL=https://api.example.com
 ```
 
 The build-time value overrides the production URL in
-`flutter_app/assets/env/app.env`. The web image routes `/api/` to the existing
-gateway through Nginx, so browser API calls use the website's HTTPS origin.
+`assets/env/app.env` in the client repository. The web image routes `/api/` to
+the existing gateway through Nginx, so browser API calls use the website's
+HTTPS origin.
 The optional agent, social, and messaging features are unavailable in this
 deployment.
 
