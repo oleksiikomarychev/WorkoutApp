@@ -24,7 +24,7 @@ dependencies = [
   "google-genai==1.42.0",
   "json5==0.9.25",
   "huggingface_hub==0.25.0",
-  "pillow==10.0.0",
+  "pillow==13.0.0",
   "google-auth>=2.36.0,<3.0.0",
   "structlog>=24.0.0,<25.0.0",
   "asgi-correlation-id==4.3.1",
