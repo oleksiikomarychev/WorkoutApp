@@ -6,12 +6,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    postgresql-client \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 # Install uv
@@ -38,12 +32,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
     HOST=0.0.0.0 \
     PORT=8005
-
-# Install runtime system dependencies (PostgreSQL client needed)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    postgresql-client \
-    supervisor \
-    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Calendar plans microservice"
 requires-python = ">=3.12"
 dependencies = [
-  "fastapi>=0.112",
+  "fastapi>=0.112,<0.137",
   "uvicorn[standard]>=0.30",
   "sqlalchemy>=2.0",
   "greenlet>=3.0.0",
@@ -23,6 +23,7 @@ dependencies = [
   "prometheus-fastapi-instrumentator>=6.1.0,<7.0.0",
   "prometheus-client>=0.16.0,<1.0.0",
   "sentry-sdk[fastapi]>=2.0.0,<3.0.0",
+  "supervisor==4.3.0",
   "redis>=5",
   "celery[redis]>=5.4.0,<6.0.0",
   "grpcio>=1.60.0",

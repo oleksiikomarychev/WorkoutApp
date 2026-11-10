@@ -23,76 +23,20 @@ plans_templates_router = APIRouter(prefix="/api/v1/plans/mesocycle-templates")
 plans_adoption_router = APIRouter(prefix="/api/v1/plans/adoption")
 
 
+@plans_calendar_router.get("/catalog")
+async def get_calendar_plan_catalog(request: Request) -> Response:
+    """Keep the catalog path ahead of the numeric plan ID route."""
+    target_url = f"{gateway_main.PLANS_SERVICE_URL}/plans/calendar-plans/catalog"
+    headers = gateway_main._forward_headers(request)
+    return await gateway_main._proxy_request(request, target_url, headers)
+
+
 @plans_calendar_router.get("/{plan_id}")
-async def get_calendar_plan_grpc(request: Request, plan_id: int) -> Response:
-    """Get calendar plan by ID using gRPC."""
-    user = getattr(request.state, "user", None)
-    uid = user.get("uid") if user else None
-    if not uid:
-        return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Not authenticated"})
-
-    stub = await grpc_client_manager.get_plans_stub()
-    user_context = create_user_context(str(uid))
-
-    request_pb = plans_pb2.GetCalendarPlanRequest(
-        calendar_plan_id=plan_id,
-        user_context=user_context,
-    )
-
-    response = await stub.GetCalendarPlan(request_pb, timeout=10.0)
-
-    # Convert proto response to dict
-    calendar_plan = response.calendar_plan
-    if not calendar_plan:
-        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"detail": "Plan not found"})
-
-    plan_dict = {
-        "id": calendar_plan.id,
-        "name": calendar_plan.name,
-        "mesocycles": [],
-    }
-
-    for meso in calendar_plan.mesocycles:
-        meso_dict = {
-            "id": meso.id,
-            "name": meso.name,
-            "order_index": meso.order_index,
-            "microcycles": [],
-        }
-        for micro in meso.microcycles:
-            micro_dict = {
-                "id": micro.id,
-                "name": micro.name,
-                "order_index": micro.order_index,
-                "plan_workouts": [],
-            }
-            for pw in micro.plan_workouts:
-                pw_dict = {
-                    "id": pw.id,
-                    "name": pw.name,
-                    "day_label": pw.day_label,
-                    "order_index": pw.order_index,
-                    "exercises": [],
-                }
-                for pe in pw.exercises:
-                    pe_dict = {
-                        "exercise_definition_id": pe.exercise_definition_id,
-                        "notes": pe.notes,
-                        "sets": [],
-                    }
-                    for ps in pe.sets:
-                        pe_dict["sets"].append({
-                            "volume": ps.volume,
-                            "working_weight": ps.working_weight,
-                            "effort": ps.effort,
-                            "intensity": ps.intensity,
-                        })
-                    pw_dict["exercises"].append(pe_dict)
-                micro_dict["plan_workouts"].append(pw_dict)
-            meso_dict["microcycles"].append(micro_dict)
-        plan_dict["mesocycles"].append(meso_dict)
-
-    return JSONResponse(content=plan_dict)
+async def get_calendar_plan(request: Request, plan_id: int) -> Response:
+    """Return the complete plan schema used by the calendar plan client."""
+    target_url = f"{gateway_main.PLANS_SERVICE_URL}/plans/calendar-plans/{plan_id}"
+    headers = gateway_main._forward_headers(request)
+    return await gateway_main._proxy_request(request, target_url, headers)
 
 
 @plans_calendar_router.post("/validate-microcycles")

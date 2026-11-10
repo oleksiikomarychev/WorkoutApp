@@ -334,8 +334,11 @@ class CalendarPlanService:
             try:
                 cached_value = await redis.get(cache_key)
                 if cached_value:
-                    PLANS_CACHE_HITS_TOTAL.inc()
-                    return CalendarPlanResponse.model_validate_json(cached_value)
+                    cached_plan = CalendarPlanResponse.model_validate_json(cached_value)
+                    # Rebuild pre-ownership payloads so clients can show owner actions.
+                    if cached_plan.user_id is not None:
+                        PLANS_CACHE_HITS_TOTAL.inc()
+                        return cached_plan
                 PLANS_CACHE_MISSES_TOTAL.inc()
             except Exception as exc:
                 PLANS_CACHE_ERRORS_TOTAL.inc()
@@ -396,9 +399,11 @@ class CalendarPlanService:
             try:
                 cached_value = await redis.get(cache_key)
                 if cached_value:
-                    PLANS_CACHE_HITS_TOTAL.inc()
                     raw_items = json.loads(cached_value)
-                    return [CalendarPlanResponse.model_validate(item) for item in raw_items]
+                    cached_plans = [CalendarPlanResponse.model_validate(item) for item in raw_items]
+                    if all(plan.user_id is not None for plan in cached_plans):
+                        PLANS_CACHE_HITS_TOTAL.inc()
+                        return cached_plans
                 PLANS_CACHE_MISSES_TOTAL.inc()
             except Exception as exc:
                 PLANS_CACHE_ERRORS_TOTAL.inc()
@@ -1166,6 +1171,7 @@ class CalendarPlanService:
                 )
             response_data = {
                 "id": getattr(plan, "id", 0),
+                "user_id": getattr(plan, "user_id", None),
                 "name": getattr(plan, "name", ""),
                 "duration_weeks": getattr(plan, "duration_weeks", 0),
                 "is_active": getattr(plan, "is_active", True),

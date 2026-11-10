@@ -14,7 +14,9 @@ if config.config_file_name is not None:
 
 db_url = os.getenv("PLANS_DATABASE_URL")
 if db_url and db_url.startswith("postgresql+asyncpg://"):
-    db_url = db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    db_url = db_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
+elif db_url and db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 if not db_url:
     raise RuntimeError("PLANS_DATABASE_URL environment variable is required for Alembic migrations")

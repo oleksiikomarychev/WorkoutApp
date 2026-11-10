@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timedelta
 
 import common_pb2 as common_pb2
+import grpc
 import httpx
 import workouts_pb2 as workouts_pb2
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, UploadFile, status
@@ -572,7 +573,14 @@ async def get_workout(workout_id: int, request: Request):
         user_context=user_context,
     )
 
-    response = await stub.GetWorkoutWithDetails(request_pb, timeout=10.0)
+    try:
+        response = await stub.GetWorkoutWithDetails(request_pb, timeout=10.0)
+    except grpc.aio.AioRpcError as exc:
+        if exc.code() == grpc.StatusCode.NOT_FOUND:
+            return JSONResponse(status_code=404, content={"detail": "Workout not found"})
+        if exc.code() == grpc.StatusCode.PERMISSION_DENIED:
+            return JSONResponse(status_code=403, content={"detail": "Permission denied"})
+        raise
 
     if not response.workout:
         return JSONResponse(status_code=404, content={"detail": "Workout not found"})

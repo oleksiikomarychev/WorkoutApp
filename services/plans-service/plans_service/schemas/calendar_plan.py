@@ -311,6 +311,7 @@ class CalendarPlanNameOnly(BaseModel):
 
 class CalendarPlanResponse(BaseModel):
     id: int
+    user_id: str | None = None
     name: str
     duration_weeks: int
     is_active: bool
