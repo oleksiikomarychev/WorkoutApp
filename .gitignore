@@ -51,3 +51,7 @@ exercise_repo/
 *.code-workspace
 services/exercises-service/exercises_service/services/Refactoring*
 
+# Local OpenSpec tooling
+.devin/
+openspec/
+
