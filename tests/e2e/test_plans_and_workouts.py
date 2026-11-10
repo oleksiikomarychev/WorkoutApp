@@ -38,6 +38,19 @@ async def test_applied_plans_apply_and_active(base_url, http_client, internal_se
     plan_id = plan.get("id")
     assert isinstance(plan_id, int)
 
+    # Detail must expose the complete HTTP plan schema, including ownership
+    # and duration; the old gRPC summary omitted these fields.
+    resp_detail = await http_client.get(
+        f"{base_url}/api/v1/plans/calendar-plans/{plan_id}",
+        headers=headers,
+    )
+    assert resp_detail.status_code == 200
+    detail = resp_detail.json()
+    assert detail["id"] == plan_id
+    assert detail["user_id"] == user_id
+    assert detail["duration_weeks"] == 4
+    assert detail["mesocycles"][0]["microcycles"][0]["days_count"] == 7
+
     compute = {
         "compute_weights": False,
         "rounding_step": 2.5,

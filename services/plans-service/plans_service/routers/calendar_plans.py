@@ -1,8 +1,9 @@
-from typing import Any
+from typing import Annotated, Any
 
 import structlog
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import StringConstraints
 
 from ..dependencies import get_current_user_id, get_db
 from ..schemas.calendar_plan import (
@@ -14,10 +15,30 @@ from ..schemas.calendar_plan import (
     PlanMassEditCommand,
 )
 from ..services.calendar_plan_service import CalendarPlanService
+from ..services.plan_catalog_service import search_catalog
+from ..schemas.plan_catalog import CatalogResponse
 
 router = APIRouter(prefix="/calendar-plans")
 
 logger = structlog.get_logger(__name__)
+
+
+@router.get("/catalog", response_model=CatalogResponse)
+async def get_plan_catalog(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+    q: str = Query('', max_length=200),
+    duration_weeks: list[Annotated[int, Query(ge=1)]] = Query([], max_length=30),
+    goals: list[Annotated[str, StringConstraints(min_length=1, max_length=32)]] = Query([], max_length=30),
+    frequencies: list[Annotated[int, Query(ge=1, le=14)]] = Query([], max_length=14),
+    levels: list[Annotated[str, StringConstraints(min_length=1, max_length=32)]] = Query([], max_length=30),
+    offset: int = Query(0, ge=0, le=100000),
+    limit: int = Query(30, ge=1, le=100),
+) -> CatalogResponse:
+    return await search_catalog(
+        db, user_id, q=q, duration_weeks=duration_weeks, goals=goals,
+        frequencies=frequencies, levels=levels, offset=offset, limit=limit,
+    )
 
 
 @router.post("/", response_model=CalendarPlanResponse, status_code=status.HTTP_201_CREATED)
