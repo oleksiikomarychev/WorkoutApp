@@ -96,7 +96,7 @@ def cleanup_failed_application_task(self, *, user_id: str, applied_plan_id: int)
     try:
         _run_async(cleanup)
     except Exception as exc:
-        logger.exception("cleanup_failed_application_retry", applied_plan_id=applied_plan_id)
+        logger.exception("cleanup_failed_application_retry applied_plan_id=%s", applied_plan_id)
         raise self.retry(exc=exc, countdown=60)
 
 

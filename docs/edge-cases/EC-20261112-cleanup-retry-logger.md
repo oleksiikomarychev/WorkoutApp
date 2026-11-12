@@ -1,6 +1,6 @@
 # Ошибка логирования прерывает повтор компенсационной очистки
 
-- Статус: reproduced
+- Статус: verified
 - Область / сервисы: plans-service, cleanup_failed_application_task
 - Класс: retry / partial-failure
 - Обнаружен: 2026-11-12 при подключении локальных проверок
@@ -33,15 +33,36 @@
 
 `get_task_logger` возвращает стандартный logger, а обработчик передаёт структурный
 keyword `applied_plan_id` непосредственно в `logger.exception`. Stack trace подтверждает
-сбой перед `self.retry`. Исправление сервиса не входит в текущую настройку проверок;
-код не изменён, случай остаётся reproduced.
+сбой перед `self.retry`. После отдельного поручения владельца исправлен только
+вызов logger: идентификатор передаётся позиционным аргументом форматирования `%s`,
+совместимым со стандартным logging. Ошибка очистки теперь доходит до `self.retry`
+с исходным исключением и прежним countdown=60; контракт и лимит повторов не менялись.
+
+Это локальное восстановление принятого требования «Очистка неуспешного применения»,
+поэтому новый product change и изменение main spec не требуются.
 
 ## Регрессионная проверка
 
 - `tests/integration/test_plan_operation_pipeline.py::test_second_batch_failure_rolls_back_plan_and_cleans_workouts[False-True]`
 - Тот же тест `[True-True]`; последний параметр включает отказ очистки.
 - До исправления: 2026-11-12, оба теста падают по timeout; stack trace выявляет ошибку logger.
-- После исправления: не запускалось, исправление не выполнено.
+- Дополнительный точечный тест:
+  `services/plans-service/tests/test_apply_plan_guard.py::test_cleanup_outage_reaches_retry_without_logger_error`.
+  Перед исправлением он упал именно на TypeError logger; после исправления прошёл
+  в составе plan runner. Logger не заменён mock, проверяется вызов retry с исходной
+  ошибкой и countdown=60.
+- После исправления: 2026-11-12, `python3 scripts/check_changed.py --worktree`:
+  plan-contracts **45 passed** (12 integration + 9 plans + 24 workouts), RPE **45 passed**,
+  workflow **20 passed**. Два ранее падавших сценария очистки прошли.
+
+## Соответствие действующей спецификации
+
+Изменённых требований нет: восстановлено согласованное поведение.
+
+| Требование | Сценарий | Проверка | Результат | Ограничения |
+| --- | --- | --- | --- | --- |
+| plan-application / Очистка неуспешного применения | Первая очистка не удалась | `test_cleanup_outage_reaches_retry_without_logger_error` и integration `[False-True]` | passed, 2026-11-12; точечный тест failed до исправления | Countdown в integration сокращён до 0; production не запускался |
+| plan-application / Очистка неуспешного применения | Пользователь начал тренировку до сбоя применения | integration `[True-True]` с сохранением прогресса и временным отказом очистки | passed, 2026-11-12 | Синтетический пользователь, изолированные PostgreSQL/Redis |
 
 ## История повторных проверок
 
@@ -49,3 +70,4 @@ keyword `applied_plan_id` непосредственно в `logger.exception`. 
 | --- | --- | --- | --- |
 | 2026-11-12 | cdcd8c71 runtime | test_plan_contracts.py | Воспроизведено в изолированном стенде; production/VPS не проверялись |
 | 2026-11-12 | тот же runtime, runner с URL изоляцией до импорта | test_plan_contracts.py | Повторно 42 passed, 2 failed; код выхода 1, временные контейнеры удалены |
+| 2026-11-12 | исправление logger поверх 906d63ac | check_changed.py --worktree | 45 plan-contracts + 45 RPE + 20 workflow passed; TypeError устранён, повтор очистки выполнен |

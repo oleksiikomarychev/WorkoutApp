@@ -78,8 +78,9 @@ Plan-contracts использует disposable Docker PostgreSQL/Redis, зада
 Ни один набор не подключается к Neon/VPS или локальной БД приложения.
 
 При вводе hooks 2026-11-12 plan-contracts воспроизвёл [ошибку retry logger](../edge-cases/EC-20261112-cleanup-retry-logger.md):
-42 passed, 2 failed. До исправления этого дефекта соответствующая проверка push
-будет возвращать ошибку. Подробности — в отчёте enforce-change-verification.
+42 passed, 2 failed. После отдельного исправления logger и добавления точечной
+регрессии повторный прогон дал 45 passed. История и доказательства — в edge case;
+ошибки наборов по-прежнему блокируют соответствующий push.
 
 Hooks запускают обязательные локальные проверки, но могут быть отключены или
 обойдены `--no-verify`/SKIP. Это не серверный CI gate. GitHub Actions не добавлены;

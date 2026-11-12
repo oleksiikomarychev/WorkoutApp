@@ -1,9 +1,11 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from celery.exceptions import Retry
 from fastapi import HTTPException
 from plans_service.routers.applied_calendar_plans import apply_plan, apply_plan_async
 from plans_service.schemas.calendar_plan import ApplyPlanComputeSettings
+from plans_service.tasks import apply_plan_tasks
 
 
 @pytest.fixture
@@ -39,3 +41,13 @@ async def test_async_apply_forwards_explicit_replacement(compute):
         result = await apply_plan_async(1, compute, "7", True, AsyncMock(), "user-1")
     assert result == "queued"
     assert submit.call_args.kwargs["replace_active"] is True
+
+
+def test_cleanup_outage_reaches_retry_without_logger_error():
+    outage = RuntimeError("synthetic cleanup outage")
+    task = apply_plan_tasks.cleanup_failed_application_task
+    with patch.object(apply_plan_tasks, "_run_async", side_effect=outage):
+        with patch.object(task, "retry", side_effect=Retry("scheduled")) as retry:
+            with pytest.raises(Retry):
+                task.run(user_id="synthetic-user", applied_plan_id=7)
+    retry.assert_called_once_with(exc=outage, countdown=60)
