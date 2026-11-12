@@ -20,6 +20,11 @@ pytest, pytest-asyncio, grpcio-tools, asyncpg, uvicorn и Celery с Redis transp
 
 Результат: **44 теста прошли** — 12 интеграционных, 8 plans-service, 24 workouts-service.
 
+Повторный прогон при подключении hooks 2026-11-12: **42 passed, 2 failed** —
+обнаружен [сбой retry из-за logger](../edge-cases/EC-20261112-cleanup-retry-logger.md).
+Это обновляет оценку текущего состояния: прежний успешный отчёт не означает,
+что набор зелёный сейчас. Новые hooks передают этот неуспех; сервис здесь не исправлен.
+
 ## Что проверено
 
 | Гарантия | Доказательство |

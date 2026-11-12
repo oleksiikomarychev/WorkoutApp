@@ -16,6 +16,30 @@ def run(*args, **kwargs):
     return subprocess.run(args, cwd=ROOT, check=True, text=True, **kwargs)
 
 
+def isolated_environment(pg_port, redis_port):
+    pg_url = f"postgresql+asyncpg://postgres:contract-test@127.0.0.1:{pg_port}/contract_test"
+    redis_url = f"redis://127.0.0.1:{redis_port}/0"
+    # Override application URLs before importing modules: supplements creates its
+    # engine/tables at import time, before any pytest dependency override can run.
+    return dict(
+        os.environ,
+        CONTRACT_TEST_POSTGRES_URL=pg_url,
+        CONTRACT_TEST_REDIS_URL=redis_url,
+        DATABASE_URL=pg_url,
+        PLANS_DATABASE_URL=pg_url,
+        WORKOUTS_DATABASE_URL=pg_url,
+        SUPPLEMENTS_DATABASE_URL=pg_url.replace("postgresql+asyncpg:", "postgresql+psycopg2:"),
+        CELERY_BROKER_URL=redis_url,
+        CELERY_RESULT_BACKEND=redis_url,
+        PLANS_REDIS_HOST="127.0.0.1",
+        PLANS_REDIS_PORT=redis_port,
+        PLANS_REDIS_PASSWORD="",
+        WORKOUTS_REDIS_HOST="127.0.0.1",
+        WORKOUTS_REDIS_PORT=redis_port,
+        WORKOUTS_REDIS_PASSWORD="",
+    )
+
+
 def main():
     suffix = uuid.uuid4().hex[:10]
     pg, redis = f"workout-contract-pg-{suffix}", f"workout-contract-redis-{suffix}"
@@ -49,11 +73,7 @@ def main():
                 time.sleep(0.2)
         pg_port = run("docker", "port", pg, "5432", capture_output=True).stdout.strip().rsplit(":", 1)[1]
         redis_port = run("docker", "port", redis, "6379", capture_output=True).stdout.strip().rsplit(":", 1)[1]
-        env = dict(
-            os.environ,
-            CONTRACT_TEST_POSTGRES_URL=f"postgresql+asyncpg://postgres:contract-test@127.0.0.1:{pg_port}/contract_test",
-            CONTRACT_TEST_REDIS_URL=f"redis://127.0.0.1:{redis_port}/0",
-        )
+        env = isolated_environment(pg_port, redis_port)
         with tempfile.TemporaryDirectory(prefix="workout-contract-proto-") as generated:
             run(
                 "uv",
@@ -83,8 +103,14 @@ def main():
                     "services/workouts-service/tests/test_workouts_service.py",
                 ],
             ]
+            failures = []
             for tests in commands:
-                run("uv", "run", "--no-sync", "pytest", *tests, "-q", "--tb=short", env=env)
+                try:
+                    run("uv", "run", "--no-sync", "pytest", *tests, "-q", "--tb=short", env=env)
+                except subprocess.CalledProcessError as exc:
+                    failures.append(exc)
+            if failures:
+                raise failures[0]
     finally:
         for name in reversed(containers):
             subprocess.run(["docker", "rm", "-f", name], capture_output=True)
