@@ -53,5 +53,4 @@ services/exercises-service/exercises_service/services/Refactoring*
 
 # Local OpenSpec tooling
 .devin/
-openspec/
 

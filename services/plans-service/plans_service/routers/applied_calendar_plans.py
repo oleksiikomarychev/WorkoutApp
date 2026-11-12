@@ -303,6 +303,7 @@ async def apply_plan(
     plan_id: int,
     compute: ApplyPlanComputeSettings,
     user_max_ids: str = Query(..., description="Comma-separated list of user_max IDs"),
+    replace_active: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -317,13 +318,15 @@ async def apply_plan(
             user_max_ids=user_max_ids_list,
         )
         service = AppliedCalendarPlanService(db, user_id)
-        result = await service.apply_plan(plan_id, compute, user_max_ids_list)
+        result = await service.apply_plan(plan_id, compute, user_max_ids_list, replace_active=replace_active)
         logger.info(
             "applied_plan_apply_success",
             user_id=user_id,
             plan_id=plan_id,
         )
         return result
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -338,16 +341,21 @@ async def apply_plan_async(
     plan_id: int,
     compute: ApplyPlanComputeSettings,
     user_max_ids: str = Query(..., description="Comma-separated list of user_max IDs"),
+    replace_active: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     user_max_ids_list = [int(id.strip()) for id in user_max_ids.split(",") if id.strip()]
     if not user_max_ids_list:
         raise HTTPException(status_code=400, detail="At least one user_max_id is required")
+    if not replace_active and await AppliedCalendarPlanService(db, user_id).get_active_plan() is not None:
+        raise HTTPException(status_code=409, detail="An active plan already exists")
     logger.info(
         "applied_plan_apply_async_requested",
         user_id=user_id,
         plan_id=plan_id,
         user_max_ids=user_max_ids_list,
+        replace_active=replace_active,
     )
     return _submit_task(
         apply_plan_task,
@@ -355,6 +363,7 @@ async def apply_plan_async(
         plan_id=plan_id,
         compute=compute.model_dump(mode="json"),
         user_max_ids=user_max_ids_list,
+        replace_active=replace_active,
     )
 
 

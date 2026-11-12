@@ -1,5 +1,4 @@
-# Lean production stack for Coolify. Optional workers and analytics stay in
-# docker-compose.yml and are not pulled onto the small VPS.
+# Lean production stack for Coolify. Analytics stays in docker-compose.yml.
 services:
   rpe-service:
     image: docker.io/oleksiikomarychev/workoutapp-rpe-service:latest
@@ -20,6 +19,7 @@ services:
       - PLANS_DATABASE_URL=${PLANS_DATABASE_URL:?}
       - ENABLE_EXERCISES_ROUTER=true
       - WORKOUTS_SERVICE_URL=http://workouts-service:8004
+      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET:?}
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
       - CORS_ORIGINS=*
       - APP_ENV=production
@@ -38,6 +38,54 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    networks:
+      - workout-net
+
+  plans-celery-worker:
+    image: docker.io/oleksiikomarychev/workoutapp-plans-service:latest
+    command: celery -A plans_service.celery_app worker -Q plans.tasks --loglevel=info
+    environment:
+      - PLANS_DATABASE_URL=${PLANS_DATABASE_URL:?}
+      - WORKOUTS_SERVICE_URL=http://workouts-service:8004
+      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET:?}
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:?}@redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:?}@redis:6379/2
+      - CELERY_PLANS_QUEUE=plans.tasks
+      - PLANS_REDIS_HOST=redis
+      - PLANS_REDIS_PORT=6379
+      - PLANS_REDIS_DB=0
+      - PLANS_REDIS_PASSWORD=${REDIS_PASSWORD:?}
+      - APP_ENV=production
+    depends_on:
+      redis:
+        condition: service_healthy
+      plans-service:
+        condition: service_started
+    restart: always
+    networks:
+      - workout-net
+
+  workouts-celery-worker:
+    image: docker.io/oleksiikomarychev/workoutapp-workouts-service:latest
+    command: celery -A workouts_service.celery_app worker -Q workouts.tasks --pool=solo --concurrency=1 --loglevel=info
+    environment:
+      - WORKOUTS_DATABASE_URL=${WORKOUTS_DATABASE_URL:?}
+      - PLANS_SERVICE_URL=http://plans-service:8005
+      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET:?}
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:?}@redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:?}@redis:6379/2
+      - CELERY_WORKOUTS_QUEUE=workouts.tasks
+      - WORKOUTS_REDIS_HOST=redis
+      - WORKOUTS_REDIS_PORT=6379
+      - WORKOUTS_REDIS_DB=0
+      - WORKOUTS_REDIS_PASSWORD=${REDIS_PASSWORD:?}
+      - APP_ENV=production
+    depends_on:
+      redis:
+        condition: service_healthy
+      workouts-service:
+        condition: service_started
+    restart: always
     networks:
       - workout-net
 

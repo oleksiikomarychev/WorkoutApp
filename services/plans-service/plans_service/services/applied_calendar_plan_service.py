@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 import structlog
 from backend_common.http_client import ServiceClient
+from fastapi import HTTPException
 from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,6 +73,32 @@ class AppliedCalendarPlanService:
         if user_id:
             headers["X-User-Id"] = user_id
         return headers
+
+    async def _lock_and_check_active_plan(self, *, replace_active: bool) -> None:
+        user_id = self._require_user_id()
+        await self.db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:user_id), 0)"),
+            {"user_id": user_id},
+        )
+
+        active_result = await self.db.execute(
+            select(AppliedCalendarPlan.id).where(
+                AppliedCalendarPlan.user_id == user_id,
+                AppliedCalendarPlan.is_active.is_(True),
+            )
+        )
+        if active_result.scalar_one_or_none() is not None and not replace_active:
+            raise HTTPException(status_code=409, detail="An active plan already exists")
+
+    async def _cleanup_failed_application(self, applied_plan_id: int) -> None:
+        secret = (os.getenv("INTERNAL_GATEWAY_SECRET") or "").strip()
+        if not secret:
+            raise RuntimeError("INTERNAL_GATEWAY_SECRET is required for workout cleanup")
+        base = (os.getenv("WORKOUTS_SERVICE_URL") or "http://workouts-service:8004").rstrip("/")
+        url = f"{base}/internal/users/{self._require_user_id()}/applied-plans/{applied_plan_id}/cleanup"
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers={"X-Internal-Secret": secret})
+            response.raise_for_status()
 
     async def _fetch_user_maxes(self, exercise_ids: list[int]) -> list[dict]:
         if not exercise_ids:
@@ -191,6 +218,7 @@ class AppliedCalendarPlanService:
         self, applied_plan_id: int, workouts: list[dict[str, Any]], compute: ApplyPlanComputeSettings
     ) -> list[int] | None:
         import traceback
+
         logger.info(
             "generate_workouts_via_rpc_entry",
             applied_plan_id=applied_plan_id,
@@ -198,7 +226,7 @@ class AppliedCalendarPlanService:
             compute_weights=compute.compute_weights,
             caller_stack=traceback.format_stack()[-3].strip() if traceback.format_stack() else "unknown",
         )
-        
+
         bases = [os.getenv("WORKOUTS_SERVICE_URL", "http://workouts-service:8004")]
         headers = self._auth_headers()
 
@@ -234,14 +262,14 @@ class AppliedCalendarPlanService:
                         response.raise_for_status()
                         body = response.json()
                         workout_ids = body.get("workout_ids") if isinstance(body, dict) else None
-                        if isinstance(workout_ids, list) and len(workout_ids) != len(workouts):
-                            logger.warning(
-                                "apply_plan_rpc_existing_workouts",
-                                workout_ids=workout_ids,
-                                attempted=len(workouts),
-                            )
-                        else:
-                            logger.info("apply_plan_rpc_success", workout_ids=workout_ids)
+                        if (
+                            not isinstance(workout_ids, list)
+                            or len(workout_ids) != len(workouts)
+                            or any(type(workout_id) is not int or workout_id <= 0 for workout_id in workout_ids)
+                            or len(set(workout_ids)) != len(workout_ids)
+                        ):
+                            raise RuntimeError("workout_generation_incomplete")
+                        logger.info("apply_plan_rpc_success", workout_ids=workout_ids)
                         return workout_ids
                     except httpx.HTTPStatusError as e:
                         logger.error(
@@ -262,6 +290,7 @@ class AppliedCalendarPlanService:
         compute: ApplyPlanComputeSettings,
         user_max_ids: list[int],
         *,
+        replace_active: bool = False,
         progress: Callable[[dict[str, Any]], None] | None = None,
     ) -> AppliedCalendarPlanResponse:
         import time
@@ -269,6 +298,8 @@ class AppliedCalendarPlanService:
         from ..rpc import get_rpe_metrics, reset_rpe_metrics
 
         start_time = time.time()
+        applied_plan_id: int | None = None
+        committed = False
         reset_rpe_metrics()  # Reset metrics for this run
 
         logger.info(
@@ -378,10 +409,7 @@ class AppliedCalendarPlanService:
             exercise_metadata = await self._fetch_exercise_metadata(required_exercises)
             exercise_scope = self._build_exercise_scope(exercise_metadata)
 
-            await self.db.execute(
-                text("SELECT pg_advisory_xact_lock(hashtext(:user_id), 0)"),
-                {"user_id": user_id},
-            )
+            await self._lock_and_check_active_plan(replace_active=replace_active)
 
             stmt = (
                 update(AppliedCalendarPlan)
@@ -412,6 +440,7 @@ class AppliedCalendarPlanService:
             applied_plan.end_date = applied_plan.end_date.replace(tzinfo=None)
             self.db.add(applied_plan)
             await self.db.flush()
+            applied_plan_id = applied_plan.id
 
             calculated_schedule: dict[str, list[dict[str, Any]]] = {}
 
@@ -437,7 +466,7 @@ class AppliedCalendarPlanService:
             for um in user_maxes:
                 base_true = await workout_calculation.WorkoutCalculator.get_true_1rm_from_user_max(um, headers=headers)
                 effective_1rms[um["exercise_id"]] = float(base_true if base_true is not None else um["max_weight"])
-            
+
             logger.info(
                 "effective_1rms_initialized",
                 user_maxes_count=len(user_maxes),
@@ -530,7 +559,9 @@ class AppliedCalendarPlanService:
                             workout_exercises_instances: list[dict[str, Any]] = []
 
                             # Process exercises in parallel
-                            async def process_exercise(exercise: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+                            async def process_exercise(
+                                exercise: dict[str, Any],
+                            ) -> tuple[dict[str, Any], dict[str, Any]]:
                                 user_max = user_max_by_exercise.get(exercise["exercise_id"])
                                 calculated_sets: list[dict[str, Any]] = []
                                 instance_sets: list[dict[str, Any]] = []
@@ -553,7 +584,9 @@ class AppliedCalendarPlanService:
                                                 effort=effort,
                                                 exercise_id=exercise["exercise_id"],
                                             )
-                                            volume = await get_volume(intensity=intensity, effort=effort, headers=headers)
+                                            volume = await get_volume(
+                                                intensity=intensity, effort=effort, headers=headers
+                                            )
                                             logger.info(
                                                 "get_volume_result",
                                                 volume=volume,
@@ -566,7 +599,9 @@ class AppliedCalendarPlanService:
                                                 effort=effort,
                                                 exercise_id=exercise["exercise_id"],
                                             )
-                                            intensity = await get_intensity(volume=volume, effort=effort, headers=headers)
+                                            intensity = await get_intensity(
+                                                volume=volume, effort=effort, headers=headers
+                                            )
                                             logger.info(
                                                 "get_intensity_result",
                                                 intensity=intensity,
@@ -579,7 +614,9 @@ class AppliedCalendarPlanService:
                                                 intensity=intensity,
                                                 exercise_id=exercise["exercise_id"],
                                             )
-                                            effort = await get_effort(volume=volume, intensity=intensity, headers=headers)
+                                            effort = await get_effort(
+                                                volume=volume, intensity=intensity, headers=headers
+                                            )
                                             logger.info(
                                                 "get_effort_result",
                                                 effort=effort,
@@ -603,8 +640,10 @@ class AppliedCalendarPlanService:
                                     if compute.compute_weights and intensity is not None and user_max is not None:
                                         eff_1rm = effective_1rms.get(user_max["exercise_id"])
                                         if eff_1rm is None:
-                                            true_1rm = await workout_calculation.WorkoutCalculator.get_true_1rm_from_user_max(
-                                                user_max, headers=headers
+                                            true_1rm = (
+                                                await workout_calculation.WorkoutCalculator.get_true_1rm_from_user_max(
+                                                    user_max, headers=headers
+                                                )
                                             )
                                             eff_1rm = (
                                                 float(true_1rm)
@@ -623,11 +662,15 @@ class AppliedCalendarPlanService:
                                     return intensity, effort, volume, weight
 
                                 for set_data in exercise["sets"]:
-                                    set_type = (set_data.get("set_type") or "normal")
+                                    set_type = set_data.get("set_type") or "normal"
                                     set_type = str(set_type).strip().lower()
                                     subsets = set_data.get("subsets")
 
-                                    if set_type in {"drop", "cluster", "rest_pause"} and isinstance(subsets, list) and subsets:
+                                    if (
+                                        set_type in {"drop", "cluster", "rest_pause"}
+                                        and isinstance(subsets, list)
+                                        and subsets
+                                    ):
                                         computed_subsets: list[dict[str, Any]] = []
                                         for sub in subsets:
                                             if not isinstance(sub, dict):
@@ -803,7 +846,6 @@ class AppliedCalendarPlanService:
 
                 for start in range(0, total_workouts, chunk_size):
                     chunk = workouts_to_generate[start : start + chunk_size]
-                    chunk_instances = workouts_instances_to_generate[start : start + chunk_size]
 
                     if progress is not None:
                         try:
@@ -825,7 +867,7 @@ class AppliedCalendarPlanService:
                         chunk_sample=chunk[0] if chunk else None,
                     )
                     chunk_ids = await self._generate_workouts_via_rpc(applied_plan.id, chunk, compute)
-                    if not chunk_ids:
+                    if not chunk_ids or any(workout_id in generated_ids for workout_id in chunk_ids):
                         raise RuntimeError("workout_generation_failed")
 
                     if chunk_ids:
@@ -880,6 +922,7 @@ class AppliedCalendarPlanService:
             )
             await self.db.execute(adopter_insert)
             await self.db.commit()
+            committed = True
             await self.db.refresh(applied_plan)
 
             applied_plan_response = AppliedCalendarPlanResponse(
@@ -921,6 +964,20 @@ class AppliedCalendarPlanService:
 
             return applied_plan_response
         except Exception:
+            await self.db.rollback()
+            if applied_plan_id is not None and not committed:
+                try:
+                    await self._cleanup_failed_application(applied_plan_id)
+                except Exception:
+                    logger.exception("failed_application_cleanup_failed", applied_plan_id=applied_plan_id)
+                    from ..tasks.apply_plan_tasks import cleanup_failed_application_task
+
+                    try:
+                        cleanup_failed_application_task.delay(
+                            user_id=self._require_user_id(), applied_plan_id=applied_plan_id
+                        )
+                    except Exception:
+                        logger.exception("failed_application_cleanup_enqueue_failed", applied_plan_id=applied_plan_id)
             raise
 
     async def get_applied_plan_by_id(self, plan_id: int) -> AppliedCalendarPlan | None:
@@ -1458,14 +1515,13 @@ class AppliedCalendarPlanService:
             logger.info(
                 "inject_mesocycle_before_weight_check",
                 workouts_to_generate_count=len(workouts_to_generate),
-                has_compute_variable='compute' in locals(),
+                has_compute_variable="compute" in locals(),
             )
             if compute.compute_weights:
                 logger.info(
                     "template_weight_calculation_start",
                     compute_weights=compute.compute_weights,
                     workouts_count=len(workouts_to_generate),
-                    effective_1rms=effective_1rms,
                 )
                 required_exercise_ids: set[int] = set()
                 for w in workouts_to_generate:
@@ -1548,7 +1604,6 @@ class AppliedCalendarPlanService:
                     "template_weight_calculation_main_block",
                     compute_weights=compute.compute_weights,
                     workouts_to_generate_count=len(workouts_to_generate),
-                    effective_1rms=effective_1rms,
                 )
                 for w in workouts_to_generate:
                     logger.info(
@@ -1563,7 +1618,6 @@ class AppliedCalendarPlanService:
                             "workout_generation_weight_check",
                             exercise_id=ex_id,
                             eff_1rm=eff_1rm,
-                            effective_1rms=effective_1rms,
                         )
                         for s in ex.get("sets") or []:
                             intensity = s.get("intensity")

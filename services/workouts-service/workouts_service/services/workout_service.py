@@ -202,7 +202,7 @@ class WorkoutService:
                 for ex in workout.exercises
             ],
         )
-        
+
         await self._set_cached_workout(workout_id, workout_response.model_dump())
         return workout_response
 
@@ -448,7 +448,6 @@ class WorkoutService:
     async def generate_workouts(self, request: WorkoutGenerationRequest) -> tuple[list[int], int, int]:
         workout_ids: list[int] = []
 
-
         try:
             calculator = WorkoutCalculator()
             all_exercise_ids: set[int] = set()
@@ -467,7 +466,6 @@ class WorkoutService:
                 scheduled_for = workout_item.scheduled_for
                 if isinstance(scheduled_for, str):
                     scheduled_for = datetime.fromisoformat(scheduled_for)
-
 
                 workout = models.Workout(
                     name=workout_item.name,
@@ -499,7 +497,6 @@ class WorkoutService:
                             intensity is None or effort is None or volume is None
                         )
                         need_weight = bool(getattr(request, "compute_weights", False)) and (working_weight is None)
-                        
 
                         if self.rpe_rpc and (need_core_fill or need_weight):
                             try:
@@ -544,8 +541,6 @@ class WorkoutService:
 
             await self.db.commit()
             await invalidate_workout_cache(self.user_id, workout_ids=workout_ids)
-            
-            
 
             try:
                 GENERATED_WORKOUTS_CREATED_TOTAL.inc(len(workout_ids))
@@ -791,6 +786,10 @@ class WorkoutService:
                 .where(models.Workout.user_id == self.user_id)
                 .where(models.Workout.applied_plan_id == applied_plan_id)
                 .where(models.Workout.plan_order_index >= from_order_index)
+                .where(
+                    models.Workout.completed_at.is_(None),
+                    or_(models.Workout.status.is_(None), models.Workout.status != "completed"),
+                )
                 .order_by(models.Workout.plan_order_index.asc())
             )
             if exclude_ids:
@@ -869,7 +868,10 @@ class WorkoutService:
             to_day_end = datetime(to_dt.year, to_dt.month, to_dt.day) + timedelta(days=1)
             stmt = stmt.where(models.Workout.scheduled_for < to_day_end)
 
-        stmt = stmt.where(models.Workout.completed_at.is_(None))
+        stmt = stmt.where(
+            models.Workout.completed_at.is_(None),
+            or_(models.Workout.status.is_(None), models.Workout.status != "completed"),
+        )
         if cmd.status_in:
             stmt = stmt.where(models.Workout.status.in_(cmd.status_in))
 
@@ -878,7 +880,7 @@ class WorkoutService:
             stmt = stmt.where(models.Workout.scheduled_for >= now_utc)
 
         stmt = stmt.order_by(models.Workout.scheduled_for.asc())
-        result = await self.db.execute(stmt)
+        result = await self.db.execute(stmt.with_for_update() if not dry_run else stmt)
         workouts: list[models.Workout] = list(result.scalars().all())
 
         if not workouts:
@@ -1014,14 +1016,14 @@ class WorkoutService:
                 sets=sets_payload,
             )
             try:
-                return await instance_service.create_instance(workout_id, create_payload)
+                return await instance_service.create_instance(workout_id, create_payload, commit=False)
             except Exception:
                 logger.exception(
                     "applied_mass_edit_create_instance_failed",
                     workout_id=workout_id,
                     exercise_definition_id=spec.exercise_definition_id,
                 )
-                return None
+                raise
 
         async def fetch_instances_for_workout(workout_id: int) -> list[dict]:
             try:
@@ -1029,7 +1031,7 @@ class WorkoutService:
                 return data if isinstance(data, list) else []
             except Exception:
                 logger.exception("applied_mass_edit_fetch_instances_failed", workout_id=workout_id)
-                return []
+                raise
 
         async def replace_exercise_instance(inst: dict, new_ex_def_id: int, new_ex_name: str | None = None) -> bool:
             instance_id = inst.get("id")
@@ -1042,19 +1044,19 @@ class WorkoutService:
                     notes=inst.get("notes"),
                     rest_seconds=inst.get("rest_seconds"),
                 )
-                updated = await instance_service.update_instance(instance_id, update_payload)
+                updated = await instance_service.update_instance(instance_id, update_payload, commit=False)
                 if isinstance(updated, dict):
                     inst["exercise_list_id"] = new_ex_def_id
                 return True
             except Exception:
                 logger.exception("applied_mass_edit_replace_instance_failed", instance_id=instance_id)
-                return False
+                raise
 
         async def update_set(instance_id: int, set_id: int, payload: dict) -> bool:
             if not payload:
                 return False
             try:
-                await instance_service.update_set(instance_id, set_id, payload)
+                await instance_service.update_set(instance_id, set_id, payload, commit=False)
                 return True
             except Exception:
                 logger.exception(
@@ -1062,7 +1064,7 @@ class WorkoutService:
                     instance_id=instance_id,
                     set_id=set_id,
                 )
-                return False
+                raise
 
         def _as_float(value: Any) -> float | None:
             try:
@@ -1198,6 +1200,10 @@ class WorkoutService:
             stmt = stmt.where(models.Workout.plan_order_index >= flt.from_order_index)
         if flt.to_order_index is not None:
             stmt = stmt.where(models.Workout.plan_order_index <= flt.to_order_index)
+        stmt = stmt.where(
+            models.Workout.completed_at.is_(None),
+            or_(models.Workout.status.is_(None), models.Workout.status != "completed"),
+        )
         if flt.status_in:
             stmt = stmt.where(models.Workout.status.in_(flt.status_in))
         if flt.scheduled_from is not None:
@@ -1211,7 +1217,7 @@ class WorkoutService:
             )
         stmt = stmt.order_by(models.Workout.plan_order_index.asc())
 
-        result = await self.db.execute(stmt)
+        result = await self.db.execute(stmt.with_for_update() if cmd.mode == "apply" else stmt)
         workouts: list[models.Workout] = list(result.scalars().all())
         if not workouts:
             return schemas.AppliedPlanMassEditResult(
@@ -1228,6 +1234,7 @@ class WorkoutService:
         sets_matched = 0
         sets_modified = 0
         details: list[dict] = []
+        touched_instance_ids: set[int] = set()
 
         for w in workouts:
             instances = await fetch_instances_for_workout(int(w.id))
@@ -1252,6 +1259,7 @@ class WorkoutService:
                 instance_id = inst.get("id")
                 if not isinstance(instance_id, int):
                     continue
+                touched_instance_ids.add(instance_id)
                 sets = inst.get("sets") or []
 
                 instance_sets_matched = 0
@@ -1351,6 +1359,17 @@ class WorkoutService:
                     }
                 )
 
+        if cmd.mode == "apply":
+            await self.db.commit()
+            try:
+                await invalidate_workout_cache(self.user_id, workout_ids=[int(w.id) for w in workouts])
+                for workout in workouts:
+                    await instance_service._invalidate_local_cache(workout_id=int(workout.id))
+                for instance_id in touched_instance_ids:
+                    await instance_service._invalidate_local_cache(instance_id=instance_id)
+            except Exception:
+                logger.warning("applied_mass_edit_cache_invalidation_failed", exc_info=True)
+
         return schemas.AppliedPlanMassEditResult(
             mode=cmd.mode,
             workouts_matched=workouts_matched,
@@ -1395,7 +1414,7 @@ class WorkoutService:
             workout_id=workout_id,
             old_exercise_id=old_exercise_id,
             new_exercise_id=new_exercise_id,
-            user_id=self.user_id
+            user_id=self.user_id,
         )
 
         workout_exists = await self.db.execute(
@@ -1433,7 +1452,7 @@ class WorkoutService:
                     workout_id=workout_id,
                     old_exercise_id=old_exercise_id,
                     new_exercise_id=new_exercise_id,
-                    user_id=self.user_id
+                    user_id=self.user_id,
                 )
 
         except SQLAlchemyError as e:

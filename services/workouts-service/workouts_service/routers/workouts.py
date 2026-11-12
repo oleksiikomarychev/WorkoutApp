@@ -387,6 +387,7 @@ async def shift_schedule_in_plan_async(
             shift_schedule_in_plan_task,
             logger=logger,
             log_event="workout_schedule_shift_async_enqueued",
+            celery_app=celery_app,
             task_kwargs={
                 "user_id": user_id,
                 "applied_plan_id": applied_plan_id,
@@ -452,6 +453,7 @@ async def applied_plan_mass_edit_sets(
         )
         return result
     except Exception as e:
+        await workout_service.db.rollback()
         logger.exception(
             "applied_plan_mass_edit_error",
             user_id=user_id,
@@ -481,6 +483,7 @@ async def applied_plan_mass_edit_sets_async(
             applied_plan_mass_edit_sets_task,
             logger=logger,
             log_event="applied_plan_mass_edit_async_enqueued",
+            celery_app=celery_app,
             task_kwargs={
                 "user_id": user_id,
                 "applied_plan_id": applied_plan_id,
@@ -565,9 +568,11 @@ async def shift_applied_plan_schedule_async(
             applied_plan_schedule_shift_task,
             logger=logger,
             log_event="applied_plan_schedule_shift_async_enqueued",
+            celery_app=celery_app,
             task_kwargs={
                 "user_id": user_id,
                 "applied_plan_id": applied_plan_id,
+                "command": command.model_dump(mode="json"),
                 "from_date": command.from_date.isoformat(),
                 "days": command.days,
                 "only_future": command.only_future,
@@ -600,9 +605,6 @@ async def replace_workout_exercise_id(
     service: WorkoutService = Depends(get_workout_service),
 ):
     updated_count = await service.replace_exercise_only_id(
-        workout_id=workout_id,
-        old_exercise_id=payload.old_exercise_id,
-        new_exercise_id=payload.new_exercise_id
+        workout_id=workout_id, old_exercise_id=payload.old_exercise_id, new_exercise_id=payload.new_exercise_id
     )
     return {"updated_count": updated_count}
-

@@ -146,7 +146,7 @@ class ExerciseInstanceService:
                 logger.warning("workout_exercise_cache_invalidate_failed", keys=keys, exc_info=True)
 
     async def create_instance(
-        self, workout_id: int, instance_data: workout_schemas.WorkoutExerciseInstanceCreate
+        self, workout_id: int, instance_data: workout_schemas.WorkoutExerciseInstanceCreate, *, commit: bool = True
     ) -> dict[str, Any]:
         logger.info(
             "exercise_instance_create_requested",
@@ -180,11 +180,16 @@ class ExerciseInstanceService:
             )
             self.db.add(ws)
 
+        if not commit:
+            await self.db.flush()
+            return {"id": ex.id, "sets": [s.model_dump() for s in instance_data.sets or []]}
         await self.db.commit()
         await self.db.refresh(ex)
 
-        stmt = select(models.WorkoutExercise).options(selectinload(models.WorkoutExercise.sets)).where(
-            models.WorkoutExercise.id == ex.id
+        stmt = (
+            select(models.WorkoutExercise)
+            .options(selectinload(models.WorkoutExercise.sets))
+            .where(models.WorkoutExercise.id == ex.id)
         )
         res = await self.db.execute(stmt)
         ex_full = res.scalars().first() or ex
@@ -196,7 +201,7 @@ class ExerciseInstanceService:
         return serialized
 
     async def update_instance(
-        self, instance_id: int, update_data: workout_schemas.WorkoutExerciseInstanceUpdate
+        self, instance_id: int, update_data: workout_schemas.WorkoutExerciseInstanceUpdate, *, commit: bool = True
     ) -> dict[str, Any]:
         stmt = select(models.WorkoutExercise).where(
             models.WorkoutExercise.id == instance_id,
@@ -217,10 +222,15 @@ class ExerciseInstanceService:
         if "rest_seconds" in update_dict:
             db_instance.rest_seconds = update_dict.get("rest_seconds")
 
+        if not commit:
+            await self.db.flush()
+            return {"id": db_instance.id}
         await self.db.commit()
 
-        stmt = select(models.WorkoutExercise).options(selectinload(models.WorkoutExercise.sets)).where(
-            models.WorkoutExercise.id == instance_id
+        stmt = (
+            select(models.WorkoutExercise)
+            .options(selectinload(models.WorkoutExercise.sets))
+            .where(models.WorkoutExercise.id == instance_id)
         )
         res = await self.db.execute(stmt)
         updated_full = res.scalars().first()
@@ -231,7 +241,7 @@ class ExerciseInstanceService:
         await self._cache_instance(workout_exercise_key(self.user_id, instance_id), serialized)
         return serialized
 
-    async def update_set(self, instance_id: int, set_id: int, update_data: dict) -> dict:
+    async def update_set(self, instance_id: int, set_id: int, update_data: dict, *, commit: bool = True) -> dict:
         stmt = (
             select(models.WorkoutSet, models.WorkoutExercise.workout_id)
             .join(models.WorkoutExercise, models.WorkoutSet.exercise_id == models.WorkoutExercise.id)
@@ -263,6 +273,9 @@ class ExerciseInstanceService:
         if "subsets" in update_data:
             db_set.subsets = update_data.get("subsets")
 
+        if not commit:
+            await self.db.flush()
+            return {"id": db_set.id}
         await self.db.commit()
 
         refreshed = await self.get_instance(instance_id)
