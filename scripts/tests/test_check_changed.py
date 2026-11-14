@@ -42,6 +42,14 @@ class SelectionTests(unittest.TestCase):
             with self.subTest(p=p):
                 self.assertEqual(gate.select_checks({p}), (["plan-contracts"], []))
 
+    def test_known_exercises_area_selects_exercises(self):
+        for p in (
+            "services/exercises-service/alembic/versions/8dcae771c7a8_remove_image_url.py",
+            "scripts/test_exercises_contracts.py",
+        ):
+            with self.subTest(p=p):
+                self.assertEqual(gate.select_checks({p}), (["exercises"], []))
+
     def test_unknown_runtime_and_requirements_are_not_docs(self):
         for p in ("services/agent-service/agent_service/main.py", "analytics/test.sql", "requirements.txt"):
             with self.subTest(p=p):

@@ -12,6 +12,7 @@ COMMANDS = {
     "workflow": [sys.executable, "-m", "unittest", "discover", "-s", "scripts/tests", "-v"],
     "plan-contracts": [sys.executable, "scripts/test_plan_contracts.py"],
     "rpe": [sys.executable, "scripts/test_rpe_contracts.py"],
+    "exercises": [sys.executable, "scripts/test_exercises_contracts.py"],
 }
 RUNTIME_ROOTS = (
     "services/",
@@ -78,6 +79,8 @@ def select_checks(paths):
             selected.add("plan-contracts")
         elif p == "scripts/test_rpe_contracts.py":
             selected.add("rpe")
+        elif p == "scripts/test_exercises_contracts.py":
+            selected.add("exercises")
         elif any(
             f"/specs/{cap}/" in p
             for cap in (
@@ -93,6 +96,8 @@ def select_checks(paths):
             continue
         elif p.startswith(("services/plans-service/", "services/workouts-service/")):
             selected.add("plan-contracts")
+        elif p.startswith("services/exercises-service/"):
+            selected.add("exercises")
         elif p.startswith("services/rpe-service/") or p == "gateway/gateway_app/routes/rpe.py":
             selected.add("rpe")
         elif p in {"gateway/gateway_app/routes/plans.py", "gateway/gateway_app/routes/workouts.py"}:
