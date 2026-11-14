@@ -167,17 +167,22 @@ async def _applied_plan_schedule_shift_async(
     days: int,
     only_future: bool = True,
     status_in: list[str] | None = None,
+    command: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     async with AsyncSessionLocal() as db:
         plans_rpc = PlansServiceRPC()
         service = WorkoutService(db, plans_rpc, user_id=user_id)
 
-        command: dict[str, Any] = {
-            "from_date": from_date,
-            "days": days,
-            "only_future": only_future,
-            "status_in": status_in,
-        }
+        command = (
+            command
+            if command is not None
+            else {
+                "from_date": from_date,
+                "days": days,
+                "only_future": only_future,
+                "status_in": status_in,
+            }
+        )
         cmd_obj = schemas.AppliedPlanScheduleShiftCommand.model_validate(command)
         summary = await service.shift_applied_plan_schedule_from_date(applied_plan_id, cmd_obj)
         return {"ok": True, "summary": summary}
@@ -198,6 +203,7 @@ def applied_plan_schedule_shift_task(
     days: int,
     only_future: bool = True,
     status_in: list[str] | None = None,
+    command: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     try:
         logger.info(
@@ -217,6 +223,7 @@ def applied_plan_schedule_shift_task(
                 days=days,
                 only_future=only_future,
                 status_in=status_in,
+                command=command,
             )
         )
     except Exception as exc:  # pragma: no cover - rely on Celery retries/logs

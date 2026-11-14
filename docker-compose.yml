@@ -33,6 +33,7 @@ services:
     environment:
       - PLANS_DATABASE_URL=${PLANS_DATABASE_URL}
       - WORKOUTS_SERVICE_URL=http://workouts-service:8004
+      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET}
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
       - APP_ENV=${APP_ENV}
       - CELERY_BROKER_URL=redis://redis:6379/1
@@ -117,6 +118,7 @@ services:
       - PLANS_DATABASE_URL=${PLANS_DATABASE_URL}
       - ENABLE_EXERCISES_ROUTER=true
       - WORKOUTS_SERVICE_URL=http://workouts-service:8004
+      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET}
       - EXERCISES_SERVICE_URL=http://exercises-service:8002
       - CORS_ORIGINS=*
       - APP_ENV=${APP_ENV}

@@ -6,6 +6,7 @@ from typing import Any
 
 from celery import shared_task
 from celery.utils.log import get_task_logger
+from fastapi import HTTPException
 
 from ..celery_app import PLANS_TASK_QUEUE
 from ..database import DATABASE_URL
@@ -49,10 +50,12 @@ def _apply_plan_sync(
     compute_data: dict[str, Any],
     user_max_ids: list[int],
     *,
+    replace_active: bool = False,
     progress: Any | None = None,
 ) -> dict[str, Any]:
     async def _run_async_session():
         from backend_common.database import create_async_engine_and_session
+
         task_engine, TaskAsyncSessionLocal = create_async_engine_and_session(
             DATABASE_URL,
             pool_size=5,
@@ -60,25 +63,41 @@ def _apply_plan_sync(
             pool_pre_ping=False,
             pool_recycle=3600,
         )
-        
+
         async with TaskAsyncSessionLocal() as session:
             service = AppliedCalendarPlanService(session, user_id)
             compute = ApplyPlanComputeSettings.model_validate(compute_data)
             try:
-                result = await service.apply_plan(plan_id, compute, user_max_ids, progress=progress)
-                if hasattr(result, 'model_dump'):
+                result = await service.apply_plan(
+                    plan_id, compute, user_max_ids, replace_active=replace_active, progress=progress
+                )
+                if hasattr(result, "model_dump"):
                     return result.model_dump()
                 return result
-            except ValueError as exc:
-                return {
-                    "ok": False,
-                    "error_type": "ValueError",
-                    "error_message": str(exc),
-                }
+            except HTTPException as exc:
+                raise ValueError(f"{exc.status_code}: {exc.detail}") from exc
             finally:
                 await task_engine.dispose()
-    
+
     return _run_async(_run_async_session)
+
+
+@shared_task(
+    bind=True,
+    name="plans.cleanup_failed_application",
+    queue=PLANS_TASK_QUEUE,
+    max_retries=8,
+)
+def cleanup_failed_application_task(self, *, user_id: str, applied_plan_id: int) -> None:
+    async def cleanup() -> None:
+        service = AppliedCalendarPlanService(None, user_id)
+        await service._cleanup_failed_application(applied_plan_id)
+
+    try:
+        _run_async(cleanup)
+    except Exception as exc:
+        logger.exception("cleanup_failed_application_retry applied_plan_id=%s", applied_plan_id)
+        raise self.retry(exc=exc, countdown=60)
 
 
 async def _apply_macros_async(
@@ -87,14 +106,15 @@ async def _apply_macros_async(
     index_offset: int,
 ) -> dict[str, Any]:
     from backend_common.database import create_async_engine_and_session
+
     task_engine, TaskAsyncSessionLocal = create_async_engine_and_session(
-        DATABASE_URL, 
+        DATABASE_URL,
         pool_size=1,
         max_overflow=0,
         pool_pre_ping=False,
         pool_recycle=3600,
     )
-    
+
     try:
         async with TaskAsyncSessionLocal() as session:
             engine = MacroEngine(session, user_id)
@@ -150,8 +170,10 @@ def apply_plan_task(
     user_id: str,
     compute: dict[str, Any],
     user_max_ids: list[int],
+    replace_active: bool = False,
 ) -> dict[str, Any]:
     try:
+
         def _progress(meta: dict[str, Any]) -> None:
             try:
                 self.update_state(state="PROGRESS", meta=meta)
@@ -164,8 +186,12 @@ def apply_plan_task(
             user_id=user_id,
             compute_data=compute,
             user_max_ids=user_max_ids,
+            replace_active=replace_active,
             progress=_progress,
         )
+    except ValueError:
+        # Domain errors (including a conflict after enqueue) are terminal failures.
+        raise
     except Exception as exc:
         logger.exception("apply_plan_task_failed", exc_info=exc)
         raise self.retry(exc=exc, countdown=60)

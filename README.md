@@ -12,6 +12,13 @@
 
 The Flutter client lives in the separate [athletic-performance-clients repository](https://github.com/oleksiikomarychev/athletic-performance-clients).
 
+## Development workflow
+
+Start with [AGENTS.md](AGENTS.md) and the [development workflow](docs/development/README.md).
+Behavior changes use OpenSpec; [edge cases](docs/edge-cases/README.md) preserve reproducible
+regressions, and [decisions](docs/decisions/README.md) preserve agreed choices and their reasons.
+The [specification candidates](docs/development/spec-candidates.md) track areas to discuss.
+
 ## Agent behavior
 
 ```mermaid

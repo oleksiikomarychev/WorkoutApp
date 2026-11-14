@@ -37,9 +37,7 @@ INTERNAL_GATEWAY_SECRET = (os.getenv("INTERNAL_GATEWAY_SECRET") or "").strip()
 
 
 class SessionService:
-    def __init__(
-        self, db: AsyncSession, user_max_client: UserMaxClient | None = None, user_id: str | None = None
-    ):
+    def __init__(self, db: AsyncSession, user_max_client: UserMaxClient | None = None, user_id: str | None = None):
         self.db = db
         self.user_max_client = user_max_client or UserMaxClient()
         self.user_id = user_id
@@ -67,7 +65,7 @@ class SessionService:
 
     async def start_workout_session(self, workout_id: int, started_at: datetime | None = None) -> WorkoutSession:
         result = await self.db.execute(
-            select(Workout).filter(Workout.id == workout_id).filter(Workout.user_id == self.user_id)
+            select(Workout).filter(Workout.id == workout_id).filter(Workout.user_id == self.user_id).with_for_update()
         )
         workout = result.scalars().first()
         if not workout:
@@ -124,30 +122,30 @@ class SessionService:
     def _serialize_session(self, session: WorkoutSession) -> dict:
         started_at = session.started_at
         finished_at = session.finished_at
-        
+
         # Handle datetime objects
         if isinstance(started_at, datetime):
             started_at = started_at.isoformat()
-            if started_at and not started_at.endswith('Z') and not re.search(r'[+-]\d{2}:\d{2}$', started_at):
+            if started_at and not started_at.endswith("Z") and not re.search(r"[+-]\d{2}:\d{2}$", started_at):
                 started_at = f"{started_at}Z"
         elif isinstance(started_at, str):
             # Handle string dates (from cache or old data)
-            if not started_at.strip() or started_at.strip() == 'Z':
+            if not started_at.strip() or started_at.strip() == "Z":
                 started_at = None
-            elif not started_at.endswith('Z') and not re.search(r'[+-]\d{2}:\d{2}$', started_at):
+            elif not started_at.endswith("Z") and not re.search(r"[+-]\d{2}:\d{2}$", started_at):
                 started_at = f"{started_at}Z"
-        
+
         if isinstance(finished_at, datetime):
             finished_at = finished_at.isoformat()
-            if finished_at and not finished_at.endswith('Z') and not re.search(r'[+-]\d{2}:\d{2}$', finished_at):
+            if finished_at and not finished_at.endswith("Z") and not re.search(r"[+-]\d{2}:\d{2}$", finished_at):
                 finished_at = f"{finished_at}Z"
         elif isinstance(finished_at, str):
             # Handle string dates (from cache or old data)
-            if not finished_at.strip() or finished_at.strip() == 'Z':
+            if not finished_at.strip() or finished_at.strip() == "Z":
                 finished_at = None
-            elif not finished_at.endswith('Z') and not re.search(r'[+-]\d{2}:\d{2}$', finished_at):
+            elif not finished_at.endswith("Z") and not re.search(r"[+-]\d{2}:\d{2}$", finished_at):
                 finished_at = f"{finished_at}Z"
-        
+
         return {
             "id": session.id,
             "workout_id": session.workout_id,

@@ -1,3 +1,6 @@
+minimum_pre_commit_version: '3.2.0'
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.5.0
@@ -5,3 +8,19 @@ repos:
       - id: ruff
         args: ["--fix", "--exit-non-zero-on-fix"]
       - id: ruff-format
+  - repo: local
+    hooks:
+      - id: openspec-validate
+        name: OpenSpec strict validation
+        entry: openspec validate --all --strict --no-interactive
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+      - id: selected-contract-checks
+        name: Selected contract checks
+        entry: python3 scripts/check_changed.py --pre-push
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
