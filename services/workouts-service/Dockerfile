@@ -11,7 +11,7 @@ ENV UV_NO_DEV=1 \
 
 COPY . /app
 
-RUN uv sync --all-packages --locked
+RUN uv sync --all-packages
 
 # Install supervisord
 RUN apt-get update && apt-get install -y --no-install-recommends \
